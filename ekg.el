@@ -180,7 +180,8 @@ This is used when editing existing blocks.")
               (overlays-in (point-min) (point-max)))
              (list (make-overlay (point-min) (point-max))))))
     (mapc (lambda (o)
-            (overlay-put o 'after-string (ekg-tags-display (ekg-note-tags ekg-note)))) os)))
+            (overlay-put o 'after-string (ekg-tags-display (ekg-note-tags ekg-note)))
+            (overlay-put o 'category 'ekg-tag)) os)))
 
 (defun ekg-capture (&optional tags)
   "Capture a new note, with at least TAGS."
@@ -231,10 +232,11 @@ This is used when editing existing blocks.")
                  "\\<ekg-edit-mode-map>Capture buffer.  Finish \
 `\\[ekg-edit-finalize]'."))
     (ekg-edit-mode 1)
-    (setq ekg-note note)
-    (unless (= (point-min) (point-max)) (open-line 1))
-    (let ((o (make-overlay (point-min) (point-max))))
-      (overlay-put o 'after-string (ekg-tags-display (ekg-note-tags ekg-note))))
+    (setq ekg-note (copy-ekg-note note))
+    (when (= (point-min) (point-max)) (open-line 1))
+    (goto-char (point-max))
+    (ekg-edit-display-tags)
+    (goto-char (point-min))
     (switch-to-buffer-other-window buf)))
 
 (defun ekg--save-note-in-buffer ()
@@ -251,14 +253,15 @@ Return the latest `ekg-note' object."
   "Remove TAGS from the current list of tags."
   (interactive (list (completing-read-multiple "Remove tags: " (ekg-note-tags ekg-note)
                                                nil t)) ekg-capture-mode ekg-edit-mode)
-  (setf (ekg-note-tags ekg-note) (seq-difference tags (ekg-note-tags ekg-note) #'equal))
+  (setf (ekg-note-tags ekg-note) (seq-difference (ekg-note-tags ekg-note) tags  #'equal))
   (ekg-edit-display-tags))
 
 (defun ekg-capture-edit-add-tags (tags)
   "Add TAGS to edit or capture buffer."
   (interactive (list (completing-read-multiple "Additional tags: "
                                                (seq-difference
-                                                (ekg-tags) (ekg-note-tags ekg-note))))
+                                                (ekg-tags)
+                                                (ekg-note-tags ekg-note))))
                ekg-capture-mode ekg-edit-mode)
   (setf (ekg-note-tags ekg-note) (append tags (ekg-note-tags ekg-note)))
   (ekg-edit-display-tags))
