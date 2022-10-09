@@ -1,8 +1,29 @@
 ;; -*- lexical-binding: t -*-
 ;;; ekg.el --- A system for recording and linking information in emacs.
 
-;;; Commentary:
+;; Copyright (c) 2022  Free Software Foundation, Inc.
+
+;; Author: Andrew Hyatt <ahyatt@gmail.com>
+;; Homepage: https://github.com/ahyatt/ekg
+;; Keywords: knowledge graph, pkms
+;; Version: 0.0
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation; either version 2 of the
+;; License, or (at your option) any later version.
 ;;
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+
+
+;;; Commentary:
+;; EKG is a note-taking and information storing application, centered around
+;; tags, but with the ability to have other note metadata.
 
 (require 'triples)
 (require 'seq)
@@ -10,6 +31,9 @@
 (require 'ewoc)
 (require 'cl-macs)
 (require 'kv)
+
+(defgroup ekg nil
+  "The emacs knowledge graph, an app for notes and structured data.")
 
 (defcustom ekg-capture-default-mode 'org-mode
   "The default mode for all new notes."
@@ -24,7 +48,14 @@
 (defcustom ekg-capture-auto-tag-funcs '(ekg-date-tag)
   "Functions to run to create tags automatically.
 The functions are run in the note buffer before saving it.
-Return a list of tags to add.")
+Return a list of tags to add."
+  :type '(set function)
+  :group 'ekg)
+
+(defcustom ekg-db-file "~/.emacs.d/ekg.db"
+  "Location of DB file used by EKG."
+  :type 'file
+  :group 'ekg)
 
 (defface ekg-title
   '((((type graphic)) :height 2.0 :box t :inherit hl-line)
@@ -39,9 +70,6 @@ Return a list of tags to add.")
 (defface ekg-metadata
   '((default :background "grey" :inherit default))
   "Face shown for the metadata section of notes.")
-
-(defvar ekg-db-file "~/.emacs.d/ekg.db"
-  "Location of DB file used by EKG.")
 
 (defvar ekg-db nil
   "Live sqlite database connection.")
