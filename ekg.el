@@ -138,9 +138,7 @@ tags, since those are used to parse out."
                         :modified-time modified-time)
       (setf (ekg-note-modified-time note) modified-time))
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
-    (mapc (lambda (prop)            
-            (apply #'triples-set-type ekg-db (ekg-note-id note) prop))
-          (ekg-note-properties note))))
+    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))))
 
 (defun ekg-get-notes-with-tag (tag)
   "Get all notes with TAG, returning a list of `ekg-note' struct."
