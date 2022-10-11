@@ -216,14 +216,7 @@ This is used when capturing new notes.")
   "Minor mode for simple finish/cancel keybindings."
   :init-value nil
   :lighter "EKG ED"
-  :interactive nil
-  (when ekg-capture-mode
-    (setq-local completion-at-point-functions
-                (cons #'ekg--capf completion-at-point-functions)
-                header-line-format
-                (substitute-command-keys
-                 "\\<ekg-edit-mode-map>Capture buffer.  Finish \
-`\\[ekg-edit-finalize]'."))))
+  :interactive nil)
 
 (defvar ekg-edit-mode-hook nil
   "Hook for `ekg-edit-mode'.")
@@ -352,7 +345,13 @@ This will be displayed at the top of the note buffer."
     (when (ekg-note-mode note)
       (funcall (ekg-note-mode note)))
     (ekg-edit-mode 1)
-    (setq ekg-note (copy-ekg-note note))
+    (setq-local completion-at-point-functions
+                (cons #'ekg--capf completion-at-point-functions)
+                header-line-format
+                (substitute-command-keys
+                 "\\<ekg-edit-mode-map>Capture buffer.  Finish \
+`\\[ekg-edit-finalize]'.")
+                ekg-note (copy-ekg-note note))
     (ekg-edit-display-metadata)
     (insert (ekg-note-text note))
     (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
