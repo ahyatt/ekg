@@ -510,6 +510,19 @@ Does not include any 'trash' tags."
   (insert "\n")
   (insert (ekg-tags-display (ekg-note-tags note))))
 
+(defvar-keymap ekg-notes-mode-map
+  :full t
+  :suppress 'nodigits
+  "a" #'ekg-notes-any-tags
+  "c" #'ekg-notes-create
+  "d" #'ekg-notes-delete
+  "g" #'ekg-notes-refresh
+  "n" #'ekg-notes-next
+  "o" #'ekg-notes-open
+  "p" #'ekg-notes-previous
+  "r" #'ekg-notes-remove
+  "t" #'ekg-notes-tag)
+
 (define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
   "Major mode for showing a list of notes that can be interacted with."
   (setq buffer-read-only t)
@@ -526,19 +539,6 @@ Does not include any 'trash' tags."
 
 (defvar-local ekg-notes-tags nil
   "List of associated tags for creating and removing notes.")
-
-(defvar-keymap ekg-notes-mode-map
-  :full t
-  :suppress 'nodigits
-  "a" #'ekg-notes-any-tags
-  "c" #'ekg-notes-create
-  "d" #'ekg-notes-delete
-  "g" #'ekg-notes-refresh
-  "n" #'ekg-notes-next
-  "o" #'ekg-notes-open
-  "p" #'ekg-notes-previous
-  "r" #'ekg-notes-remove
-  "t" #'ekg-notes-tag)
 
 (defun ekg--note-highlight ()
   "In the buffer, highlight the current note."
