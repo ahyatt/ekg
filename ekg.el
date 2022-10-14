@@ -400,10 +400,10 @@ attempt the completion."
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
   (let ((end (save-excursion
-               (skip-chars-forward "^, \t\n")
+               (skip-chars-forward "^,\t\n")
                (point)))
 	    (start (save-excursion
-                 (skip-chars-backward "^, \t\n")
+                 (skip-chars-backward "^,\t\n")
                  (point))))
     (list start end (completion-table-dynamic
                      (lambda (_) (ekg-tags))))))
