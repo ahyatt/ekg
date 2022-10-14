@@ -13,11 +13,11 @@ a tag is just a tag, so you can have a note called "emacs" and a tag called
 "emacs", but these are not related. ekg takes the idea a step further: there are
 no titles, only tags. So, instead of writing text in a note called "emacs", just
 write a note and tag it with "emacs". There is no "title", only tags. If you
-write another note about emacs, also tag it /emacs/, and maybe something else too.
-Or tag it something more involved, like an idea: "emacs's power derives from
-putting all data in buffers, and making all commands deal with buffers." That's
-a perfectly fine tag, and if you notice a connecting idea, you can tag it with
-this as well.
+write another note about emacs, also tag it "emacs", and maybe something else
+too. Or tag it something more involved, like an idea: "emacs's power derives
+from putting all data in buffers, and making all commands deal with buffers."
+That's a perfectly fine tag, and if you notice a connecting idea, you can tag it
+with this as well.
 
 The advantage of this method is that it solves something that has bothered me
 for a while about the recent suite of tools like org-roam: backlinks are
@@ -115,10 +115,12 @@ expand the tags viewed to encompass all of the tag space in the current view.
 For example, if there are three notes in an "emacs" tag buffer, one tagged
 "emacs" and "2022-10-02", one tagged "emacs" and "vi", and one tagged "emacs",
 "buffer", and "imenu", it would open a buffer as if the user had run
-=ekg-show-tag-any= with the arguments ="emacs", "2022-10-02", "vi", "buffer",
-"imenu"=. The subsequent buffer can again be expanded. Each expansion brings more
+=ekg-show-tag-any= with the arguments as if it was invoked like:
+#+begin_src emacs-lisp
+ekg-show-tag-any('("emacs", "2022-10-02", "vi", "buffer", "imenu"))
+#+end_src
+The subsequent buffer can again be expanded. Each expansion brings more
 of the surrounding contextual note-space to view.
-
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags,
 and all links will become tags as well.
