@@ -267,7 +267,7 @@ This will be displayed at the top of the note buffer."
                          (if (listp (cdr pval-cons))
                              (mapconcat (lambda (v) (format "%s" v))
                                         (cdr pval-cons) ", ")
-                           (format "%s" v))))))
+                           (format "%s" (cdr pval-cons)))))))
             (kvplist->alist (ekg-note-properties note)))
       (buffer-string))))
 
