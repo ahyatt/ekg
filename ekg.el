@@ -224,6 +224,13 @@ This is used when capturing new notes.")
 (defvar ekg-capture-mode-hook nil
   "Hook for `ekg-capture-mode'.")
 
+(defvar ekg-edit-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "\C-c\C-c" #'ekg-edit-finalize)
+    map)
+  "Key map for `ekg-edit-mode', a minor mode.
+This is used when editing existing blocks.")
+
 (define-minor-mode ekg-edit-mode
   "Minor mode for simple finish/cancel keybindings."
   :init-value nil
@@ -232,13 +239,6 @@ This is used when capturing new notes.")
 
 (defvar ekg-edit-mode-hook nil
   "Hook for `ekg-edit-mode'.")
-
-(defvar ekg-edit-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map "\C-c\C-c" #'ekg-edit-finalize)
-    map)
-  "Key map for `ekg-edit-mode', a minor mode.
-This is used when editing existing blocks.")
 
 (defvar-local ekg-note nil
   "Holds the note information for buffers adding or changing notes.")
