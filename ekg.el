@@ -140,27 +140,39 @@ tags, since those are used to parse out."
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
     (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))))
 
-(defun ekg-get-notes-with-tag (tag)
-  "Get all notes with TAG, returning a list of `ekg-note' struct."
+(defun ekg-get-notes-with-tags (tags)
+  "Get all notes with TAGS, returning a list of `ekg-note' structs."
   (ekg--connect)
-  (cl-loop for id in (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
-           collect
-           (let ((v (triples-get-subject ekg-db id)))
-             (make-ekg-note :id id
-                            :text (plist-get v :text/text)
-                            :mode (plist-get v :text/mode)
-                            :tags (plist-get v :tagged/tag)
-                            :creation-time (plist-get v :time-tracked/creation-time)
-                            :modified-time (plist-get v :time-tracked/modified-time)
-                            :properties (kvalist->plist
-                                         (seq-filter (lambda (kvcons)
-                                                       (not (member (car kvcons)
-                                                                    '(text/text
-                                                                      text/mode
-                                                                      tagged/tag
-                                                                      time-tracked/creation-time
-                                                                      time-tracked/modified-time))))
-                                                     (kvplist->alist v)))))))
+  (cl-loop for tag in tags
+           with results = nil
+           do
+           (when-let (tag-ids (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+             (setq results
+                   (if results (seq-intersection tag-ids results)
+                     tag-ids)))
+           finally return
+           (cl-loop for id in results
+                    collect
+                    (let ((v (triples-get-subject ekg-db id)))
+                      (make-ekg-note :id id
+                                     :text (plist-get v :text/text)
+                                     :mode (plist-get v :text/mode)
+                                     :tags (plist-get v :tagged/tag)
+                                     :creation-time (plist-get v :time-tracked/creation-time)
+                                     :modified-time (plist-get v :time-tracked/modified-time)
+                                     :properties (kvalist->plist
+                                                  (seq-filter (lambda (kvcons)
+                                                                (not (member (car kvcons)
+                                                                             '(text/text
+                                                                               text/mode
+                                                                               tagged/tag
+                                                                               time-tracked/creation-time
+                                                                               time-tracked/modified-time))))
+                                                              (kvplist->alist v))))))))
+
+(defun ekg-get-notes-with-tag (tag)
+  "Get all notes with TAG, returning a list of `ekg-note' structs."
+  (ekg-get-notes-with-tags (list tag)))
 
 (defun ekg-note-delete (note)
   "Delete NOTE from the database.
@@ -652,7 +664,21 @@ but allows for re-instatement later."
                        (sort 
                         (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))
                         (lambda (a b)
-                          ;; Sort more tags over fewer TAGS
+                          ;; Sort more tags over fewer tags
+                          (or (> (length (ekg-note-tags a)) (length (ekg-note-tags b)))
+                              (string< (car (ekg-note-tags a)) (car (ekg-note-tags b))))))) tags)
+    (switch-to-buffer buf)))
+
+(defun ekg-show-tags-all (tags)
+  "Show notes that contain all TAGS."
+  (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
+  (let ((buf (get-buffer-create (format "ekg tags (all): %s" (mapconcat #'identity tags " ")))))
+    (set-buffer buf)
+    (ekg--show-notes (lambda ()
+                       (sort
+                        (ekg-get-notes-with-tags tags)
+                        (lambda (a b)
+                          ;; Sort more tags over fewer tags
                           (or (> (length (ekg-note-tags a)) (length (ekg-note-tags b)))
                               (string< (car (ekg-note-tags a)) (car (ekg-note-tags b))))))) tags)
     (switch-to-buffer buf)))
