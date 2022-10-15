@@ -382,10 +382,14 @@ Return the latest `ekg-note' object."
   (ekg-save-note ekg-note)
   ekg-note)
 
+(defun ekg--in-metadata-p ()
+  "If the point is in the metadata section."
+  (< (point) (overlay-end (ekg--metadata-overlay))))
+
 (defun ekg--metadata-current-field ()
   "Return the label and value of the current metadata property.
 If none can be found, return NIL."
-  (when (< (point) (overlay-end (ekg--metadata-overlay)))
+  (when (ekg--in-metadata-p)
     (let ((line (buffer-substring (line-beginning-position) (line-end-position))))
       (when (string-match
               (rx (seq (group (seq (one-or-more (not ?\:))))
@@ -404,10 +408,23 @@ The function is expected to behave as normal for a function in
   "Completion function for all metadata at `completion-at-point-functions'.
 If no completion function is found for the field type, don't
 attempt the completion."
-  (when-let (field (ekg--metadata-current-field))
+  (if-let (field (ekg--metadata-current-field))
     (when-let (completion-func (assoc (car field) ekg-capf-field-complete-funcs
                                       #'equal))
-      (funcall (cdr completion-func)))))
+      (funcall (cdr completion-func)))
+    ;; There's no current field, but we're in the metadata, so let's complete
+    ;; the possible fields.
+    (when (ekg--in-metadata-p)
+      (ekg--field-name-complete))))
+
+(defun ekg--field-name-complete ()
+  "Completion function for metadata field names."
+  (list (save-excursion (beginning-of-line) (point))
+        (save-excursion (skip-chars-forward "^:\s\t\n") (point))
+        (completion-table-dynamic
+         (lambda (_)
+           (seq-difference (mapcar #'car ekg-metadata-parsers)
+                           (mapcar #'car (ekg--metadata-fields)))))))
 
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
@@ -462,22 +479,31 @@ attempt the completion."
 
 (defun ekg--metadata-update-url (val)
   "Update the url field from the metadata VAL."
-  (plist-put
-   (ekg-note-properties ekg-note)
-   :reference/url (s-split (rx (seq ?\, (zero-or-more space))) val t)))
+  (setf (ekg-note-properties ekg-note)
+        (plist-put
+         (ekg-note-properties ekg-note)
+         :reference/url (s-split (rx (seq ?\, (zero-or-more space))) val t))))
 
-(defun ekg--update-from-metadata ()
-  "Update the `ekg-note' object from the metadata."
+(defun ekg--metadata-fields ()
+  "Return all metadata fields as a cons of labels and values."
   (save-excursion
-    (let ((mo (ekg--metadata-overlay)))
+    (let ((mo (ekg--metadata-overlay))
+          (fields))
       (goto-char (overlay-start mo))
       (while (< (point) (overlay-end mo))
         (if-let (field (ekg--metadata-current-field))
-            (if-let (func (assoc (car field) ekg-metadata-parsers))
-                (funcall (cdr func) (cdr field))
-              (warn "EKG: No function found for field %s" (car field)))
+            (push field fields)
           (warn "EKG: No field could be parsed from metadata line at point %s" (point)))
-        (forward-line)))))
+        (forward-line))
+      fields)))
+
+(defun ekg--update-from-metadata ()
+  "Update the `ekg-note' object from the metadata."
+  (cl-loop for field in (ekg--metadata-fields)
+           do
+           (if-let (func (assoc (car field) ekg-metadata-parsers))
+                (funcall (cdr func) (cdr field))
+              (warn "EKG: No function found for field %s" (car field)))))
 
 (defun ekg-capture-finalize ()
   "Save the current note."
