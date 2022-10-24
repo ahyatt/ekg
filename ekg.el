@@ -528,6 +528,17 @@ attempt the completion."
   "Return TAG transformed to mark it as trash."
   (format "trash/%s" tag))
 
+(defun ekg-rename-tag (from-tag to-tag)
+  "Rename FROM-TAG to TO-TAG.
+This can be done whether or not TO-TAG exists or not."
+  (interactive (list (completing-read "From tag: " (ekg-tags))
+                     (completing-read "To tag: " (ekg-tags))))
+  (emacsql-with-transaction ekg-db
+      (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
+               to-tag from-tag)
+    (triples-remove-type ekg-db from-tag 'tag)
+    (triples-set-type ekg-db to-tag 'tag)))
+
 (defun ekg-tags ()
   "Return a list of all tags.
 Does not include any 'trash' tags."
