@@ -5,6 +5,7 @@
 
 (require 'org-roam)
 (require 'org-roam-utils)
+(require 'rx)
 (require 'url-handlers)
 
 (defvar ekg-org-roam-import-tag-to-prefix nil
@@ -19,16 +20,69 @@ into a prefix on the title instead.")
 (defvar ekg-org-roam-import-tag-to-ignore nil
   "Tags to ignore and not bring into ekg.")
 
-(defun ekg-org-roam-import-title-to-tag (node)
-  "Turn NODE's title into tag according to prefix rules."
-  (if-let (diff (seq-intersection (org-roam-node-tags node)
+(defun ekg-org-roam-import-title-to-tag (title tags)
+  "From a TITLE and TAGS compute the new title according to prefix rules."
+  (if-let (diff (seq-intersection tags
                                   ekg-org-roam-import-tag-to-prefix))
       (if (= 1 (length diff))
-          (format "%s/%s" (car diff) (org-roam-node-title node))
+          (format "%s/%s" (car diff) title)
                                   (warn "Unexpectedly found more than one tag in `ekg-org-roam-import-tag-to-prefix' in tags for node %s.  Tags: %s."
-                                        (org-roam-node-title node) (org-roam-node-tags node))
-                                  (org-roam-node-title node))
-    (org-roam-node-title node)))
+                                        title tags)
+                                  title)
+    title))
+
+(defun ekg-org-roam-import--tags-from-links ()
+  "From the current buffer, return tags from the links found.
+The links are turned into tags, without regards for ignored tags.
+However, we do pay attention to
+`ekg-org-roam-import-tag-to-prefix'."
+  (while (re-search-forward org-link-bracket-re nil t)
+    (let* ((type-val (split-string (substring-no-properties (match-string 1)) ":")))
+      (when (string-equal-ignore-case (car type-val) "file")
+        (when-let ((node (org-roam-node-from-id (caar (org-roam-db-query [:select [id] :from nodes
+                                                                                  :where (= file $s1)
+                                                                                  :and (= level 0)]
+                                                                         (cadr type-val))))))
+          (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))))
+      (when (string-equal-ignore-case (car type-val) "id")
+        (when-let (linked-node (org-roam-node-from-id (cadr type-val)))
+          (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node))))))))
+
+(defun ekg-org-roam-import-logseq (pages-dir journal-dir)
+  "Import Logseq data from PAGES-DIR and JOURNAL-DIR.
+This assumes that org-roam is also being used alongside logseq.
+Only data that org-roam doesn't have in its cache is imported,
+the rest should have been imported with `ekg-org-roam-import'.
+JOURNAL-DIR should be relative to PAGES-DIR."
+  (triples-add-schema ekg-db 'logseq '(file (:base/unique t :base/type string)))
+  (cl-loop for dir in (list pages-dir (concat (file-name-as-directory pages-dir) journal-dir))
+           do
+           (cl-loop for file in (directory-files dir) do
+                    (unless (or
+                             (string-match (rx (seq string-start ?\.)) file)
+                             (not (member (file-name-extension file) '("org" "txt" "md")))
+                             (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] (concat (file-name-as-directory pages-dir) file)))
+                      (let ((title (replace-regexp-in-string (rx (seq string-start (one-or-more digit) ?\-)) "" (car (split-string file (rx ?\.)))))
+                            (filename (concat (file-name-as-directory dir) file)))
+                        (save-excursion
+                          (find-file filename)
+                          (unless (= 0 (length (string-trim (buffer-string))))
+                            (let ((tags))                       
+                              (when (re-search-forward (rx (seq line-start "TAGS:" (group (zero-or-more not-newline)) line-end)) nil t)
+                                (setq tags (string-split (match-string 1))))
+                              (font-lock-ensure)
+                              (emacsql-with-transaction ekg-db
+                                (let* ((note (ekg-note-create
+                                              (buffer-string)
+                                              major-mode 
+                                              (seq-difference (cons (ekg-org-roam-import-title-to-tag title tags) tags)
+                                                              (seq-union ekg-org-roam-import-tag-to-ignore
+                                                                         ekg-org-roam-import-tag-to-prefix
+                                                                         #'equal)
+                                                              #'equal))))
+                                  (setf (ekg-note-id note) filename)
+                                  (ekg-save-note note)
+                                  (triples-set-type ekg-db (ekg-note-id note) 'logseq `(:file ,filename))))))))))))
 
 (defun ekg-org-roam-import ()
   "Import all data from org-roam into ekg."
@@ -48,25 +102,15 @@ into a prefix on the title instead.")
                                         (font-lock-ensure)
                                         (point)) (point-max))))
           (unless (triples-subjects-with-predicate-object ekg-db 'org-roam/id (org-roam-node-id node))
-            (while (re-search-forward org-link-bracket-re nil t)
-              (let* ((mdata (match-data))
-                     (type-val (split-string (substring-no-properties (match-string 1)) ":")))
-                (when (string-equal-ignore-case (car type-val) "file")
-                  (when-let ((node (org-roam-node-from-id (caar (org-roam-db-query [:select [id] :from nodes
-                                                                                    :where (= file $s1)
-                                                                                    :and (= level 0)]
-                                                                                    (cadr type-val))))))
-                    (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag node))))
-                (when (string-equal-ignore-case (car type-val) "id")
-                  (when-let (linked-node (org-roam-node-from-id (cadr type-val)))
-                    (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag linked-node))))))
+            (setq tags-from-links (ekg-org-roam-import-tags-from-links))
+            
             (emacsql-with-transaction ekg-db
               (let* ((note (ekg-note-create
                            text
                            'org-mode 
                            (seq-difference (seq-uniq
                                             (cons
-                                             (ekg-org-roam-import-title-to-tag node)
+                                             (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node))
                                              tags-from-links))
                                            (seq-union ekg-org-roam-import-tag-to-ignore
                                                       ekg-org-roam-import-tag-to-prefix
@@ -76,6 +120,7 @@ into a prefix on the title instead.")
                 (when (org-roam-node-refs node)
                   (setf (ekg-note-properties note) `(:reference/url ,(org-roam-node-refs node))))
                 (ekg-save-note note)
-                (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node)))))))))))
+                (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node))))))))))
+  (ekg-org-roam-import-logseq org-roam-directory org-roam-dailies-directory))
 
 (provide 'ekg-org-roam-import)
