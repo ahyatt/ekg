@@ -1,5 +1,4 @@
-;; -*- lexical-binding: t -*-
-;;; ekg.el --- A system for recording and linking information in emacs.
+;;; ekg.el --- A system for recording and linking information in emacs. -*- lexical-binding: t -*-
 
 ;; Copyright (c) 2022  Free Software Foundation, Inc.
 
