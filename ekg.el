@@ -28,7 +28,7 @@
 (require 'seq)
 (require 's)
 (require 'ewoc)
-(require 'cl-macs)
+(require 'cl-lib)
 (require 'kv)
 
 (defgroup ekg nil
@@ -125,7 +125,7 @@ tags, since those are used to parse out."
   "Save NOTE in database, replacing note information there."
   (ekg--connect)
   (ekg--normalize-note note)
-  (emacsql-with-transaction ekg-db
+  (triples-with-transaction ekg-db
     (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
     (triples-set-type ekg-db (ekg-note-id note) 'text :text (ekg-note-text note)
                       :mode (ekg-note-mode note))
@@ -533,9 +533,15 @@ attempt the completion."
 This can be done whether or not TO-TAG exists or not."
   (interactive (list (completing-read "From tag: " (ekg-tags))
                      (completing-read "To tag: " (ekg-tags))))
-  (emacsql-with-transaction ekg-db
-      (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
-               to-tag from-tag)
+  (triples-with-transaction
+    ekg-db
+    (pcase triples-sqlite-interface
+      ('builtin (sqlite-execute
+                 ekg-db
+                 "UPDATE triples SET object = ? WHERE object = ? AND predicate = 'tagged/tag'"
+                 (to-tag from-tag)))
+      ('emacsql (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
+                         to-tag from-tag)))
     (triples-remove-type ekg-db from-tag 'tag)
     (triples-set-type ekg-db to-tag 'tag)))
 
@@ -738,7 +744,7 @@ but allows for re-instatement later."
   "Add PEOPLE, `ekg-person' objects to EKG.
 The subject of a person is the shortest email address they have."
   (ekg--connect)
-  (emacsql-with-transaction ekg-db
+  (triples-with-transaction ekg-db
       (mapc (lambda (person)
               (let* ((sorted-email (sort (ekg-person-emails person)
                                          (lambda (a b)
