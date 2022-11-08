@@ -51,6 +51,17 @@ Return a list of tags to add."
   :type '(set function)
   :group 'ekg)
 
+(defcustom ekg-format-funcs '()
+  "Functions to run to format what we display to the user.
+What we display on the UI is different than what we store
+internally, which is the document itself. Each function here will
+be run in sequence on a temporary buffer, and is responsible for
+making the changes in the current buffer to affect the formatting
+however it wants. It is the responsibility of each function to
+check for the mode of the buffer."
+  :type '(set function)
+  :group 'ekg)
+
 (defcustom ekg-db-file "~/.emacs.d/ekg.db"
   "Location of DB file used by EKG."
   :type 'file
@@ -186,19 +197,21 @@ If all tags are trash tags, then the note is really deleted."
                   (ekg-note-tags note)))
     (ekg-save-note note)))
 
-(defun ekg-note-text (note)
+(defun ekg-displayable-note-text (note)
   "Return text, with mode-specific properties, of NOTE.
-A text property `ekg-note-id' is added with the id of the note."
+A text property `ekg-note-id' is added with the id of the note.
+FORMATTERS is the optional set of functions run in the buffer
+before finishing."
   (with-temp-buffer
     (insert (ekg-note-text note))
     (when (ekg-note-mode note)
-              (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
-                (if (fboundp mode-func) (funcall #'mode-func)
-                  (funcall (ekg-note-mode note))))
-              (font-lock-ensure)
-              (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
-              (buffer-string))))
-
+      (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
+        (if (fboundp mode-func) (funcall #'mode-func)
+          (funcall (ekg-note-mode note)))))
+    (mapc #'funcall ekg-format-funcs)
+    (font-lock-ensure)
+    (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
+    (buffer-string)))
 
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
@@ -559,7 +572,7 @@ Does not include any 'trash' tags."
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
-  (insert (ekg-note-text note))
+  (insert (ekg-displayable-note-text note))
   (insert "\n")
   (insert (ekg-tags-display (ekg-note-tags note))))
 
