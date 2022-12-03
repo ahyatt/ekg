@@ -363,7 +363,7 @@ This will be displayed at the top of the note buffer."
 (defun ekg-edit (note)
   "Edit an existing NOTE."
   (interactive nil ekg-notes-mode)
-  (let ((buf (get-buffer-create "*EKG Edit*")))
+  (let ((buf (get-buffer-create (format "*EKG Edit: %s*" (ekg-note-id note)))))
     (set-buffer buf)
     (erase-buffer)
     (when (ekg-note-mode note)
