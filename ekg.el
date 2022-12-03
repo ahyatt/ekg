@@ -308,14 +308,6 @@ This will be displayed at the top of the note buffer."
             (kvplist->alist (ekg-note-properties note)))
       (buffer-string))))
 
-(defun ekg-tag-completion-at-point ()
-  "A completion-at-point function to complete ekg tags."
-  (if (and (eq major-mode 'ekg-note-mode)
-           ;; does our word start with a hash?
-           (s-starts-with-p "#" (thing-at-point 'symbol)))
-      (start end (completion-table-dynamic
-                  (lambda (_) (ekg-tag))) :exclusive t)))
-
 (defun ekg--metadata-overlay ()
   "Return the overlay used for metadata"
   (or (car (seq-filter
@@ -453,6 +445,15 @@ attempt the completion."
            (seq-difference (mapcar #'car ekg-metadata-parsers)
                            (mapcar #'car (ekg--metadata-fields)))))))
 
+(defun ekg--tags-cap-exit (completion finished)
+  "Cleanup after completion at point happened in a tag.
+The cleanup now is just to always have a space after every comma."
+  (when finished
+    (save-excursion
+      (when (search-backward "," (line-beginning-position) t)
+        (replace-string (format ",%s" completion)
+                        (format ", %s" completion))))))
+
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
   (let ((end (save-excursion
@@ -462,7 +463,8 @@ attempt the completion."
                  (skip-chars-backward "^,\t\n")
                  (point))))
     (list start end (completion-table-dynamic
-                     (lambda (_) (ekg-tags))))))
+                     (lambda (_) (ekg-tags)))
+          :exclusive t :exit-function #'ekg--tags-cap-exit)))
 
 (defun ekg-capture-edit-remove-tags (tags)
   "Remove TAGS from the current list of tags."
