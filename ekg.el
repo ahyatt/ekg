@@ -215,7 +215,8 @@ A text property `ekg-note-id' is added with the id of the note.
 FORMATTERS is the optional set of functions run in the buffer
 before finishing."
   (with-temp-buffer
-    (insert (ekg-note-text note))
+    (when (ekg-note-text note)
+      (insert (ekg-note-text note)))
     (when (ekg-note-mode note)
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall #'mode-func)
