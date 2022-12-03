@@ -85,12 +85,14 @@ check for the mode of the buffer."
   "Live sqlite database connection.")
 
 (defvar ekg-metadata-parsers '(("Tags" . ekg--metadata-update-tag)
-                               ("URL" . ekg--metadata-update-url))
+                               ("URL" . ekg--metadata-update-url)
+                               ("Title" . ekg--metadata-update-title))
   "Alist of metadata field to a function that updates the buffer's
 `ekg-note' with the results of the field. The function takes one
 argument, the field metadata property value.")
 
-(defvar ekg-metadata-labels '((reference/url . "URL"))
+(defvar ekg-metadata-labels '((reference/url . "URL")
+                              (titled/title . "Title"))
   "Alist of properties that can be on the note, and the labels they
 have in the metadata section. The label needs to match the keys
 in the `ekg-metadata-parsers' alist.")
@@ -123,7 +125,9 @@ in the `ekg-metadata-parsers' alist.")
   (triples-add-schema ekg-db 'email 'address)
   ;; Person is just a marker
   (triples-add-schema ekg-db 'person)
-  (triples-add-schema ekg-db 'reference '(url :base/type string)))
+  (triples-add-schema ekg-db 'reference '(url :base/type string))
+  ;; A URL can be a subject too, and has data, including the title.
+  (triples-add-schema ekg-db 'titled '(title :base/type string)))
 
 (defun ekg--normalize-note (note)
   "Make sure NOTE adheres to ekg-wide constraints before saving.
@@ -196,6 +200,10 @@ If all tags are trash tags, then the note is really deleted."
                                   (ekg-mark-trashed tag)))
                   (ekg-note-tags note)))
     (ekg-save-note note)))
+
+(defun ekg-has-live-tags-p (sub)
+  "Return true if SUB represents an undeleted note."
+  (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag))) (plist-get (triples-get-type ekg-db sub 'tagged) :tag)))
 
 (defun ekg-displayable-note-text (note)
   "Return text, with mode-specific properties, of NOTE.
@@ -322,20 +330,22 @@ This will be displayed at the top of the note buffer."
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'face 'ekg-metadata)))
 
-(defun ekg-capture (&optional tags)
-  "Capture a new note, with at least TAGS."
+(defun ekg-capture (&optional tags properties subject)
+  "Capture a new note, with TAGS and other PROPERTIES.
+If SUBJECT is given, force the triple subject to be that value."
   (interactive)
   (let ((buf (get-buffer-create "*EKG Capture*")))
     (set-buffer buf)
     (funcall ekg-capture-default-mode)
     (ekg-capture-mode 1)
-    (let* ((time (time-convert (current-time) 'integer))
-           (subject (sxhash (cons time (random 100)))))
+    (let* ((time (time-convert (current-time) 'integer)))
       (setq ekg-note
             (ekg-note-create nil ekg-capture-default-mode
                              (seq-uniq (append
                                         tags
-                                        (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))))))
+                                        (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs)))))
+      (when subject (setf (ekg-note-id ekg-note) subject)))
+    (setf (ekg-note-properties ekg-note) properties)
     (ekg-edit-display-metadata)
     (goto-char (point-max))
     (switch-to-buffer-other-window buf)))
@@ -488,6 +498,11 @@ attempt the completion."
 (defun ekg--metadata-update-tag (val)
   "Update the tag field from the metadata VAL."
   (setf (ekg-note-tags ekg-note) (s-split (rx (seq ?\, (zero-or-more space))) val t)))
+
+(defun ekg--metadata-update-title (val)
+  "Update the title field from the metadata VAL."
+  (setf (ekg-note-properties ekg-note)
+        (plist-put (ekg-note-properties ekg-note) :titled/title (s-split (rx (seq ?\, (zero-or-more space))) val t))))
 
 (defun ekg--metadata-update-url (val)
   "Update the url field from the metadata VAL."
@@ -748,6 +763,31 @@ but allows for re-instatement later."
 (defun ekg-show-today ()
   (interactive)
   (ekg-show-tag (car (ekg-date-tag))))
+
+(defun ekg-document-titles ()
+  "Return an alist of all titles.
+The key is the subject and the value is the title."
+  (ekg--connect)
+  (mapcan (lambda (sub)
+            (mapcar (lambda (title) (cons sub title)) (plist-get (triples-get-type ekg-db sub 'titled) :title)))
+          (seq-filter #'ekg-has-live-tags-p
+                      (triples-subjects-of-type ekg-db 'titled))))
+
+(defun ekg-browse-url (title)
+  "Browse the url corresponding to TITLE.
+If no corresponding URL is found, an error is thrown."
+  (interactive (list (completing-read "Doc: "
+                                      (mapcan
+                                       (lambda (tcons)
+                                         (when (ffap-url-p (car tcons))
+                                           (list (cdr tcons))))
+                                       (ekg-document-titles)))))
+  (let ((subjects (seq-filter #'ffap-url-p (triples-subjects-with-predicate-object ekg-db 'titled/title title))))
+    (when (= 0 (length subjects)) (error "Could not fetch existing URL title: %s" title))
+    (when (> (length subjects) 1) (warn "Multiple URLs with the same title exist: %s" title))
+    (browse-url (car subjects))))
+
+;; The following is unused, experimental code.
 
 (cl-defstruct ekg-person
   "Data about a person, stored in EKG."
