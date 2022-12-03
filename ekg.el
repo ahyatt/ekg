@@ -585,6 +585,13 @@ Does not include any 'trash' tags."
   (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag)))
               (triples-subjects-of-type ekg-db 'tag)))
 
+(defun ekg-tags-including (substring)
+  "Return all tags including SUBSTRING."
+  (ekg--connect)
+  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
+                                 (string-match-p (rx (literal substring)) tag)))
+              (triples-subjects-of-type ekg-db 'tag)))
+
 (defun ekg-tags-display (tags)
   "Return a propertized representation of TAGS, a list."
   (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
