@@ -167,26 +167,30 @@ tags, since those are used to parse out."
            finally return
            (cl-loop for id in results
                     collect
-                    (let ((v (triples-get-subject ekg-db id)))
-                      (make-ekg-note :id id
-                                     :text (plist-get v :text/text)
-                                     :mode (plist-get v :text/mode)
-                                     :tags (plist-get v :tagged/tag)
-                                     :creation-time (plist-get v :time-tracked/creation-time)
-                                     :modified-time (plist-get v :time-tracked/modified-time)
-                                     :properties (kvalist->plist
-                                                  (seq-filter (lambda (kvcons)
-                                                                (not (member (car kvcons)
-                                                                             '(text/text
-                                                                               text/mode
-                                                                               tagged/tag
-                                                                               time-tracked/creation-time
-                                                                               time-tracked/modified-time))))
-                                                              (kvplist->alist v))))))))
+                    (ekg-get-note-with-id id))))
 
 (defun ekg-get-notes-with-tag (tag)
   "Get all notes with TAG, returning a list of `ekg-note' structs."
   (ekg-get-notes-with-tags (list tag)))
+
+(defun ekg-get-note-with-id (id)
+  "Get the specific note with ID."
+  (let ((v (triples-get-subject ekg-db id)))
+    (make-ekg-note :id id
+                   :text (plist-get v :text/text)
+                   :mode (plist-get v :text/mode)
+                   :tags (plist-get v :tagged/tag)
+                   :creation-time (plist-get v :time-tracked/creation-time)
+                   :modified-time (plist-get v :time-tracked/modified-time)
+                   :properties (kvalist->plist
+                                (seq-filter (lambda (kvcons)
+                                              (not (member (car kvcons)
+                                                           '(text/text
+                                                             text/mode
+                                                             tagged/tag
+                                                             time-tracked/creation-time
+                                                             time-tracked/modified-time))))
+                                            (kvplist->alist v))))))
 
 (defun ekg-note-delete (note)
   "Delete NOTE from the database.
@@ -832,22 +836,39 @@ The subject of a person is the shortest email address they have."
 ;; Links for org-mode
 (require 'ol)
 
-(defun ekg--store-link ()
-  "Store a link to this page."
+(defun ekg--store-any-tags-link ()
+  "Store a link to an any-tags ekg page."
   (when (eq major-mode 'ekg-notes-mode)
-    (org-link-store-props :type "ekg" :link (concat "ekg:" (format "%S" ekg-notes-tags))
-                          :description (format "EKG page for tags: %s"
+    ;; TODO: Stop assuming every notes mode is an any tags.
+    (org-link-store-props :type "ekg-tags-any" :link (concat "ekg-tags-any:" (format "%S" ekg-notes-tags))
+                          :description (format "EKG page for any of the tags: %s"
                                                (mapconcat #'identity ekg-notes-tags ", ")))))
 
-(defun ekg--open-link (stags)
+(defun ekg--open-any-tags-link (stags)
   "Open a link to an ekg page given by TAGS."
   (let ((tags (read stags)))
     (if (= 1 (length tags))
         (ekg-show-tag (car tags))
       (ekg-show-tags-any tags))))
 
-(org-link-set-parameters "ekg" :follow #'ekg--open-link
+(defun ekg--store-note-link ()
+  "Store a link to an individual note."
+  (let ((id (when (member 'ekg-edit-mode local-minor-modes)
+              (ekg-note-id ekg-note))))
+    (when id
+      (org-link-store-props :type "ekg-note"
+                            :link (concat "ekg-note:" (format "%S" id))
+                            :description (format "EKG note: %S" id)))))
+
+(defun ekg--open-note-link (id)
+  "Open a link to a note given its ID."
+  (ekg-edit (ekg-get-note-with-id (read id))))
+
+(org-link-set-parameters "ekg-tags-any" :follow #'ekg--open-any-tags-link
                          :store #'ekg--store-link)
+
+(org-link-set-parameters "ekg-note" :follow #'ekg--open-note-link
+                         :store #'ekg--store-note-link)
 
 (provide 'ekg)
 
