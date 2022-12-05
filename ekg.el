@@ -493,23 +493,6 @@ The cleanup now is just to always have a space after every comma."
                      (lambda (_) (ekg-tags)))
           :exclusive t :exit-function #'ekg--tags-cap-exit)))
 
-(defun ekg-capture-edit-remove-tags (tags)
-  "Remove TAGS from the current list of tags."
-  (interactive (list (completing-read-multiple "Remove tags: " (ekg-note-tags ekg-note)
-                                               nil t)) ekg-capture-mode ekg-edit-mode)
-  (setf (ekg-note-tags ekg-note) (seq-difference (ekg-note-tags ekg-note) tags  #'equal))
-  (ekg-edit-display-tags))
-
-(defun ekg-capture-edit-add-tags (tags)
-  "Add TAGS to edit or capture buffer."
-  (interactive (list (completing-read-multiple "Additional tags: "
-                                               (seq-difference
-                                                (ekg-tags)
-                                                (ekg-note-tags ekg-note))))
-               ekg-capture-mode ekg-edit-mode)
-  (setf (ekg-note-tags ekg-note) (append tags (ekg-note-tags ekg-note)))
-  (ekg-edit-display-tags))
-
 (defun ekg-edit-finalize ()
   "Save the edited note and refresh where it appears."
   (interactive nil ekg-edit-mode)
