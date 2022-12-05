@@ -131,10 +131,14 @@ in the `ekg-metadata-parsers' alist.")
 
 (defun ekg--normalize-note (note)
   "Make sure NOTE adheres to ekg-wide constraints before saving.
-This makes sure all tags are lowercase. It also removes commas in
-tags, since those are used to parse out."
+This
+  1) makes sure all tags are lowercase.
+  2) removes commas in tags, since those are used to separate tags.
+  3) trim the text of any trailing or leading whitespace."
   (setf (ekg-note-tags note)
-        (mapcar (lambda (tag) (downcase (string-replace "," "" tag))) (ekg-note-tags note))))
+        (mapcar (lambda (tag) (downcase (string-replace "," "" tag))) (ekg-note-tags note)))
+  (setf (ekg-note-text note)
+        (s-trim (ekg-note-text note))))
 
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
@@ -417,7 +421,7 @@ Return the latest `ekg-note' object."
   (ekg--connect)
   (widen)
   (setf (ekg-note-text ekg-note)
-        (buffer-substring (+ 1 (overlay-end (ekg--metadata-overlay)))
+        (buffer-substring (overlay-end (ekg--metadata-overlay))
                           (point-max))
         (ekg-note-mode ekg-note) major-mode
         (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note)))
