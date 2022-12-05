@@ -615,18 +615,19 @@ Does not include any 'trash' tags."
   (insert "\n")
   (insert (ekg-tags-display (ekg-note-tags note))))
 
-(defvar-keymap ekg-notes-mode-map
-  :full t
-  :suppress 'nodigits
-  "a" #'ekg-notes-any-tags
-  "c" #'ekg-notes-create
-  "d" #'ekg-notes-delete
-  "g" #'ekg-notes-refresh
-  "n" #'ekg-notes-next
-  "o" #'ekg-notes-open
-  "p" #'ekg-notes-previous
-  "r" #'ekg-notes-remove
-  "t" #'ekg-notes-tag)
+(defvar ekg-notes-mode-map
+  (let ((map (make-keymap)))
+    (suppress-keymap map t)
+    (define-key map "a" #'ekg-notes-any-tags)
+    (define-key map "c" #'ekg-notes-create)
+    (define-key map "d" #'ekg-notes-delete)
+    (define-key map "g" #'ekg-notes-refresh)
+    (define-key map "n" #'ekg-notes-next)
+    (define-key map "o" #'ekg-notes-open)
+    (define-key map "p" #'ekg-notes-previous)
+    (define-key map "r" #'ekg-notes-remove)
+    (define-key map "t" #'ekg-notes-tag)
+    map))
 
 (define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
   "Major mode for showing a list of notes that can be interacted with."
