@@ -315,17 +315,40 @@ This will be displayed at the top of the note buffer."
             (overlays-in (point-min) (point-max))))
       (make-overlay (point-min) (point-max) nil nil t)))
 
+(defun ekg--metadata-modification (overlay after begin end &optional length)
+  "Make sure that metadata region doesn't interfere with editing.
+This function is called on modification within the metadata.
+We want to make sure of a few things:
+  1) The user isn't adding empty lines.
+  2) There is at least one non-metadata line in the buffer."
+  (when after
+    (save-excursion
+      (goto-char begin)
+      (replace-regexp (rx (seq line-start (zero-or-more space) line-end)) "" nil begin end)
+      (when (= (overlay-end overlay)
+               (buffer-end 1))
+        (goto-char (buffer-end 1))
+        (insert "\n")))))
+
 (defun ekg-edit-display-metadata ()
   "Create or edit the overlay to show metadata."
   (let ((o (ekg--metadata-overlay))
         (inhibit-read-only t))
+    (buffer-disable-undo)
     (replace-region-contents (overlay-start o) (overlay-end o)
                              #'ekg--replace-metadata)
     (goto-char (overlay-end o))
     (insert "\n")
     (move-overlay o (point-min) (- (overlay-end o) 1))
+    (overlay-put o 'before-string (propertize "Note properties\n" 'face '(underline ekg-metadata)
+                                              'read-only t))
     (overlay-put o 'category 'ekg-metadata)
-    (overlay-put o 'face 'ekg-metadata)))
+    (overlay-put o 'modification-hooks '(ekg--metadata-modification))
+    (overlay-put o 'face 'ekg-metadata)
+    (buffer-enable-undo)
+    ;; If org-mode is on, the metadata messes up the org-element-cache, so let's disable it.
+    (when (eq major-mode 'org-mode)
+      (setq-local org-element-use-cache nil))))
 
 (defun ekg-capture (&optional tags properties subject)
   "Capture a new note, with TAGS and other PROPERTIES.
