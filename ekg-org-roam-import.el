@@ -1,4 +1,4 @@
-;;; ekg-org-roam-import.el --- Function to import all data from org-roam into ekg
+;;; ekg-org-roam-import.el --- Function to import all data from org-roam into ekg.  -*- lexical-binding: t -*-
 
 ;;; Commentary:
 ;; 
@@ -10,7 +10,7 @@
 
 (defvar ekg-org-roam-import-tag-to-prefix nil
   "Tags, whose presence indicates that they should be prefixes to
-the title. For example, if you tag every idea with the 'idea'
+the title. For example, if you tag every idea with the `idea'
 tag, then I think it's best to not bring that tag to ekg, but
 instead to prefix the title with this tag name. This is a list of
 tags that should operate like that - so, if one is found (at max
@@ -36,17 +36,19 @@ into a prefix on the title instead.")
 The links are turned into tags, without regards for ignored tags.
 However, we do pay attention to
 `ekg-org-roam-import-tag-to-prefix'."
-  (while (re-search-forward org-link-bracket-re nil t)
-    (let* ((type-val (split-string (substring-no-properties (match-string 1)) ":")))
-      (when (string-equal-ignore-case (car type-val) "file")
-        (when-let ((node (org-roam-node-from-id (caar (org-roam-db-query [:select [id] :from nodes
-                                                                                  :where (= file $s1)
-                                                                                  :and (= level 0)]
-                                                                         (cadr type-val))))))
-          (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))))
-      (when (string-equal-ignore-case (car type-val) "id")
-        (when-let (linked-node (org-roam-node-from-id (cadr type-val)))
-          (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node))))))))
+  (let ((tags-from-links))
+    (while (re-search-forward org-link-bracket-re nil t)
+      (let* ((type-val (split-string (substring-no-properties (match-string 1)) ":")))
+        (when (string-equal-ignore-case (car type-val) "file")
+          (when-let ((node (org-roam-node-from-id (caar (org-roam-db-query [:select [id] :from nodes
+                                                                                    :where (= file $s1)
+                                                                                    :and (= level 0)]
+                                                                           (cadr type-val))))))
+            (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))))
+        (when (string-equal-ignore-case (car type-val) "id")
+          (when-let (linked-node (org-roam-node-from-id (cadr type-val)))
+            (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node)))))))
+    tags-from-links))
 
 (defun ekg-org-roam-import-logseq (pages-dir journal-dir)
   "Import Logseq data from PAGES-DIR and JOURNAL-DIR.
@@ -71,7 +73,7 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                               (when (re-search-forward (rx (seq line-start "TAGS:" (group (zero-or-more not-newline)) line-end)) nil t)
                                 (setq tags (string-split (match-string 1))))
                               (font-lock-ensure)
-                              (emacsql-with-transaction ekg-db
+                              (triples-with-transaction ekg-db
                                 (let* ((note (ekg-note-create
                                               (buffer-string)
                                               major-mode 
@@ -102,9 +104,8 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                                         (font-lock-ensure)
                                         (point)) (point-max))))
           (unless (triples-subjects-with-predicate-object ekg-db 'org-roam/id (org-roam-node-id node))
-            (setq tags-from-links (ekg-org-roam-import-tags-from-links))
-            
-            (emacsql-with-transaction ekg-db
+            (setq tags-from-links (ekg-org-roam-import--tags-from-links))
+            (triples-with-transaction ekg-db
               (let* ((note (ekg-note-create
                            text
                            'org-mode 
