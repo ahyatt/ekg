@@ -25,6 +25,7 @@
 ;; tags, but with the ability to have other note metadata.
 
 (require 'triples)
+(require 'triples-backups)
 (require 'seq)
 (require 's)
 (require 'ewoc)
@@ -67,6 +68,19 @@ check for the mode of the buffer."
   :type 'file
   :group 'ekg)
 
+(defconst ekg-default-num-backups 5
+  "The number of backups to set when first using the database.
+This can be overwritten by other database users, and will not be
+set again. If you want to change the number of backups in your
+database after it has been created, run `triples-backups-setup'.")
+
+(defconst ekg-default-backups-strategy 'daily
+  "The default database backup strategy when first setting up the
+database. This can be overwritten by other database users, and
+will not be set again. If you want to change the number of
+backups in your database after it has been created, run
+`triples-backups-setup'.")
+
 (defface ekg-title
   '((((type graphic)) :height 2.0 :box t :inherit hl-line)
     (((type tty))) :underline t :inherit hl-line)
@@ -104,7 +118,10 @@ in the `ekg-metadata-parsers' alist.")
   "Ensure EKG-DB is connected."
   (unless ekg-db
     (setq ekg-db (triples-connect ekg-db-file))
-    (ekg-add-schema)))
+    (ekg-add-schema)
+    (unless (triples-backups-configuration ekg-db)
+      (triples-backups-setup ekg-db ekg-default-num-backups
+                             ekg-default-backups-strategy))))
 
 (defun ekg--close ()
   "Close the EKG-DB connection."
@@ -156,7 +173,8 @@ This
                         :modified-time modified-time)
       (setf (ekg-note-modified-time note) modified-time))
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
-    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))))
+    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note)))
+  (triples-backups-maybe-backup ekg-db ekg-db-file))
 
 (defun ekg-get-notes-with-tags (tags)
   "Get all notes with TAGS, returning a list of `ekg-note' structs."
@@ -201,13 +219,15 @@ This
 This doesn't actually delete, but rather prepends all tags with
  'trash/'. This can be garbage collected at a later time.
 If all tags are trash tags, then the note is really deleted."
-  (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
-      (triples-delete-subject ekg-db (ekg-note-id note))
-    (setf (ekg-note-tags note)
-          (mapcar (lambda (tag) (unless (ekg-tag-trash-p tag)
-                                  (ekg-mark-trashed tag)))
-                  (ekg-note-tags note)))
-    (ekg-save-note note)))
+  (triples-with-transaction 
+    (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
+        (triples-delete-subject ekg-db (ekg-note-id note))
+      (setf (ekg-note-tags note)
+            (mapcar (lambda (tag) (unless (ekg-tag-trash-p tag)
+                                    (ekg-mark-trashed tag)))
+                    (ekg-note-tags note)))
+      (ekg-save-note note)))
+  (triples-backups-maybe-backup ekg-db ekg-db-file))
 
 (defun ekg-has-live-tags-p (sub)
   "Return true if SUB represents an undeleted note."
@@ -588,7 +608,8 @@ This can be done whether or not TO-TAG exists or not."
       ('emacsql (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
                          to-tag from-tag)))
     (triples-remove-type ekg-db from-tag 'tag)
-    (triples-set-type ekg-db to-tag 'tag)))
+    (triples-set-type ekg-db to-tag 'tag))
+  (triples-backups-maybe-backup ekg-db ekg-db-file))
 
 (defun ekg-tags ()
   "Return a list of all tags.
@@ -835,7 +856,8 @@ The subject of a person is the shortest email address they have."
                 (triples-set-type ekg-db subject 'tagged
                                   :tag (ekg-person-tags person))
                 (triples-set-type ekg-db subject 'person)))
-            people)))
+            people))
+  (triples-backups-maybe-backup ekg-db ekg-db-file))
 
 (defun ekg-people ()
   "Return a list of all people as `ekg-person' structs."
