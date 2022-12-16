@@ -886,7 +886,7 @@ The subject of a person is the shortest email address they have."
   (ekg-edit (ekg-get-note-with-id (read id))))
 
 (org-link-set-parameters "ekg-tags-any" :follow #'ekg--open-any-tags-link
-                         :store #'ekg--store-link)
+                         :store #'ekg--store-any-tags-link)
 
 (org-link-set-parameters "ekg-note" :follow #'ekg--open-note-link
                          :store #'ekg--store-note-link)
