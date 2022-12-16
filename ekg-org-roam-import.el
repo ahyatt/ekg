@@ -3,6 +3,7 @@
 ;;; Commentary:
 ;; 
 
+(require 'ekg)
 (require 'org-roam)
 (require 'org-roam-utils)
 (require 'rx)
@@ -39,13 +40,13 @@ However, we do pay attention to
   (let ((tags-from-links))
     (while (re-search-forward org-link-bracket-re nil t)
       (let* ((type-val (split-string (substring-no-properties (match-string 1)) ":")))
-        (when (string-equal-ignore-case (car type-val) "file")
+        (when (string-equal (downcase (car type-val)) "file")
           (when-let ((node (org-roam-node-from-id (caar (org-roam-db-query [:select [id] :from nodes
                                                                                     :where (= file $s1)
                                                                                     :and (= level 0)]
                                                                            (cadr type-val))))))
             (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))))
-        (when (string-equal-ignore-case (car type-val) "id")
+        (when (string-equal (downcase (car type-val)) "id")
           (when-let (linked-node (org-roam-node-from-id (cadr type-val)))
             (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node)))))))
     tags-from-links))
