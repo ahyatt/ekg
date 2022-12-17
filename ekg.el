@@ -812,42 +812,6 @@ If no corresponding URL is found, an error is thrown."
     (when (> (length subjects) 1) (warn "Multiple URLs with the same title exist: %s" title))
     (browse-url (car subjects))))
 
-;; The following is unused, experimental code.
-
-(cl-defstruct ekg-person
-  "Data about a person, stored in EKG."
-  names emails tags)
-
-(defun ekg-add-people (people)
-  "Add PEOPLE, `ekg-person' objects to EKG.
-The subject of a person is the shortest email address they have."
-  (ekg--connect)
-  (triples-with-transaction ekg-db
-      (mapc (lambda (person)
-              (let* ((sorted-email (sort (ekg-person-emails person)
-                                         (lambda (a b)
-                                           (< (length a) (length b)))))
-                     (subject (car sorted-email)))
-                (triples-set-type ekg-db subject 'named
-                                  :name (ekg-person-names person))
-                (triples-set-type ekg-db subject 'email
-                                  :address sorted-email)
-                (triples-set-type ekg-db subject 'tagged
-                                  :tag (ekg-person-tags person))
-                (triples-set-type ekg-db subject 'person)))
-            people)))
-
-(defun ekg-people ()
-  "Return a list of all people as `ekg-person' structs."
-  (ekg--connect)
-  (cl-loop for id in (triples-subjects-of-type ekg-db 'person)
-           collect
-           (let ((v (triples-get-subject ekg-db id)))
-             (make-ekg-person
-              :names (plist-get v :name)
-              :emails (plist-get v :email/address)
-              :tags (plist-get v :tagged/tag)))))
-
 ;; Auto-tag functions
 
 (defun ekg-date-tag ()
