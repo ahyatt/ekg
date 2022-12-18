@@ -11,13 +11,13 @@ Logseq also consider tags to be equivalent to pages of the same name, although
 this functionality is limited since tags can only be just one word. In org-roam,
 a tag is just a tag, so you can have a note called "emacs" and a tag called
 "emacs", but these are not related. ekg takes the idea a step further: there are
-no titles, only tags. So, instead of writing text in a note called "emacs", just
-write a note and tag it with "emacs". There is no "title", only tags. If you
-write another note about emacs, also tag it "emacs", and maybe something else
-too. Or tag it something more involved, like an idea: "emacs's power derives
-from putting all data in buffers, and making all commands deal with buffers."
-That's a perfectly fine tag, and if you notice a connecting idea, you can tag it
-with this as well.
+(mostly) no titles, only tags. So, instead of writing text in a note called
+"emacs", just write a note and tag it with "emacs". There is no "title", only
+tags. If you write another note about emacs, also tag it "emacs", and maybe
+something else too. Or tag it something more involved, like an idea: "emacs's
+power derives from putting all data in buffers, and making all commands deal
+with buffers." That's a perfectly fine tag, and if you notice a connecting idea,
+you can tag it with this as well.
 
 The advantage of this method is that it solves something that has bothered me
 for a while about the recent suite of tools like org-roam: backlinks are
@@ -25,13 +25,13 @@ non-symmetrical. If you enter a note in your org-roam daily about emacs, and
 link it to the emacs note, then when you go to the emacs note, you have to
 explicitly enable the backlinks buffer to see the daily entry where you first
 entered it. Systems such as Logseq and the original Roam have backlinks
-alongside normal content, but this doesn't seem possible in emacs, where buffer
-in a file is expected show the file, and tricks with overlays can't solve the
-issue. Even if it could, I want a system in which it doesn't matter where you
-enter the data, it shows up in the original place the same as everywhere else it
-is linked to, not as a backlink, but just as part of the content. Having notes
-with no title, only tags, makes this possible, because there is no longer a
-difference between linking and writing in the context in, both are denoted by
+alongside normal content, but this doesn't seem possible in emacs, where a
+buffer of a file is expected show the file, and tricks with overlays can't solve
+the issue. Even if it could, I want a system in which it doesn't matter where
+you enter the data, it shows up in the original place the same as everywhere
+else it is linked to, not as a backlink, but just as part of the content. Having
+notes with no title, only tags, makes this possible, because there is no longer
+a difference between linking and writing in the context in, both are denoted by
 tags.
 
 As a consequence of this design, notes can be small, because to add another note
@@ -47,7 +47,16 @@ much easier to make certain kinds of changes, since they only involve changing
 the database and not the text as well. In general, text and data are separated
 as much as possible here, so there's no need or desire for the text to have to
 store data as well, we leave that completely to the database.
+* Prefixed tags
+Another concept, loosely applied in =ekg= is that of tags with standard prefixes.
+By default, date tags are prefixed with ="date/"=. This is a way to distinguish
+date tags from other kinds of tags. Most tags shouldn't need it, but it often is
+useful to have prefixes to group tags in some way. For instance, perhaps all
+idea tags should be prefixed with ="idea/"=. In my ekg repository I use in my
+company, I have ="person/"= as a tag prefix for my coworker's username.
 
+The benefit of this is that it's now possible to narrow in on just tags of a
+certain type if necessary.
 * Warning
 ekg is a brand new package, and as such, there may be significant bugs.  It has not yet had an initial release, but I hope to release something soon.  The initial release will be accompanied by putting this package on a site such as MELPA or GNU ELPA.
 
@@ -135,6 +144,16 @@ and all links will become tags as well.
 Titles and tags will have any commas removed, since commas are commonly used in
 multiple completion as a separator, so anything with commas would otherwise cause
 problems when selected.
+
+If you do have tags you want to turn into prefixes (which is a good idea for
+tags widely applied, which essentially act as a categorization), you can add
+those tags to the list at =ekg-org-roam-import-tag-to-prefix=.  For example,
+#+begin_src emacs-lisp
+(setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
+#+end_src
+Then, when a note is found that is tagged with ="idea"=, but with title "emacs is
+a powerful tool", then the title will be turned into the tag ="idea/emacs is a
+powerful tool"=, and anything linked with it will also get the same prefix.
 
 To import from org-roam, in a =*scratch*= buffer or any your favorite elisp
 execution method, run the following:

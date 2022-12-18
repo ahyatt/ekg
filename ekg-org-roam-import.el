@@ -23,14 +23,17 @@ into a prefix on the title instead.")
 
 (defun ekg-org-roam-import-title-to-tag (title tags)
   "From a TITLE and TAGS compute the new title according to prefix rules."
-  (if-let (diff (seq-intersection tags
-                                  ekg-org-roam-import-tag-to-prefix))
-      (if (= 1 (length diff))
-          (format "%s/%s" (car diff) title)
-                                  (warn "Unexpectedly found more than one tag in `ekg-org-roam-import-tag-to-prefix' in tags for node %s.  Tags: %s."
-                                        title tags)
-                                  title)
-    title))
+  (if (iso8601-valid-p title)
+      (format "date/%s" title)
+    (let ((tags (append tags)))
+      (if-let (diff (seq-intersection tags
+                                      ekg-org-roam-import-tag-to-prefix))
+          (if (= 1 (length diff))
+              (format "%s/%s" (car diff) title)
+                                      (warn "Unexpectedly found more than one tag in `ekg-org-roam-import-tag-to-prefix' in tags for node %s.  Tags: %s."
+                                            title tags)
+                                      title)
+        title))))
 
 (defun ekg-org-roam-import--tags-from-links ()
   "From the current buffer, return tags from the links found.

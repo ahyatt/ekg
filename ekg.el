@@ -112,7 +112,7 @@ in the `ekg-metadata-parsers' alist.")
 
 (defun ekg-add-schema ()
   "Add schema necessary for EKG to function."
-  (triples-add-schema ekg-db 'tagged 'tag)
+  (triples-add-schema ekg-db 'tagged '(tag :base/type string))
   (triples-add-schema ekg-db 'text
                       '(text :base/unique t :base/type string)
                       '(mode :base/unique t :base/type symbol))
@@ -584,7 +584,7 @@ This can be done whether or not TO-TAG exists or not."
       ('builtin (sqlite-execute
                  ekg-db
                  "UPDATE triples SET object = ? WHERE object = ? AND predicate = 'tagged/tag'"
-                 (to-tag from-tag)))
+                 (list (triples-standardize-val to-tag) (triples-standardize-val from-tag))))
       ('emacsql (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
                          to-tag from-tag)))
     (triples-remove-type ekg-db from-tag 'tag)
@@ -816,7 +816,15 @@ If no corresponding URL is found, an error is thrown."
 
 (defun ekg-date-tag ()
   "Get single tag representing the date as a ISO 8601 format."
-  (list (format-time-string "%F")))
+  (list (format-time-string "date/%F")))
+
+(defun ekg-upgrade-db ()
+  "After updating, do any necessary upgrades needed by changes in schema or use."
+  (interactive)
+  (ekg--connect)
+  (cl-loop for tag in (seq-filter #'iso8601-valid-p (ekg-tags))
+           do
+           (ekg-rename-tag tag (format "date/%s" tag))))
 
 ;; Links for org-mode
 (require 'ol)
