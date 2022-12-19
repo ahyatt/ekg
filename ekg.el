@@ -739,7 +739,11 @@ but allows for re-instatement later."
   (erase-buffer)
   (let ((ewoc (ewoc-create #'ekg-display-note (propertize (ekg-tags-display tags) 'face 'ekg-title))))
     (mapc (lambda (note) (ewoc-enter-last ewoc note))
-          (funcall notes-func))
+          (sort
+           (funcall notes-func)
+           (lambda (a b)
+             (< (ekg-note-creation-time a)
+                (ekg-note-creation-time b)))))
     (ekg-notes-mode)
     (setq-local ekg-notes-ewoc ewoc
                 ekg-notes-fetch-notes-function notes-func
