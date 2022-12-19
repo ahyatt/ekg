@@ -329,8 +329,8 @@ We want to make sure of a few things:
   (when after
     (save-excursion
       (goto-char begin)
-      (re-search-forward (rx (seq line-start (zero-or-more space) line-end)) end t)
-      (replace-match "")
+      (when (re-search-forward (rx (seq line-start (zero-or-more space) line-end)) end t)
+        (replace-match ""))
       (when (= (overlay-end overlay)
                (buffer-end 1))
         (goto-char (buffer-end 1))
