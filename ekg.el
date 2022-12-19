@@ -32,7 +32,8 @@
 (require 'kv)
 
 (defgroup ekg nil
-  "The emacs knowledge graph, an app for notes and structured data.")
+  "The emacs knowledge graph, an app for notes and structured data."
+  :group 'applications)
 
 (defcustom ekg-capture-default-mode 'org-mode
   "The default mode for all new notes."
@@ -199,7 +200,7 @@ This
 (defun ekg-note-delete (note)
   "Delete NOTE from the database.
 This doesn't actually delete, but rather prepends all tags with
- 'trash/'. This can be garbage collected at a later time.
+ `trash/'. This can be garbage collected at a later time.
 If all tags are trash tags, then the note is really deleted."
   (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
       (triples-delete-subject ekg-db (ekg-note-id note))
@@ -319,7 +320,7 @@ This will be displayed at the top of the note buffer."
             (overlays-in (point-min) (point-max))))
       (make-overlay (point-min) (point-max) nil nil t)))
 
-(defun ekg--metadata-modification (overlay after begin end &optional length)
+(defun ekg--metadata-modification (overlay after begin end &optional _)
   "Make sure that metadata region doesn't interfere with editing.
 This function is called on modification within the metadata.
 We want to make sure of a few things:
@@ -328,7 +329,8 @@ We want to make sure of a few things:
   (when after
     (save-excursion
       (goto-char begin)
-      (replace-regexp (rx (seq line-start (zero-or-more space) line-end)) "" nil begin end)
+      (re-search-forward (rx (seq line-start (zero-or-more space) line-end)) end t)
+      (replace-match "")
       (when (= (overlay-end overlay)
                (buffer-end 1))
         (goto-char (buffer-end 1))
@@ -362,13 +364,12 @@ If SUBJECT is given, force the triple subject to be that value."
     (set-buffer buf)
     (funcall ekg-capture-default-mode)
     (ekg-capture-mode 1)
-    (let* ((time (time-convert (current-time) 'integer)))
-      (setq ekg-note
+    (setq ekg-note
             (ekg-note-create nil ekg-capture-default-mode
                              (seq-uniq (append
                                         tags
                                         (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs)))))
-      (when subject (setf (ekg-note-id ekg-note) subject)))
+      (when subject (setf (ekg-note-id ekg-note) subject))
     (setf (ekg-note-properties ekg-note) properties)
     (ekg-edit-display-metadata)
     (goto-char (point-max))
@@ -477,9 +478,8 @@ attempt the completion."
 The cleanup now is just to always have a space after every comma."
   (when finished
     (save-excursion
-      (when (search-backward "," (line-beginning-position) t)
-        (replace-string (format ",%s" completion)
-                        (format ", %s" completion))))))
+      (when (search-backward (format ",%s" completion) (line-beginning-position) t)
+        (replace-match (format ", %s" completion))))))
 
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
@@ -592,7 +592,7 @@ This can be done whether or not TO-TAG exists or not."
 
 (defun ekg-tags ()
   "Return a list of all tags.
-Does not include any 'trash' tags."
+Does not include any trash tags."
   (ekg--connect)
   (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag)))
               (triples-subjects-of-type ekg-db 'tag)))
@@ -693,9 +693,10 @@ but allows for re-instatement later."
   (interactive nil ekg-notes-mode)
   (let ((note (ekg--current-note-or-error)))
     (setf (ekg-note-tags note)
-          (mapcar (lambda (tag) (if (member tag ekg-notes-tags)
-                            (ekg-marked-trash tag)
-                          tag)) (ekg-note-tags note)))
+          (mapcar (lambda (tag)
+                    (if (member tag ekg-notes-tags)
+                        (ekg-mark-trashed tag)
+                      tag)) (ekg-note-tags note)))
     (ekg-save-note note))
   (setq buffer-read-only nil)
     (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))

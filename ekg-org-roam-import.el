@@ -48,10 +48,10 @@ However, we do pay attention to
                                                                                     :where (= file $s1)
                                                                                     :and (= level 0)]
                                                                            (cadr type-val))))))
-            (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))))
+            (cl-pushnew (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)) tags-from-links)))
         (when (string-equal (downcase (car type-val)) "id")
           (when-let (linked-node (org-roam-node-from-id (cadr type-val)))
-            (add-to-list 'tags-from-links (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node)))))))
+            (cl-pushnew (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node)) tags-from-links)))))
     tags-from-links))
 
 (defun ekg-org-roam-import-logseq (pages-dir journal-dir)
