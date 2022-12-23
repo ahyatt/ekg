@@ -26,10 +26,9 @@
 
 (require 'triples)
 (require 'seq)
-(require 's)
 (require 'ewoc)
 (require 'cl-lib)
-(require 'kv)
+(require 'map)
 
 (defgroup ekg nil
   "The emacs knowledge graph, an app for notes and structured data."
@@ -92,8 +91,8 @@ check for the mode of the buffer."
 `ekg-note' with the results of the field. The function takes one
 argument, the field metadata property value.")
 
-(defvar ekg-metadata-labels '((reference/url . "URL")
-                              (titled/title . "Title"))
+(defvar ekg-metadata-labels '((:reference/url . "URL")
+                              (:titled/title . "Title"))
   "Alist of properties that can be on the note, and the labels they
 have in the metadata section. The label needs to match the keys
 in the `ekg-metadata-parsers' alist.")
@@ -139,7 +138,7 @@ This
   (setf (ekg-note-tags note)
         (mapcar (lambda (tag) (downcase (string-replace "," "" tag))) (ekg-note-tags note)))
   (setf (ekg-note-text note)
-        (s-trim (ekg-note-text note))))
+        (string-trim (ekg-note-text note))))
 
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
@@ -187,15 +186,14 @@ This
                    :tags (plist-get v :tagged/tag)
                    :creation-time (plist-get v :time-tracked/creation-time)
                    :modified-time (plist-get v :time-tracked/modified-time)
-                   :properties (kvalist->plist
-                                (seq-filter (lambda (kvcons)
-                                              (not (member (car kvcons)
-                                                           '(text/text
-                                                             text/mode
-                                                             tagged/tag
-                                                             time-tracked/creation-time
-                                                             time-tracked/modified-time))))
-                                            (kvplist->alist v))))))
+                   :properties (map-filter
+                                (lambda (plist-key _)
+                                  (not (member plist-key
+                                               '(:text/text
+                                                 :text/mode
+                                                 :tagged/tag
+                                                 :time-tracked/creation-time
+                                                 :time-tracked/modified-time)))) v))))
 
 (defun ekg-note-delete (note)
   "Delete NOTE from the database.
@@ -302,15 +300,15 @@ This will be displayed at the top of the note buffer."
        (ekg--metadata-string "Tags"
                              (mapconcat (lambda (tag) (format "%s" tag))
                                         (ekg-note-tags note) ", ")))
-      (mapc (lambda (pval-cons)
-              (when-let (label (cdr (assoc (car pval-cons) ekg-metadata-labels)))
-                (insert (ekg--metadata-string
-                         label
-                         (if (listp (cdr pval-cons))
-                             (mapconcat (lambda (v) (format "%s" v))
-                                        (cdr pval-cons) ", ")
-                           (format "%s" (cdr pval-cons)))))))
-            (kvplist->alist (ekg-note-properties note)))
+      (map-apply (lambda (k v)
+                   (when-let (label (cdr (assoc k ekg-metadata-labels)))
+                     (insert (ekg--metadata-string
+                              label
+                              (if (listp v)
+                                  (mapconcat (lambda (v) (format "%s" v))
+                                             v ", ")
+                                (format "%s" v))))))
+                 (ekg-note-properties note))
       (buffer-string))))
 
 (defun ekg--metadata-overlay ()
@@ -512,21 +510,27 @@ The cleanup now is just to always have a space after every comma."
                      (setq n (ewoc-next ekg-notes-ewoc n))))
                  (ewoc-refresh ekg-notes-ewoc))))))
 
+(defun ekg--split-metadata-string (val)
+  "Split a multi-valued metadata field into the component values.
+The metadata fields are comma separated."
+  (split-string val (rx (seq ?\, (zero-or-more space))) t (rx (1+ space))))
+
 (defun ekg--metadata-update-tag (val)
   "Update the tag field from the metadata VAL."
-  (setf (ekg-note-tags ekg-note) (s-split (rx (seq ?\, (zero-or-more space))) val t)))
+  (setf (ekg-note-tags ekg-note) (ekg--split-metadata-string val)))
 
 (defun ekg--metadata-update-title (val)
   "Update the title field from the metadata VAL."
   (setf (ekg-note-properties ekg-note)
-        (plist-put (ekg-note-properties ekg-note) :titled/title (s-split (rx (seq ?\, (zero-or-more space))) val t))))
+        (plist-put (ekg-note-properties ekg-note) :titled/title
+                   (ekg--split-metadata-string val))))
 
 (defun ekg--metadata-update-url (val)
   "Update the url field from the metadata VAL."
   (setf (ekg-note-properties ekg-note)
         (plist-put
          (ekg-note-properties ekg-note)
-         :reference/url (s-split (rx (seq ?\, (zero-or-more space))) val t))))
+         :reference/url (ekg--split-metadata-string val))))
 
 (defun ekg--metadata-fields ()
   "Return all metadata fields as a cons of labels and values."
@@ -567,7 +571,7 @@ The cleanup now is just to always have a space after every comma."
   "Return true if TAG is part of the trash."
   ;; All tags should be strings, but better to ignore violations here.
   (and (stringp tag)
-       (s-starts-with-p "trash/" tag)))
+       (string-match-p (rx (seq string-start "trash/")) tag)))
 
 (defun ekg-mark-trashed (tag)
   "Return TAG transformed to mark it as trash."

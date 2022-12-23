@@ -66,10 +66,8 @@ package, which is a way to express a graph in sqlite in emacs, alongside basic
 querying functionality.
 
 =triples= is on GNU ELPA, so can be installed via the package manager or
-=use-package=.  There are also dependencies on the [[https://github.com/magnars/s.el][s]] and [[\[\[https://github.com/magnars/s.el\]\[s\]\] and ][kv]] packages.  An example installation using =use-package= and =straight= is below:
+=use-package=. An example installation using =use-package= and =straight= is below:
 #+begin_src emacs-lisp
-(use-package kv)
-(use-package s)
 (use-package triples)
 (use-package ekg
   :straight '(ekg :type git :host github :repo "ahyatt/ekg")
