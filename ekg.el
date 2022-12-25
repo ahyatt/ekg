@@ -610,7 +610,8 @@ Does not include any trash tags."
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-display (tags)
-  "Return a propertized representation of TAGS, a list."
+  "Return a propertized representation of TAGS, a list.
+The tags are separated by spaces."
   (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
              (sort tags #'string<) " "))
 
