@@ -63,7 +63,7 @@
   (let* ((note (ekg-note-create "" 'text-mode '("a" "b")))
          (note-buf (ekg-edit note)))
     (unwind-protect
-     (progn 
+     (progn
        ;; Can we store a link?
        (with-current-buffer note-buf
          (org-store-link nil 1)
