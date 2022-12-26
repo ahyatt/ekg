@@ -766,13 +766,8 @@ but allows for re-instatement later."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (let ((buf (get-buffer-create (format "ekg tags (any): %s" (mapconcat #'identity tags " ")))))
     (set-buffer buf)
-    (ekg--show-notes (lambda ()
-                       (sort 
-                        (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))
-                        (lambda (a b)
-                          ;; Sort more tags over fewer tags
-                          (or (> (length (ekg-note-tags a)) (length (ekg-note-tags b)))
-                              (string< (car (ekg-note-tags a)) (car (ekg-note-tags b))))))) tags)
+    (ekg--show-notes
+     (lambda () (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))) tags)
     (switch-to-buffer buf)))
 
 (defun ekg-show-tags-all (tags)
@@ -780,13 +775,7 @@ but allows for re-instatement later."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (let ((buf (get-buffer-create (format "ekg tags (all): %s" (mapconcat #'identity tags " ")))))
     (set-buffer buf)
-    (ekg--show-notes (lambda ()
-                       (sort
-                        (ekg-get-notes-with-tags tags)
-                        (lambda (a b)
-                          ;; Sort more tags over fewer tags
-                          (or (> (length (ekg-note-tags a)) (length (ekg-note-tags b)))
-                              (string< (car (ekg-note-tags a)) (car (ekg-note-tags b))))))) tags)
+    (ekg--show-notes (lambda () (ekg-get-notes-with-tags tags)) tags)
     (switch-to-buffer buf)))
 
 (defun ekg-show-tag (tag)
