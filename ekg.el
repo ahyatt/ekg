@@ -399,20 +399,20 @@ If SUBJECT is given, force the triple subject to be that value."
   (interactive nil ekg-notes-mode)
   (let ((buf (get-buffer-create (format "*EKG Edit: %s*" (ekg-note-id note)))))
     (set-buffer buf)
-    (erase-buffer)
-    (when (ekg-note-mode note)
-      (funcall (ekg-note-mode note)))
-    (ekg-edit-mode 1)
-    (setq-local completion-at-point-functions
-                (cons #'ekg--capf completion-at-point-functions)
-                header-line-format
-                (substitute-command-keys
-                 "\\<ekg-edit-mode-map>Capture buffer.  Finish \
+    (when (= 0 (buffer-size))
+      (when (ekg-note-mode note)
+        (funcall (ekg-note-mode note)))
+      (ekg-edit-mode 1)
+      (setq-local completion-at-point-functions
+                  (cons #'ekg--capf completion-at-point-functions)
+                  header-line-format
+                  (substitute-command-keys
+                   "\\<ekg-edit-mode-map>Capture buffer.  Finish \
 `\\[ekg-edit-finalize]'.")
-                ekg-note (copy-ekg-note note))
-    (ekg-edit-display-metadata)
-    (insert (ekg-note-text note))
-    (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
+                  ekg-note (copy-ekg-note note))
+      (ekg-edit-display-metadata)
+      (insert (ekg-note-text note))
+      (goto-char (+ 1 (overlay-end (ekg--metadata-overlay)))))
     (switch-to-buffer-other-window buf)))
 
 (defun ekg--save-note-in-buffer ()
