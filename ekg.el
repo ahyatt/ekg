@@ -215,9 +215,7 @@ If all tags are trash tags, then the note is really deleted."
 
 (defun ekg-displayable-note-text (note)
   "Return text, with mode-specific properties, of NOTE.
-A text property `ekg-note-id' is added with the id of the note.
-FORMATTERS is the optional set of functions run in the buffer
-before finishing."
+A text property `ekg-note-id' is added with the id of the note."
   (with-temp-buffer
     (when (ekg-note-text note)
       (insert (ekg-note-text note)))
