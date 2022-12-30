@@ -323,13 +323,14 @@ This will be displayed at the top of the note buffer."
   "Make sure that metadata region doesn't interfere with editing.
 This function is called on modification within the metadata.
 We want to make sure of a few things:
-  1) The user isn't adding empty lines.
+  1) The user isn't adding more than one empty line.
   2) There is at least one non-metadata line in the buffer."
   (when after
     (save-excursion
-      (goto-char begin)
-      (when (re-search-forward (rx (seq line-start (zero-or-more space) line-end)) end t)
-        (replace-match ""))
+      (forward-line -1)
+      (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
+        (kill-line)
+        (forward-line -1))
       (when (= (overlay-end overlay)
                (buffer-end 1))
         (goto-char (buffer-end 1))
