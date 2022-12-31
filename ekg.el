@@ -191,14 +191,16 @@ This
                    :tags (plist-get v :tagged/tag)
                    :creation-time (plist-get v :time-tracked/creation-time)
                    :modified-time (plist-get v :time-tracked/modified-time)
-                   :properties (map-filter
+                   :properties (map-into
+                                (map-filter
                                 (lambda (plist-key _)
                                   (not (member plist-key
                                                '(:text/text
                                                  :text/mode
                                                  :tagged/tag
                                                  :time-tracked/creation-time
-                                                 :time-tracked/modified-time)))) v))))
+                                                 :time-tracked/modified-time)))) v)
+                                'plist))))
 
 (defun ekg-note-delete (note)
   "Delete NOTE from the database.

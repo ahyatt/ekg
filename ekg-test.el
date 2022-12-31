@@ -29,9 +29,14 @@
   (declare (debug t) (indent 2))
   `(ert-deftest ,name ()
      (let ((ekg-db-file (make-temp-file "ekg-test"))
-           (ekg-db nil))
+           (ekg-db nil)
+           (orig-buffers (buffer-list)))
        (ekg--connect)
-       ,@body)))
+       (save-excursion
+         (unwind-protect 
+             (progn ,@body)
+           ;; Kill all opened bufferes
+           (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers)))))))
 
 (ekg-deftest ekg-test-note-lifecycle ()
   (let ((note (ekg-note-create "Test text" 'text-mode '("tag1" "tag2"))))
@@ -99,6 +104,19 @@
          (org-open-at-point nil)
          (should (eq tag-buf (current-buffer)))))
      (kill-buffer tag-buf))))
+
+(ekg-deftest ekg-test-url-handling ()
+  (ekg-capture-url "http://testurl" "A URL used for testing")
+  (insert "Text added to the URL")
+  (ert-simulate-command '(ekg-capture-finalize))
+  (should (equal (ekg-document-titles) (list (cons "http://testurl" "A URL used for testing"))))
+  (should (member "doc/a url used for testing" (ekg-tags)))
+  (ekg-edit (ekg-get-note-with-id "http://testurl"))
+  (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) t)))
+    (when (search-backward "http://testurl")
+      (replace-match "http://testurl/v2"))
+    (ert-simulate-command '(ekg-capture-finalize)))
+  (should (equal (ekg-document-titles) (list (cons "http://testurl/v2" "A URL used for testing")))))
 
 (provide 'ekg-test)
 
