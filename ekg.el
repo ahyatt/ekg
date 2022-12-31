@@ -90,7 +90,7 @@ check for the mode of the buffer."
   "Live sqlite database connection.")
 
 (defvar ekg-metadata-parsers '(("Tags" . ekg--metadata-update-tag)
-                               ("Resource" . ekg--metadata-update-subject)
+                               ("Resource" . ekg--metadata-update-resource)
                                ("Title" . ekg--metadata-update-title))
   "Alist of metadata field to a function that updates the buffer's
 `ekg-note' with the results of the field. The function takes one
