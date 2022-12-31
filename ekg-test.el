@@ -23,6 +23,7 @@
 ;;; Code:
 (require 'ekg)
 (require 'ert)
+(require 'ert-x)
 
 (defmacro ekg-deftest (name _ &rest body)
   "A test that will set up an empty `ekg-db' for use."
