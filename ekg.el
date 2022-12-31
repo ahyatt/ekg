@@ -67,15 +67,20 @@ check for the mode of the buffer."
   :type 'file
   :group 'ekg)
 
-(defface ekg-title
+(defface ekg-notes-mode-title
   '((((type graphic)) :height 2.0 :box t :inherit hl-line)
     (((type tty))) :underline t :inherit hl-line)
-  "Face shown for EKG titles")
+  "Face shown for the titles of EKG notes mode")
 
 (defface ekg-tag
   '((((type graphic)) :height 1.0 :box t :inherit default)
     (((type tty))) :underline t :inherit hl-line)
   "Face shown for EKG tags")
+
+(defface ekg-resource
+  '((((type graphic)) :inherit fixed-pitch)
+    (((type tty))) :bold t :inherit hl-line)
+  "Face shown for EKG resource")
 
 (defface ekg-metadata
   '((default :background "grey" :inherit default))
@@ -85,14 +90,13 @@ check for the mode of the buffer."
   "Live sqlite database connection.")
 
 (defvar ekg-metadata-parsers '(("Tags" . ekg--metadata-update-tag)
-                               ("URL" . ekg--metadata-update-url)
+                               ("Resource" . ekg--metadata-update-subject)
                                ("Title" . ekg--metadata-update-title))
   "Alist of metadata field to a function that updates the buffer's
 `ekg-note' with the results of the field. The function takes one
 argument, the field metadata property value.")
 
-(defvar ekg-metadata-labels '((:reference/url . "URL")
-                              (:titled/title . "Title"))
+(defvar ekg-metadata-labels '((:titled/title . "Title"))
   "Alist of properties that can be on the note, and the labels they
 have in the metadata section. The label needs to match the keys
 in the `ekg-metadata-parsers' alist.")
@@ -125,8 +129,8 @@ in the `ekg-metadata-parsers' alist.")
   (triples-add-schema ekg-db 'email 'address)
   ;; Person is just a marker
   (triples-add-schema ekg-db 'person)
-  (triples-add-schema ekg-db 'reference '(url :base/type string))
-  ;; A URL can be a subject too, and has data, including the title.
+  ;; A URL can be a subject too, and has data, including the title. The title is
+  ;; something that can be used to select the subject via completion.
   (triples-add-schema ekg-db 'titled '(title :base/type string)))
 
 (defun ekg--normalize-note (note)
@@ -270,6 +274,10 @@ This is used when editing existing blocks.")
 (defvar-local ekg-note nil
   "Holds the note information for buffers adding or changing notes.")
 
+(defvar-local ekg-note-orig-id nil
+  "Holds the original ID (subject) for this note.
+This is needed to identify references to refresh when the subject is changed." )
+
 (defun ekg-note-create (text mode tags)
   "Create a new `ekg-note' with TEXT, MODE and TAGS."
   (let* ((time (time-convert (current-time) 'integer))
@@ -291,10 +299,17 @@ This will be displayed at the top of the note buffer."
   (format "%s: %s\n" (propertize property 'face 'bold 'read-only t)
           value))
 
+(defun ekg--should-show-id-p (id)
+  "Return true if the note ID should be shown to the user.
+The ID can represent a browseable resource, which is meaningful to the user."
+  (ffap-url-p id))
+
 (defun ekg--replace-metadata ()
   "Replace the metadata in a buffer."
   (let ((note ekg-note))
     (with-temp-buffer
+      (when (ekg--should-show-id-p (ekg-note-id note))
+        (insert (ekg--metadata-string "Resource" (ekg-note-id note))))
       (insert
        (ekg--metadata-string "Tags"
                              (mapconcat (lambda (tag) (format "%s" tag))
@@ -367,18 +382,20 @@ If SUBJECT is given, force the triple subject to be that value."
                              (seq-uniq (append
                                         tags
                                         (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs)))))
-      (when subject (setf (ekg-note-id ekg-note) subject))
+    (when subject
+      (setf (ekg-note-id ekg-note) subject))
     (setf (ekg-note-properties ekg-note) properties)
     (ekg-edit-display-metadata)
     (goto-char (point-max))
     (switch-to-buffer-other-window buf)))
 
-(defun ekg-capture-url (&optional url)
+(defun ekg-capture-url (&optional url title)
   "Capture a new note given a URL."
-  (interactive "MURL: ")
-  (ekg-capture)
-  (goto-char (overlay-start (ekg--metadata-overlay)))
-  (insert "URL: " url "\n"))
+  (interactive "MURL: \nMTitle: \n")
+  (let ((cleaned-title (string-replace "," "" title)))
+    (ekg-capture (list (concat "doc/" (downcase cleaned-title)))
+                 ;; Remove commas from the value.
+                 `(:titled/title ,cleaned-title) url)))
 
 (defun ekg-capture-change-mode (mode)
   "Change the mode of the current note."
@@ -408,7 +425,8 @@ If SUBJECT is given, force the triple subject to be that value."
                   (substitute-command-keys
                    "\\<ekg-edit-mode-map>Capture buffer.  Finish \
 `\\[ekg-edit-finalize]'.")
-                  ekg-note (copy-ekg-note note))
+                  ekg-note (copy-ekg-note note)
+                  ekg-note-orig-id (ekg-note-id note))
       (ekg-edit-display-metadata)
       (insert (ekg-note-text note))
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay)))))
@@ -495,7 +513,8 @@ The cleanup now is just to always have a space after every comma."
   "Save the edited note and refresh where it appears."
   (interactive nil ekg-edit-mode)
   (ekg--update-from-metadata)
-  (let ((note (ekg--save-note-in-buffer)))
+  (let ((note (ekg--save-note-in-buffer))
+        (orig-id ekg-note-orig-id))
     (kill-buffer)
     (cl-loop for b being the buffers do
            (with-current-buffer b
@@ -504,8 +523,10 @@ The cleanup now is just to always have a space after every comma."
                                             ekg-notes-tags))
                  (let ((n (ewoc-nth ekg-notes-ewoc 0)))
                    (while n
-                     (when (equal (ekg-note-id (ewoc-data n))
-                                  (ekg-note-id note))
+                     (when (or (equal (ekg-note-id (ewoc-data n))
+                                      (ekg-note-id note))
+                               (and orig-id
+                                    (equal orig-id (ekg-note-id (ewoc-data n)))))
                        (ewoc-set-data n note))
                      (setq n (ewoc-next ekg-notes-ewoc n))))
                  (ewoc-refresh ekg-notes-ewoc))))))
@@ -525,12 +546,21 @@ The metadata fields are comma separated."
         (plist-put (ekg-note-properties ekg-note) :titled/title
                    (ekg--split-metadata-string val))))
 
-(defun ekg--metadata-update-url (val)
-  "Update the url field from the metadata VAL."
-  (setf (ekg-note-properties ekg-note)
-        (plist-put
-         (ekg-note-properties ekg-note)
-         :reference/url (ekg--split-metadata-string val))))
+(defun ekg--metadata-update-resource (val)
+  "Update the resource to the metadata VAL."
+  (when (and (not (string= val (ekg-note-id ekg-note)))
+             (or (not (ekg-note-id ekg-note))
+                 (y-or-n-p "Changing the resource of this note will also change all references to it.  Are you sure?")))
+    (triples-with-transaction ekg-db
+      (when (ekg-note-id ekg-note)
+        (let* ((old-id (ekg-note-id ekg-note))
+               (existing-types (triples-get-types ekg-db old-id))
+               (conflicting-types (seq-union existing-types '(text 'tag 'titled))))
+          (when (and conflicting-types
+                     (y-or-n-p "Existing data exists on this resource, replace?"))
+            (mapc (lambda (type) (triples-remove-type ekg-db old-id type)) conflicting-types))
+          (triples-move-subject ekg-db old-id val))))
+    (setf (ekg-note-id ekg-note) val)))
 
 (defun ekg--metadata-fields ()
   "Return all metadata fields as a cons of labels and values."
@@ -616,6 +646,11 @@ The tags are separated by spaces."
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
+  (when (ekg--should-show-id-p (ekg-note-id note))
+    (insert
+     (propertize 
+      (format "[%s]\n" (ekg-note-id note))
+      'face 'ekg-resource)))
   (insert (ekg-displayable-note-text note))
   (insert "\n")
   (insert (ekg-tags-display (ekg-note-tags note))))
@@ -629,6 +664,7 @@ The tags are separated by spaces."
     (define-key map "g" #'ekg-notes-refresh)
     (define-key map "n" #'ekg-notes-next)
     (define-key map "o" #'ekg-notes-open)
+    (define-key map "b" #'ekg-notes-browse)
     (define-key map "p" #'ekg-notes-previous)
     (define-key map "r" #'ekg-notes-remove)
     (define-key map "t" #'ekg-notes-tag)
@@ -708,6 +744,14 @@ but allows for re-instatement later."
     (setq buffer-read-only t)
     (ekg--note-highlight))
 
+(defun ekg-notes-browse ()
+  "If the note is about a browseable resource, browse to it.
+For URLs, this will use `browse-url'."
+  (interactive nil ekg-notes-mode)
+  (let ((note (ekg--current-note-or-error)))
+    (cond ((ffap-url-p (ekg-note-id note))
+           (browse-url (ekg-note-id note))))))
+
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
   (interactive nil ekg-notes-mode)
@@ -743,7 +787,7 @@ but allows for re-instatement later."
   "Display notes from NOTES-FUNC in buffer, with notes having TAGS."
   (setq buffer-read-only nil)
   (erase-buffer)
-  (let ((ewoc (ewoc-create #'ekg-display-note (propertize (ekg-tags-display tags) 'face 'ekg-title))))
+  (let ((ewoc (ewoc-create #'ekg-display-note (propertize (ekg-tags-display tags) 'face 'ekg-notes-mode-title))))
     (mapc (lambda (note) (ewoc-enter-last ewoc note))
           (sort
            (funcall notes-func)
@@ -818,12 +862,17 @@ If no corresponding URL is found, an error is thrown."
   (list (format-time-string "date/%F")))
 
 (defun ekg-upgrade-db ()
-  "After updating, do any necessary upgrades needed by changes in schema or use."
+  "After updating, do any necessary upgrades needed by changes in schema or use.
+This is designed so that it can be run an arbitrary number of
+times, if there's nothing to do, it won't have any affect."
   (interactive)
   (ekg--connect)
   (cl-loop for tag in (seq-filter #'iso8601-valid-p (ekg-tags))
            do
-           (ekg-rename-tag tag (format "date/%s" tag))))
+           (ekg-rename-tag tag (format "date/%s" tag)))
+  (cl-loop for sub in (seq-uniq (mapcar #'car (triples-with-predicate ekg-db :reference/url)))
+           do
+           (triples-db-delete ekg-db sub 'reference/url)))
 
 ;; Links for org-mode
 (require 'ol)

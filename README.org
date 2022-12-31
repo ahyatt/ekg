@@ -57,6 +57,9 @@ company, I have ="person/"= as a tag prefix for my coworker's username.
 
 The benefit of this is that it's now possible to narrow in on just tags of a
 certain type if necessary.
+
+There is one other built-in prefix, which is that titled resources have default
+tags that are prefixed with ="doc/"=, followed by the name of the document.
 * Warning
 ekg is a brand new package, and as such, there may be significant bugs.  It has not yet had an initial release, but I hope to release something soon.  The initial release will be accompanied by putting this package on a site such as MELPA or GNU ELPA.
 
@@ -117,7 +120,8 @@ In a tag buffer, you can use the following keys:
   - =g= to refresh the buffer, which shouldn't be necessary in most cases.
   - =o= to open the current note.
   - =r= to remove the current tag(s) from the note.
-  - =a= to show a new buffer with any of the tags from any of the notes.  
+  - =a= to show a new buffer with any of the tags from any of the notes.
+  - =b= to browse a URL, if a URL is associated with the current note
 
 This last command, =a=, for =ekg-notes-any-tags=, is notable; it allows the user to
 expand the tags viewed to encompass all of the tag space in the current view.
@@ -135,6 +139,23 @@ There is another command =ekg-show-tags-all= which will show notes who have all
 the tags specified (basically an =AND= of the tags). However, the resulting buffer
 can also be expanded with =ekg-notes-any-tags=, which then switches to showing
 notes with any of the tags on the screen (an =OR= of the tags).
+* Storing information about resources
+Currently it is possible to attach notes to references, such as URLs. This can
+be done programmatically via the function =ekg-capture-url=.  Although you can run this function directly and add the URL and title, it's best to write a function if possible to get the URL and title from the current browser.  For example, on Mac systems, you can write:
+#+begin_src emacs-lisp
+(defun my/ekg-capture-url ()
+  (interactive)
+
+  (ekg-capture-url
+   (do-applescript "tell application \"Google Chrome\" to return URL of active tab of front window")
+   (do-applescript "tell application \"Google Chrome\" to return Title of active tab of front window")))
+#+end_src
+
+You can then write a note about the URL, and add tags.  It will, by default, add the title as a tag prefixed with =doc/= (see the section on Prefixed Tags).
+
+URLs can be browsed with =ekg-browse-url=, which lets you select the URL to browse (via the built-in =browse-url=), via completion on document titles.
+
+Resources, whether URLs or other types to come in the future, will be displayed if they exist for a note, in the metadata field, as "Resource".  The resource can be changed there, but if it is changed, any other data referring to this resource will also be changed along with it.
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags,
 and all links will become tags as well.
