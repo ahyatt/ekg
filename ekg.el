@@ -4,6 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
+;; Package-Requires: ((triples.el "1.0"))
 ;; Keywords: knowledge graph, pkms
 ;; Version: 0.0
 ;; This program is free software; you can redistribute it and/or
@@ -19,7 +20,6 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 
-
 ;;; Commentary:
 ;; EKG is a note-taking and information storing application, centered around
 ;; tags, but with the ability to have other note metadata.
@@ -30,8 +30,10 @@
 (require 'cl-lib)
 (require 'map)
 
+;;; Code:
+
 (defgroup ekg nil
-  "The emacs knowledge graph, an app for notes and structured data."
+  "The Emacs knowledge graph, an app for notes and structured data."
   :group 'applications)
 
 (defcustom ekg-capture-default-mode 'org-mode
@@ -70,17 +72,17 @@ check for the mode of the buffer."
 (defface ekg-notes-mode-title
   '((((type graphic)) :height 2.0 :box t :inherit hl-line)
     (((type tty))) :underline t :inherit hl-line)
-  "Face shown for the titles of EKG notes mode")
+  "Face shown for the titles of EKG notes mode.")
 
 (defface ekg-tag
   '((((type graphic)) :height 1.0 :box t :inherit default)
     (((type tty))) :underline t :inherit hl-line)
-  "Face shown for EKG tags")
+  "Face shown for EKG tags.")
 
 (defface ekg-resource
   '((((type graphic)) :inherit fixed-pitch)
     (((type tty))) :bold t :inherit hl-line)
-  "Face shown for EKG resource")
+  "Face shown for EKG resource.")
 
 (defface ekg-metadata
   '((default :background "grey" :inherit default))
@@ -92,14 +94,13 @@ check for the mode of the buffer."
 (defvar ekg-metadata-parsers '(("Tags" . ekg--metadata-update-tag)
                                ("Resource" . ekg--metadata-update-resource)
                                ("Title" . ekg--metadata-update-title))
-  "Alist of metadata field to a function that updates the buffer's
-`ekg-note' with the results of the field. The function takes one
-argument, the field metadata property value.")
+  "Metadata fields to functions for updating data based on buffer test.
+Each function updates the buffer's `ekg-note' with the results of the field.
+The function takes one argument, the field metadata property value.")
 
 (defvar ekg-metadata-labels '((:titled/title . "Title"))
-  "Alist of properties that can be on the note, and the labels they
-have in the metadata section. The label needs to match the keys
-in the `ekg-metadata-parsers' alist.")
+  "Alist of properties that can be on the note and their labels.
+The label needs to match the keys in the `ekg-metadata-parsers' alist.")
 
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties)
@@ -216,7 +217,7 @@ If all tags are trash tags, then the note is really deleted."
     (ekg-save-note note)))
 
 (defun ekg-has-live-tags-p (sub)
-  "Return true if SUB represents an undeleted note."
+  "Return non-nil if SUB represents an undeleted note."
   (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag))) (plist-get (triples-get-type ekg-db sub 'tagged) :tag)))
 
 (defun ekg-displayable-note-text (note)
@@ -302,7 +303,7 @@ This will be displayed at the top of the note buffer."
           value))
 
 (defun ekg--should-show-id-p (id)
-  "Return true if the note ID should be shown to the user.
+  "Return non-nil if the note ID should be shown to the user.
 The ID can represent a browseable resource, which is meaningful to the user."
   (ffap-url-p id))
 
@@ -328,7 +329,7 @@ The ID can represent a browseable resource, which is meaningful to the user."
       (buffer-string))))
 
 (defun ekg--metadata-overlay ()
-  "Return the overlay used for metadata"
+  "Return the overlay used for metadata."
   (or (car (seq-filter
             (lambda (o) (eq 'ekg-metadata (overlay-get o 'category)))
             (overlays-in (point-min) (point-max))))
@@ -392,7 +393,7 @@ If SUBJECT is given, force the triple subject to be that value."
     (switch-to-buffer-other-window buf)))
 
 (defun ekg-capture-url (&optional url title)
-  "Capture a new note given a URL."
+  "Capture a new note given a URL and its TITLE."
   (interactive "MURL: \nMTitle: \n")
   (let ((cleaned-title (string-replace "," "" title)))
     (ekg-capture (list (concat "doc/" (downcase cleaned-title)))
@@ -400,7 +401,7 @@ If SUBJECT is given, force the triple subject to be that value."
                  `(:titled/title ,cleaned-title) url)))
 
 (defun ekg-capture-change-mode (mode)
-  "Change the mode of the current note."
+  "Change the mode to MODE of the current note."
   (interactive (list
                 (completing-read "Mode: " ekg-capture-acceptable-modes)) ekg-capture-mode)
   (let ((note ekg-note))
@@ -600,7 +601,7 @@ The metadata fields are comma separated."
                  (ewoc-enter-last ekg-notes-ewoc note))))))
 
 (defun ekg-tag-trash-p (tag)
-  "Return true if TAG is part of the trash."
+  "Return non-nil if TAG is part of the trash."
   ;; All tags should be strings, but better to ignore violations here.
   (and (stringp tag)
        (string-match-p (rx (seq string-start "trash/")) tag)))
@@ -709,7 +710,9 @@ Raise an error if there is no current note."
     (error "No current note is available to act on!  Create a new note first with `ekg-capture'.")))
 
 (defun ekg-notes-tag (&optional tag)
-  "Select amongst the tags of the current note."
+  "Show notes associated with TAG.
+If TAG is nil, it will be read, selecting from the list of the current note's
+tags."
   (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg--current-note-or-error))))
               ekg-notes-mode)
   (ekg-show-tag tag))
@@ -824,6 +827,7 @@ For URLs, this will use `browse-url'."
     (switch-to-buffer buf)))
 
 (defun ekg-show-tag (tag)
+  "Show notes that contain TAG."
   (interactive (list (completing-read "Tag: " (ekg-tags))))
   (let ((buf (get-buffer-create (format "ekg tag: %s" tag))))
     (set-buffer buf)
@@ -831,6 +835,7 @@ For URLs, this will use `browse-url'."
     (switch-to-buffer buf)))
 
 (defun ekg-show-today ()
+  "Show all notes with today's date as a tag."
   (interactive)
   (ekg-show-tag (car (ekg-date-tag))))
 
@@ -888,7 +893,8 @@ times, if there's nothing to do, it won't have any affect."
                                                (mapconcat #'identity ekg-notes-tags ", ")))))
 
 (defun ekg--open-any-tags-link (stags)
-  "Open a link to an ekg page given by TAGS."
+  "Open a link to an ekg page given by STAGS.
+STAGS is a string version of a tag, as stored in a link."
   (let ((tags (read stags)))
     (if (= 1 (length tags))
         (ekg-show-tag (car tags))
