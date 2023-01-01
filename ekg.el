@@ -228,7 +228,7 @@ A text property `ekg-note-id' is added with the id of the note."
       (insert (ekg-note-text note)))
     (when (ekg-note-mode note)
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
-        (if (fboundp mode-func) (funcall #'mode-func)
+        (if (fboundp mode-func) (funcall mode-func)
           (funcall (ekg-note-mode note)))))
     (mapc #'funcall ekg-format-funcs)
     (font-lock-ensure)
