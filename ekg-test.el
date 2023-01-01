@@ -87,8 +87,8 @@
 
 (ekg-deftest ekg-test-org-link-to-tags ()
   (require 'ol)
-  (let* ((note (ekg-note-create "" 'text-mode '("a" "b")))
-         (tag-buf (ekg-show-tags-any '("a" "b"))))
+  (ekg-note-create "" 'text-mode '("a" "b"))
+  (let* ((tag-buf (ekg-show-tags-any '("a" "b"))))
     (unwind-protect
      (progn 
        ;; Can we store a link?
