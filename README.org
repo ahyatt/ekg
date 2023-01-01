@@ -58,8 +58,11 @@ company, I have ="person/"= as a tag prefix for my coworker's username.
 The benefit of this is that it's now possible to narrow in on just tags of a
 certain type if necessary.
 
-There is one other built-in prefix, which is that titled resources have default
-tags that are prefixed with ="doc/"=, followed by the name of the document.
+There are a few other types of prefixes commonly used for tags. One is that
+titled resources have default tags that are prefixed with ="doc/"=, followed by
+the name of the document. Removed tags are prefixed with ="trash/"=, but these are
+normally invisible to the user. There's a section on these trash tags below
+which goes into more detail.
 * Warning
 ekg is a brand new package, and as such, there may be significant bugs.  It has not yet had an initial release, but I hope to release something soon.  The initial release will be accompanied by putting this package on a site such as MELPA or GNU ELPA.
 
@@ -87,10 +90,6 @@ notes. =ekg-capture-acceptable-modes= will control what modes can be set if you
 want to change the mode. By default, it is set to =org-mode=, =markdown-mode=, and
 =fundamental-mode=. The major mode is stored, alongside the note, and subsequent
 edits of the note will be in the major mode of the note.
-
-Because everything is tag based, deleting is done by just prepending "trash/" to
-all tags. This enables the note to be recovered by going to the trash-prepending
-tags (which are not part of auto-complete, but are there).
 
 The database used by ekg is defined in =ekg-db-file=, which defaults to
 =~/.emacs.d/ekg.db=.
@@ -141,7 +140,10 @@ can also be expanded with =ekg-notes-any-tags=, which then switches to showing
 notes with any of the tags on the screen (an =OR= of the tags).
 * Storing information about resources
 Currently it is possible to attach notes to references, such as URLs. This can
-be done programmatically via the function =ekg-capture-url=.  Although you can run this function directly and add the URL and title, it's best to write a function if possible to get the URL and title from the current browser.  For example, on Mac systems, you can write:
+be done programmatically via the function =ekg-capture-url=. Although you can run
+this function directly and add the URL and title, it's best to write a function
+if possible to get the URL and title from the current browser. For example, on
+Mac systems, you can write:
 #+begin_src emacs-lisp
 (defun my/ekg-capture-url ()
   (interactive)
@@ -151,11 +153,24 @@ be done programmatically via the function =ekg-capture-url=.  Although you can r
    (do-applescript "tell application \"Google Chrome\" to return Title of active tab of front window")))
 #+end_src
 
-You can then write a note about the URL, and add tags.  It will, by default, add the title as a tag prefixed with =doc/= (see the section on Prefixed Tags).
+You can then write a note about the URL, and add tags. It will, by default, add
+the title as a tag prefixed with =doc/= (see the section on Prefixed Tags).
 
-URLs can be browsed with =ekg-browse-url=, which lets you select the URL to browse (via the built-in =browse-url=), via completion on document titles.
+URLs can be browsed with =ekg-browse-url=, which lets you select the URL to browse
+(via the built-in =browse-url=), via completion on document titles.
 
-Resources, whether URLs or other types to come in the future, will be displayed if they exist for a note, in the metadata field, as "Resource".  The resource can be changed there, but if it is changed, any other data referring to this resource will also be changed along with it.
+Resources, whether URLs or other types to come in the future, will be displayed
+if they exist for a note, in the metadata field, as "Resource". The resource can
+be changed there, but if it is changed, any other data referring to this
+resource will also be changed along with it.
+* The trash
+When a tag is removed, it is kept around, but prefixed by ="trash/"=. When it is
+deleted, all tags are prefixed by ="trash/"=. This is a special tag type that is
+normally filtered out when the user is being shown a list of tags, for display
+or selection.
+
+You can remove the trash prefixes by editing the note, and to see a list of
+all notes with a trash prefix, you can run =M-x ekg-show-trash=.
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags,
 and all links will become tags as well.

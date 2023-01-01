@@ -834,6 +834,12 @@ For URLs, this will use `browse-url'."
     (ekg--show-notes (lambda () (ekg-get-notes-with-tag tag)) (list tag))
     (switch-to-buffer buf)))
 
+(defun ekg-show-trash ()
+  "Show notes that have tags prefixed by tags."
+  (interactive)
+  (ekg-show-tags-any
+   (seq-filter #'ekg-tag-trash-p (triples-subjects-of-type ekg-db 'tag))))
+
 (defun ekg-show-today ()
   "Show all notes with today's date as a tag."
   (interactive)
