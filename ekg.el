@@ -870,9 +870,12 @@ If no corresponding URL is found, an error is thrown."
 
 ;; Auto-tag functions
 
+(defun ekg-tag-for-date (&optional date)
+  (format-time-string "date/%F" date))
+
 (defun ekg-date-tag ()
   "Get single tag representing the date as a ISO 8601 format."
-  (list (format-time-string "date/%F")))
+  (list (ekg-tag-for-date)))
 
 (defun ekg-upgrade-db ()
   "After updating, do any necessary upgrades needed by changes in schema or use.
