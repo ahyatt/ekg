@@ -41,7 +41,7 @@
   :type 'symbol
   :group 'ekg)
 
-(defcustom ekg-capture-acceptable-modes '(org-mode markdown-mode fundamental-mode)
+(defcustom ekg-capture-acceptable-modes '(org-mode markdown-mode text-mode)
   "Modes that make sense to use as note types."
   :type '(set symbol)
   :group 'ekg)
