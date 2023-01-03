@@ -74,8 +74,9 @@ Currently ekg is not part of any package archive. It requires the [[https://gith
 package, which is a way to express a graph in sqlite in emacs, alongside basic
 querying functionality.
 
-=triples= is on GNU ELPA, so can be installed via the package manager or
-=use-package=. An example installation using =use-package= and =straight= is below:
+=triples= (require minimum version is 0.2) is on GNU ELPA, so can be installed via
+the package manager or =use-package=. An example installation using =use-package=
+and =straight= is below:
 #+begin_src emacs-lisp
 (use-package triples)
 (use-package ekg
@@ -199,3 +200,16 @@ execution method, run the following:
 (require 'ekg-org-roam-import)
 (ekg-org-roam-import)
 #+end_src
+* Backups
+By default, the ekg package will back up its database, using the backup
+functionality built into the triples library. By default, behavior is set by
+=ekg-default-num-backups=, set to =5= by default, and =ekg-default-backups-strategy=,
+set to =daily=. These are, on first use of ekg, stored in the database itself, but
+it can be set again at any time by running:
+#+begin_src emacs-lisp
+(triples-backups-setup ekg-db ekg-default-num-backups
+                       ekg-default-backups-strategy)
+#+end_src
+The strategy can be one of the defaults of =daily=, =weekly=, =every-change=, or =never=, and
+new methods can be defined as well. See the implementation in =triples-backups.el=
+for more information.
