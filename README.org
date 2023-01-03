@@ -49,22 +49,25 @@ as much as possible here, so there's no need or desire for the text to have to
 store data as well, we leave that completely to the database.
 * Prefixed tags
 Another concept, loosely applied in =ekg= is that of tags with standard prefixes.
-By default, date tags are prefixed with ="date/"=. This is a way to distinguish
+By default, date tags are prefixed with "date/". This is a way to distinguish
 date tags from other kinds of tags. Most tags shouldn't need it, but it often is
 useful to have prefixes to group tags in some way. For instance, perhaps all
-idea tags should be prefixed with ="idea/"=. In my ekg repository I use in my
-company, I have ="person/"= as a tag prefix for my coworker's username.
+idea tags should be prefixed with "idea/". In my ekg repository I use in my
+company, I have "person/" as a tag prefix for my coworker's username.
 
 The benefit of this is that it's now possible to narrow in on just tags of a
 certain type if necessary.
 
 There are a few other types of prefixes commonly used for tags. One is that
-titled resources have default tags that are prefixed with ="doc/"=, followed by
-the name of the document. Removed tags are prefixed with ="trash/"=, but these are
+titled resources have default tags that are prefixed with "doc/", followed by
+the name of the document. Removed tags are prefixed with "trash/", but these are
 normally invisible to the user. There's a section on these trash tags below
 which goes into more detail.
 * Warning
-ekg is a brand new package, and as such, there may be significant bugs.  It has not yet had an initial release, but I hope to release something soon.  The initial release will be accompanied by putting this package on a site such as MELPA or GNU ELPA.
+ekg is a brand new package, and as such, there may be significant bugs. It has
+not yet had an initial release, but I hope to release something soon. The
+initial release will be accompanied by putting this package on a site such as
+MELPA or GNU ELPA.
 
 * Installation
 Currently ekg is not part of any package archive. It requires the [[https://github.com/ahyatt/triples][triples]]
@@ -154,7 +157,7 @@ Mac systems, you can write:
 #+end_src
 
 You can then write a note about the URL, and add tags. It will, by default, add
-the title as a tag prefixed with =doc/= (see the section on Prefixed Tags).
+the title as a tag prefixed with "doc/" (see the section on Prefixed Tags).
 
 URLs can be browsed with =ekg-browse-url=, which lets you select the URL to browse
 (via the built-in =browse-url=), via completion on document titles.
@@ -164,8 +167,8 @@ if they exist for a note, in the metadata field, as "Resource". The resource can
 be changed there, but if it is changed, any other data referring to this
 resource will also be changed along with it.
 * The trash
-When a tag is removed, it is kept around, but prefixed by ="trash/"=. When it is
-deleted, all tags are prefixed by ="trash/"=. This is a special tag type that is
+When a tag is removed, it is kept around, but prefixed by "trash/". When it is
+deleted, all tags are prefixed by "trash/". This is a special tag type that is
 normally filtered out when the user is being shown a list of tags, for display
 or selection.
 
@@ -185,9 +188,9 @@ those tags to the list at =ekg-org-roam-import-tag-to-prefix=.  For example,
 #+begin_src emacs-lisp
 (setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
 #+end_src
-Then, when a note is found that is tagged with ="idea"=, but with title "emacs is
-a powerful tool", then the title will be turned into the tag ="idea/emacs is a
-powerful tool"=, and anything linked with it will also get the same prefix.
+Then, when a note is found that is tagged with "idea/", but with title "emacs is
+a powerful tool", then the title will be turned into the tag "idea/emacs is a
+powerful tool", and anything linked with it will also get the same prefix.
 
 To import from org-roam, in a =*scratch*= buffer or any your favorite elisp
 execution method, run the following:
