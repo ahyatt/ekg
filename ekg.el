@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples.el "1.0"))
+;; Package-Requires: ((triples "1.0"))
 ;; Keywords: knowledge graph, pkms
 ;; Version: 0.0
 ;; This program is free software; you can redistribute it and/or
