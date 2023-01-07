@@ -911,6 +911,29 @@ times, if there's nothing to do, it won't have any affect."
            do
            (triples-db-delete ekg-db sub 'reference/url)))
 
+(defun ekg-tag-used-p (tag)
+  "Return non-nil if TAG has useful information."
+  (ekg--connect)
+  (triples-get-subject ekg-db tag))
+
+(defun ekg-remove-unused-tags ()
+  "Remove all tags that are not used and have no info."
+  (cl-loop for tag in (seq-filter (lambda (tag) (not (ekg-tag-used-p tag))) (ekg-tags))
+           do
+           (triples-delete-subject ekg-db tag)))
+
+(defun ekg-clean-db ()
+  "Clean all useless or malformed data from the database.
+Some of this are tags which have no uses, which we consider useless."
+  (interactive)
+  (ekg--connect)
+  (ekg-remove-unused-tags)
+  (cl-loop for tagged in (seq-filter
+                          (lambda (tagged) (not (triples-get-subject ekg-db tagged)))
+                          (mapcar #'car (triples-with-predicate ekg-db 'tagged/tag)))
+           do
+           (triples-delete-subject ekg-db tagged)))
+
 ;; Links for org-mode
 (require 'ol)
 

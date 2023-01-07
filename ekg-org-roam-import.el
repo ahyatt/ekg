@@ -67,8 +67,11 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                     (unless (or
                              (string-match (rx (seq string-start ?\.)) file)
                              (not (member (file-name-extension file) '("org" "txt" "md")))
-                             (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] (concat (file-name-as-directory pages-dir) file)))
-                      (let ((title (replace-regexp-in-string (rx (seq string-start (one-or-more digit) ?\-)) "" (car (split-string file (rx ?\.)))))
+                             (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] (concat (file-name-as-directory pages-dir) file))
+                             (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] (concat (file-name-as-directory journal-dir) file)))
+                      (let ((title
+                             (if (string-match-p "journal" dir) (string-replace "_" "-" (file-name-base file))
+                               (replace-regexp-in-string (rx (seq string-start (one-or-more digit) ?\-)) "" (file-name-base file))))
                             (filename (concat (file-name-as-directory dir) file)))
                         (save-excursion
                           (find-file filename)
