@@ -226,7 +226,7 @@ This
 This doesn't actually delete, but rather prepends all tags with
  `trash/'. This can be garbage collected at a later time.
 If all tags are trash tags, then the note is really deleted."
-  (triples-with-transaction 
+  (triples-with-transaction ekg-db
     (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
         (triples-delete-subject ekg-db (ekg-note-id note))
       (setf (ekg-note-tags note)
