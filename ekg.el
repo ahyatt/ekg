@@ -697,7 +697,8 @@ The tags are separated by spaces."
 (define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
   "Major mode for showing a list of notes that can be interacted with."
   (setq buffer-read-only t)
-  (setq truncate-lines t))
+  (setq truncate-lines t)
+  (visual-line-mode 1))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.")
