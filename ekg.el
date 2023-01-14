@@ -369,8 +369,12 @@ We want to make sure of a few things:
         (forward-line -1))
       (when (= (overlay-end overlay)
                (buffer-end 1))
-        (goto-char (buffer-end 1))
-        (insert "\n")))))
+        (let ((p (point)))
+          (goto-char (buffer-end 1))
+          (when (looking-at (rx (seq line-start (zero-or-more space) line-end)))
+            (insert "\n")
+            (setq p (point)))
+          (move-overlay overlay (overlay-start overlay) p))))))
 
 (defun ekg-edit-display-metadata ()
   "Create or edit the overlay to show metadata."
