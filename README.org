@@ -97,8 +97,10 @@ want to change the mode. By default, it is set to =org-mode=, =markdown-mode=, a
 =fundamental-mode=. The major mode is stored, alongside the note, and subsequent
 edits of the note will be in the major mode of the note.
 
-The database used by ekg is defined in =ekg-db-file=, which defaults to
-=~/.emacs.d/ekg.db=.
+The database used by ekg is defined in =ekg-db-file=, which defaults to =nil=, which
+will then use the standard triples database defined in
+=triples-default-database-filename=. If you want to use a separate database for
+ekg, just set =ekg-db-file= to the directory and filename of the file you want to use.
 
 * Usage
 To create a note, run =ekg-capture= to capture a text note, or =ekg-capture-url= to

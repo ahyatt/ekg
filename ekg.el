@@ -65,10 +65,17 @@ check for the mode of the buffer."
   :type '(set function)
   :group 'ekg)
 
-(defcustom ekg-db-file (file-name-concat user-emacs-directory "ekg.db")
-  "Location of DB file used by EKG."
+(defcustom ekg-db-file nil
+  "A filename specifying what the ekg database.
+Initially set as `nil', which will mean that we use
+`triples-default-database-filename'. If you don't want to do that
+use this, set to the filename you want to use. If the file named
+by `ekg-db-file-obsolete' exists, that is used instead."
   :type 'file
   :group 'ekg)
+
+(defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
+  "The original database name that ekg started with.")
 
 (defconst ekg-default-num-backups 5
   "The number of backups to set when first using the database.
@@ -119,10 +126,20 @@ The label needs to match the keys in the `ekg-metadata-parsers' alist.")
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties)
 
+(defun ekg--db-file ()
+  "Return the database file we should use in ekg.
+If `ekg-db-file' is nil and `ekg-db-file-obsolete' exists, use
+`ekg-db-file-obsolete', otherwise use `ekg-db-file'. If that is
+non-nil, it will be used as the filename, otherwise
+`triples-default-database-filename' is used."
+  (if (and (null ekg-db-file) (file-exists-p ekg-db-file-obsolete))
+      ekg-db-file-obsolete
+    ekg-db-file))
+
 (defun ekg--connect ()
   "Ensure EKG-DB is connected."
   (unless ekg-db
-    (setq ekg-db (triples-connect ekg-db-file))
+    (setq ekg-db (triples-connect (ekg--db-file)))
     (ekg-add-schema)
     (unless (triples-backups-configuration ekg-db)
       (triples-backups-setup ekg-db ekg-default-num-backups
@@ -180,7 +197,7 @@ This
       (setf (ekg-note-modified-time note) modified-time))
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
     (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note)))
-  (triples-backups-maybe-backup ekg-db ekg-db-file))
+  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-get-notes-with-tags (tags)
   "Get all notes with TAGS, returning a list of `ekg-note' structs."
@@ -234,7 +251,7 @@ If all tags are trash tags, then the note is really deleted."
                                     (ekg-mark-trashed tag)))
                     (ekg-note-tags note)))
       (ekg-save-note note)))
-  (triples-backups-maybe-backup ekg-db ekg-db-file))
+  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-has-live-tags-p (sub)
   "Return non-nil if SUB represents an undeleted note."
@@ -650,7 +667,7 @@ This can be done whether or not TO-TAG exists or not."
                          to-tag from-tag)))
     (triples-remove-type ekg-db from-tag 'tag)
     (triples-set-type ekg-db to-tag 'tag))
-  (triples-backups-maybe-backup ekg-db ekg-db-file))
+  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-tags ()
   "Return a list of all tags.
