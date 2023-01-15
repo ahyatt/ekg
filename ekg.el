@@ -582,7 +582,7 @@ The metadata fields are comma separated."
       (when (ekg-note-id ekg-note)
         (let* ((old-id (ekg-note-id ekg-note))
                (existing-types (triples-get-types ekg-db old-id))
-               (conflicting-types (seq-union existing-types '(text 'tag 'titled))))
+               (conflicting-types (seq-union existing-types '(text tag titled))))
           (when (and conflicting-types
                      (y-or-n-p "Existing data exists on this resource, replace?"))
             (mapc (lambda (type) (triples-remove-type ekg-db old-id type)) conflicting-types))
