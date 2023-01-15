@@ -1,11 +1,11 @@
-;;; ekg.el --- A system for recording and linking information in emacs. -*- lexical-binding: t -*-
+;;; ekg.el --- A system for recording and linking information -*- lexical-binding: t -*-
 
 ;; Copyright (c) 2022  Free Software Foundation, Inc.
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "1.0"))
-;; Keywords: knowledge graph, pkms
+;; Package-Requires: ((triples "0.2.2") (emacs "28.1"))
+;; Keywords: outlines, hypermedia
 ;; Version: 0.0
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -65,7 +65,7 @@ check for the mode of the buffer."
   :type '(set function)
   :group 'ekg)
 
-(defcustom ekg-db-file "~/.emacs.d/ekg.db"
+(defcustom ekg-db-file (file-name-concat user-emacs-directory "ekg.db")
   "Location of DB file used by EKG."
   :type 'file
   :group 'ekg)

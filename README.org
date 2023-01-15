@@ -70,13 +70,15 @@ initial release will be accompanied by putting this package on a site such as
 MELPA or GNU ELPA.
 
 * Installation
+ekg requires Emacs 28.1 or higher.
+
 Currently ekg is not part of any package archive. It requires the [[https://github.com/ahyatt/triples][triples]]
 package, which is a way to express a graph in sqlite in emacs, alongside basic
 querying functionality.
 
-=triples= (require minimum version is 0.2) is on GNU ELPA, so can be installed via
-the package manager or =use-package=. An example installation using =use-package=
-and =straight= is below:
+=triples= (required minimum version is 0.2) is on GNU ELPA, so can be installed
+via the package manager or =use-package=. An example installation using
+=use-package= and =straight= is below:
 #+begin_src emacs-lisp
 (use-package triples)
 (use-package ekg
