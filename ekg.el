@@ -91,22 +91,22 @@ backups in your database after it has been created, run
 `triples-backups-setup'.")
 
 (defface ekg-notes-mode-title
-  '((((type graphic)) :height 2.0 :box t :inherit hl-line)
-    (((type tty))) :underline t :inherit hl-line)
+  '((((type graphic)) :height 2.0 :box t)
+    (((type tty))) :underline t)
   "Face shown for the titles of EKG notes mode.")
 
 (defface ekg-tag
-  '((((type graphic)) :height 1.0 :box t :inherit default)
-    (((type tty))) :underline t :inherit hl-line)
+  '((((type graphic)) :height 1.0 :box t)
+    (((type tty))) :underline t)
   "Face shown for EKG tags.")
 
 (defface ekg-resource
   '((((type graphic)) :inherit fixed-pitch)
-    (((type tty))) :bold t :inherit hl-line)
+    (((type tty))) :underline t)
   "Face shown for EKG resource.")
 
 (defface ekg-metadata
-  '((default :background "grey" :inherit default))
+  '((default :background "grey"))
   "Face shown for the metadata section of notes.")
 
 (defvar ekg-db nil
