@@ -201,7 +201,7 @@ To import from org-roam, in a =*scratch*= buffer or any your favorite elisp
 execution method, run the following:
 
 #+begin_src emacs-lisp
-(require 'ekg-org-roam-import)
+(require 'ekg-org-roam)
 (ekg-org-roam-import)
 #+end_src
 * Backups
