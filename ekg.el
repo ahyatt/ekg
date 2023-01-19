@@ -30,6 +30,7 @@
 (require 'ewoc)
 (require 'cl-lib)
 (require 'map)
+(require 'ffap)
 
 ;;; Code:
 
