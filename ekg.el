@@ -319,6 +319,39 @@ This is used when editing existing blocks.")
   "Holds the original ID (subject) for this note.
 This is needed to identify references to refresh when the subject is changed." )
 
+(defvar ekg-notes-mode-map
+  (let ((map (make-keymap)))
+    (suppress-keymap map t)
+    (define-key map "a" #'ekg-notes-any-tags)
+    (define-key map "c" #'ekg-notes-create)
+    (define-key map "d" #'ekg-notes-delete)
+    (define-key map "g" #'ekg-notes-refresh)
+    (define-key map "n" #'ekg-notes-next)
+    (define-key map "o" #'ekg-notes-open)
+    (define-key map "b" #'ekg-notes-browse)
+    (define-key map "p" #'ekg-notes-previous)
+    (define-key map "r" #'ekg-notes-remove)
+    (define-key map "t" #'ekg-notes-tag)
+    map))
+
+(define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
+  "Major mode for showing a list of notes that can be interacted with."
+  (setq buffer-read-only t)
+  (setq truncate-lines t)
+  (visual-line-mode 1))
+
+(defvar-local ekg-notes-fetch-notes-function nil
+  "Function to call to fetch the notes that define this buffer.")
+
+(defvar-local ekg-notes-ewoc nil
+  "Ewoc for the notes buffer.")
+
+(defvar-local ekg-notes-hl nil
+  "Highlight for the notes buffer.")
+
+(defvar-local ekg-notes-tags nil
+  "List of associated tags for creating and removing notes.")
+
 (defun ekg-note-create (text mode tags)
   "Create a new `ekg-note' with TEXT, MODE and TAGS."
   (let* ((time (time-convert (current-time) 'integer))
@@ -373,7 +406,7 @@ The ID can represent a browseable resource, which is meaningful to the user."
             (overlays-in (point-min) (point-max))))
       (make-overlay (point-min) (point-max) nil nil t)))
 
-(defun ekg--metadata-modification (overlay after begin end &optional _)
+(defun ekg--metadata-modification (overlay after _ _ &optional _)
   "Make sure that metadata region doesn't interfere with editing.
 This function is called on modification within the metadata.
 We want to make sure of a few things:
@@ -700,39 +733,6 @@ The tags are separated by spaces."
   (insert (ekg-displayable-note-text note))
   (insert "\n")
   (insert (ekg-tags-display (ekg-note-tags note))))
-
-(defvar ekg-notes-mode-map
-  (let ((map (make-keymap)))
-    (suppress-keymap map t)
-    (define-key map "a" #'ekg-notes-any-tags)
-    (define-key map "c" #'ekg-notes-create)
-    (define-key map "d" #'ekg-notes-delete)
-    (define-key map "g" #'ekg-notes-refresh)
-    (define-key map "n" #'ekg-notes-next)
-    (define-key map "o" #'ekg-notes-open)
-    (define-key map "b" #'ekg-notes-browse)
-    (define-key map "p" #'ekg-notes-previous)
-    (define-key map "r" #'ekg-notes-remove)
-    (define-key map "t" #'ekg-notes-tag)
-    map))
-
-(define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
-  "Major mode for showing a list of notes that can be interacted with."
-  (setq buffer-read-only t)
-  (setq truncate-lines t)
-  (visual-line-mode 1))
-
-(defvar-local ekg-notes-fetch-notes-function nil
-  "Function to call to fetch the notes that define this buffer.")
-
-(defvar-local ekg-notes-ewoc nil
-  "Ewoc for the notes buffer.")
-
-(defvar-local ekg-notes-hl nil
-  "Highlight for the notes buffer.")
-
-(defvar-local ekg-notes-tags nil
-  "List of associated tags for creating and removing notes.")
 
 (defun ekg--note-highlight ()
   "In the buffer, highlight the current note."
