@@ -68,7 +68,7 @@ check for the mode of the buffer."
 
 (defcustom ekg-db-file nil
   "A filename specifying what the ekg database.
-Initially set as `nil', which will mean that we use
+Initially set as nil, which will mean that we use
 `triples-default-database-filename'. If you don't want to do that
 use this, set to the filename you want to use. If the file named
 by `ekg-db-file-obsolete' exists, that is used instead."
@@ -85,8 +85,8 @@ set again. If you want to change the number of backups in your
 database after it has been created, run `triples-backups-setup'.")
 
 (defconst ekg-default-backups-strategy 'daily
-  "The default database backup strategy when first setting up the
-database. This can be overwritten by other database users, and
+  "The default database backup strategy when first setting up the database.
+This can be overwritten by other database users, and
 will not be set again. If you want to change the number of
 backups in your database after it has been created, run
 `triples-backups-setup'.")
@@ -411,7 +411,9 @@ The ID can represent a browseable resource, which is meaningful to the user."
 This function is called on modification within the metadata.
 We want to make sure of a few things:
   1) The user isn't adding more than one empty line.
-  2) There is at least one non-metadata line in the buffer."
+  2) There is at least one non-metadata line in the buffer.
+Argument OVERLAY is overlay whose modification triggers this method.
+Argument AFTER is non-nil if method is being called after the modification."
   (when after
     (save-excursion
       (forward-line -1)
@@ -482,7 +484,7 @@ If SUBJECT is given, force the triple subject to be that value."
   (let ((note ekg-note))
     (funcall (intern mode))
     (ekg-capture-mode 1)
-    (setq-local header-line-format 
+    (setq-local header-line-format
                 (substitute-command-keys
                  "\\<ekg-capture-mode-map>Capture buffer.  Finish \
 `\\[ekg-capture-finalize]'."))
@@ -569,7 +571,9 @@ attempt the completion."
 
 (defun ekg--tags-cap-exit (completion finished)
   "Cleanup after completion at point happened in a tag.
-The cleanup now is just to always have a space after every comma."
+The cleanup now is just to always have a space after every comma.
+Argument COMPLETION is the chosen completion.
+Argument FINISHED is non-nil if the user has chosen a completion."
   (when finished
     (save-excursion
       (when (search-backward (format ",%s" completion) (line-beginning-position) t)
@@ -610,7 +614,7 @@ The cleanup now is just to always have a space after every comma."
                  (ewoc-refresh ekg-notes-ewoc))))))
 
 (defun ekg--split-metadata-string (val)
-  "Split a multi-valued metadata field into the component values.
+  "Split multi-valued metadata field VAL into the component values.
 The metadata fields are comma separated."
   (split-string val (rx (seq ?\, (zero-or-more space))) t (rx (1+ space))))
 
@@ -727,7 +731,7 @@ The tags are separated by spaces."
   "Display NOTE in buffer."
   (when (ekg--should-show-id-p (ekg-note-id note))
     (insert
-     (propertize 
+     (propertize
       (format "[%s]\n" (ekg-note-id note))
       'face 'ekg-resource)))
   (insert (ekg-displayable-note-text note))
@@ -748,10 +752,10 @@ The tags are separated by spaces."
   "Return the current `ekg-note'.
 Raise an error if there is no current note."
   (unless (eq major-mode 'ekg-notes-mode)
-    (error "This command can only be used in `ekg-notes-mode'."))
+    (error "This command can only be used in `ekg-notes-mode'"))
   (if-let (node (ewoc-locate ekg-notes-ewoc))
       (ewoc-data node)
-    (error "No current note is available to act on!  Create a new note first with `ekg-capture'.")))
+    (error "No current note is available to act on!  Create a new note first with `ekg-capture'")))
 
 (defun ekg-notes-tag (&optional tag)
   "Show notes associated with TAG.
@@ -915,6 +919,8 @@ If no corresponding URL is found, an error is thrown."
 ;; Auto-tag functions
 
 (defun ekg-tag-for-date (&optional date)
+  "Return standard tag for DATE.
+This uses ISO 8601 format."
   (format-time-string "date/%F" date))
 
 (defun ekg-date-tag ()
@@ -922,7 +928,7 @@ If no corresponding URL is found, an error is thrown."
   (list (ekg-tag-for-date)))
 
 (defun ekg-upgrade-db ()
-  "After updating, do any necessary upgrades needed by changes in schema or use.
+  "After updating, do any necessary upgrades needed by change in schema or use.
 This is designed so that it can be run an arbitrary number of
 times, if there's nothing to do, it won't have any affect."
   (interactive)
