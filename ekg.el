@@ -763,7 +763,7 @@ If TAG is nil, it will be read, selecting from the list of the current note's
 tags."
   (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg--current-note-or-error))))
               ekg-notes-mode)
-  (ekg-show-tag tag))
+  (ekg-show-notes-with-tag tag))
 
 (defun ekg-notes-open ()
   "Open the current note."
@@ -834,12 +834,12 @@ For URLs, this will use `browse-url'."
 (defun ekg-notes-any-note-tags ()
   "Show notes with any of the tags in the current note."
   (interactive nil ekg-notes-mode)
-  (ekg-show-tags-any (ekg-note-tags (ewoc-data (ewoc-locate ekg-notes-ewoc)))))
+  (ekg-show-notes-with-any-tags (ekg-note-tags (ewoc-data (ewoc-locate ekg-notes-ewoc)))))
 
 (defun ekg-notes-any-tags ()
   "Show notes with any of the tags in any of the notes in the buffer."
   (interactive nil ekg-notes-mode)
-  (ekg-show-tags-any
+  (ekg-show-notes-with-any-tags
    (seq-uniq (flatten-list
               (mapcar (lambda (n) (ekg-note-tags n))
                       (ewoc-collect ekg-notes-ewoc #'identity))))))
@@ -865,7 +865,7 @@ For URLs, this will use `browse-url'."
     (forward-line 1)
     (ekg--note-highlight)))
 
-(defun ekg-show-tags-any (tags)
+(defun ekg-show-notes-with-any-tags (tags)
   "Show notes with any of TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (let ((buf (get-buffer-create (format "ekg tags (any): %s" (mapconcat #'identity tags " ")))))
@@ -874,7 +874,7 @@ For URLs, this will use `browse-url'."
      (lambda () (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))) tags)
     (switch-to-buffer buf)))
 
-(defun ekg-show-tags-all (tags)
+(defun ekg-show-notes-with-all-tags (tags)
   "Show notes that contain all TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (let ((buf (get-buffer-create (format "ekg tags (all): %s" (mapconcat #'identity tags " ")))))
@@ -882,7 +882,7 @@ For URLs, this will use `browse-url'."
     (ekg--show-notes (lambda () (ekg-get-notes-with-tags tags)) tags)
     (switch-to-buffer buf)))
 
-(defun ekg-show-tag (tag)
+(defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
   (interactive (list (completing-read "Tag: " (ekg-tags))))
   (let ((buf (get-buffer-create (format "ekg tag: %s" tag))))
@@ -890,16 +890,16 @@ For URLs, this will use `browse-url'."
     (ekg--show-notes (lambda () (ekg-get-notes-with-tag tag)) (list tag))
     (switch-to-buffer buf)))
 
-(defun ekg-show-trash ()
+(defun ekg-show-notes-in-trash ()
   "Show notes that have tags prefixed by tags."
   (interactive)
-  (ekg-show-tags-any
+  (ekg-show-notes-with-any-tags
    (seq-filter #'ekg-tag-trash-p (triples-subjects-of-type ekg-db 'tag))))
 
-(defun ekg-show-today ()
+(defun ekg-show-notes-for-today ()
   "Show all notes with today's date as a tag."
   (interactive)
-  (ekg-show-tag (car (ekg-date-tag))))
+  (ekg-show-notes-with-tag (car (ekg-date-tag))))
 
 (defun ekg-document-titles ()
   "Return an alist of all titles.
@@ -987,8 +987,8 @@ Some of this are tags which have no uses, which we consider useless."
 STAGS is a string version of a tag, as stored in a link."
   (let ((tags (read stags)))
     (if (= 1 (length tags))
-        (ekg-show-tag (car tags))
-      (ekg-show-tags-any tags))))
+        (ekg-show-notes-with-tag (car tags))
+      (ekg-show-notes-with-any-tags tags))))
 
 (defun ekg--store-note-link ()
   "Store a link to an individual note."
