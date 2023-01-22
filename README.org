@@ -127,10 +127,11 @@ In a tag buffer, you can use the following keys:
   - =g= to refresh the buffer, which shouldn't be necessary in most cases.
   - =o= to open the current note.
   - =r= to remove the current tag(s) from the note.
-  - =a= to show a new buffer with any of the tags from any of the notes.
+  - =a= to show a new buffer with any of the tags from the current note.
+  - =A= to show a new buffer with any of the tags from any of the notes.
   - =b= to browse a URL, if a URL is associated with the current note
 
-This last command, =a=, for =ekg-notes-any-tags=, is notable; it allows the user to
+The command =A=, for =ekg-notes-any-tags=, is notable; it allows the user to
 expand the tags viewed to encompass all of the tag space in the current view.
 For example, if there are three notes in an "emacs" tag buffer, one tagged
 "emacs" and "2022-10-02", one tagged "emacs" and "vi", and one tagged "emacs",
@@ -146,6 +147,57 @@ There is another command =ekg-show-tags-all= which will show notes who have all
 the tags specified (basically an =AND= of the tags). However, the resulting buffer
 can also be expanded with =ekg-notes-any-tags=, which then switches to showing
 notes with any of the tags on the screen (an =OR= of the tags).
+* Command summary
+Global commands, can be run everywhere, and most should be bound to useful keybindings:
+
+| Command           | Description                                                         |
+|-------------------+---------------------------------------------------------------------|
+| =ekg-capture=       | Capture a new note                                                  |
+| =ekg-capture-url=   | Capture a new note about a URL                                      |
+| =ekg-show-tags-any= | Open a tag buffer for notes matching any of the given tags          |
+| =ekg-show-tags-all= | Open a tag buffer for notes matching all of the given tags          |
+| =ekg-show-tag=      | Open a tag buffer for notes matching the single tag given           |
+| =ekg-show-trash=    | Open a tag buffer that shows all notes with trashed tags            |
+| =ekg-show-today=    | Open a tag buffer that shows notes with today's tag                 |
+| =ekg-browse-url=    | Open a URL stored as a resource to a note, completing by note title |
+
+These are also global commands, but for more occasional or specialized uses:
+
+| Command        | Description                                                |
+|----------------+------------------------------------------------------------|
+| =ekg-rename-tag= | Rename a tag, updating all references to it                |
+| =ekg-upgrade-db= | After upgrading, update any obsoletely stored data         |
+| =ekg-clean-db=   | Remove unused data from the database, including empty tags |
+
+Commands relevant to capture buffers:
+
+| Command                 | Description                        |
+|-------------------------+------------------------------------|
+| =ekg-capture-change-mode= | Change note major-mode             |
+| =ekg-capture-finalize=  | Finish and save (bound to =C-c C-c=) |
+
+Commands relevant to edit buffers:
+
+| Command           | Description                        |
+|-------------------+------------------------------------|
+| =ekg-edit-finalize= | Finish and save (bound to =C-c C-c=) |
+
+Commands relevant to tag buffers:
+
+| Command                 | Description                                                               | Binding |
+|-------------------------+---------------------------------------------------------------------------+---------|
+| =ekg-notes-tag=           | Open another tag buffer selecting from tags of current note               | =t=       |
+| =ekg-notes-open=          | Edit the currently selected note                                          | =o=       |
+| =ekg-notes-delete=        | Delete the currently selected note                                        | =d=       |
+| =ekg-notes-remove=        | Remove the tag buffer's tags from the currently selected note             | =r=       |
+| =ekg-notes-browse=        | Open the resource, if one exists                                          | =b=       |
+| =ekg-notes-refresh=       | Refresh the tag, refetching all the data displayed                        | =g=       |
+| =ekg-notes-create=        | Add a note with all the tags displayed in the buffer                      | =c=       |
+| =ekg-notes-next=          | Move selection to the next note                                           | =n=       |
+| =ekg-notes-previous=      | Move selection to the previous note                                       | =p=       |
+| =ekg-notes-any-note-tags= | Open another tag buffer showing any of the tags in the current note       | =a=       |
+| =ekg-notes-any-tags=      | Open another tag buffer showing any of the tags in any note in the buffer | =A=       |
+
 * Storing information about resources
 Currently it is possible to attach notes to references, such as URLs. This can
 be done programmatically via the function =ekg-capture-url=. Although you can run

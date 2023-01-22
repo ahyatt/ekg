@@ -322,7 +322,8 @@ This is needed to identify references to refresh when the subject is changed." )
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))
     (suppress-keymap map t)
-    (define-key map "a" #'ekg-notes-any-tags)
+    (define-key map "A" #'ekg-notes-any-tags)
+    (define-key map "a" #'ekg-notes-any-note-tags)
     (define-key map "c" #'ekg-notes-create)
     (define-key map "d" #'ekg-notes-delete)
     (define-key map "g" #'ekg-notes-refresh)
@@ -492,7 +493,6 @@ If SUBJECT is given, force the triple subject to be that value."
 
 (defun ekg-edit (note)
   "Edit an existing NOTE."
-  (interactive nil ekg-notes-mode)
   (let ((buf (get-buffer-create (format "*EKG Edit: %s*" (ekg-note-id note)))))
     (set-buffer buf)
     (when (= 0 (buffer-size))
@@ -811,7 +811,7 @@ For URLs, this will use `browse-url'."
   (ekg--show-notes ekg-notes-fetch-notes-function ekg-notes-tags))
 
 (defun ekg-notes-create ()
-  "Add a note that default in the tags in the buffer."
+  "Add a note that by default has all the tags in the buffer."
   (interactive nil ekg-notes-mode)
   (ekg-capture ekg-notes-tags))
 
@@ -831,10 +831,18 @@ For URLs, this will use `browse-url'."
         (goto-char (ewoc-location prev))
         (ekg--note-highlight))))
 
-(defun ekg-notes-any-tags ()
+(defun ekg-notes-any-note-tags ()
   "Show notes with any of the tags in the current note."
   (interactive nil ekg-notes-mode)
   (ekg-show-tags-any (ekg-note-tags (ewoc-data (ewoc-locate ekg-notes-ewoc)))))
+
+(defun ekg-notes-any-tags ()
+  "Show notes with any of the tags in any of the notes in the buffer."
+  (interactive nil ekg-notes-mode)
+  (ekg-show-tags-any
+   (seq-uniq (flatten-list
+              (mapcar (lambda (n) (ekg-note-tags n))
+                      (ewoc-collect ekg-notes-ewoc #'identity))))))
 
 (defun ekg--show-notes (notes-func tags)
   "Display notes from NOTES-FUNC in buffer, with notes having TAGS."
