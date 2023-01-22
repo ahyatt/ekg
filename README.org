@@ -115,10 +115,12 @@ edit them in the metadata section. Tags should autocomplete based on the
 tags available to use.
 
 The basic read operation in =ekg= is to show a list of notes with the same tag,
-=ekg-show-tag=. This shows all notes tagged with the current tag. =ekg-show-tag-any=
-is similar, but allows showing notes that match any of a series of tags.
+=ekg-show-notes-with-tag=. This shows all notes tagged with the current tag.
+=ekg-show-notes-with-any-tags= is similar, but allows showing notes that match any
+of a series of tags.
 
-To show a tag that is tagged as the current day, you can use =ekg-show-today=.
+To show a tag that is tagged as the current day, you can use
+=ekg-show-notes-for-today=.
 
 In a tag buffer, you can use the following keys:
   - =n=, =p= to navigate up and down the notes.
@@ -131,12 +133,12 @@ In a tag buffer, you can use the following keys:
   - =A= to show a new buffer with any of the tags from any of the notes.
   - =b= to browse a URL, if a URL is associated with the current note
 
-The command =A=, for =ekg-notes-any-tags=, is notable; it allows the user to
-expand the tags viewed to encompass all of the tag space in the current view.
-For example, if there are three notes in an "emacs" tag buffer, one tagged
-"emacs" and "2022-10-02", one tagged "emacs" and "vi", and one tagged "emacs",
-"buffer", and "imenu", it would open a buffer as if the user had run
-=ekg-show-tags-any= with the arguments as if it was invoked like:
+The command =A=, for =ekg-notes-any-tags=, is notable; it allows the user to expand
+the tags viewed to encompass all of the tag space in the current view. For
+example, if there are three notes in an "emacs" tag buffer, one tagged "emacs"
+and "2022-10-02", one tagged "emacs" and "vi", and one tagged "emacs", "buffer",
+and "imenu", it would open a buffer as if the user had run
+=ekg-show-notes-with-any-tags= with the arguments as if it was invoked like:
 #+begin_src emacs-lisp
 ekg-show-tag-any('("emacs", "2022-10-02", "vi", "buffer", "imenu"))
 #+end_src
@@ -230,7 +232,7 @@ normally filtered out when the user is being shown a list of tags, for display
 or selection.
 
 You can remove the trash prefixes by editing the note, and to see a list of
-all notes with a trash prefix, you can run =M-x ekg-show-trash=.
+all notes with a trash prefix, you can run =M-x ekg-show-notes-in-trash=.
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags,
 and all links will become tags as well.
