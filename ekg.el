@@ -1,12 +1,14 @@
 ;;; ekg.el --- A system for recording and linking information -*- lexical-binding: t -*-
 
-;; Copyright (c) 2022  Free Software Foundation, Inc.
+;; Copyright (c) 2022-2023  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.2.3") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.0
+;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the

@@ -1,6 +1,6 @@
 ;;; ekg-test.el --- Tests for ekg  -*- lexical-binding: t; -*-
 
-;; Copyright (c) 2022  Free Software Foundation, Inc.
+;; Copyright (c) 2022-2023  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
