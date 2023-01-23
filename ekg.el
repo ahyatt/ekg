@@ -31,6 +31,8 @@
 (require 'cl-lib)
 (require 'map)
 (require 'ffap)
+(require 'hl-line)
+(require 'iso8601)
 
 ;;; Code:
 
@@ -283,7 +285,7 @@ This is used when capturing new notes.")
 (define-minor-mode ekg-capture-mode
   "Minor mode for simple finish/cancel keybindings."
   :init-value nil
-  :lighter "EKG CAP"
+  :lighter "EKG-CAP"
   :interactive nil
   (when ekg-capture-mode
     (setq-local completion-at-point-functions
@@ -306,7 +308,7 @@ This is used when editing existing blocks.")
 (define-minor-mode ekg-edit-mode
   "Minor mode for simple finish/cancel keybindings."
   :init-value nil
-  :lighter "EKG ED"
+  :lighter "EKG-ED"
   :interactive nil)
 
 (defvar ekg-edit-mode-hook nil
