@@ -729,7 +729,7 @@ Does not include any trash tags."
   "Return a propertized representation of TAGS, a list.
 The tags are separated by spaces."
   (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
-             (sort tags #'string<) " "))
+             (sort (seq-copy tags) #'string<) " "))
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
