@@ -942,9 +942,12 @@ This uses ISO 8601 format."
 (defun ekg-upgrade-db ()
   "After updating, do any necessary upgrades needed by change in schema or use.
 This is designed so that it can be run an arbitrary number of
-times, if there's nothing to do, it won't have any affect."
+times, if there's nothing to do, it won't have any affect. This
+will always make a backup, regardless of backup settings, and
+will not delete any backups, regardless of other settings."
   (interactive)
   (ekg--connect)
+  (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (cl-loop for tag in (seq-filter #'iso8601-valid-p (ekg-tags))
            do
            (ekg-rename-tag tag (format "date/%s" tag)))
