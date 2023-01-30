@@ -119,6 +119,13 @@
     (ert-simulate-command '(ekg-capture-finalize)))
   (should (equal (ekg-document-titles) (list (cons "http://testurl/v2" "A URL used for testing")))))
 
+(ekg-deftest ekg-test-sort-nondestructive ()
+  (mapcar #'ekg-save-note
+	  (list (ekg-note-create "a" ekg-capture-default-mode '("tag/a"))
+		    (ekg-note-create "b" ekg-capture-default-mode '("tag/b"))))
+  (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
+  (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tag/a tag/b")))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here
