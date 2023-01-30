@@ -693,6 +693,12 @@ The metadata fields are comma separated."
   "Return TAG transformed to mark it as trash."
   (format "trash/%s" tag))
 
+;; In order for emacsql / sqlite to not give build warnings we need to declare
+;; them. Because we only require one to be installed, following the
+;; implementation in the triples library, we can't just require them.
+(declare-function emacsql "ext:emacsql.el")
+(declare-function sqlite "ext:sqlite.c")
+
 (defun ekg-rename-tag (from-tag to-tag)
   "Rename FROM-TAG to TO-TAG.
 This can be done whether or not TO-TAG exists or not."
