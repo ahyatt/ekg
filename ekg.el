@@ -335,6 +335,7 @@ This is needed to identify references to refresh when the subject is changed." )
     (define-key map "n" #'ekg-notes-next)
     (define-key map "o" #'ekg-notes-open)
     (define-key map "b" #'ekg-notes-browse)
+    (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
     (define-key map "r" #'ekg-notes-remove)
     (define-key map "t" #'ekg-notes-tag)
@@ -819,6 +820,20 @@ For URLs, this will use `browse-url'."
   (let ((note (ekg--current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
            (browse-url (ekg-note-id note))))))
+
+(defun ekg-notes-select-and-browse-url (title)
+  "Browse one of all the resources in the current buffer.
+TITLE is the title of the URL to browse to."
+  (interactive (list
+                (completing-read
+                 "Doc: "
+                 (mapcan (lambda (note)
+                           (let ((title
+                                  (plist-get (ekg-note-properties note)
+                                             :titled/title)))
+                             (when title (list title))))
+                         (ewoc-collect ekg-notes-ewoc #'identity)))) ekg-notes-mode)
+  (ekg-browse-url title))
 
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."

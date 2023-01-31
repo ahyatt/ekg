@@ -186,19 +186,20 @@ Commands relevant to edit buffers:
 
 Commands relevant to tag buffers:
 
-| Command                 | Description                                                               | Binding |
-|-------------------------+---------------------------------------------------------------------------+---------|
-| =ekg-notes-tag=           | Open another tag buffer selecting from tags of current note               | =t=       |
-| =ekg-notes-open=          | Edit the currently selected note                                          | =o=       |
-| =ekg-notes-delete=        | Delete the currently selected note                                        | =d=       |
-| =ekg-notes-remove=        | Remove the tag buffer's tags from the currently selected note             | =r=       |
-| =ekg-notes-browse=        | Open the resource, if one exists                                          | =b=       |
-| =ekg-notes-refresh=       | Refresh the tag, refetching all the data displayed                        | =g=       |
-| =ekg-notes-create=        | Add a note with all the tags displayed in the buffer                      | =c=       |
-| =ekg-notes-next=          | Move selection to the next note                                           | =n=       |
-| =ekg-notes-previous=      | Move selection to the previous note                                       | =p=       |
-| =ekg-notes-any-note-tags= | Open another tag buffer showing any of the tags in the current note       | =a=       |
-| =ekg-notes-any-tags=      | Open another tag buffer showing any of the tags in any note in the buffer | =A=       |
+| Command                         | Description                                                               | Binding |
+|---------------------------------+---------------------------------------------------------------------------+---------|
+| =ekg-notes-tag=                   | Open another tag buffer selecting from tags of current note               | =t=       |
+| =ekg-notes-open=                  | Edit the currently selected note                                          | =o=       |
+| =ekg-notes-delete=                | Delete the currently selected note                                        | =d=       |
+| =ekg-notes-remove=                | Remove the tag buffer's tags from the currently selected note             | =r=       |
+| =ekg-notes-browse=                | Open the resource, if one exists                                          | =b=       |
+| =ekg-notes-select-and-browse-url= | Select from the URLs in the current note buffer, and browse.     | =B=       |
+| =ekg-notes-refresh=               | Refresh the tag, refetching all the data displayed                        | =g=       |
+| =ekg-notes-create=                | Add a note with all the tags displayed in the buffer                      | =c=       |
+| =ekg-notes-next=                  | Move selection to the next note                                           | =n=       |
+| =ekg-notes-previous=              | Move selection to the previous note                                       | =p=       |
+| =ekg-notes-any-note-tags=         | Open another tag buffer showing any of the tags in the current note       | =a=       |
+| =ekg-notes-any-tags=              | Open another tag buffer showing any of the tags in any note in the buffer | =A=       |
 
 * Storing information about resources
 Currently it is possible to attach notes to references, such as URLs. This can
