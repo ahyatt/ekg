@@ -224,7 +224,8 @@ This
   (ekg-get-notes-with-tags (list tag)))
 
 (defun ekg-get-note-with-id (id)
-  "Get the specific note with ID."
+  "Get the specific note with ID.
+If the ID does not exist, create a new note with that ID."
   (let ((v (triples-get-subject ekg-db id)))
     (make-ekg-note :id id
                    :text (plist-get v :text/text)
@@ -475,12 +476,16 @@ If SUBJECT is given, force the triple subject to be that value."
     (switch-to-buffer-other-window buf)))
 
 (defun ekg-capture-url (&optional url title)
-  "Capture a new note given a URL and its TITLE."
+  "Capture a new note given a URL and its TITLE.
+However, if URL already exists, we edit the existing note on it."
   (interactive "MURL: \nMTitle: \n")
-  (let ((cleaned-title (string-replace "," "" title)))
-    (ekg-capture (list (concat "doc/" (downcase cleaned-title)))
-                 ;; Remove commas from the value.
-                 `(:titled/title ,cleaned-title) url)))
+  (let ((cleaned-title (string-replace "," "" title))
+        (existing (triples-get-subject ekg-db url)))
+    (if existing
+        (ekg-edit (ekg-get-note-with-id url))
+      (ekg-capture (list (concat "doc/" (downcase cleaned-title)))
+                     ;; Remove commas from the value.
+                   `(:titled/title ,cleaned-title) url))))
 
 (defun ekg-capture-change-mode (mode)
   "Change the mode to MODE of the current note."

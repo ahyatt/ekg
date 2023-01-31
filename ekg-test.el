@@ -112,7 +112,8 @@
   (ert-simulate-command '(ekg-capture-finalize))
   (should (equal (ekg-document-titles) (list (cons "http://testurl" "A URL used for testing"))))
   (should (member "doc/a url used for testing" (ekg-tags)))
-  (ekg-edit (ekg-get-note-with-id "http://testurl"))
+  ;; Re-capture, should edit the existing note.
+  (ekg-capture-url "http://testurl" "A URL used for testing")
   (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) t)))
     (when (search-backward "http://testurl")
       (replace-match "http://testurl/v2"))
