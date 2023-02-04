@@ -703,7 +703,7 @@ The metadata fields are comma separated."
 ;; them. Because we only require one to be installed, following the
 ;; implementation in the triples library, we can't just require them.
 (declare-function emacsql "ext:emacsql.el")
-(declare-function sqlite "ext:sqlite.c")
+(declare-function sqlite-execute "ext:sqlite.c")
 
 (defun ekg-rename-tag (from-tag to-tag)
   "Rename FROM-TAG to TO-TAG.
