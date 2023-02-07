@@ -64,29 +64,21 @@ the name of the document. Removed tags are prefixed with "trash/", but these are
 normally invisible to the user. There's a section on these trash tags below
 which goes into more detail.
 * Warning
-ekg is a brand new package, and as such, there may be significant bugs. It has
-not yet had an initial release, but I hope to release something soon. The
-initial release will be accompanied by putting this package on a site such as
-MELPA or GNU ELPA.
+ekg is a fairly new package, and as such, there may be significant bugs. Testing
+is done, but this package has not yet had the wide use that will surface many
+kinds of bugs.
 
 * Installation
-ekg requires Emacs 28.1 or higher.
+ekg is currently hosted on MELPA. It requires Emacs 28.1 or higher and the
+[[https://github.com/ahyatt/triples][triples]] package, which is a way to express a graph in sqlite in emacs, alongside
+basic querying functionality.
 
-Currently ekg is not part of any package archive. It requires the [[https://github.com/ahyatt/triples][triples]]
-package, which is a way to express a graph in sqlite in emacs, alongside basic
-querying functionality.
-
-=triples= (required minimum version is 0.2) is on GNU ELPA, so can be installed
-via the package manager or =use-package=. An example installation using
-=use-package= and =straight= is below:
+An example installation using =use-package= is below:
 #+begin_src emacs-lisp
-(use-package triples)
 (use-package ekg
-  :straight '(ekg :type git :host github :repo "ahyatt/ekg")
   :bind (([f11] . ekg-capture)))
 #+end_src
 
-** TODO Add ekg to a package archive
 * Setup
 ekg allows flexibility in the note's major mode, which can be anything, in
 theory. In reality, many modes are not suitable for notes.
