@@ -1,7 +1,7 @@
 #+TITLE: ekg
 
 * Design of ekg
-The =ekg= module is a simple but opinionated note taking application. It is a
+The ekg module is a simple but opinionated note taking application. It is a
 substitute for such other emacs applications such as =org-roam= or =denote=. ekg
 stands for /emacs knowledge graph/.
 
@@ -48,7 +48,7 @@ the database and not the text as well. In general, text and data are separated
 as much as possible here, so there's no need or desire for the text to have to
 store data as well, we leave that completely to the database.
 * Prefixed tags
-Another concept, loosely applied in =ekg= is that of tags with standard prefixes.
+Another concept, loosely applied in ekg is that of tags with standard prefixes.
 By default, date tags are prefixed with "date/". This is a way to distinguish
 date tags from other kinds of tags. Most tags shouldn't need it, but it often is
 useful to have prefixes to group tags in some way. For instance, perhaps all
@@ -82,21 +82,21 @@ An example installation using =use-package= is below:
 ekg allows flexibility in the note's major mode, which can be anything, in
 theory. In reality, many modes are not suitable for notes.
 
-The variable =ekg-capture-default-mode= will control what mode is on for new
-notes. =ekg-capture-acceptable-modes= will control what modes can be set if you
-want to change the mode. By default, it is set to =org-mode=, =markdown-mode=, and
-=fundamental-mode=. The major mode is stored, alongside the note, and subsequent
+The variable ~ekg-capture-default-mode~ will control what mode is on for new
+notes. ~ekg-capture-acceptable-modes~ will control what modes can be set if you
+want to change the mode. By default, it is set to ~org-mode~, ~markdown-mode~, and
+~fundamental-mode~. The major mode is stored, alongside the note, and subsequent
 edits of the note will be in the major mode of the note.
 
 The database used by ekg is defined in =ekg-db-file=, which defaults to =nil=, which
 will then use the standard triples database defined in
-=triples-default-database-filename=. If you want to use a separate database for
-ekg, just set =ekg-db-file= to the directory and filename of the file you want to use.
+~triples-default-database-filename~. If you want to use a separate database for
+ekg, just set ~ekg-db-file~ to the directory and filename of the file you want to use.
 
 * Usage
 To create a note, run =ekg-capture= to capture a text note, or =ekg-capture-url= to
 capture a website. The note will, by default, be tagged with the current date.
-This can be changed by changing the variable =ekg-capture-auto-tag-funcs=, which
+This can be changed by changing the variable ~ekg-capture-auto-tag-funcs~, which
 is a series of functions that are called and can add tags.
 
 At the top of the note is a special section, which will be unfamiliar. This is
@@ -105,7 +105,7 @@ tags, but possibly other data such as URLs. If you want to change tags, just
 edit them in the metadata section. Tags should autocomplete based on the
 tags available to use.
 
-The basic read operation in =ekg= is to show a list of notes with the same tag,
+The basic read operation in ekg is to show a list of notes with the same tag,
 =ekg-show-notes-with-tag=. This shows all notes tagged with the current tag.
 =ekg-show-notes-with-any-tags= is similar, but allows showing notes that match any
 of a series of tags.
@@ -243,7 +243,7 @@ would otherwise cause problems when selected.
 
 If you do have tags you want to turn into prefixes (which is a good idea for
 tags widely applied, which essentially act as a categorization), you can add
-those tags to the list at =ekg-org-roam-import-tag-to-prefix=.  For example,
+those tags to the list at ~ekg-org-roam-import-tag-to-prefix~.  For example,
 #+begin_src emacs-lisp
 (setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
 #+end_src
@@ -254,7 +254,7 @@ powerful tool", and anything linked with it will also get the same prefix.
 * Backups
 By default, the ekg package will back up its database, using the backup
 functionality built into the triples library. By default, behavior is set by
-=ekg-default-num-backups=, set to =5= by default, and =ekg-default-backups-strategy=,
+~ekg-default-num-backups~, set to =5= by default, and ~ekg-default-backups-strategy~,
 set to =daily=. These are, on first use of ekg, stored in the database itself, but
 it can be set again at any time by running:
 #+begin_src emacs-lisp
