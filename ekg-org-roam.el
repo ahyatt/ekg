@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((ekg "0.0") (org-roam "2.0") (emacs "28.1"))
+;; Package-Requires: ((ekg "0.0") (org-roam "2.0") (emacs "28.1") (triples "0.2"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -23,24 +23,29 @@
 ;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 ;;
 ;;; Commentary:
-;; 
+;;
 ;; These utilities provide a method for handling the import and (eventually) the
 ;; export of data from org-roam into ekg.
 
 (require 'ekg)
+(require 'triples)
 (require 'org-roam)
+(require 'org-roam-db)
 (require 'org-roam-utils)
+(require 'org-roam-dailies)
 (require 'rx)
 (require 'url-handlers)
 
+;;; Code:
+
 (defvar ekg-org-roam-import-tag-to-prefix nil
-  "Tags, whose presence indicates that they should be prefixes to
-the title. For example, if you tag every idea with the `idea'
-tag, then I think it's best to not bring that tag to ekg, but
-instead to prefix the title with this tag name. This is a list of
-tags that should operate like that - so, if one is found (at max
-one should ever be found, these should be exclusionary), it turns
-into a prefix on the title instead.")
+  "Tags which need to be prefixed to the title.
+For example, if you tag every idea with the `idea' tag, then I
+think it's best to not bring that tag to ekg, but instead to
+prefix the title with this tag name. This is a list of tags that
+should operate like that - so, if one is found (at max one should
+ever be found, these should be exclusionary), it turns into a
+prefix on the title instead.")
 
 (defvar ekg-org-roam-import-tag-to-ignore nil
   "Tags to ignore and not bring into ekg.")
@@ -100,14 +105,14 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                         (save-excursion
                           (find-file filename)
                           (unless (= 0 (length (string-trim (buffer-string))))
-                            (let ((tags))                       
+                            (let ((tags))
                               (when (re-search-forward (rx (seq line-start "TAGS:" (group (zero-or-more not-newline)) line-end)) nil t)
                                 (setq tags (string-split (match-string 1))))
                               (font-lock-ensure)
                               (triples-with-transaction ekg-db
                                 (let* ((note (ekg-note-create
                                               (buffer-string)
-                                              major-mode 
+                                              major-mode
                                               (seq-difference (cons (ekg-org-roam-import-title-to-tag title tags) tags)
                                                               (seq-union ekg-org-roam-import-tag-to-ignore
                                                                          ekg-org-roam-import-tag-to-prefix
@@ -139,7 +144,7 @@ JOURNAL-DIR should be relative to PAGES-DIR."
             (triples-with-transaction ekg-db
               (let* ((note (ekg-note-create
                            text
-                           'org-mode 
+                           'org-mode
                            (seq-difference (seq-uniq
                                             (cons
                                              (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node))
@@ -158,4 +163,3 @@ JOURNAL-DIR should be relative to PAGES-DIR."
 (provide 'ekg-org-roam)
 
 ;;; ekg-org-roam.el ends here
-
