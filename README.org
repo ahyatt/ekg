@@ -78,7 +78,6 @@ An example installation using =use-package= is below:
 (use-package ekg
   :bind (([f11] . ekg-capture)))
 #+end_src
-
 * Setup
 ekg allows flexibility in the note's major mode, which can be anything, in
 theory. In reality, many modes are not suitable for notes.
@@ -228,11 +227,19 @@ You can remove the trash prefixes by editing the note, and to see a list of
 all notes with a trash prefix, you can run =M-x ekg-show-notes-in-trash=.
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags,
-and all links will become tags as well.
+and all links will become tags as well. This requires a different package that
+is not yet on MELPA, but the code can be found in the [[https://github.com/ahyatt/ekg][ekg source]] in the file
+=ekg-org-roam.el=. You can currently clone this, or, if you just want to import
+once, just copy & paste the code into a buffer, run =eval-buffer=, then run
+~(ekg-org-roam-import)~ in a scratch buffer.
 
-Titles and tags will have any commas removed, since commas are commonly used in
-multiple completion as a separator, so anything with commas would otherwise cause
-problems when selected.
+The import is idempotent, so it always will import to the same entities,
+overwriting older data with new data. If you want to update what is in ekg, you
+can just rerun the import.
+
+In the import, titles and tags will have any commas removed, since commas are
+commonly used in multiple completion as a separator, so anything with commas
+would otherwise cause problems when selected.
 
 If you do have tags you want to turn into prefixes (which is a good idea for
 tags widely applied, which essentially act as a categorization), you can add
@@ -244,13 +251,6 @@ Then, when a note is found that is tagged with "idea/", but with title "emacs is
 a powerful tool", then the title will be turned into the tag "idea/emacs is a
 powerful tool", and anything linked with it will also get the same prefix.
 
-To import from org-roam, in a =*scratch*= buffer or any your favorite elisp
-execution method, run the following:
-
-#+begin_src emacs-lisp
-(require 'ekg-org-roam)
-(ekg-org-roam-import)
-#+end_src
 * Backups
 By default, the ekg package will back up its database, using the backup
 functionality built into the triples library. By default, behavior is set by
