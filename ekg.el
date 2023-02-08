@@ -594,7 +594,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (let ((end (save-excursion
                (skip-chars-forward "^,\t\n")
                (point)))
-	    (start (save-excursion
+        (start (save-excursion
                  (skip-chars-backward "^,\t\n")
                  (point))))
     (list start end (completion-table-dynamic
