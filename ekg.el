@@ -985,6 +985,11 @@ If no corresponding URL is found, an error is thrown."
   (let ((prefix "date/"))
     (string= prefix (substring-no-properties tag 0 (min (length prefix) (length tag))))))
 
+(defun ekg-active-note-ids ()
+  "Get a list of ekg-note objects, representing all active notes.
+Active in this context means non-trashed."
+  (seq-filter #'ekg-has-live-tags-p (triples-subjects-of-type ekg-db 'text)))
+
 ;; Auto-tag functions
 
 (defun ekg-tag-for-date (&optional date)
