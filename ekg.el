@@ -156,6 +156,8 @@ non-nil, it will be used as the filename, otherwise
 
 (defun ekg-add-schema ()
   "Add schema necessary for EKG to function."
+  ;; Schema here needs to also be taken care of when deleted in ekg-note-delete
+  ;; or ekg-tag-delete.
   (triples-add-schema ekg-db 'tagged '(tag :base/type string))
   (triples-add-schema ekg-db 'text
                       '(text :base/unique t :base/type string)
@@ -244,14 +246,24 @@ If the ID does not exist, create a new note with that ID."
                                                  :time-tracked/modified-time)))) v)
                                 'plist))))
 
-(defun ekg-note-delete (note)
-  "Delete NOTE from the database.
-This doesn't actually delete, but rather prepends all tags with
- `trash/'. This can be garbage collected at a later time.
-If all tags are trash tags, then the note is really deleted."
+(defun ekg-note-delete (id)
+  "Delete all note data associated with ID."
+  (triples-with-transaction ekg-db
+    (cl-loop for type in '(tagged text time-tracked) do
+             (triples-remove-type ekg-db id type))))
+
+(defun ekg-tag-delete (tag)
+  "Delete all tag data associated with tag."
+  (triples-remove-type ekg-db tag 'tag))
+
+(defun ekg-note-trash (note)
+  "Move NOTE to the trash.
+This prepends all tags with `trash/'. This can be garbage
+collected at a later time. If all tags are trash tags, then the
+note is really deleted."
   (triples-with-transaction ekg-db
     (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
-        (triples-delete-subject ekg-db (ekg-note-id note))
+        (ekg-note-trash ekg-db (ekg-note-id note))
       (setf (ekg-note-tags note)
             (mapcar (lambda (tag) (unless (ekg-tag-trash-p tag)
                                     (ekg-mark-trashed tag)))
@@ -804,7 +816,7 @@ tags."
   (let ((note (ekg--current-note-or-error))
         (inhibit-read-only t))
     (when (y-or-n-p "Or you sure you want to delete this note?")
-      (ekg-note-delete note)
+      (ekg-note-trash note)
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
 
@@ -1026,19 +1038,29 @@ will not delete any backups, regardless of other settings."
   "Remove all tags that are not used and have no info."
   (cl-loop for tag in (seq-filter (lambda (tag) (not (ekg-tag-used-p tag))) (ekg-tags))
            do
-           (triples-delete-subject ekg-db tag)))
+           (ekg-tag-delete tag)))
 
 (defun ekg-clean-db ()
   "Clean all useless or malformed data from the database.
-Some of this are tags which have no uses, which we consider useless."
+Some of this are tags which have no uses, which we consider
+useless. This will always make a backup, regardless of backup
+settings, and will not delete any backups, regardless of other
+settings."
   (interactive)
   (ekg--connect)
+  (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (ekg-remove-unused-tags)
-  (cl-loop for tagged in (seq-filter
-                          (lambda (tagged) (not (triples-get-subject ekg-db tagged)))
+  (cl-loop for tag in (seq-filter
+                          (lambda (tag) (not (triples-get-subject ekg-db tag)))
                           (mapcar #'car (triples-with-predicate ekg-db 'tagged/tag)))
            do
-           (triples-delete-subject ekg-db tagged)))
+           (ekg-tag-delete tag))
+  (cl-loop for id in (triples-subjects-of-type ekg-db 'text) do
+           (let ((note (ekg-get-note-with-id id)))
+             (when (or (not (ekg-has-live-tags-p id))
+                       (string= (string-trim (ekg-note-text note))
+                                   "*"))
+               (ekg-note-delete note)))))
 
 ;; Links for org-mode
 (require 'ol)
