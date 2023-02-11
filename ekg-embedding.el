@@ -24,6 +24,9 @@
 ;; This is a module for creating, storing, and using embeddings in ekg. The
 ;; embeddings provide the capability of understanding note and tag similarity,
 ;; as well as searching via embedding.
+;;
+;; It is highly recommended that you byte-compile this, or, better yet,
+;; native-compile this, due to the amount of calculations that happen.
 
 (require 'request)
 
@@ -37,31 +40,6 @@
 (defconst ekg-embedding-api-key nil
   "Key used to access whatever embedding API used.")
 
-(defun ekg-embedding-generate-all (&optional regenerate)
-  "Generate and store embeddings for every entity.
-It is not necessary for the entity to contain a note. Tags will
-be calculated from the average of all tagged entities. Embeddings
-will not be calculated for objects with no text, except for tags.
-If REGENERATE is non-nil, embeddings will be generated even if
-embeddings already exist. This is a fairly slow function, and may
-take minutes or hours depending on how much data there is.."
-  (interactive)
-  (ekg--connect)
-  (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector))
-  (cl-loop for s in (triples-subjects-of-type ekg-db 'text) do
-           (let ((note (ekg-get-note-with-id s))
-                 (embedding (triples-get-type ekg-db s 'embedding)))
-             (when (and (or regenerate (null embedding))
-                        (> (length (ekg-note-text note)) 0))
-               (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
-                                                                 (substring-no-properties (ekg-note-text note)))))))
-  (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
-           (let ((embeddings (cl-loop for tagged in
-                                      (plist-get (triples-get-type ekg-db s 'tag) :tagged)
-                                      collect (plist-get (triples-get-type ekg-db tagged 'embedding)
-                                                         :embedding))))
-             (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding-average embeddings)))))
-
 (defun ekg-embedding-average (embeddings)
   "Compute the average of all of EMBEDDINGS, a list.
 Return the vector embedding. This assumes all embeddings are the
@@ -73,6 +51,31 @@ same size.  There must be at least one embedding passed in."
     (cl-loop for i below (length v) do
              (aset v i (/ (aref v i) (length embeddings))))
     v))
+
+(defun ekg-embedding-generate-all (arg)
+  "Generate and store embeddings for every entity.
+It is not necessary for the entity to contain a note. Tags will
+be calculated from the average of all tagged entities. Embeddings
+will not be calculated for objects with no text, except for tags.
+If called with a prefix arg, embeddings will be generated even if
+embeddings already exist. This is a fairly slow function, and may
+take minutes or hours depending on how much data there is.."
+  (interactive "P")
+  (ekg--connect)
+  (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector))
+  (cl-loop for s in (ekg-active-note-ids) do
+           (let ((note (ekg-get-note-with-id s))
+                 (embedding (triples-get-type ekg-db s 'embedding)))
+             (when (and (or arg (null embedding))
+                        (> (length (ekg-note-text note)) 0))
+               (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
+                                                                 (substring-no-properties (ekg-note-text note)))))))
+  (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
+           (let ((embeddings (cl-loop for tagged in
+                                      (plist-get (triples-get-type ekg-db s 'tag) :tagged)
+                                      collect (plist-get (triples-get-type ekg-db tagged 'embedding)
+                                                         :embedding))))
+             (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding-average embeddings)))))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
@@ -129,32 +132,46 @@ If there is no embedding, return nil."
 (defun ekg-embedding-get-all-notes ()
   "Return an alist of id to embedding.
 IDs that do not have embeddings will not be in the list."
-  (seq-filter #'cdr (cl-loop for s in (triples-subjects-of-type ekg-db 'text)
+  (seq-filter #'cdr (cl-loop for s in (ekg-active-note-ids)
                              collect (cons s (ekg-embedding-get s)))))
 
-(defun ekg-embedding-n-most-similar-notes (id n)
-  "From an ID, return a list of the N most ids.
+(defun ekg-embedding-n-most-similar-to-id (id n)
+  "From an ID, return a list of the N most similar ids.
 The results are in order of most similar to least similar."
-  (let* ((embeddings (ekg-embedding-get-all-notes))
-         (e (cdr (assoc id embeddings))))
+  (let ((embedding (ekg-embedding-get id)))
     (unless e (error "Unable to find embedding of note %S" id))
-    (setq embeddings (cdr (sort
-                           (mapcar (lambda (id-embedding) (cons (car id-embedding)
-                                                                (ekg-embedding-cosine-similarity e (cdr id-embedding))))
-                                   embeddings)
-                           (lambda (a b) (> (cdr a) (cdr b))))))
+    (ekg-embedding-n-most-similar-notes e n)))
+
+(defun ekg-embedding-n-most-similar-notes (e n)
+  "From an embedding E, return a list of the N most similar ids.
+The results are in order of most similar to least similar."
+  (let* ((embeddings (ekg-embedding-get-all-notes)))
+    (setq embeddings
+          (cdr (sort
+                (mapcar (lambda (id-embedding)
+                          (cons (car id-embedding)
+                                (ekg-embedding-cosine-similarity e (cdr id-embedding))))
+                        embeddings)
+                (lambda (a b) (> (cdr a) (cdr b))))))
     (mapcar #'car (cl-subseq embeddings 0 n))))
 
 (defun ekg-embedding-show-similar ()
   "Show similar notes to the current note in a new buffer."
   (interactive nil ekg-notes-mode)
-  (let* ((note (ekg--current-note-or-error))
-         (buf (get-buffer-create (format "similar to note \"%S\"" (ekg-note-snippet note)))))
-    (set-buffer buf)
-    (ekg--show-notes
-     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes (ekg-note-id note) 10)))
-     (seq-filter (lambda (tag) (not (ekg-date-tag-p tag))) (ekg-note-tags note)))
-    (switch-to-buffer buf)))
+  (let ((note (ekg--current-note-or-error)))
+    (ekg-setup-notes-buffer
+     (format "similar to note \"%s\"" (ekg-note-snippet note))
+     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-id (ekg-note-id note) 10)))
+     (ekg-note-tags note))))
+
+(defun ekg-embedding-search (&optional text)
+  "Show similar notes to the current note in a new buffer."
+  (interactive "MSearch: ")
+  (ekg-setup-notes-buffer
+     (format "similar to \"%s\"" text)
+     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
+                                                (ekg-embedding text) 10)))
+     nil))
 
 (provide 'ekg-embedding)
 
