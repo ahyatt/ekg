@@ -954,6 +954,11 @@ If no corresponding URL is found, an error is thrown."
     (when (> (length subjects) 1) (warn "Multiple URLs with the same title exist: %s" title))
     (browse-url (car subjects))))
 
+(defun ekg-date-tag-p (tag)
+  "Returns non-nil if TAG is a date tag."
+  (let ((prefix "date/"))
+    (string= prefix (substring-no-properties tag 0 (min (length prefix) (length tag))))))
+
 ;; Auto-tag functions
 
 (defun ekg-tag-for-date (&optional date)
