@@ -278,6 +278,13 @@ A text property `ekg-note-id' is added with the id of the note."
     (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
     (buffer-string)))
 
+(defun ekg-note-snippet (note &optional max-length)
+  "Return a short snippet for NOTE.
+The snippet is just the beginning of the text, cut off after
+MAX-LENGTH characters, with ellipses afterwards. If MAX-LENGTH is
+not supplied, we use a default of 10."
+  (format "%S..." (substring-no-properties (ekg-note-text note) 0 (or max-length 10))))
+
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
