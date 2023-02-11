@@ -283,7 +283,7 @@ A text property `ekg-note-id' is added with the id of the note."
 The snippet is just the beginning of the text, cut off after
 MAX-LENGTH characters, with ellipses afterwards. If MAX-LENGTH is
 not supplied, we use a default of 10."
-  (format "%S..." (substring-no-properties (ekg-note-text note) 0 (or max-length 10))))
+  (format "%s..." (substring-no-properties (ekg-note-text note) 0 (or max-length 10))))
 
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
