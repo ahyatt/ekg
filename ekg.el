@@ -355,7 +355,12 @@ This is needed to identify references to refresh when the subject is changed." )
   (visual-line-mode 1))
 
 (defvar-local ekg-notes-fetch-notes-function nil
-  "Function to call to fetch the notes that define this buffer.")
+  "Function to call to fetch the notes that define this buffer.
+The order the notes are returned are the order that they are
+displayed.")
+
+(defvar-local ekg-notes-name ""
+  "Name displayed at the top of the buffer.")
 
 (defvar-local ekg-notes-ewoc nil
   "Ewoc for the notes buffer.")
@@ -842,6 +847,25 @@ TITLE is the title of the URL to browse to."
                          (ewoc-collect ekg-notes-ewoc #'identity)))) ekg-notes-mode)
   (ekg-browse-url title))
 
+(defun ekg--show-notes (name notes-func tags)
+  "Display notes from NOTES-FUNC in buffer.
+New notes are created with additional tags TAGS.
+NAME is displayed at the top of the buffer."
+  (setq buffer-read-only nil)
+  (erase-buffer)
+  (let ((ewoc (ewoc-create #'ekg-display-note
+                           (propertize name 'face 'ekg-notes-mode-title))))
+    (mapc (lambda (note) (ewoc-enter-last ewoc note)) (funcall notes-func))
+    (ekg-notes-mode)
+    (setq-local ekg-notes-ewoc ewoc
+                ekg-notes-fetch-notes-function notes-func
+                ekg-notes-hl (make-overlay 1 1)
+                ekg-notes-tags tags)
+    (overlay-put ekg-notes-hl 'face hl-line-face)
+    ;; Move past the title
+    (forward-line 1)
+    (ekg--note-highlight)))
+
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
   (interactive nil ekg-notes-mode)
@@ -881,51 +905,46 @@ TITLE is the title of the URL to browse to."
               (mapcar (lambda (n) (ekg-note-tags n))
                       (ewoc-collect ekg-notes-ewoc #'identity))))))
 
-(defun ekg--show-notes (notes-func tags)
-  "Display notes from NOTES-FUNC in buffer, with notes having TAGS."
-  (setq buffer-read-only nil)
-  (erase-buffer)
-  (let ((ewoc (ewoc-create #'ekg-display-note (propertize (ekg-tags-display tags) 'face 'ekg-notes-mode-title))))
-    (mapc (lambda (note) (ewoc-enter-last ewoc note))
-          (sort
-           (funcall notes-func)
-           (lambda (a b)
-             (< (ekg-note-creation-time a)
-                (ekg-note-creation-time b)))))
-    (ekg-notes-mode)
-    (setq-local ekg-notes-ewoc ewoc
-                ekg-notes-fetch-notes-function notes-func
-                ekg-notes-hl (make-overlay 1 1)
-                ekg-notes-tags tags)
-    (overlay-put ekg-notes-hl 'face hl-line-face)
-    ;; Move past the title
-    (forward-line 1)
-    (ekg--note-highlight)))
+(defun ekg-setup-notes-buffer (name notes-func tags)
+  "Set up and display new buffer with NAME.
+NOTES-FUNC is used to get the list of notes to display. New notes
+are created with additional tags TAGS."
+  (let ((buf (get-buffer-create name)))
+    (set-buffer buf)
+    (ekg--show-notes name notes-func tags)
+    (display-buffer buf)))
+
+(defun ekg-sort-by-creation-time (a b)
+  "Used to pass to `sort', which will supply A and B."
+  (< (ekg-note-creation-time a)
+     (ekg-note-creation-time b)))
 
 (defun ekg-show-notes-with-any-tags (tags)
   "Show notes with any of TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
-  (let ((buf (get-buffer-create (format "ekg tags (any): %s" (mapconcat #'identity tags " ")))))
-    (set-buffer buf)
-    (ekg--show-notes
-     (lambda () (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))) tags)
-    (switch-to-buffer buf)))
+  (ekg-setup-notes-buffer
+     (format "tags (any): %s" (ekg-tags-display tags))
+     (lambda () (sort
+                 (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))
+                 #'ekg-sort-by-creation-time))
+     tags))
 
 (defun ekg-show-notes-with-all-tags (tags)
   "Show notes that contain all TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
-  (let ((buf (get-buffer-create (format "ekg tags (all): %s" (mapconcat #'identity tags " ")))))
-    (set-buffer buf)
-    (ekg--show-notes (lambda () (ekg-get-notes-with-tags tags)) tags)
-    (switch-to-buffer buf)))
+  (ekg-setup-notes-buffer
+   (format "tags (all): %s" (ekg-tags-display tags))
+   (lambda () (sort (ekg-get-notes-with-tags tags)
+                    #'ekg-sort-by-creation-time))
+   tags))
 
 (defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
   (interactive (list (completing-read "Tag: " (ekg-tags))))
-  (let ((buf (get-buffer-create (format "ekg tag: %s" tag))))
-    (set-buffer buf)
-    (ekg--show-notes (lambda () (ekg-get-notes-with-tag tag)) (list tag))
-    (switch-to-buffer buf)))
+  (ekg-setup-notes-buffer
+   (format "tag: %s" (ekg-tags-display (list tag)))
+   (lambda () (sort (ekg-get-notes-with-tag tag) #'ekg-sort-by-creation-time))
+   (list tag)))
 
 (defun ekg-show-notes-in-trash ()
   "Show notes that have tags prefixed by tags."
