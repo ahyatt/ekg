@@ -75,7 +75,8 @@ take minutes or hours depending on how much data there is.."
                                       (plist-get (triples-get-type ekg-db s 'tag) :tagged)
                                       collect (plist-get (triples-get-type ekg-db tagged 'embedding)
                                                          :embedding))))
-             (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding-average embeddings)))))
+             (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding-average embeddings))))
+  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
