@@ -140,8 +140,8 @@ IDs that do not have embeddings will not be in the list."
   "From an ID, return a list of the N most similar ids.
 The results are in order of most similar to least similar."
   (let ((embedding (ekg-embedding-get id)))
-    (unless e (error "Unable to find embedding of note %S" id))
-    (ekg-embedding-n-most-similar-notes e n)))
+    (unless embedding (error "Unable to find embedding of note %S" id))
+    (ekg-embedding-n-most-similar-notes embedding n)))
 
 (defun ekg-embedding-n-most-similar-notes (e n)
   "From an embedding E, return a list of the N most similar ids.
@@ -162,7 +162,7 @@ The results are in order of most similar to least similar."
   (let ((note (ekg--current-note-or-error)))
     (ekg-setup-notes-buffer
      (format "similar to note \"%s\"" (ekg-note-snippet note))
-     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-id (ekg-note-id note) 10)))
+     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-to-id (ekg-note-id note) 10)))
      (ekg-note-tags note))))
 
 (defun ekg-embedding-search (&optional text)
