@@ -228,7 +228,11 @@ all notes with a trash prefix, you can run =M-x ekg-show-notes-in-trash=.
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags,
 and all links will become tags as well. At the moment, this is done via
-executing elisp, and not
+executing elisp, since importing can be fairly idiosyncratic, and ekg and
+org-roam have different ways of expressing the same thing that you may want to
+change. It's best if you looked over =ekg-org-roam= and see what is going on, but
+at least read the following description before manually executing
+~(ekg-org-roam-import)~.
 
 The import is idempotent, so it always will import to the same entities,
 overwriting older data with new data. If you want to update what is in ekg, you
@@ -238,15 +242,16 @@ In the import, titles and tags will have any commas removed, since commas are
 commonly used in multiple completion as a separator, so anything with commas
 would otherwise cause problems when selected.
 
-If you do have tags you want to turn into prefixes (which is a good idea for
-tags widely applied, which essentially act as a categorization), you can add
-those tags to the list at ~ekg-org-roam-import-tag-to-prefix~.  For example,
+If you have tags you want to turn into prefixes (which is a good idea for tags
+widely applied, which essentially act as a categorization), you can add those
+tags to the list at ~ekg-org-roam-import-tag-to-prefix~. For example,
 #+begin_src emacs-lisp
 (setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
 #+end_src
-Then, when a note is found that is tagged with "idea/", but with title "emacs is
-a powerful tool", then the title will be turned into the tag "idea/emacs is a
-powerful tool", and anything linked with it will also get the same prefix.
+Then, when a note is found that is tagged with "idea", but with title "emacs is
+a powerful tool", then the title in org-roam will be turned into the ekg tag
+"idea/emacs is a powerful tool", and anything linked with it will also get the
+same prefix.
 
 * Backups
 By default, the ekg package will back up its database, using the backup
