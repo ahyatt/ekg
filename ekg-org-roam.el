@@ -2,13 +2,6 @@
 
 ;; Copyright (c) 2023  Andrew Hyatt <ahyatt@gmail.com>
 
-;; Author: Andrew Hyatt <ahyatt@gmail.com>
-;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((ekg) (org-roam "2.0") (emacs "28.1") (triples "0.2"))
-;; Keywords: outlines, hypermedia
-;; Version: 0.0
-;; SPDX-License-Identifier: GPL-3.0-or-later
-
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 3 of the
@@ -124,7 +117,7 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                           (unless (= 0 (length (string-trim (buffer-string))))
                             (let ((tags))
                               (when (re-search-forward (rx (seq line-start "TAGS:" (group (zero-or-more not-newline)) line-end)) nil t)
-                                (setq tags (string-split (match-string 1))))
+                                (setq tags (split-string (match-string 1))))
                               (font-lock-ensure)
                               (triples-with-transaction ekg-db
                                 (let* ((note (ekg-note-create
