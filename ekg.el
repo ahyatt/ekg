@@ -877,6 +877,7 @@ NAME is displayed at the top of the buffer."
     (ekg-notes-mode)
     (setq-local ekg-notes-ewoc ewoc
                 ekg-notes-fetch-notes-function notes-func
+                ekg-notes-name name
                 ekg-notes-hl (make-overlay 1 1)
                 ekg-notes-tags tags)
     (overlay-put ekg-notes-hl 'face hl-line-face)
@@ -887,7 +888,10 @@ NAME is displayed at the top of the buffer."
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
   (interactive nil ekg-notes-mode)
-  (ekg--show-notes ekg-notes-fetch-notes-function ekg-notes-tags))
+  (ekg--show-notes
+   ekg-notes-name
+   ekg-notes-fetch-notes-function
+   ekg-notes-tags))
 
 (defun ekg-notes-create ()
   "Add a note that by default has all the tags in the buffer."
