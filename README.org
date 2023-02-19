@@ -1,10 +1,26 @@
 #+TITLE: ekg
 
-* Design of ekg
-The ekg module is a simple but opinionated note taking application. It is a
-substitute for such other emacs applications such as =org-roam= or =denote=. ekg
-stands for /emacs knowledge graph/.
+* Quick intro
+:PROPERTIES:
+:ORG-IMAGE-ACTUAL-WIDTH: 300
+:END:
+The ekg module is a simple but opinionated note taking application, for emacs.
+It is a substitute for such other emacs applications such as org-roam or denote.
+ekg stands for /emacs knowledge graph/.
 
+Data is completely stored in a sqlite database. Notes are organized around tags,
+and you can view many notes by looking at one or more tags.
+
+#+CAPTION: An example of viewing a tag in ekg
+[[./screenshots/ekg-tag-view.jpg]]
+
+Editing a note from one of these buffers, or capturing a new note, lets you edit
+both the note's data and the text of the note itself in a buffer.
+
+#+CAPTION: An eample of editing a note
+[[./screenshots/ekg-tag-view.jpg]]
+
+* Design of ekg
 There are a few core ideas driving the design of ekg. The first is that a title
 and a tag are the same thing. This isn't unique to ekg, other tools such as
 Logseq also consider tags to be equivalent to pages of the same name, although
