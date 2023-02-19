@@ -1,10 +1,28 @@
 #+TITLE: ekg
 
-* Design of ekg
-The ekg module is a simple but opinionated note taking application. It is a
-substitute for such other emacs applications such as =org-roam= or =denote=. ekg
-stands for /emacs knowledge graph/.
+* Quick intro
+:PROPERTIES:
+:ORG-IMAGE-ACTUAL-WIDTH: 300
+:END:
+The ekg module is a simple but opinionated note taking application, for emacs.
+It is a substitute for such other emacs applications such as org-roam or denote.
+ekg stands for /emacs knowledge graph/.
 
+Data is completely stored in a sqlite database. Notes are organized around tags,
+and you can view many notes by looking at one or more tags.
+
+#+CAPTION: An example of viewing a tag in ekg
+[[./screenshots/ekg-tag-view.jpg]]
+
+Editing a note from one of these buffers, or capturing a new note, lets you edit
+both the note's data and the text of the note itself in a buffer.
+
+#+CAPTION: An eample of editing a note
+[[./screenshots/ekg-tag-view.jpg]]
+
+Additionally, [[https://youtu.be/qxa2VrseFUA][a video demonstration and explanation of ekg]] is on YouTube.
+
+* Design of ekg
 There are a few core ideas driving the design of ekg. The first is that a title
 and a tag are the same thing. This isn't unique to ekg, other tools such as
 Logseq also consider tags to be equivalent to pages of the same name, although
@@ -227,11 +245,12 @@ You can remove the trash prefixes by editing the note, and to see a list of
 all notes with a trash prefix, you can run =M-x ekg-show-notes-in-trash=.
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags,
-and all links will become tags as well. This requires a different package that
-is not yet on MELPA, but the code can be found in the [[https://github.com/ahyatt/ekg][ekg source]] in the file
-=ekg-org-roam.el=. You can currently clone this, or, if you just want to import
-once, just copy & paste the code into a buffer, run =eval-buffer=, then run
-~(ekg-org-roam-import)~ in a scratch buffer.
+and all links will become tags as well. At the moment, this is done via
+executing elisp, since importing can be fairly idiosyncratic, and ekg and
+org-roam have different ways of expressing the same thing that you may want to
+change. It's best if you looked over =ekg-org-roam= and see what is going on, but
+at least read the following description before manually executing
+~(ekg-org-roam-import)~.
 
 The import is idempotent, so it always will import to the same entities,
 overwriting older data with new data. If you want to update what is in ekg, you
@@ -241,15 +260,16 @@ In the import, titles and tags will have any commas removed, since commas are
 commonly used in multiple completion as a separator, so anything with commas
 would otherwise cause problems when selected.
 
-If you do have tags you want to turn into prefixes (which is a good idea for
-tags widely applied, which essentially act as a categorization), you can add
-those tags to the list at ~ekg-org-roam-import-tag-to-prefix~.  For example,
+If you have tags you want to turn into prefixes (which is a good idea for tags
+widely applied, which essentially act as a categorization), you can add those
+tags to the list at ~ekg-org-roam-import-tag-to-prefix~. For example,
 #+begin_src emacs-lisp
 (setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
 #+end_src
-Then, when a note is found that is tagged with "idea/", but with title "emacs is
-a powerful tool", then the title will be turned into the tag "idea/emacs is a
-powerful tool", and anything linked with it will also get the same prefix.
+Then, when a note is found that is tagged with "idea", but with title "emacs is
+a powerful tool", then the title in org-roam will be turned into the ekg tag
+"idea/emacs is a powerful tool", and anything linked with it will also get the
+same prefix.
 
 * Backups
 By default, the ekg package will back up its database, using the backup

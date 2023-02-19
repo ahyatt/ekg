@@ -2,13 +2,6 @@
 
 ;; Copyright (c) 2023  Andrew Hyatt <ahyatt@gmail.com>
 
-;; Author: Andrew Hyatt <ahyatt@gmail.com>
-;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: (ekg (org-roam "2.0") (emacs "28.1") (triples "0.2"))
-;; Keywords: outlines, hypermedia
-;; Version: 0.0
-;; SPDX-License-Identifier: GPL-3.0-or-later
-
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 3 of the
@@ -29,10 +22,11 @@
 
 (require 'ekg)
 (require 'triples)
-(require 'org-roam)
-(require 'org-roam-db)
-(require 'org-roam-utils)
-(require 'org-roam-dailies)
+(require 'org nil t)
+(require 'org-roam nil t)
+(require 'org-roam-db nil t)
+(require 'org-roam-utils nil t)
+(require 'org-roam-dailies nil t)
 (require 'rx)
 (require 'url-handlers)
 
@@ -49,6 +43,22 @@ prefix on the title instead.")
 
 (defvar ekg-org-roam-import-tag-to-ignore nil
   "Tags to ignore and not bring into ekg.")
+
+;; Declarations to remove byte compilation warnings.
+(declare-function org-roam-node-from-id "ext:org-roam-node.el")
+(declare-function org-roam-node-title "ext:org-roam-node.el")
+(declare-function org-roam-node-tags "ext:org-roam-node.el")
+(declare-function org-roam-node-list "ext:org-roam-node.el")
+(declare-function org-roam-node-file "ext:org-roam-node.el")
+(declare-function org-roam-node-level "ext:org-roam-node.el")
+(declare-function org-roam-node-point "ext:org-roam-node.el")
+(declare-function org-roam-node-id "ext:org-roam-node.el")
+(declare-function org-roam-node-refs "ext:org-roam-node.el")
+(declare-function org-roam-with-file "ext:org-roam-utils.el")
+(declare-function org-roam-db-query "ext:org-roam-db.el")
+(declare-function org-narrow-to-element "ext:org.el")
+(defvar org-roam-directory)
+(defvar org-roam-dailies-directory)
 
 (defun ekg-org-roam-import-title-to-tag (title tags)
   "From a TITLE and TAGS compute the new title according to prefix rules."
@@ -107,7 +117,7 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                           (unless (= 0 (length (string-trim (buffer-string))))
                             (let ((tags))
                               (when (re-search-forward (rx (seq line-start "TAGS:" (group (zero-or-more not-newline)) line-end)) nil t)
-                                (setq tags (string-split (match-string 1))))
+                                (setq tags (split-string (match-string 1))))
                               (font-lock-ensure)
                               (triples-with-transaction ekg-db
                                 (let* ((note (ekg-note-create
