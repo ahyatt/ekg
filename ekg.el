@@ -70,6 +70,12 @@ check for the mode of the buffer."
   :type '(set function)
   :group 'ekg)
 
+(defcustom ekg-notes-size 20
+  "Number of notes when those notes buffers where any amount might
+be appropriate."
+  :type 'integer
+  :group 'ekg)
+
 (defcustom ekg-db-file nil
   "A filename specifying what the ekg database.
 Initially set as nil, which will mean that we use
@@ -968,6 +974,50 @@ are created with additional tags TAGS."
   "Show all notes with today's date as a tag."
   (interactive)
   (ekg-show-notes-with-tag (car (ekg-date-tag))))
+
+(defun ekg-show-notes-latest-captured (&optional num)
+  "Show the last several notes taken.
+NUM is by default, `ekg-notes-size', which determines how many
+notes to show. But with an prefix ARG, ask the user."
+  (interactive (list (if current-prefix-arg
+                         (read-number "Number of notes to display: ")
+                       ekg-notes-size)))
+  (ekg-setup-notes-buffer
+   "Latest captured notes"
+   (lambda ()
+     (cl-loop for id in (mapcar #'car (sort (triples-with-predicate
+                                             ekg-db
+                                             'time-tracked/creation-time)
+                                            (lambda (trip1 trip2) (> (nth 2 trip1)
+                                                                     (nth 2 trip2)))))
+              with selected = '()
+              until (= (length selected) num)
+              when (ekg-has-live-tags-p id)
+              collect (ekg-get-note-with-id id) into selected
+              finally return selected))
+   nil))
+
+(defun ekg-show-notes-latest-modified (&optional num)
+  "Show the last several notes modified.
+NUM is by default, `ekg-notes-size', which determines how many
+notes to show. But with an prefix ARG, ask the user."
+  (interactive (list (if current-prefix-arg
+                         (read-number "Number of notes to display: ")
+                       ekg-notes-size)))
+  (ekg-setup-notes-buffer
+   "Latest modified notes"
+   (lambda ()
+     (cl-loop for id in (mapcar #'car (sort (triples-with-predicate
+                                             ekg-db
+                                             'time-tracked/modified-time)
+                                            (lambda (trip1 trip2) (> (nth 2 trip1)
+                                                                     (nth 2 trip2)))))
+              with selected = '()
+              until (= (length selected) num)
+              when (ekg-has-live-tags-p id)
+              collect (ekg-get-note-with-id id) into selected
+              finally return selected))
+   nil))
 
 (defun ekg-document-titles ()
   "Return an alist of all titles.
