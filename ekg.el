@@ -990,7 +990,6 @@ notes to show. But with an prefix ARG, ask the user."
                                              'time-tracked/creation-time)
                                             (lambda (trip1 trip2) (> (nth 2 trip1)
                                                                      (nth 2 trip2)))))
-              with selected = '()
               until (= (length selected) num)
               when (ekg-has-live-tags-p id)
               collect (ekg-get-note-with-id id) into selected
@@ -1012,7 +1011,6 @@ notes to show. But with an prefix ARG, ask the user."
                                              'time-tracked/modified-time)
                                             (lambda (trip1 trip2) (> (nth 2 trip1)
                                                                      (nth 2 trip2)))))
-              with selected = '()
               until (= (length selected) num)
               when (ekg-has-live-tags-p id)
               collect (ekg-get-note-with-id id) into selected
