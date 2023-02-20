@@ -287,7 +287,7 @@ If the ID does not exist, create a new note with that ID."
     ekg-db
     (cl-loop for type in '(tagged text time-tracked) do
              (triples-remove-type ekg-db id type))
-   (run-hook-with-args 'ekg-note-delete-hook id)))
+    (run-hook-with-args 'ekg-note-delete-hook id)))
 
 (defun ekg-tag-delete (tag)
   "Delete all tag data associated with tag."
