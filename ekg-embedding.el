@@ -40,6 +40,10 @@
 (defconst ekg-embedding-api-key nil
   "Key used to access whatever embedding API used.")
 
+(defun ekg-embedding-add-schema ()
+  "Add the triples schema for storing embeddings."
+  (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector)))
+
 (defun ekg-embedding-average (embeddings)
   "Compute the average of all of EMBEDDINGS, a list.
 Return the vector embedding. This assumes all embeddings are the
@@ -52,6 +56,13 @@ same size.  There must be at least one embedding passed in."
              (aset v i (/ (aref v i) (length embeddings))))
     v))
 
+(defun ekg-embedding-generate-for-note (note)
+  "Calculate and store the embedding for NOTE."
+  (setf (ekg-note-properties note)
+        (plist-put (ekg-note-properties note)
+                   :embedding/embedding
+                   (ekg-embedding (substring-no-properties (ekg-note-text note))))))
+
 (defun ekg-embedding-generate-all (arg)
   "Generate and store embeddings for every entity.
 It is not necessary for the entity to contain a note. Tags will
@@ -62,7 +73,6 @@ embeddings already exist. This is a fairly slow function, and may
 take minutes or hours depending on how much data there is.."
   (interactive "P")
   (ekg--connect)
-  (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector))
   (cl-loop for s in (ekg-active-note-ids) do
            (let ((note (ekg-get-note-with-id s))
                  (embedding (triples-get-type ekg-db s 'embedding)))
@@ -125,6 +135,10 @@ Returns the vector representing the embedding."
   (pcase ekg-embedding-provider
     ('openapi (ekg-get-embedding-openai text))))
 
+(defun ekg-embedding-delete (id)
+  "Delete embedding for ID."
+  (triples-remove-type ekg-db id 'embedding))
+
 (defun ekg-embedding-get (id)
   "Return the embedding of entity with ID.
 If there is no embedding, return nil."
@@ -173,6 +187,10 @@ The results are in order of most similar to least similar."
      (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
                                                 (ekg-embedding text) 10)))
      nil))
+
+(add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note)
+(add-hook 'ekg-note-delete-hook #'ekg-embedding-delete)
+(add-hook 'ekg-add-schema-hook #'ekg-embedding-add-schema)
 
 (provide 'ekg-embedding)
 
