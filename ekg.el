@@ -134,6 +134,12 @@ The function takes one argument, the field metadata property value.")
   "Alist of properties that can be on the note and their labels.
 The label needs to match the keys in the `ekg-metadata-parsers' alist.")
 
+(defvar ekg-add-schema-hook nil
+  "Hook run when ensuring schema for ekg.
+This is run on connection. Calls to `triples-add-schema' are
+idempotent, so it's recommended to run them without checking if
+the schema already exists.")
+
 (defvar ekg-note-pre-save-hook nil
   "Hook run before saving a note.
 This is not run in the same database transaction as the save. All
@@ -198,7 +204,8 @@ non-nil, it will be used as the filename, otherwise
   (triples-add-schema ekg-db 'person)
   ;; A URL can be a subject too, and has data, including the title. The title is
   ;; something that can be used to select the subject via completion.
-  (triples-add-schema ekg-db 'titled '(title :base/type string)))
+  (triples-add-schema ekg-db 'titled '(title :base/type string))
+  (run-hooks 'ekg-add-schema-hook))
 
 (defun ekg--normalize-note (note)
   "Make sure NOTE adheres to ekg-wide constraints before saving.
