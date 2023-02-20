@@ -133,7 +133,7 @@ closer it is to 1, the more similar it is."
   "Get an embedding of TEXT.
 Returns the vector representing the embedding."
   (pcase ekg-embedding-provider
-    ('openapi (ekg-get-embedding-openai text))))
+    ('openapi (ekg-embedding-openai text))))
 
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."
