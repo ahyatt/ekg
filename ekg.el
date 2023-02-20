@@ -994,10 +994,14 @@ are created with additional tags TAGS."
    (list tag)))
 
 (defun ekg-show-notes-in-trash ()
-  "Show notes that have tags prefixed by tags."
+  "Show notes that have only tags that are trashed."
   (interactive)
-  (ekg-show-notes-with-any-tags
-   (seq-filter #'ekg-tag-trash-p (triples-subjects-of-type ekg-db 'tag))))
+  (ekg-setup-notes-buffer
+   "Trash"
+   (lambda () (mapcar #'ekg-get-note-with-id
+                      (seq-filter (lambda (id) (not (ekg-has-live-tags-p id)))
+                                  (triples-subjects-of-type ekg-db 'text))))
+   nil))
 
 (defun ekg-show-notes-for-today ()
   "Show all notes with today's date as a tag."
