@@ -18,7 +18,7 @@ Editing a note from one of these buffers, or capturing a new note, lets you edit
 both the note's data and the text of the note itself in a buffer.
 
 #+CAPTION: An eample of editing a note
-[[./screenshots/ekg-tag-view.jpg]]
+[[./screenshots/ekg-edit.jpg]]
 
 Additionally, [[https://youtu.be/qxa2VrseFUA][a video demonstration and explanation of ekg]] is on YouTube.
 
