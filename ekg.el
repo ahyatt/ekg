@@ -70,6 +70,12 @@ check for the mode of the buffer."
   :type '(set function)
   :group 'ekg)
 
+(defcustom ekg-notes-size 20
+  "Number of notes when those notes buffers where any amount might
+be appropriate."
+  :type 'integer
+  :group 'ekg)
+
 (defcustom ekg-db-file nil
   "A filename specifying what the ekg database.
 Initially set as nil, which will mean that we use
@@ -127,6 +133,25 @@ The function takes one argument, the field metadata property value.")
 (defvar ekg-metadata-labels '((:titled/title . "Title"))
   "Alist of properties that can be on the note and their labels.
 The label needs to match the keys in the `ekg-metadata-parsers' alist.")
+
+(defvar ekg-note-pre-save-hook nil
+  "Hook run before saving a note.
+This is not run in the same database transaction as the save. All
+functions are passed in the note.")
+
+(defvar ekg-note-save-hook nil
+  "Hook run after saving a note, in the save transaction.
+At this point the note itself has been saved. All functions are
+passed in the note that is being saved.")
+
+(defvar ekg-note-pre-delete-hook nil
+  "Hook run before deleting a note.
+All functions are passed in the ID of the note that is being deleted.")
+
+(defvar ekg-note-delete-hook nil
+  "Hook run after deleting a note.
+This is run in the same transaction as the deletion. All
+functions are passed in the ID of the note that is being deleted.")
 
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties)
@@ -191,6 +216,7 @@ This
   "Save NOTE in database, replacing note information there."
   (ekg--connect)
   (ekg--normalize-note note)
+  (run-hook-with-args ekg-note-pre-save-hook note)
   (triples-with-transaction ekg-db
     (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
     (triples-set-type ekg-db (ekg-note-id note) 'text :text (ekg-note-text note)
@@ -203,7 +229,8 @@ This
                         :modified-time modified-time)
       (setf (ekg-note-modified-time note) modified-time))
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
-    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note)))
+    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
+    (run-hook-with-args ekg-note-save-hook note))
   (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-get-notes-with-tags (tags)
@@ -248,9 +275,12 @@ If the ID does not exist, create a new note with that ID."
 
 (defun ekg-note-delete (id)
   "Delete all note data associated with ID."
-  (triples-with-transaction ekg-db
+  (run-hook-with-args ekg-note-pre-delete-hook id)
+  (triples-with-transaction
+    ekg-db
     (cl-loop for type in '(tagged text time-tracked) do
-             (triples-remove-type ekg-db id type))))
+             (triples-remove-type ekg-db id type))
+   (run-hook-with-args ekg-note-delete-hook id)))
 
 (defun ekg-tag-delete (tag)
   "Delete all tag data associated with tag."
@@ -871,6 +901,7 @@ NAME is displayed at the top of the buffer."
     (ekg-notes-mode)
     (setq-local ekg-notes-ewoc ewoc
                 ekg-notes-fetch-notes-function notes-func
+                ekg-notes-name name
                 ekg-notes-hl (make-overlay 1 1)
                 ekg-notes-tags tags)
     (overlay-put ekg-notes-hl 'face hl-line-face)
@@ -881,7 +912,10 @@ NAME is displayed at the top of the buffer."
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
   (interactive nil ekg-notes-mode)
-  (ekg--show-notes ekg-notes-fetch-notes-function ekg-notes-tags))
+  (ekg--show-notes
+   ekg-notes-name
+   ekg-notes-fetch-notes-function
+   ekg-notes-tags))
 
 (defun ekg-notes-create ()
   "Add a note that by default has all the tags in the buffer."
@@ -968,6 +1002,48 @@ are created with additional tags TAGS."
   "Show all notes with today's date as a tag."
   (interactive)
   (ekg-show-notes-with-tag (car (ekg-date-tag))))
+
+(defun ekg-show-notes-latest-captured (&optional num)
+  "Show the last several notes taken.
+NUM is by default, `ekg-notes-size', which determines how many
+notes to show. But with an prefix ARG, ask the user."
+  (interactive (list (if current-prefix-arg
+                         (read-number "Number of notes to display: ")
+                       ekg-notes-size)))
+  (ekg-setup-notes-buffer
+   "Latest captured notes"
+   (lambda ()
+     (cl-loop for id in (mapcar #'car (sort (triples-with-predicate
+                                             ekg-db
+                                             'time-tracked/creation-time)
+                                            (lambda (trip1 trip2) (> (nth 2 trip1)
+                                                                     (nth 2 trip2)))))
+              until (= (length selected) num)
+              when (ekg-has-live-tags-p id)
+              collect (ekg-get-note-with-id id) into selected
+              finally return selected))
+   nil))
+
+(defun ekg-show-notes-latest-modified (&optional num)
+  "Show the last several notes modified.
+NUM is by default, `ekg-notes-size', which determines how many
+notes to show. But with an prefix ARG, ask the user."
+  (interactive (list (if current-prefix-arg
+                         (read-number "Number of notes to display: ")
+                       ekg-notes-size)))
+  (ekg-setup-notes-buffer
+   "Latest modified notes"
+   (lambda ()
+     (cl-loop for id in (mapcar #'car (sort (triples-with-predicate
+                                             ekg-db
+                                             'time-tracked/modified-time)
+                                            (lambda (trip1 trip2) (> (nth 2 trip1)
+                                                                     (nth 2 trip2)))))
+              until (= (length selected) num)
+              when (ekg-has-live-tags-p id)
+              collect (ekg-get-note-with-id id) into selected
+              finally return selected))
+   nil))
 
 (defun ekg-document-titles ()
   "Return an alist of all titles.
