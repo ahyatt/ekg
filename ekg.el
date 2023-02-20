@@ -134,6 +134,25 @@ The function takes one argument, the field metadata property value.")
   "Alist of properties that can be on the note and their labels.
 The label needs to match the keys in the `ekg-metadata-parsers' alist.")
 
+(defvar ekg-note-pre-save-hook nil
+  "Hook run before saving a note.
+This is not run in the same database transaction as the save. All
+functions are passed in the note.")
+
+(defvar ekg-note-save-hook nil
+  "Hook run after saving a note, in the save transaction.
+At this point the note itself has been saved. All functions are
+passed in the note that is being saved.")
+
+(defvar ekg-note-pre-delete-hook nil
+  "Hook run before deleting a note.
+All functions are passed in the ID of the note that is being deleted.")
+
+(defvar ekg-note-delete-hook nil
+  "Hook run after deleting a note.
+This is run in the same transaction as the deletion. All
+functions are passed in the ID of the note that is being deleted.")
+
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties)
 
@@ -197,6 +216,7 @@ This
   "Save NOTE in database, replacing note information there."
   (ekg--connect)
   (ekg--normalize-note note)
+  (run-hook-with-args ekg-note-pre-save-hook note)
   (triples-with-transaction ekg-db
     (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
     (triples-set-type ekg-db (ekg-note-id note) 'text :text (ekg-note-text note)
@@ -209,7 +229,8 @@ This
                         :modified-time modified-time)
       (setf (ekg-note-modified-time note) modified-time))
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
-    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note)))
+    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
+    (run-hook-with-args ekg-note-save-hook note))
   (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-get-notes-with-tags (tags)
@@ -254,9 +275,12 @@ If the ID does not exist, create a new note with that ID."
 
 (defun ekg-note-delete (id)
   "Delete all note data associated with ID."
-  (triples-with-transaction ekg-db
+  (run-hook-with-args ekg-note-pre-delete-hook id)
+  (triples-with-transaction
+    ekg-db
     (cl-loop for type in '(tagged text time-tracked) do
-             (triples-remove-type ekg-db id type))))
+             (triples-remove-type ekg-db id type))
+   (run-hook-with-args ekg-note-delete-hook id)))
 
 (defun ekg-tag-delete (tag)
   "Delete all tag data associated with tag."
