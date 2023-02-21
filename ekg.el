@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.2.3") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.1
+;; Version: 0.1.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -191,7 +191,10 @@ This
   (ekg--normalize-note note)
   (triples-with-transaction ekg-db
     (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
-    (triples-set-type ekg-db (ekg-note-id note) 'text :text (ekg-note-text note)
+    ;; Remove properties from notes, they take up a lot of room and occasionally
+    ;; they cannot be read back out of the database.
+    (triples-set-type ekg-db (ekg-note-id note) 'text
+                      :text (substring-no-properties (ekg-note-text note))
                       :mode (ekg-note-mode note))
     ;; Note that we recalculate modified time here, since we are modifying the
     ;; entity.
