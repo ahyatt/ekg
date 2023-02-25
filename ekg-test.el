@@ -27,7 +27,7 @@
 
 (defmacro ekg-deftest (name _ &rest body)
   "A test that will set up an empty `ekg-db' for use."
-  (declare (debug t) (indent 2))
+  (declare (debug t) (indent defun))
   `(ert-deftest ,name ()
      (let ((ekg-db-file (make-temp-file "ekg-test"))
            (ekg-db nil)
@@ -121,11 +121,19 @@
   (should (equal (ekg-document-titles) (list (cons "http://testurl/v2" "A URL used for testing")))))
 
 (ekg-deftest ekg-test-sort-nondestructive ()
-  (mapcar #'ekg-save-note
+  (mapc #'ekg-save-note
       (list (ekg-note-create "a" ekg-capture-default-mode '("tag/a"))
             (ekg-note-create "b" ekg-capture-default-mode '("tag/b"))))
   (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
   (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tag/a tag/b")))
+
+(ekg-deftest ekg-test-note-roundtrip ()
+  (let ((text "foo\n\tbar \"baz\" ☃"))
+    (ekg-save-note (ekg-note-create text #'text-mode '("test")))
+    (let ((note (car (ekg-get-notes-with-tag "test"))))
+      (should (ekg-note-id note))
+      (should (equal text (ekg-note-text note)))
+      (should (equal 'text-mode (ekg-note-mode note))))))
 
 (provide 'ekg-test)
 
