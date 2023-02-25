@@ -652,7 +652,10 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (when finished
     (save-excursion
       (when (search-backward (format ",%s" completion) (line-beginning-position) t)
-        (replace-match (format ", %s" completion))))))
+        (replace-match (format ", %s" completion)))
+      (when (search-backward (format ":%s" completion) (line-beginning-position) t)
+        (replace-match (format ": %s" completion)))
+      (run-hook-with-args 'ekg-note-add-tag-hook completion))))
 
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
@@ -660,7 +663,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                (skip-chars-forward "^,\t\n")
                (point)))
         (start (save-excursion
-                 (skip-chars-backward "^,\t\n")
+                 (skip-chars-backward "^,\t\n:")
                  (point))))
     (list start end (completion-table-dynamic
                      (lambda (_) (ekg-tags)))
