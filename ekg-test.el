@@ -135,6 +135,14 @@
       (should (equal text (ekg-note-text note)))
       (should (equal 'text-mode (ekg-note-mode note))))))
 
+(ekg-deftest ekg-test-templating ()
+  (ekg-save-note (ekg-note-create "ABC" #'text-mode '("test" "template")))
+  (ekg-save-note (ekg-note-create "DEF" #'text-mode '("test" "template")))
+  (ekg-capture)
+  (let ((text (substring-no-properties (buffer-string))))
+    (should (string-match (rx (literal "ABC")) text))
+    (should (string-match (rx (literal "DEF")) text))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here
