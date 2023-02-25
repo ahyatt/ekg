@@ -237,6 +237,15 @@ Resources, whether URLs or other types to come in the future, will be displayed
 if they exist for a note, in the metadata field, as "Resource". The resource can
 be changed there, but if it is changed, any other data referring to this
 resource will also be changed along with it.
+* Templates
+By default, ekg has basic templating capabilities. When a tag is added, ekg
+looks to see if there is one or more notes with that tag and the special
+"template" tag. All tags fitting that criteria will have their text added to the
+current buffer.  The special tag can change by customizing ~ekg-template-tag~.
+
+This templating happens on note creation and when tags are added in the buffer
+via completion. Currently we don't have a way to detect tags being added if
+completion is not used.
 * The trash
 When a tag is removed, it is kept around, but prefixed by "trash/". When it is
 deleted, all tags are prefixed by "trash/". This is a special tag type that is

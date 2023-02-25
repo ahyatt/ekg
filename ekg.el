@@ -85,6 +85,12 @@ by `ekg-db-file-obsolete' exists, that is used instead."
   :type 'file
   :group 'ekg)
 
+(defcustom ekg-template-tag "template"
+  "Special tag that will hold templates for other tags.
+See `ekg-on-add-tag-insert-template' for details on how this works."
+  :type '(string :tag "tag")
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -158,6 +164,11 @@ All functions are passed in the ID of the note that is being deleted.")
   "Hook run after deleting a note.
 This is run in the same transaction as the deletion. All
 functions are passed in the ID of the note that is being deleted.")
+
+(defvar ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)
+  "Hook is run after a new tag is added to note.
+This includes new notes that start with tags. All functions are
+passed the tag, and run in the buffer editing the note.")
 
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties)
@@ -539,6 +550,7 @@ If SUBJECT is given, force the triple subject to be that value."
     (setf (ekg-note-properties ekg-note) properties)
     (ekg-edit-display-metadata)
     (goto-char (point-max))
+    (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag)) (ekg-note-tags ekg-note))
     (switch-to-buffer-other-window buf)))
 
 (defun ekg-capture-url (&optional url title)
@@ -652,7 +664,10 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (when finished
     (save-excursion
       (when (search-backward (format ",%s" completion) (line-beginning-position) t)
-        (replace-match (format ", %s" completion))))))
+        (replace-match (format ", %s" completion)))
+      (when (search-backward (format ":%s" completion) (line-beginning-position) t)
+        (replace-match (format ": %s" completion)))
+      (run-hook-with-args 'ekg-note-add-tag-hook completion))))
 
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
@@ -660,7 +675,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                (skip-chars-forward "^,\t\n")
                (point)))
         (start (save-excursion
-                 (skip-chars-backward "^,\t\n")
+                 (skip-chars-backward "^,\t\n:")
                  (point))))
     (list start end (completion-table-dynamic
                      (lambda (_) (ekg-tags)))
@@ -1092,6 +1107,23 @@ If no corresponding URL is found, an error is thrown."
   "Get a list of ekg-note objects, representing all active notes.
 Active in this context means non-trashed."
   (seq-filter #'ekg-has-live-tags-p (triples-subjects-of-type ekg-db 'text)))
+
+(defun ekg-on-add-tag-insert-template (tag)
+  "Look for templates for TAG, and insert into current buffer.
+This looks for notes with tags TAG and `template', and for any
+found, insert, one by one, into the current note."
+  (mapc (lambda (template)
+          (save-excursion (goto-char (point-max))
+                          ;; Don't insert the same string twice, which is
+                          ;; sometimes possible when templates have more than
+                          ;; one tag overlapping with the current note.
+                          (unless (string-match (rx (literal (ekg-note-text template)))
+                                        (buffer-substring-no-properties (+ 1 (overlay-end (ekg--metadata-overlay)))
+                                                                        (point-max)))
+                            (unless (looking-at (rx (seq line-start line-end)))
+                              (insert "\n"))
+                            (insert (ekg-note-text template)))))
+        (ekg-get-notes-with-tags (list tag ekg-template-tag))))
 
 ;; Auto-tag functions
 
