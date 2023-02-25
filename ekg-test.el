@@ -34,7 +34,7 @@
            (orig-buffers (buffer-list)))
        (ekg--connect)
        (save-excursion
-         (unwind-protect 
+         (unwind-protect
              (progn ,@body)
            ;; Kill all opened bufferes
            (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers)))))))
@@ -90,7 +90,7 @@
   (ekg-note-create "" 'text-mode '("a" "b"))
   (let* ((tag-buf (ekg-show-notes-with-any-tags '("a" "b"))))
     (unwind-protect
-     (progn 
+     (progn
        ;; Can we store a link?
        (with-current-buffer tag-buf
          (org-store-link nil 1)
@@ -122,8 +122,8 @@
 
 (ekg-deftest ekg-test-sort-nondestructive ()
   (mapcar #'ekg-save-note
-	  (list (ekg-note-create "a" ekg-capture-default-mode '("tag/a"))
-		    (ekg-note-create "b" ekg-capture-default-mode '("tag/b"))))
+      (list (ekg-note-create "a" ekg-capture-default-mode '("tag/a"))
+            (ekg-note-create "b" ekg-capture-default-mode '("tag/b"))))
   (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
   (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tag/a tag/b")))
 
