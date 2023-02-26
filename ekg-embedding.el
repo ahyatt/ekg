@@ -49,7 +49,9 @@ Needs to be recognized by `ekg-embedding'."
   "Compute the average of all of EMBEDDINGS, a list.
 Return the vector embedding. This assumes all embeddings are the
 same size.  There must be at least one embedding passed in."
-  (let ((v (make-vector (length (car embeddings)) 0)))
+  ;; Remove all nil embeddings
+  (let* ((embeddings (seq-filter #'identity embeddings))
+         (v (make-vector (length (car embeddings)) 0)))
     (cl-loop for e in embeddings do
              (cl-loop for i below (length e) do
                       (aset v i (+ (aref v i) (aref e i)))))
@@ -62,7 +64,19 @@ same size.  There must be at least one embedding passed in."
   (setf (ekg-note-properties note)
         (plist-put (ekg-note-properties note)
                    :embedding/embedding
-                   (ekg-embedding (substring-no-properties (ekg-note-text note))))))
+                   (ekg-embedding (substring-no-properties (ekg-note-text note)))))
+  (cl-loop for tag in (ekg-note-tags note) do
+           (ekg-embedding-refresh-tag-embedding tag)))
+
+(defun ekg-embedding-refresh-tag-embedding (tag)
+  "Refresh the embedding for TAG.
+The embedding for TAG is recomputed by averaging all the
+embeddings of notes with the given tag."
+  (let ((embeddings (cl-loop for tagged in
+                             (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
+                             collect (plist-get (triples-get-type ekg-db tagged 'embedding)
+                                                :embedding))))
+    (triples-set-type ekg-db tag 'embedding :embedding (ekg-embedding-average embeddings))))
 
 (defun ekg-embedding-generate-all (arg)
   "Generate and store embeddings for every entity.
@@ -82,11 +96,7 @@ take minutes or hours depending on how much data there is.."
                (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
                                                                  (substring-no-properties (ekg-note-text note)))))))
   (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
-           (let ((embeddings (cl-loop for tagged in
-                                      (plist-get (triples-get-type ekg-db s 'tag) :tagged)
-                                      collect (plist-get (triples-get-type ekg-db tagged 'embedding)
-                                                         :embedding))))
-             (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding-average embeddings))))
+           (ekg-embedding-refresh-tag-embedding s))
   (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
