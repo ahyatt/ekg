@@ -47,6 +47,7 @@ The README is also informative, has screenshots, and can be found in the source 
 * Backups::
 * Database maintenance::
 * Customizing ekg with hooks::
+* Integration with ekg::
 * Extras::
 
 @detailmenu
@@ -288,6 +289,12 @@ The adding of templates happens whether intially when setting up the capture buf
 
 The other tag searched for can be changed by customizing @code{ekg-template-tag}, which by default is just "template".
 
+This functionality is enabled through the function @samp{ekg-on-add-tag-insert-template} in the variable @code{ekg-note-add-tag-hook}, and can be turned off from removing it from that hook.
+
+@lisp
+(remove-hook 'ekg-note-add-tag-hook #'ekg-on-add-tag-insert-template)
+@end lisp
+
 @node Changing the initial tags of a note
 @section Changing the initial tags of a note
 
@@ -404,6 +411,35 @@ The @code{ekg-note-pre-save-hook} is called before saving a note, and @code{ekg-
 The @code{ekg-note-delete-hook} is called when deleting a note.
 
 The @code{ekg-note-add-tag-hook} is called when adding a tag, either via the initial tags added to a new note, or tags added after completing a new tag in the note's property list.
+
+@node Integration with ekg
+@chapter Integration with ekg
+
+The ekg package is designed to be easy to integrate with.  For example, if you want create a note automatically in one of your functions, you can write:
+
+@lisp
+(defun my/log-to-ekg (text)
+  "Log TEXT as a note to EKG's date"
+  (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))
+@end lisp
+
+@noindent
+If you wanted to re-use an existing note and append to it, you can do that as well.
+
+@lisp
+(defun my/log-to-ekg (text)
+  "Log TEXT as a note to EKG's date, appending if possible."
+  (let ((notes (ekg-get-notes-with-tags (list (ekg-tag-for-date) "log"))))
+    (if notes
+        (progn
+          (setf (ekg-note-text (car notes)) (concat (ekg-note-text (car notes)) "\n" text))
+          (ekg-save-note (car notes)))
+      (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))))
+@end lisp
+
+There isn't a special API, but the basic defuns such as @code{ekg-save-note}, @code{ekg-note-create-text}, @code{ekg-get-notes-with-tags}, @code{ekg-get-note-with-id}, along with the struct @code{ekg-note} are good starting points.
+
+If you add schema and you want the user to be able to modify it, you should supply new alist entries to @code{ekg-metadata-parsers}, and @code{ekg-metadata-labels}.
 
 @node Extras
 @chapter Extras

@@ -155,6 +155,12 @@ For example, if there is a note with tags, "daily reflection" and "template", wi
 The adding of templates happens whether intially when setting up the capture buffer, or later when the users completes a tag. Tags added without completion won't trigger this behavior, since at the moment ekg will not be able to understand that a tag has changed.
 
 The other tag searched for can be changed by customizing ~ekg-template-tag~, which by default is just "template".
+
+This functionality is enabled through the function =ekg-on-add-tag-insert-template= in the variable ~ekg-note-add-tag-hook~, and can be turned off from removing it from that hook.
+
+#+begin_src emacs-lisp
+(remove-hook 'ekg-note-add-tag-hook #'ekg-on-add-tag-insert-template)
+#+end_src
 ** Changing the initial tags of a note
 The variable ~ekg-capture-auto-tag-funcs~ has a list of functions to call to add tags. Each function is called, and returns a list (or ~nil~, the empty list), which are all added to a new note. By default, this variable has the function =ekg-date-tag=, which returns the tag of today's date. If you do not want this, you can remove this function. You can also add your own functions to add the year, the week number, or any tag you feel is appropriate.
 * Viewing tags or notes
@@ -239,6 +245,31 @@ The ~ekg-note-pre-save-hook~ is called before saving a note, and ~ekg-note-save-
 The ~ekg-note-delete-hook~ is called when deleting a note.
 
 The ~ekg-note-add-tag-hook~ is called when adding a tag, either via the initial tags added to a new note, or tags added after completing a new tag in the note's property list.
+* Integration with ekg
+The ekg package is designed to be easy to integrate with.  For example, if you want create a note automatically in one of your functions, you can write:
 
+  #+begin_src emacs-lisp
+  (defun my/log-to-ekg (text)
+    "Log TEXT as a note to EKG's date"
+    (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))
+#+end_src
+
+#+texinfo: @noindent
+If you wanted to re-use an existing note and append to it, you can do that as well.
+
+#+begin_src emacs-lisp
+(defun my/log-to-ekg (text)
+  "Log TEXT as a note to EKG's date, appending if possible."
+  (let ((notes (ekg-get-notes-with-tags (list (ekg-tag-for-date) "log"))))
+    (if notes
+        (progn
+          (setf (ekg-note-text (car notes)) (concat (ekg-note-text (car notes)) "\n" text))
+          (ekg-save-note (car notes)))
+      (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))))
+#+end_src
+
+There isn't a special API, but the basic defuns such as ~ekg-save-note~, ~ekg-note-create-text~, ~ekg-get-notes-with-tags~, ~ekg-get-note-with-id~, along with the struct ~ekg-note~ are good starting points.
+
+If you add schema and you want the user to be able to modify it, you should supply new alist entries to ~ekg-metadata-parsers~, and ~ekg-metadata-labels~.
 * Extras
 The ekg module can have any number of functionality additions. These may appear as other packages with other maintainers, but some are included as part of this package.
