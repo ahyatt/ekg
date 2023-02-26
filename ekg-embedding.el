@@ -176,7 +176,7 @@ The results are in order of most similar to least similar."
   (let ((note (ekg--current-note-or-error)))
     (ekg-setup-notes-buffer
      (format "similar to note \"%s\"" (ekg-note-snippet note))
-     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-to-id (ekg-note-id note) 10)))
+     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size)))
      (ekg-note-tags note))))
 
 (defun ekg-embedding-search (&optional text)
@@ -185,7 +185,7 @@ The results are in order of most similar to least similar."
   (ekg-setup-notes-buffer
      (format "similar to \"%s\"" text)
      (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
-                                                (ekg-embedding text) 10)))
+                                                (ekg-embedding text) ekg-notes-size)))
      nil))
 
 (add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note)
