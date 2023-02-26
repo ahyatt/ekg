@@ -33,8 +33,9 @@
 ;;; Code:
 
 (defcustom ekg-embedding-provider 'openapi
-  "The provider of the embedding."
-  :type '(choice (const :tag "Open API" 'openapi))
+  "The provider of the embedding.
+Needs to be recognized by `ekg-embedding'."
+  :type '(symbol)
   :group 'ekg-embedding)
 
 (defconst ekg-embedding-api-key nil
@@ -102,14 +103,16 @@ closer it is to 1, the more similar it is."
 (defun ekg-embedding-dot-product (v1 v2)
   "Calculate the dot produce of vectors V1 and V2."
   (let ((result 0))
-    (dotimes (i (length v1) result)
-      (setq result (+ result (* (aref v1 i) (aref v2 i)))))))
+    (dotimes (i (length v1))
+      (setq result (+ result (* (aref v1 i) (aref v2 i)))))
+    result))
 
 (defun ekg-embedding-magnitude (v)
   "Calculate magnitude of vector V."
   (let ((sum 0))
-    (dotimes (i (length v) (sqrt sum))
-      (setq sum (+ sum (* (aref v i) (aref v i)))))))
+    (dotimes (i (length v))
+      (setq sum (+ sum (* (aref v i) (aref v i)))))
+    (sqrt sum)))
 
 (defun ekg-embedding-openai (text)
   "Get an embedding of TEXT from Open AI API."
