@@ -44,6 +44,8 @@ The README is also informative, has screenshots, and can be found in the source 
 * Viewing tags or notes::
 * The trash::
 * Links to ekg in org-mode::
+* Importing from org-roam and logseq::
+* Importing from org-roam::
 * Backups::
 * Database maintenance::
 * Customizing ekg with hooks::
@@ -372,6 +374,24 @@ If all of a notes tags are trashed, then the note itself is considered to be tra
 @chapter Links to ekg in org-mode
 
 Both notes in ekg and certain note list buffers can be stored and linked to in org-mode. To store a link to a note, you have to edit that note and call @samp{org-store-link}. That function can also be called in a @samp{ekg-notes-mode} buffer created by @samp{ekg-show-notes-with-any-tags}. Other list types currently will just store their tags assuming the user wants a link to a list with any of the tags in the list.
+
+@node Importing from org-roam and logseq
+@chapter Importing from org-roam and logseq
+
+@node Importing from org-roam
+@chapter Importing from org-roam
+
+You can import your notes from org-roam. This will turn all titles into tags, and all links will become tags as well. At the moment, this is done via executing elisp, since importing can be fairly idiosyncratic, and ekg and org-roam have different ways of expressing the same thing that you may want to change. It's best if you looked over @samp{ekg-org-roam.el} and see what is going on, but at least read the following description before manually executing @code{(ekg-org-roam-import)}.
+
+The import is idempotent, so it always will import to the same entities, overwriting older data with new data. If you want to update what is in ekg, you can just rerun the import. In the import, titles and tags will have any commas removed, since commas are commonly used in multiple completion as a separator, so anything with commas would otherwise cause problems when selected. If you have tags you want to turn into prefixes (which is a good idea for tags widely applied, which essentially act as a categorization), you can add those tags to the list at @code{ekg-org-roam-import-tag-to-prefix}. For example,
+
+@lisp
+(setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
+@end lisp
+
+Then, when a note is found that is tagged with "idea", but with title "emacs is a powerful tool", then the title in org-roam will be turned into the ekg tag "idea/emacs is a powerful tool", and anything linked with it will also get the same prefix.
+
+Logseq is also imported as well when @samp{ekg-org-roam-import} is executed, if any files are found.  There isn't true compatability, since ekg does not support many logseq functions.
 
 @node Backups
 @chapter Backups
