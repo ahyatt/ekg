@@ -871,7 +871,7 @@ tags."
   (interactive nil ekg-notes-mode)
   (let ((note (ekg--current-note-or-error))
         (inhibit-read-only t))
-    (when (y-or-n-p "Or you sure you want to delete this note?")
+    (when (y-or-n-p "Are you sure you want to delete this note?")
       (ekg-note-trash note)
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
