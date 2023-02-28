@@ -1,4 +1,4 @@
-;;; ekg-embeddings.el --- Creating and using embeddings for ekg -*- lexical-binding: t -*-
+;;; ekg-embeddings.el --- Create and use embeddings for ekg -*- lexical-binding: t -*-
 
 ;; Copyright (c) 2023  Andrew Hyatt <ahyatt@gmail.com>
 
