@@ -80,6 +80,10 @@ Viewing tags or notes
 * Commands in the notes buffer::
 * Customizing note display in @samp{ekg-notes-mode}::
 
+Extras
+
+* Embeddings::
+
 @end detailmenu
 @end menu
 
@@ -465,5 +469,29 @@ If you add schema and you want the user to be able to modify it, you should supp
 @chapter Extras
 
 The ekg module can have any number of functionality additions. These may appear as other packages with other maintainers, but some are included as part of this package.
+
+@menu
+* Embeddings::
+@end menu
+
+@node Embeddings
+@section Embeddings
+
+The embeddings functionality can be turned on by requiring the embeddings file, such as:
+
+@lisp
+(require 'ekg-embedding)
+@end lisp
+
+This module contains functionality to explore similar notes and search using techniques associated with large language models. The idea behind an embedding is that it is an abstract representation of text, represented as a multi-dimensional vector. Because it is just a vector, you can compare the distance between different embeddings, and embedding vectors that are similar should represent similar concepts. This can be used to find similar notes, but also to search, where the search string is transformed into an embedding.
+
+Using embeddings in ekg are dependent on an API to transform text into embeddings. This is not something that can be done locally. Right now such APIs are rare, but Open AI does offer this, so this is what we support out of the box.
+
+To get started, @uref{https://openai.com/join/, sign up for Open AI} and get an API key, which you should store in @code{ekg-embedding-api-key}. I highly recommend you set limits to how much you can be charged per month. Fortunately, calculating embeddings is cheap, and should cost much less than 1 USD for all but the largest databases.
+
+Important: @strong{your API key is a secret key, so do not store it anywhere it can be seen, such as a public git repository}.
+
+Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
+embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.
 
 @bye
