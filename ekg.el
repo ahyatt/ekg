@@ -255,19 +255,17 @@ This
   (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-get-notes-with-tags (tags)
-  "Get all notes with TAGS, returning a list of `ekg-note' structs."
+  "Get all notes with TAGS, returning a list of `ekg-note' structs.
+This returns only notes that have all the tags in TAGS."
   (ekg--connect)
-  (cl-loop for tag in tags
-           with results = nil
-           do
-           (when-let (tag-ids (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
-             (setq results
-                   (if results (seq-intersection tag-ids results)
-                     tag-ids)))
-           finally return
-           (cl-loop for id in results
-                    collect
-                    (ekg-get-note-with-id id))))
+  (let ((ids-by-tag
+         (mapcar (lambda (tag)
+                   (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+                 tags)))
+    (mapcar #'ekg-get-note-with-id
+            (seq-reduce #'seq-intersection
+                        ids-by-tag
+                        (car ids-by-tag)))))
 
 (defun ekg-get-notes-with-tag (tag)
   "Get all notes with TAG, returning a list of `ekg-note' structs."

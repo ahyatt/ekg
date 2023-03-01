@@ -31,7 +31,14 @@
   `(ert-deftest ,name ()
      (let ((ekg-db-file (make-temp-file "ekg-test"))
            (ekg-db nil)
-           (orig-buffers (buffer-list)))
+           (orig-buffers (buffer-list))
+           ;; Remove hooks
+           (ekg-add-schema-hook nil)
+           (ekg-note-pre-save-hook nil)
+           (ekg-note-save-hook nil)
+           (ekg-note-pre-delete-hook nil)
+           (ekg-note-delete-hook nil)
+           (ekg-note-add-tag-hook nil))
        (ekg--connect)
        (save-excursion
          (unwind-protect
@@ -138,10 +145,17 @@
 (ekg-deftest ekg-test-templating ()
   (ekg-save-note (ekg-note-create "ABC" #'text-mode '("test" "template")))
   (ekg-save-note (ekg-note-create "DEF" #'text-mode '("test" "template")))
-  (ekg-capture)
-  (let ((text (substring-no-properties (buffer-string))))
-    (should (string-match (rx (literal "ABC")) text))
-    (should (string-match (rx (literal "DEF")) text))))
+  (let ((ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)))
+    (ekg-capture '("test"))
+    (let ((text (substring-no-properties (buffer-string))))
+      (should (string-match (rx (literal "ABC")) text))
+      (should (string-match (rx (literal "DEF")) text)))))
+
+(ekg-deftest ekg-test-get-notes-with-tags ()
+  (ekg-save-note (ekg-note-create "ABC" #'text-mode '("foo" "bar")))
+  (should-not (ekg-get-notes-with-tags '("foo" "none")))
+  (should-not (ekg-get-notes-with-tags '("none" "foo")))
+  (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
 
 (provide 'ekg-test)
 
