@@ -64,7 +64,6 @@ same size.  There must be at least one embedding passed in."
   "Calculate and set the embedding for NOTE.
 The caller is responsible for storing the embedding, this just
 updates NOTE."
-  (message "Generating embedding for note %s" (ekg-note-id note))
   (setf (ekg-note-properties note)
         (plist-put (ekg-note-properties note)
                    :embedding/embedding
