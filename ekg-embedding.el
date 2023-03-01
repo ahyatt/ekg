@@ -61,7 +61,10 @@ same size.  There must be at least one embedding passed in."
     v))
 
 (defun ekg-embedding-generate-for-note (note)
-  "Calculate and store the embedding for NOTE."
+  "Calculate and set the embedding for NOTE.
+The caller is responsible for storing the embedding, this just
+updates NOTE."
+  (message "Generating embedding for note %s" (ekg-note-id note))
   (setf (ekg-note-properties note)
         (plist-put (ekg-note-properties note)
                    :embedding/embedding
