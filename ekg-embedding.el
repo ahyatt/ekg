@@ -204,6 +204,15 @@ The results are in order of most similar to least similar."
                                                 (ekg-embedding text) ekg-notes-size)))
      nil))
 
+(defun ekg-embedding-show-similar-to-current-buffer ()
+  "Show similar notes to the text in the current buffer."
+  (interactive)
+  (ekg-setup-notes-buffer
+     (format "similar to buffer \"%s\"" (buffer-name (current-buffer)))
+     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
+                                                (ekg-embedding (buffer-string)) ekg-notes-size)))
+     nil))
+
 (add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note)
 (add-hook 'ekg-note-delete-hook #'ekg-embedding-delete)
 (add-hook 'ekg-add-schema-hook #'ekg-embedding-add-schema)
