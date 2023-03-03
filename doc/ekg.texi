@@ -147,19 +147,31 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 
 @itemize
 @item
-Added various hooks to enable customization
+Added hooks @code{ekg-add-schema-hook}, @code{ekg-note-pre-save-hook}, @code{ekg-note-save-hook}, @code{ekg-note-delete-hook}, and @code{ekg-note-add-tag-hook}  to enable customization.
 @item
-New functions @samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, for showing notes created or modified recently
+New commands @samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, for showing notes created or modified recently.
 @item
-Added templating
+Introduced variable @code{ekg-notes-size} to control the default page size for limited views such as @samp{ekg-show-notes-latest-captured}.
+@item
+Added templating.
 @item
 Added embedding as an optional add-on, to enable note similarity and note search; requires an account at OpenAI or similar embedding provider.
+@item
+Added new function @code{ekg-active-notes} to easily get all non-trashed notes.
+@item
+Improved ability to have note list buffers that have flexible titles and operation, notably improving the @samp{ekg-show-notes-in-trash} command.
+@item
+Added the documentation you are reading right now.
+@item
+Fixed bug interfering with completion at the beginning of the tag property line.
+@item
+Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
 @end itemize
 
 @node Database
 @chapter Database
 
-By default, ekg uses the default triple database, which is set in the variable @code{triples-default-database-filename}. You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable @code{ekg-eb-file}. When this is @code{nil}, it uses the filename up to the triples package.
+By default, ekg uses the default triple database, which is set in the variable @code{triples-default-database-filename}. The default value of this is @samp{~/.emacs.d/triples.db}.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable @code{ekg-eb-file}. When this is @code{nil}, it uses the filename up to the triples package.
 
 @node Concepts and data model in ekg
 @chapter Concepts and data model in ekg
