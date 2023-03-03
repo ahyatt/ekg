@@ -1112,18 +1112,19 @@ Active in this context means non-trashed."
   "Look for templates for TAG, and insert into current buffer.
 This looks for notes with tags TAG and `template', and for any
 found, insert, one by one, into the current note."
-  (mapc (lambda (template)
-          (save-excursion (goto-char (point-max))
-                          ;; Don't insert the same string twice, which is
-                          ;; sometimes possible when templates have more than
-                          ;; one tag overlapping with the current note.
-                          (unless (string-match (rx (literal (ekg-note-text template)))
-                                        (buffer-substring-no-properties (+ 1 (overlay-end (ekg--metadata-overlay)))
-                                                                        (point-max)))
-                            (unless (looking-at (rx (seq line-start line-end)))
-                              (insert "\n"))
-                            (insert (ekg-note-text template)))))
-        (ekg-get-notes-with-tags (list tag ekg-template-tag))))
+  (unless (equal tag ekg-template-tag)
+    (mapc (lambda (template)
+            (save-excursion (goto-char (point-max))
+                            ;; Don't insert the same string twice, which is
+                            ;; sometimes possible when templates have more than
+                            ;; one tag overlapping with the current note.
+                            (unless (string-match (rx (literal (ekg-note-text template)))
+                                          (buffer-substring-no-properties (+ 1 (overlay-end (ekg--metadata-overlay)))
+                                                                          (point-max)))
+                              (unless (looking-at (rx (seq line-start line-end)))
+                                (insert "\n"))
+                              (insert (ekg-note-text template)))))
+          (ekg-get-notes-with-tags (list tag ekg-template-tag)))))
 
 ;; Auto-tag functions
 
