@@ -856,7 +856,7 @@ Raise an error if there is no current note."
 If TAG is nil, it will be read, selecting from the list of the current note's
 tags."
   (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg--current-note-or-error))))
-              ekg-notes-mode)
+               ekg-notes-mode)
   (ekg-show-notes-with-tag tag))
 
 (defun ekg-notes-open ()
