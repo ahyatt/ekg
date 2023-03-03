@@ -28,6 +28,7 @@
 ;; It is highly recommended that you byte-compile this, or, better yet,
 ;; native-compile this, due to the amount of calculations that happen.
 
+(require 'ekg)
 (require 'request)
 
 ;;; Code:
