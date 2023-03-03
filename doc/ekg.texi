@@ -161,6 +161,8 @@ Added new function @code{ekg-active-notes} to easily get all non-trashed notes.
 @item
 Improved ability to have note list buffers that have flexible titles and operation, notably improving the @samp{ekg-show-notes-in-trash} command.
 @item
+Standardized buffer names for @samp{ekg-notes-mode} buffers, which all are prepended with "ekg" and surrounded by asterisks, to denote that they are non-file-based.
+@item
 Added the documentation you are reading right now.
 @item
 Fixed bug interfering with completion at the beginning of the tag property line.

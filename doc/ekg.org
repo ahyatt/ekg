@@ -63,6 +63,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 - Added embedding as an optional add-on, to enable note similarity and note search; requires an account at OpenAI or similar embedding provider.
 - Added new function ~ekg-active-notes~ to easily get all non-trashed notes.
 - Improved ability to have note list buffers that have flexible titles and operation, notably improving the =ekg-show-notes-in-trash= command.
+- Standardized buffer names for =ekg-notes-mode= buffers, which all are prepended with "ekg" and surrounded by asterisks, to denote that they are non-file-based.
 - Added the documentation you are reading right now.
 - Fixed bug interfering with completion at the beginning of the tag property line.
 - Fix for ~ekg-notes-refresh~ incorrectly calling ~ekg--show-notes~.

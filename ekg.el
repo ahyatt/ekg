@@ -977,9 +977,11 @@ NAME is displayed at the top of the buffer."
 
 (defun ekg-setup-notes-buffer (name notes-func tags)
   "Set up and display new buffer with NAME.
+NAME is the base name, to which ekg will be prepended, and
+asterisks will surround (to indicate a non-file-based buffer).
 NOTES-FUNC is used to get the list of notes to display. New notes
 are created with additional tags TAGS."
-  (let ((buf (get-buffer-create name)))
+  (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
     (display-buffer buf)))
