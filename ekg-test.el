@@ -99,11 +99,8 @@
     (unwind-protect
         (progn
           ;; Can we store a link?
-          (message "Checkpoint 0")
           (with-current-buffer tag-buf
-            (message "Checkpoint 1")
             (org-store-link nil 1)
-            (message "Checkpoint 2")
             (should (car org-stored-links)))
           (with-temp-buffer
             ;; Does the link look correct?
