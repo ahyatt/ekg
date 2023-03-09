@@ -153,7 +153,7 @@ Title: An example URL
 A final way to capture notes comes from a buffer that is viewing a list of notes, in =ekg-notes-mode=. You can call =ekg-notes-create=, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
 
 #+texinfo: @noindent
-To save any note that is being captured, press =C-c C-c= or call =ekg-capture-finalize=. To cancel, just kill the buffer.
+To save any note that is being captured, press =C-c C-c= or call =ekg-capture-finalize=. If you want to save the note but continue editing it, press =C-x C-s=. To cancel, just kill the buffer.
 ** Templates
 Ekg comes with a built-in way to have templates. When a note adds a tag, ekg searches for notes with both the tag added, and the tag "template". Any note with those two tags will be added by default to the text of the buffer.
 

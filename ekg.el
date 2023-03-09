@@ -350,6 +350,7 @@ not supplied, we use a default of 10."
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
+    (define-key map (kbd "C-x C-s") #'ekg-capture-and-continue)
     map)
   "Key map for `ekg-capture-mode', a minor mode.
 This is used when capturing new notes.")
@@ -770,6 +771,12 @@ The metadata fields are comma separated."
                           (seq-intersection (ekg-note-tags note)
                                             ekg-notes-tags))
                  (ewoc-enter-last ekg-notes-ewoc note))))))
+
+(defun ekg-capture-and-continue ()
+  "Store the current note and continue editing the buffer."
+  (interactive nil ekg-capture-mode)
+  (ekg--update-from-metadata)
+  (ekg--save-note-in-buffer))
 
 (defun ekg-tag-trash-p (tag)
   "Return non-nil if TAG is part of the trash."
