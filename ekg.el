@@ -1040,6 +1040,7 @@ notes to show. But with an prefix ARG, ask the user."
   (interactive (list (if current-prefix-arg
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
+  (ekg--connect)
   (ekg-setup-notes-buffer
    "Latest captured notes"
    (lambda ()
