@@ -1,0 +1,511 @@
+\input texinfo    @c -*- texinfo -*-
+@c %**start of header
+@setfilename ekg.info
+@settitle ekg, the Emacs Knowledge Graph
+@documentencoding UTF-8
+@documentlanguage en
+@set MAINTAINER Andrew Hyatt
+@set MAINTAINEREMAIL @email{ahyatt@gmail.com}
+@set MAINTAINERCONTACT @uref{mailto:ahyatt@gmail.com,contact the maintainer}
+@c %**end of header
+
+@dircategory Emacs
+@direntry
+* EKG: (ekg).           A note taking application for emacs using sqlite.
+@end direntry
+
+@finalout
+@titlepage
+@title ekg, the Emacs Knowledge Graph
+@author Andrew Hyatt (@email{ahyatt@@gmail.com})
+@end titlepage
+
+@ifnottex
+@node Top
+@top ekg, the Emacs Knowledge Graph
+
+author:                Andrew Hyatt
+@insertcopying
+
+This is the ekg manual, which describes the operation and customization of the ekg package. All information here is relevant to the released version only.
+
+The README is also informative, has screenshots, and can be found in the source and in the git repository, which is at @uref{https://github.com/ahyatt/ekg}.
+
+@end ifnottex
+
+@menu
+* Introduction::
+* Installation::
+* Changelog::
+* Database::
+* Concepts and data model in ekg::
+* Understanding and editing the note buffer::
+* Capturing notes::
+* Viewing tags or notes::
+* The trash::
+* Links to ekg in org-mode::
+* Importing from org-roam and logseq::
+* Importing from org-roam::
+* Backups::
+* Database maintenance::
+* Customizing ekg with hooks::
+* Integration with ekg::
+* Extras::
+
+@detailmenu
+--- The Detailed Node Listing ---
+
+Installation
+
+* Installing via Melpa::
+* Installing by hand::
+
+Changelog
+
+* Version 0.2: Version 02. 
+
+Understanding and editing the note buffer
+
+* Note properties::
+* Note text::
+* A warning about org-mode::
+
+Capturing notes
+
+* Templates::
+* Changing the initial tags of a note::
+
+Viewing tags or notes
+
+* Commands in the notes buffer::
+* Customizing note display in @samp{ekg-notes-mode}::
+
+Extras
+
+* Embeddings::
+
+@end detailmenu
+@end menu
+
+@node Introduction
+@chapter Introduction
+
+The ekg module is a simple but opinionated note taking application, for emacs.
+It is a substitute for such other emacs applications such as org-roam or denote.
+ekg stands for @emph{emacs knowledge graph}.
+
+Data is completely stored in a sqlite database. Notes are organized around tags,
+and you can view many notes by looking at one or more tags. This provides a
+read-only view of various notes, which you can navigate between and choose to
+edit in a separate buffer.
+
+The editing of notes combines the editing of the text of the note with various properties stored in the database such as the tags of the note.
+
+@node Installation
+@chapter Installation
+
+@menu
+* Installing via Melpa::
+* Installing by hand::
+@end menu
+
+@node Installing via Melpa
+@section Installing via Melpa
+
+This is the easiest and recommended way to install ekg. If you have not set up Melpa yet, follow the instructions at @uref{https://melpa.org/#/getting-started}.
+
+There is no need to use Melpa Stable, because development happens in a branch and is not integrated until it is deemed stable. When bugs are discovered, fixes are pushed to the main branch soon, so it is usually a good idea to keep your version up to date.
+
+There are many ways to use Melpa to download ekg, but using @samp{use-package} is the easiest way, and recommended because it allows you to get the pacakge and configure it in one place.  An example use is below.
+
+@lisp
+(use-package ekg
+  :bind (([f11] . ekg-capture)))
+@end lisp
+
+@node Installing by hand
+@section Installing by hand
+
+If you wish to install by hand, you need to make sure to install the triples library, found in GNU ELPA, and at @uref{https://github.com/ahyatt/triples}.
+
+Clone the ekg library, from whatever branch you would like to use (@samp{main} corresponds to the release version, and @samp{develop} is where development of the next version happens). Add your source directory and require ekg. The following is an example assuming you cloned ekg into @samp{~/src/ekg}, and the triples library is already installed.
+
+@lisp
+(add-to-list 'load-path "~/src/ekg")
+(require 'ekg)
+@end lisp
+
+@node Changelog
+@chapter Changelog
+
+@menu
+* Version 0.2: Version 02. 
+@end menu
+
+@node Version 02
+@section Version 0.2
+
+@itemize
+@item
+Added hooks @code{ekg-add-schema-hook}, @code{ekg-note-pre-save-hook}, @code{ekg-note-save-hook}, @code{ekg-note-delete-hook}, and @code{ekg-note-add-tag-hook}  to enable customization.
+@item
+New commands @samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, for showing notes created or modified recently.
+@item
+Introduced variable @code{ekg-notes-size} to control the default page size for limited views such as @samp{ekg-show-notes-latest-captured}.
+@item
+Added templating.
+@item
+Added embedding as an optional add-on, to enable note similarity and note search; requires an account at OpenAI or similar embedding provider.
+@item
+Added new function @code{ekg-active-notes} to easily get all non-trashed notes.
+@item
+Improved ability to have note list buffers that have flexible titles and operation, notably improving the @samp{ekg-show-notes-in-trash} command.
+@item
+Standardized buffer names for @samp{ekg-notes-mode} buffers, which all are prepended with "ekg" and surrounded by asterisks, to denote that they are non-file-based.
+@item
+Added the documentation you are reading right now.
+@item
+Fixed bug interfering with completion at the beginning of the tag property line.
+@item
+Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
+@end itemize
+
+@node Database
+@chapter Database
+
+By default, ekg uses the default triple database, which is set in the variable @code{triples-default-database-filename}. The default value of this is @samp{~/.emacs.d/triples.db}.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable @code{ekg-eb-file}. When this is @code{nil}, it uses the filename up to the triples package.
+
+@node Concepts and data model in ekg
+@chapter Concepts and data model in ekg
+
+The ekg package is built on a flexible database scheme called "triples", where everything is stored as a graph structure; a subject, a predicate, and an object. The implication for the ekg package is that new kinds of data is easy to add, and lives alongside other data. Values of properties, stored as "objects" can themselves have values by adding data where the same value is the "subject". If you plan to do extensive integration work in elisp, it will help to understand these concepts, and the best way to do so is reading the triples package README@.
+
+For notes, we can think of the subject of the triples as an ID@. Notes are created, and have the following potential properties by default:
+@itemize
+@item
+ID
+@item
+Tags
+@item
+Text and it's major mode
+@item
+Creation time and modification time
+@item
+Title
+@end itemize
+
+The ID for notes is by default an integer UUID@. However, you can have notes about anything. In EKG an ID can be a resource identifier as well, such as a URL@.  When this happens, the ID is the data interesting in its own right.
+
+Tags may have spaces, but cannot have commas, which are used to separate them when showing them to the user and parsing them back out into properties to store.
+
+Because of the triples model, there is data about the tags for each note. Tags themselves just have type markers indicating they are tags, and can dynamically query for all notes with their tag, so tags always have a current list of notes with their tag.
+
+@node Understanding and editing the note buffer
+@chapter Understanding and editing the note buffer
+
+When capturing or creating a note, the note buffer has two areas important to understand. The first is the area for note properties, which has a different background color.  The second is the area for the note text.
+
+@menu
+* Note properties::
+* Note text::
+* A warning about org-mode::
+@end menu
+
+@node Note properties
+@section Note properties
+
+The properties shown in the note property area come from the data stored in the database for the entity. At a minimum, there will be tags.
+
+@noindent
+A property is displayed with a label, and the value, such as
+@quotation
+Tags: emacs, ekg
+
+@end quotation
+
+@noindent
+Changing these values, when saving the note, will change the values that will be stored in the database.
+
+@noindent
+New properties can be added manually, so if you wanted a title, you can add it to the property list.
+@quotation
+Title: This is my title
+
+@end quotation
+
+@noindent
+It's important to note that everything in the section with the different background color is a property and will be treated as such. Text that doesn't look like a property there will cause problems, and properties outside this area will instead be treated as note text.
+
+@noindent
+Not every property has a representation in the property list, only the properties which users may want to change manually.
+
+@noindent
+Tag properties have completion to tags built-in, so adding tags you should be able to choose from available tags when typing a new tag into the properties section, or add a new tag that has not yet been used.
+
+@noindent
+Ekg makes some effort to make sure that the user doesn't accidentally extend the property section without adding actual properties, since this will likely result in a confusing experience for the user.
+
+@node Note text
+@section Note text
+
+Below is the property section is the note section. The text could be anything (or nothing). This is the body text of the note, where you write down whatever
+you want to note about, that is relevant to the tags for the note.
+
+There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}. More can be added by customizing the variable @code{ekg-capture-acceptable-modes}, just
+make sure its a mode that makes sense for notes. The default mode is configured in @code{ekg-capture-default-mode}, but can be changed when capturing with the command @samp{ekg-capture-change-mode}.
+
+@node A warning about org-mode
+@section A warning about org-mode
+
+Org-mode notes are primarily to use org-mode formatting on. Org-mode has a lot of funtionality, but much of it depends on the assumption that the buffer is all for use by org-mode (not true in this case, because of the properties portion), and the assumption that the buffer is visiting a file, which is also not true. In particular, attachments will not work, and ekg-notes cannot be added to the agenda.
+
+@node Capturing notes
+@chapter Capturing notes
+
+@samp{ekg-capture} is the command to capture a note. In ekg this is probably the most frequently used command. It will create a new buffer called @samp{*EKG Capture*}. By
+default, it will have the current date tag, such as "date/2023-02-21".
+
+@noindent
+@samp{ekg-capture-url} will capture a note associated with a URL resource, and with a  given title as the title of the page. The idea is that the note is annotating
+the reference itself as a "literature note". The title also appears as a tag,  so other notes can reference this if needed. For example, if the URL is  @uref{http://example.com}, and the title is "An example URL", the properties buffer  will have the following:
+
+@quotation
+Resource: @uref{http://example.com}
+Tags: doc/an example url, date/2023-02-25
+Title: An example URL
+
+@end quotation
+
+Capturing URLs is a bit clunky as is, if you can wrap it in a function to  supply the name and url of the active browser tab, then you can create a much  easier experience. The following is an example for users of Google Chrome on  Mac OS X@.
+
+@lisp
+(defun my/ekg-capture-url ()
+  (interactive)
+
+  (ekg-capture-url
+   (do-applescript "tell application \"Google Chrome\" to return URL of active tab of front window")
+   (do-applescript "tell application \"Google Chrome\" to return Title of active tab of front window")))
+@end lisp
+
+@noindent
+A final way to capture notes comes from a buffer that is viewing a list of notes, in @samp{ekg-notes-mode}. You can call @samp{ekg-notes-create}, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
+
+@noindent
+To save any note that is being captured, press @samp{C-c C-c} or call @samp{ekg-capture-finalize}. To cancel, just kill the buffer.
+
+@menu
+* Templates::
+* Changing the initial tags of a note::
+@end menu
+
+@node Templates
+@section Templates
+
+Ekg comes with a built-in way to have templates. When a note adds a tag, ekg searches for notes with both the tag added, and the tag "template". Any note with those two tags will be added by default to the text of the buffer.
+
+For example, if there is a note with tags, "daily reflection" and "template", with the text "What did you learn today?", adding the tag "daily reflection" to a note will cause the text "What did you learn today?" to appear.
+
+The adding of templates happens whether intially when setting up the capture buffer, or later when the users completes a tag. Tags added without completion won't trigger this behavior, since at the moment ekg will not be able to understand that a tag has changed.
+
+The other tag searched for can be changed by customizing @code{ekg-template-tag}, which by default is just "template".
+
+This functionality is enabled through the function @samp{ekg-on-add-tag-insert-template} in the variable @code{ekg-note-add-tag-hook}, and can be turned off from removing it from that hook.
+
+@lisp
+(remove-hook 'ekg-note-add-tag-hook #'ekg-on-add-tag-insert-template)
+@end lisp
+
+@node Changing the initial tags of a note
+@section Changing the initial tags of a note
+
+The variable @code{ekg-capture-auto-tag-funcs} has a list of functions to call to add tags. Each function is called, and returns a list (or @code{nil}, the empty list), which are all added to a new note. By default, this variable has the function @samp{ekg-date-tag}, which returns the tag of today's date. If you do not want this, you can remove this function. You can also add your own functions to add the year, the week number, or any tag you feel is appropriate.
+
+@node Viewing tags or notes
+@chapter Viewing tags or notes
+
+There are several functions to view notes in various ways. All of these show a list of notes in read-only view, that can be navigated and interacted with. This is a @samp{ekg-notes-mode} buffer.
+
+@samp{ekg-show-notes-with-tag} will show all notes tagged with the given tag.
+
+@samp{ekg-show-notes-with-any-tags} will show all notes that have any of the tags given.
+
+@samp{ekg-show-notes-with-all-tags} will show all notes that have all of the tags given.
+
+@samp{ekg-show-notes-for-today} will show the notes taken today.
+
+@samp{ekg-show-notes-latest-captured} will show a number of notes from newest to oldest. The number is 20 by default, but can be changed by customizing @code{ekg-notes-size}.
+
+@samp{ekg-show-notes-latest-modified} will show a number of notes from newest to oldest, but by modification time, not by creation time. The number is also 20 by default and can be changed by customizing @code{ekg-notes-size}.
+
+@samp{ekg-show-notes-in-trash} will show the notes in the trash (see the @ref{The trash, , trash} section for details on how this works).
+
+@menu
+* Commands in the notes buffer::
+* Customizing note display in @samp{ekg-notes-mode}::
+@end menu
+
+@node Commands in the notes buffer
+@section Commands in the notes buffer
+
+The notes buffer is navigated via the following commands (the default binding is also given):
+
+@samp{ekg-notes-tag} (@samp{t}), open another notes buffer showing notes with any of the tags of current note.
+
+@samp{ekg-notes-open} (@samp{o}), edit the currently selected note.
+
+@samp{ekg-notes-delete} (@samp{d}), trash the current note (or, if this is the trash list, truly delete it).
+
+@samp{ekg-notes-remove} (@samp{r}), remove the note buffer's tags from the currently selected note. This does not delete the tags but prepends them with a trash prefix so they are ignored, but can be restored if the user wishes. For more details, see the @ref{The trash, , trash} section.
+
+@samp{ekg-notes-browse} (@samp{b}), open the resource attached to the current note, if it exists, otherwise do nothing.
+
+@samp{ekg-notes-select-and-browse-url} (@samp{B}), select from all the titles of URL resources in the any of the notes, and browse the URL@.
+
+@samp{ekg-notes-refresh} (@samp{g}), refresh the list of notes in the current buffer, to make sure any new notes or removed notes are updated in the list.
+
+@samp{ekg-notes-create} (@samp{c}), capture a new note with all the tags associated with the list.
+
+@samp{ekg-notes-next} (@samp{n}), move selection to the next note.
+
+@samp{ekg-notes-previous} (@samp{p}), move selection to the previous node.
+
+@samp{ekg-notes-any-note-tags} (@samp{a}), open a new notes list showing any of the tags that appear in the selected note.
+
+@samp{ekg-notes-any-tags} (@samp{A}), open a new notes list showing any of the tags that appear in any of the notes in note list. In other words, if the buffer was displaying notes with tag @samp{emacs}, and there are two notes displayed, one with tags @samp{emacs} and @samp{org-mode}, and the other with @samp{emacs} and @samp{ekg}, a new buffer displaying notes with any of the tags @samp{emacs}, @samp{org-mode}, or @samp{ekg} is created.
+
+Many of these commands use the notion that notes lists have associated lists of tags. That is the case for many commands, but not all. For example,
+@samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, and @samp{ekg-show-notes-in-trash} have no associated tags.
+
+@node Customizing note display in @samp{ekg-notes-mode}
+@section Customizing note display in @samp{ekg-notes-mode}
+
+The variable @code{ekg-format-funcs} has functions to run to format what ekg displays to the user. They are each run on a temporary buffer with the note text in it, and can make whatever changes necessary before they are displayed in a note list.
+
+@node The trash
+@chapter The trash
+
+Notes deleted from note lists (@samp{ekg-notes-mode}) buffers are not deleted outright, but rather put in the trash. There are two concepts here: trashed tags, and trashed note. A trash tag is a tag with the prefix "trash/" added. Such tags are ignored and not shown to users except when editing notes, at which point the user can choose to remove the trash prefix to un-trash them. This is what happens when @samp{ekg-notes-remove} is called; it trashes all the tags associated with the current list.
+
+If all of a notes tags are trashed, then the note itself is considered to be trashed. Trashed notes can be seen by calling @samp{ekg-show-notes-in-trash}. If notes are deleted from this list, they are deleted permanently. However, if you want to un-trash the note, you can edit the note and remove the trash prefix from one or more of the tags.
+
+@node Links to ekg in org-mode
+@chapter Links to ekg in org-mode
+
+Both notes in ekg and certain note list buffers can be stored and linked to in org-mode. To store a link to a note, you have to edit that note and call @samp{org-store-link}. That function can also be called in a @samp{ekg-notes-mode} buffer created by @samp{ekg-show-notes-with-any-tags}. Other list types currently will just store their tags assuming the user wants a link to a list with any of the tags in the list.
+
+@node Importing from org-roam and logseq
+@chapter Importing from org-roam and logseq
+
+@node Importing from org-roam
+@chapter Importing from org-roam
+
+You can import your notes from org-roam. This will turn all titles into tags, and all links will become tags as well. At the moment, this is done via executing elisp, since importing can be fairly idiosyncratic, and ekg and org-roam have different ways of expressing the same thing that you may want to change. It's best if you looked over @samp{ekg-org-roam.el} and see what is going on, but at least read the following description before manually executing @code{(ekg-org-roam-import)}.
+
+The import is idempotent, so it always will import to the same entities, overwriting older data with new data. If you want to update what is in ekg, you can just rerun the import. In the import, titles and tags will have any commas removed, since commas are commonly used in multiple completion as a separator, so anything with commas would otherwise cause problems when selected. If you have tags you want to turn into prefixes (which is a good idea for tags widely applied, which essentially act as a categorization), you can add those tags to the list at @code{ekg-org-roam-import-tag-to-prefix}. For example,
+
+@lisp
+(setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
+@end lisp
+
+Then, when a note is found that is tagged with "idea", but with title "emacs is a powerful tool", then the title in org-roam will be turned into the ekg tag "idea/emacs is a powerful tool", and anything linked with it will also get the same prefix.
+
+Logseq is also imported as well when @samp{ekg-org-roam-import} is executed, if any files are found.  There isn't true compatability, since ekg does not support many logseq functions.
+
+@node Backups
+@chapter Backups
+
+By default, the ekg package will back up its database, using the backup functionality built into the triples library. By default, behavior is set by @code{ekg-default-num-backups}, set to @samp{5} by default, and @code{ekg-default-backups-strategy}, set to @samp{daily}. These are, on first use of ekg, stored in the database itself, but it can be set again at any time by running:
+#+begin_
+src emacs-lisp
+(triples-backups-setup ekg-db ekg-default-num-backups
+                       ekg-default-backups-strategy)
+#+end@math{_src}
+
+The strategy can be one of the defaults of @samp{daily}, @samp{weekly}, @samp{every-change}, or @samp{never}, and new methods can be defined as well. See the implementation in @samp{triples-backups.el} for more information.
+
+@node Database maintenance
+@chapter Database maintenance
+
+You may occasionally notice that certain tags are obsolete and have no notes, or notes exist that are empty, or various other annoyances. You can call @samp{ekg-clean-db}, which will:
+
+@itemize
+@item
+First, force a backup.
+@item
+Remove all tags with no uses.
+@item
+Remove notes with no text, or just a "*", which is something that often happens with org-mode buffers.
+@end itemize
+
+@node Customizing ekg with hooks
+@chapter Customizing ekg with hooks
+
+You can customize the behavior of ekg in a number of ways.
+
+First, you can create your own schema to store your own data.  The hook @code{ekg-add-schema-hook} is called whenver the database is connected to.  At that point, ekg adds all of its schema, and runs the hooks in this variable.  Adding schema is idempotent, so it can be called any number of times without causing problems.  Adding schema can be done by calling the triples library.  For details on how to create schema, you can either look at the ekg implementation for example, or the triples library README for an overview of how it works.
+
+The @code{ekg-note-pre-save-hook} is called before saving a note, and @code{ekg-note-save-hook} is called after saving, but in the same database transaction as the save.
+
+The @code{ekg-note-delete-hook} is called when deleting a note.
+
+The @code{ekg-note-add-tag-hook} is called when adding a tag, either via the initial tags added to a new note, or tags added after completing a new tag in the note's property list.
+
+@node Integration with ekg
+@chapter Integration with ekg
+
+The ekg package is designed to be easy to integrate with.  For example, if you want create a note automatically in one of your functions, you can write:
+
+@lisp
+(defun my/log-to-ekg (text)
+  "Log TEXT as a note to EKG's date"
+  (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))
+@end lisp
+
+@noindent
+If you wanted to re-use an existing note and append to it, you can do that as well.
+
+@lisp
+(defun my/log-to-ekg (text)
+  "Log TEXT as a note to EKG's date, appending if possible."
+  (let ((notes (ekg-get-notes-with-tags (list (ekg-tag-for-date) "log"))))
+    (if notes
+        (progn
+          (setf (ekg-note-text (car notes)) (concat (ekg-note-text (car notes)) "\n" text))
+          (ekg-save-note (car notes)))
+      (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))))
+@end lisp
+
+There isn't a special API, but the basic defuns such as @code{ekg-save-note}, @code{ekg-note-create-text}, @code{ekg-get-notes-with-tags}, @code{ekg-get-note-with-id}, along with the struct @code{ekg-note} are good starting points.
+
+If you add schema and you want the user to be able to modify it, you should supply new alist entries to @code{ekg-metadata-parsers}, and @code{ekg-metadata-labels}.
+
+@node Extras
+@chapter Extras
+
+The ekg module can have any number of functionality additions. These may appear as other packages with other maintainers, but some are included as part of this package.
+
+@menu
+* Embeddings::
+@end menu
+
+@node Embeddings
+@section Embeddings
+
+The embeddings functionality can be turned on by requiring the embeddings file, such as:
+
+@lisp
+(require 'ekg-embedding)
+@end lisp
+
+This module contains functionality to explore similar notes and search using techniques associated with large language models. The idea behind an embedding is that it is an abstract representation of text, represented as a multi-dimensional vector. Because it is just a vector, you can compare the distance between different embeddings, and embedding vectors that are similar should represent similar concepts. This can be used to find similar notes, but also to search, where the search string is transformed into an embedding.
+
+Using embeddings in ekg are dependent on an API to transform text into embeddings. This is not something that can be done locally. Right now such APIs are rare, but Open AI does offer this, so this is what we support out of the box.
+
+To get started, @uref{https://openai.com/join/, sign up for Open AI} and get an API key, which you should store in @code{ekg-embedding-api-key}. I highly recommend you set limits to how much you can be charged per month. Fortunately, calculating embeddings is cheap, and should cost much less than 1 USD for all but the largest databases.  The embeddings module will send the contents of the your notes, your searches, or sometimes buffer (for @samp{ekg-embedding-show-similar-to-current-buffer}) so please be aware of the privacy implications, and make sure you are comfortable with the embedding provider receiving your data.
+
+Important: @strong{your API key is a secret key, so do not store it anywhere it can be seen, such as a public git repository}.
+
+Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
+embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the text is in the curent buffer.
+
+@bye

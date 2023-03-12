@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.2.5") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.1.1
+;; Version: 0.2.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -85,6 +85,12 @@ by `ekg-db-file-obsolete' exists, that is used instead."
   :type 'file
   :group 'ekg)
 
+(defcustom ekg-template-tag "template"
+  "Special tag that will hold templates for other tags.
+See `ekg-on-add-tag-insert-template' for details on how this works."
+  :type '(string :tag "tag")
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -158,6 +164,11 @@ All functions are passed in the ID of the note that is being deleted.")
   "Hook run after deleting a note.
 This is run in the same transaction as the deletion. All
 functions are passed in the ID of the note that is being deleted.")
+
+(defvar ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)
+  "Hook is run after a new tag is added to note.
+This includes new notes that start with tags. All functions are
+passed the tag, and run in the buffer editing the note.")
 
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties)
@@ -244,19 +255,17 @@ This
   (triples-backups-maybe-backup ekg-db (ekg--db-file)))
 
 (defun ekg-get-notes-with-tags (tags)
-  "Get all notes with TAGS, returning a list of `ekg-note' structs."
+  "Get all notes with TAGS, returning a list of `ekg-note' structs.
+This returns only notes that have all the tags in TAGS."
   (ekg--connect)
-  (cl-loop for tag in tags
-           with results = nil
-           do
-           (when-let (tag-ids (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
-             (setq results
-                   (if results (seq-intersection tag-ids results)
-                     tag-ids)))
-           finally return
-           (cl-loop for id in results
-                    collect
-                    (ekg-get-note-with-id id))))
+  (let ((ids-by-tag
+         (mapcar (lambda (tag)
+                   (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+                 tags)))
+    (mapcar #'ekg-get-note-with-id
+            (seq-reduce #'seq-intersection
+                        ids-by-tag
+                        (car ids-by-tag)))))
 
 (defun ekg-get-notes-with-tag (tag)
   "Get all notes with TAG, returning a list of `ekg-note' structs."
@@ -539,6 +548,7 @@ If SUBJECT is given, force the triple subject to be that value."
     (setf (ekg-note-properties ekg-note) properties)
     (ekg-edit-display-metadata)
     (goto-char (point-max))
+    (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag)) (ekg-note-tags ekg-note))
     (switch-to-buffer-other-window buf)))
 
 (defun ekg-capture-url (&optional url title)
@@ -652,7 +662,10 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (when finished
     (save-excursion
       (when (search-backward (format ",%s" completion) (line-beginning-position) t)
-        (replace-match (format ", %s" completion))))))
+        (replace-match (format ", %s" completion)))
+      (when (search-backward (format ":%s" completion) (line-beginning-position) t)
+        (replace-match (format ": %s" completion)))
+      (run-hook-with-args 'ekg-note-add-tag-hook completion))))
 
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
@@ -660,7 +673,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                (skip-chars-forward "^,\t\n")
                (point)))
         (start (save-excursion
-                 (skip-chars-backward "^,\t\n")
+                 (skip-chars-backward "^,\t\n:")
                  (point))))
     (list start end (completion-table-dynamic
                      (lambda (_) (ekg-tags)))
@@ -843,7 +856,7 @@ Raise an error if there is no current note."
 If TAG is nil, it will be read, selecting from the list of the current note's
 tags."
   (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg--current-note-or-error))))
-              ekg-notes-mode)
+               ekg-notes-mode)
   (ekg-show-notes-with-tag tag))
 
 (defun ekg-notes-open ()
@@ -856,7 +869,7 @@ tags."
   (interactive nil ekg-notes-mode)
   (let ((note (ekg--current-note-or-error))
         (inhibit-read-only t))
-    (when (y-or-n-p "Or you sure you want to delete this note?")
+    (when (y-or-n-p "Are you sure you want to delete this note?")
       (ekg-note-trash note)
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
@@ -964,9 +977,11 @@ NAME is displayed at the top of the buffer."
 
 (defun ekg-setup-notes-buffer (name notes-func tags)
   "Set up and display new buffer with NAME.
+NAME is the base name, to which ekg will be prepended, and
+asterisks will surround (to indicate a non-file-based buffer).
 NOTES-FUNC is used to get the list of notes to display. New notes
 are created with additional tags TAGS."
-  (let ((buf (get-buffer-create name)))
+  (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
     (display-buffer buf)))
@@ -1025,6 +1040,7 @@ notes to show. But with an prefix ARG, ask the user."
   (interactive (list (if current-prefix-arg
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
+  (ekg--connect)
   (ekg-setup-notes-buffer
    "Latest captured notes"
    (lambda ()
@@ -1092,6 +1108,24 @@ If no corresponding URL is found, an error is thrown."
   "Get a list of ekg-note objects, representing all active notes.
 Active in this context means non-trashed."
   (seq-filter #'ekg-has-live-tags-p (triples-subjects-of-type ekg-db 'text)))
+
+(defun ekg-on-add-tag-insert-template (tag)
+  "Look for templates for TAG, and insert into current buffer.
+This looks for notes with tags TAG and `template', and for any
+found, insert, one by one, into the current note."
+  (unless (equal tag ekg-template-tag)
+    (mapc (lambda (template)
+            (save-excursion (goto-char (point-max))
+                            ;; Don't insert the same string twice, which is
+                            ;; sometimes possible when templates have more than
+                            ;; one tag overlapping with the current note.
+                            (unless (string-match (rx (literal (ekg-note-text template)))
+                                          (buffer-substring-no-properties (+ 1 (overlay-end (ekg--metadata-overlay)))
+                                                                          (point-max)))
+                              (unless (looking-at (rx (seq line-start line-end)))
+                                (insert "\n"))
+                              (insert (ekg-note-text template)))))
+          (ekg-get-notes-with-tags (list tag ekg-template-tag)))))
 
 ;; Auto-tag functions
 

@@ -31,7 +31,14 @@
   `(ert-deftest ,name ()
      (let ((ekg-db-file (make-temp-file "ekg-test"))
            (ekg-db nil)
-           (orig-buffers (buffer-list)))
+           (orig-buffers (buffer-list))
+           ;; Remove hooks
+           (ekg-add-schema-hook nil)
+           (ekg-note-pre-save-hook nil)
+           (ekg-note-save-hook nil)
+           (ekg-note-pre-delete-hook nil)
+           (ekg-note-delete-hook nil)
+           (ekg-note-add-tag-hook nil))
        (ekg--connect)
        (save-excursion
          (unwind-protect
@@ -47,12 +54,11 @@
     (should (= 1 (length (ekg-get-notes-with-tags '("tag1")))))
     ;; Just one note, even if it has both of the tags.
     (should (= 1 (length (ekg-get-notes-with-tags '("tag1" "tag2")))))
-    ;; WHen we get notes with tags, it's an OR not an AND, so it's OK if one of
-    ;; the tags doesn't apply.
-    (should (= 1 (length (ekg-get-notes-with-tags '("tag1" "tag2" "nonexistent")))))
+    ;; WHen we get notes with tags, it's an AND, so it shouldn't get anything.
+    (should (= 0 (length (ekg-get-notes-with-tags '("tag1" "tag2" "nonexistent")))))
     (should (equal note (car (ekg-get-notes-with-tags '("tag1")))))
     (should (ekg-has-live-tags-p (ekg-note-id note)))
-    (ekg-note-delete note)
+    (ekg-note-trash note)
     (should-not (ekg-has-live-tags-p (ekg-note-id note)))
     (should (= 0 (length (ekg-get-notes-with-tags '("tag1" "tag2")))))))
 
@@ -87,24 +93,25 @@
 
 (ekg-deftest ekg-test-org-link-to-tags ()
   (require 'ol)
-  (ekg-note-create "" 'text-mode '("a" "b"))
-  (let* ((tag-buf (ekg-show-notes-with-any-tags '("a" "b"))))
+  (ekg-save-note (ekg-note-create "" 'text-mode '("a" "b")))
+  (ekg-show-notes-with-any-tags '("a" "b"))
+  (let* ((tag-buf (get-buffer "*ekg tags (any): a b*")))
     (unwind-protect
-     (progn
-       ;; Can we store a link?
-       (with-current-buffer tag-buf
-         (org-store-link nil 1)
-         (should (car org-stored-links)))
-       (with-temp-buffer
-         ;; Does the link look correct?
-         (org-mode)
-         (org-insert-last-stored-link nil)
-         (should (string= (buffer-string) "[[ekg-tags-any:(\"a\" \"b\")][EKG page for any of the tags: a, b]]\n"))
-         ;; Does the link work?
-         (goto-char 1)
-         (org-open-at-point nil)
-         (should (eq tag-buf (current-buffer)))))
-     (kill-buffer tag-buf))))
+        (progn
+          ;; Can we store a link?
+          (with-current-buffer tag-buf
+            (org-store-link nil 1)
+            (should (car org-stored-links)))
+          (with-temp-buffer
+            ;; Does the link look correct?
+            (org-mode)
+            (org-insert-last-stored-link nil)
+            (should (string= (buffer-string) "[[ekg-tags-any:(\"a\" \"b\")][EKG page for any of the tags: a, b]]\n"))
+            ;; Does the link work?
+            (goto-char 1)
+            (org-open-at-point nil)
+            (should (eq tag-buf (current-buffer)))))
+      (kill-buffer tag-buf))))
 
 (ekg-deftest ekg-test-url-handling ()
   (ekg-capture-url "http://testurl" "A URL used for testing")
@@ -125,7 +132,7 @@
       (list (ekg-note-create "a" ekg-capture-default-mode '("tag/a"))
             (ekg-note-create "b" ekg-capture-default-mode '("tag/b"))))
   (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
-  (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tag/a tag/b")))
+  (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a tag/b")))
 
 (ekg-deftest ekg-test-note-roundtrip ()
   (let ((text "foo\n\tbar \"baz\" ☃"))
@@ -134,6 +141,21 @@
       (should (ekg-note-id note))
       (should (equal text (ekg-note-text note)))
       (should (equal 'text-mode (ekg-note-mode note))))))
+
+(ekg-deftest ekg-test-templating ()
+  (ekg-save-note (ekg-note-create "ABC" #'text-mode '("test" "template")))
+  (ekg-save-note (ekg-note-create "DEF" #'text-mode '("test" "template")))
+  (let ((ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)))
+    (ekg-capture '("test"))
+    (let ((text (substring-no-properties (buffer-string))))
+      (should (string-match (rx (literal "ABC")) text))
+      (should (string-match (rx (literal "DEF")) text)))))
+
+(ekg-deftest ekg-test-get-notes-with-tags ()
+  (ekg-save-note (ekg-note-create "ABC" #'text-mode '("foo" "bar")))
+  (should-not (ekg-get-notes-with-tags '("foo" "none")))
+  (should-not (ekg-get-notes-with-tags '("none" "foo")))
+  (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
 
 (provide 'ekg-test)
 
