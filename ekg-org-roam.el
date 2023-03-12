@@ -114,7 +114,10 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                             (filename (concat (file-name-as-directory dir) file)))
                         (save-excursion
                           (find-file filename)
-                          (unless (= 0 (length (string-trim (buffer-string))))
+                          (unless (or (= 0 (length (string-trim (buffer-string))))
+                                      ;; Don't re-import files that we have exported, since it will lead to duplication.
+                                      (string-match-p (rx (seq line-start "ekg-export" (** 1 2 ":") space "true" line-end))
+                                                      (downcase (buffer-string))))
                             (let ((tags))
                               (when (re-search-forward (rx (seq line-start "TAGS:" (group (zero-or-more not-newline)) line-end)) nil t)
                                 (setq tags (split-string (match-string 1))))
