@@ -505,9 +505,13 @@ Argument AFTER is non-nil if method is being called after the modification."
                (buffer-end 1))
         (let ((p (point)))
           (goto-char (buffer-end 1))
-          (when (looking-at (rx (seq line-start (zero-or-more space) line-end)))
-            (insert "\n")
-            (setq p (point)))
+          ;; Walk backward until we get to content
+          (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
+            (forward-line -1))
+          (forward-line)
+          (setq p (point))
+          (delete-region (point) (overlay-end overlay))
+          (insert "\n")
           (move-overlay overlay (overlay-start overlay) p))))))
 
 (defun ekg-edit-display-metadata ()
