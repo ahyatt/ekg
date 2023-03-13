@@ -718,7 +718,7 @@ The metadata fields are comma separated."
 
 (defun ekg--metadata-update-resource (val)
   "Update the resource to the metadata VAL."
-  (when (and (not (string= val (ekg-note-id ekg-note)))
+  (when (and (not (string= val (format "%s" (ekg-note-id ekg-note))))
              (or (not (ekg-note-id ekg-note))
                  (y-or-n-p "Changing the resource of this note will also change all references to it.  Are you sure?")))
     (triples-with-transaction ekg-db
