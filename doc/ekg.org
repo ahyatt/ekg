@@ -68,7 +68,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 - Fixed bug interfering with completion at the beginning of the tag property line.
 - Fix for ~ekg-notes-refresh~ incorrectly calling ~ekg--show-notes~.
 * Database
-By default, ekg uses the default triple database, which is set in the variable ~triples-default-database-filename~. The default value of this is =~/.emacs.d/triples.db=.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable ~ekg-eb-file~. When this is ~nil~, it uses the filename up to the triples package.
+By default, ekg uses the default triple database, which is set in the variable ~triples-default-database-filename~. The default value of this is =~/.emacs.d/triples.db=.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable ~ekg-db-file~. When this is ~nil~, it uses the filename up to the triples package.
 * Concepts and data model in ekg
 The ekg package is built on a flexible database scheme called "triples", where everything is stored as a graph structure; a subject, a predicate, and an object. The implication for the ekg package is that new kinds of data is easy to add, and lives alongside other data. Values of properties, stored as "objects" can themselves have values by adding data where the same value is the "subject". If you plan to do extensive integration work in elisp, it will help to understand these concepts, and the best way to do so is reading the triples package README.
 
