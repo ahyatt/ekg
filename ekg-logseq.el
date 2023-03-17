@@ -49,11 +49,20 @@
       (format "#+%s: %s\n" name value)
     (format "%s:: %s\n" name value)))
 
-(defun ekg-logseq-export-tag (tag &optional exported-note-ids)
+(defun ekg-logseq-primary-tag (tags)
+  "From TAGS, return the primary tag.
+The primary tag will be the tag in the note is exported in. The
+others will have backreferences to the note in logseq.
+
+We just use the first tag that is not a date tag, if it exists."
+  (seq-find (lambda (tag) (not (ekg-date-tag-p tag)))
+            tags
+            (car tags)))
+
+(defun ekg-logseq-export-tag (tag)
   "Export TAG to logseq.
-EXPORTED-NOTE-IDS is the list of note ids that have already been
-exported, so shouldn't be exported again. It will be added to by
-this function and returned."
+This may make files with no content if there are notes with no
+backlinks."
   (with-temp-file (expand-file-name
                    (replace-regexp-in-string
                     "/" "$"
@@ -70,7 +79,10 @@ this function and returned."
 
     (let ((notes (ekg-get-notes-with-tag tag)))
       (cl-loop for note in notes do
-               (when (not (member (ekg-note-id note) exported-note-ids))
+               ;; Only export when it's the primary tag, and we actually have
+               ;; text to export.
+               (when (and (eq tag (ekg-logseq-primary-tag (ekg-note-tags note)))
+                          (ekg-note-text note))
                  (insert (format (if (eq ekg-capture-default-mode 'org-mode)
                                    "* %s\n" "- %s")
                            (or (plist-get (ekg-note-properties note) :titled/title)
@@ -89,9 +101,7 @@ this function and returned."
                    (if (and (eq ekg-capture-default-mode 'org-mode)
                             (org-kill-is-subtree-p text))
                        (org-paste-subtree nil text)
-                     (insert "\n" text "\n")))
-                 (push (ekg-note-id note) exported-note-ids)))))
-  exported-note-ids)
+                     (insert "\n" text "\n"))))))))
 
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.
@@ -101,26 +111,16 @@ with duplicate data."
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
-  ;; Remove all pages in the logseq subdirectories before we export.
+    ;; Remove all pages in the logseq subdirectories before we export.
   (cl-loop for subdir in '("journals" "pages") do
            (cl-loop for file in
                     (seq-filter #'file-regular-p
                                 (directory-files
                                  (file-name-concat ekg-logseq-dir subdir) t)) do
                                  (delete-file file)))
-  (let ((date-tags)
-        (normal-tags)
-        (exported-note-ids))
-    (cl-loop for tag in (ekg-tags) do
-           (if (ekg-date-tag-p tag)
-               (push tag date-tags)
-             (push tag normal-tags)))
-  ;; Export normal tags first, so date tags will have link to information
-  ;; instead of containing information.
-  (cl-loop for tag in normal-tags do
-           (setq exported-note-ids (ekg-logseq-export-tag tag exported-note-ids)))
-  (cl-loop for tag in date-tags do
-           (setq exported-note-ids (ekg-logseq-export-tag tag exported-note-ids)))))
+
+  (cl-loop for tag in (ekg-tags) do
+           (ekg-logseq-export-tag tag)))
 
 (provide 'ekg-logseq)
 ;;; ekg-logseq.el ends here
