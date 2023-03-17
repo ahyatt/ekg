@@ -173,6 +173,8 @@ passed the tag, and run in the buffer editing the note.")
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties)
 
+(cl-defstruct ekg-inline pos command)
+
 (defun ekg--db-file ()
   "Return the database file we should use in ekg.
 If `ekg-db-file' is nil and `ekg-db-file-obsolete' exists, use
@@ -324,6 +326,39 @@ note is really deleted."
 (defun ekg-has-live-tags-p (sub)
   "Return non-nil if SUB represents an undeleted note."
   (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag))) (plist-get (triples-get-type ekg-db sub 'tagged) :tag)))
+
+(defun ekg-extract-inlines (text)
+  "Return a cons of TEXT without inline commands, and the commands.
+The commands returned are the most specific type of struct known,
+or, if unknown, `ekg-inline'."
+  (let ((inlines)
+        (newtext text)
+        (inline-rx (rx (seq (group
+                             (literal "%(")
+                             (group (*? anychar))
+                             (literal ")"))))))
+    ;; Keep removing commands left to right to make sure our positions are
+    ;; without commands, since that's how they will need to be inserted.
+    (while (when-let (index (string-match inline-rx newtext))
+             (push (make-ekg-inline :pos index
+                                    :command (read (format "(%s)" (match-string 2 newtext))))
+                   inlines)
+             (setq newtext (replace-match "" nil nil newtext 1))))
+    (cons newtext (nreverse inlines))))
+
+(defun ekg-insert-inlines (text inlines)
+  "Returns the result of inserting INLINES into TEXT."
+  (with-temp-buffer
+    (insert text)
+    (let ((mils (cl-loop for il in inlines do
+                         (goto-char (+ (ekg-inline-pos il) 1))
+                         collect (cons (point-marker)
+                                       (ekg-inline-command il)))))
+
+      (cl-loop for mil in mils do
+               (goto-char (car mil))
+               (insert-before-markers (format "%%%S" (cdr mil)))))
+    (buffer-string)))
 
 (defun ekg-displayable-note-text (note)
   "Return text, with mode-specific properties, of NOTE.

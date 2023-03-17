@@ -27,7 +27,7 @@
 
 (defmacro ekg-deftest (name _ &rest body)
   "A test that will set up an empty `ekg-db' for use."
-  (declare (debug t) (indent defun))
+  (declare (debug defun) (indent defun))
   `(ert-deftest ,name ()
      (let ((ekg-db-file (make-temp-file "ekg-test"))
            (ekg-db nil)
@@ -156,6 +156,26 @@
   (should-not (ekg-get-notes-with-tags '("foo" "none")))
   (should-not (ekg-get-notes-with-tags '("none" "foo")))
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
+
+(ekg-deftest ekg-test-extract-inlines ()
+  (pcase (ekg-extract-inlines "Foo %(embed 1) %(embed \"abc\") Bar")
+    (`(,text . ,inlines)
+     (should (equal "Foo   Bar" text))
+     (should (equal
+              (list
+               (make-ekg-inline :pos 4 :command '(embed 1))
+               (make-ekg-inline :pos 5 :command '(embed "abc")))
+              inlines)))
+    (_ (ert-fail "Expected cons"))))
+
+(ekg-deftest ekg-test-extract-and-insert-inlines ()
+  (cl-loop for testcase in '("foo" "Foo %(embed 1) %(embed \"abc\") Bar"
+                             "Foo%(embed 1)%(embed 2)Bar")
+           do
+           (should (equal testcase
+                          (let ((ex-cons (ekg-extract-inlines testcase)))
+                            (ekg-insert-inlines
+                             (car ex-cons) (cdr ex-cons)))))))
 
 (provide 'ekg-test)
 
