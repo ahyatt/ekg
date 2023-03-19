@@ -158,24 +158,42 @@
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
 
 (ekg-deftest ekg-test-extract-inlines ()
-  (pcase (ekg-extract-inlines "Foo %(embed 1) %(embed \"abc\") Bar")
+  (pcase (ekg-extract-inlines "Foo %(transclude 1) %(transclude \"abc\") Bar")
     (`(,text . ,inlines)
      (should (equal "Foo   Bar" text))
      (should (equal
               (list
-               (make-ekg-inline :pos 4 :command '(embed 1))
-               (make-ekg-inline :pos 5 :command '(embed "abc")))
+               (make-ekg-inline :pos 4 :command '(transclude 1))
+               (make-ekg-inline :pos 5 :command '(transclude "abc")))
               inlines)))
     (_ (ert-fail "Expected cons"))))
 
 (ekg-deftest ekg-test-extract-and-insert-inlines ()
-  (cl-loop for testcase in '("foo" "Foo %(embed 1) %(embed \"abc\") Bar"
-                             "Foo%(embed 1)%(embed 2)Bar")
+  (cl-loop for testcase in '("foo" "Foo %(transclude 1) %(transclude \"abc\") Bar"
+                             "Foo%(transclude 1)%(transclude 2)Bar")
            do
            (should (equal testcase
                           (let ((ex-cons (ekg-extract-inlines testcase)))
-                            (ekg-insert-inlines
+                            (ekg-insert-inlines-representation
                              (car ex-cons) (cdr ex-cons)))))))
+
+(ekg-deftest ekg-test-tranclude ()
+  (let ((note1 (ekg-note-create "text1 text2" 'org-mode nil))
+        (note2 (ekg-note-create "text3 text4" 'text-mode nil)))
+    (ekg-save-note note1)
+    (ekg-save-note note2)
+    (let ((ex-cons (ekg-extract-inlines
+                    (format "Foo %%(transclude %S) %%(transclude %S) Bar"
+                            (ekg-note-id note1) (ekg-note-id note2)))))
+      (should (equal "Foo text1 text2 text3 text4 Bar"
+                     (ekg-insert-inlines-results
+                      (car ex-cons) (cdr ex-cons)
+                      1000)))
+      (should (equal "Foo text1… text3… Bar"
+                     (ekg-insert-inlines-results
+                      (car ex-cons) (cdr ex-cons)
+                      2))))))
+
 
 (provide 'ekg-test)
 

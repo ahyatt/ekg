@@ -346,19 +346,66 @@ or, if unknown, `ekg-inline'."
              (setq newtext (replace-match "" nil nil newtext 1))))
     (cons newtext (nreverse inlines))))
 
-(defun ekg-insert-inlines (text inlines)
-  "Returns the result of inserting INLINES into TEXT."
+(defun ekg-inline-truncate-at (s numwords)
+  "Return S with ellipses after NUMWORDS words.
+If NUMWORDS is greater than the number of words of S, return S
+unchanged."
+  (with-temp-buffer
+    (insert s)
+    (goto-char 0)
+    (cl-loop with i = 0 while (and (< i numwords)
+                                   (forward-word))
+             do (cl-incf i))
+    (when (< (point) (point-max))
+      (insert "…")
+      (delete-region (point) (point-max)))
+    (buffer-string)))
+
+(defun ekg-insert-inlines-and-process (text inlines func numwords)
+  "Returns the result of inserting INLINES into TEXT.
+FUNC will be executed with the cdr of each inline command and
+return value is inserted into the buffer at the appropriate
+point.
+NUMTOK is the number of tokens available to be used."
   (with-temp-buffer
     (insert text)
     (let ((mils (cl-loop for il in inlines do
                          (goto-char (+ (ekg-inline-pos il) 1))
                          collect (cons (point-marker)
-                                       (ekg-inline-command il)))))
+                                       (if (> numwords 0)
+                                           (ekg-inline-truncate-at
+                                            (funcall func
+                                                   (ekg-inline-command il))
+                                            (/ numwords
+                                               (length inlines)))
+                                         "")))))
 
       (cl-loop for mil in mils do
                (goto-char (car mil))
-               (insert-before-markers (format "%%%S" (cdr mil)))))
+               (insert-before-markers (cdr mil))))
     (buffer-string)))
+
+(defun ekg-insert-inlines-representation (text inlines)
+  "Returns the result of inserting INLINES into TEXT.
+INLINES are inserted "
+  (ekg-insert-inlines-and-process
+   text inlines
+   (lambda (command)
+     (format "%%%S" command))
+   most-positive-fixnum))
+
+(defun ekg-insert-inlines-results (text inlines numwords)
+  "Return the results of executing INLINES into TEXT."
+  (ekg-insert-inlines-and-process
+   text inlines
+   (lambda (command)
+     (let ((f (intern (format "ekg-inline-command-%s"
+                              (car command)))))
+       (if (fboundp f)
+           (apply f (cdr command))
+         (format "%Unknown command %s: `%s' not found"
+                 (car command) f))))
+   numwords))
 
 (defun ekg-displayable-note-text (note)
   "Return text, with mode-specific properties, of NOTE.
@@ -374,6 +421,10 @@ A text property `ekg-note-id' is added with the id of the note."
     (font-lock-ensure)
     (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
     (buffer-string)))
+
+(defun ekg-inline-command-transclude (id)
+  "Return the text of ID."
+  (ekg-displayable-note-text (ekg-get-note-with-id id)))
 
 (defun ekg-note-snippet (note &optional max-length)
   "Return a short snippet for NOTE.
