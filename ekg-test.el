@@ -192,7 +192,31 @@
       (should (equal "Foo text1… text3… Bar"
                      (ekg-insert-inlines-results
                       (car ex-cons) (cdr ex-cons)
-                      2))))))
+                      4))))))
+
+(ekg-deftest ekg-test-inline-storage ()
+  (let ((id)
+        (inlines (list
+                  (make-ekg-inline :pos 3 :command '(transclude-file "transcluded"))
+                  (make-ekg-inline :pos 4 :command '(transclude-website "http://www.example.com"))))
+        (new-inlines (list
+                      (make-ekg-inline :pos 0
+                                       :command '(transclude-api-call "http://api.com" 'current-weather))
+                      (make-ekg-inline :pos 1
+                                       :command '(calc "2 ^ 10")))))
+    (let ((note (ekg-note-create "foo bar" 'text-mode nil)))
+      (setf (ekg-note-inlines note) inlines)
+      (ekg-save-note note)
+      (setq id (ekg-note-id note)))
+    (let ((note (ekg-get-note-with-id id)))
+      (should (equal inlines (ekg-note-inlines note)))
+      (setf (ekg-note-inlines note) new-inlines)
+      (ekg-save-note note)
+      (should (= 2 (length (triples-with-predicate ekg-db 'inline/command)))))
+    (let ((note (ekg-get-note-with-id id)))
+      (should (equal new-inlines (ekg-note-inlines note)))
+      (ekg-note-delete (ekg-note-id note))
+      (should (= 0 (length (triples-with-predicate ekg-db 'inline/command)))))))
 
 
 (provide 'ekg-test)

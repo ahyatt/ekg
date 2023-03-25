@@ -171,7 +171,7 @@ This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
 (cl-defstruct ekg-note
-  id text mode tags creation-time modified-time properties)
+  id text mode inlines tags creation-time modified-time properties)
 
 (cl-defstruct ekg-inline pos command)
 
@@ -205,10 +205,16 @@ non-nil, it will be used as the filename, otherwise
   (triples-add-schema ekg-db 'tagged '(tag :base/type string))
   (triples-add-schema ekg-db 'text
                       '(text :base/unique t :base/type string)
-                      '(mode :base/unique t :base/type symbol))
+                      '(mode :base/unique t :base/type symbol)
+                      '(inlines :base/virtual-reversed inline/for-text))
   (triples-add-schema ekg-db 'time-tracked
                       '(creation-time :base/unique t :base/type integer)
                       '(modified-time :base/unique t :base/type integer))
+  (triples-add-schema ekg-db 'inline
+                      '(command :base/unique t :base/type symbol)
+                      'args
+                      '(pos :base/unique t :base/type integer)
+                      '(for-text :base/unique t))
   (triples-add-schema ekg-db 'tag
                       '(tagged :base/virtual-reversed tagged/tag))
   (triples-add-schema ekg-db 'named 'name)
@@ -244,6 +250,19 @@ This
     (triples-set-type ekg-db (ekg-note-id note) 'text
                       :text (substring-no-properties (ekg-note-text note))
                       :mode (ekg-note-mode note))
+    ;; Delete any previous linked inlines.
+    (cl-loop for inline-id in (triples-subjects-with-predicate-object
+                            ekg-db 'inline/for-text (ekg-note-id note))
+             do (triples-remove-type ekg-db inline-id 'inline))
+    ;; Now store the new inlines.
+    (cl-loop for inline in (ekg-note-inlines note) do
+             (triples-set-type ekg-db (format "%S/pos:%d" (ekg-note-id note)
+                                              (ekg-inline-pos inline))
+                               'inline
+                               :command (car (ekg-inline-command inline))
+                               :args (cdr (ekg-inline-command inline))
+                               :pos (ekg-inline-pos inline)
+                               :for-text (ekg-note-id note)))
     ;; Note that we recalculate modified time here, since we are modifying the
     ;; entity.
     (let ((modified-time (time-convert (current-time) 'integer)))
@@ -280,6 +299,14 @@ If the ID does not exist, create a new note with that ID."
     (make-ekg-note :id id
                    :text (plist-get v :text/text)
                    :mode (plist-get v :text/mode)
+                   :inlines (mapcar (lambda (iid)
+                                      (let ((iv (triples-get-type ekg-db iid
+                                                                  'inline)))
+                                        (make-ekg-inline :pos (plist-get iv :pos)
+                                                         :command (cons
+                                                                   (plist-get iv :command)
+                                                                   (plist-get iv :args)))))
+                             (plist-get v :text/inlines))
                    :tags (plist-get v :tagged/tag)
                    :creation-time (plist-get v :time-tracked/creation-time)
                    :modified-time (plist-get v :time-tracked/modified-time)
@@ -289,6 +316,7 @@ If the ID does not exist, create a new note with that ID."
                                   (not (member plist-key
                                                '(:text/text
                                                  :text/mode
+                                                 :text/inlines
                                                  :tagged/tag
                                                  :time-tracked/creation-time
                                                  :time-tracked/modified-time)))) v)
@@ -301,6 +329,9 @@ If the ID does not exist, create a new note with that ID."
     ekg-db
     (cl-loop for type in '(tagged text time-tracked) do
              (triples-remove-type ekg-db id type))
+    (cl-loop for inline-id in (triples-subjects-with-predicate-object
+                               ekg-db 'inline/for-text id)
+             do (triples-remove-type ekg-db inline-id 'inline))
     (run-hook-with-args 'ekg-note-delete-hook id)))
 
 (defun ekg-tag-delete (tag)
@@ -376,7 +407,8 @@ NUMTOK is the number of tokens available to be used."
                                            (ekg-inline-truncate-at
                                             (funcall func
                                                    (ekg-inline-command il))
-                                            (/ numwords
+                                            (/ (- numwords
+                                                  (count-words (point-min) (point-max)))
                                                (length inlines)))
                                          "")))))
 
@@ -407,12 +439,16 @@ INLINES are inserted "
                  (car command) f))))
    numwords))
 
-(defun ekg-displayable-note-text (note)
+(defun ekg-displayable-note-text (note &optional numwords)
   "Return text, with mode-specific properties, of NOTE.
-A text property `ekg-note-id' is added with the id of the note."
+A text property `ekg-note-id' is added with the id of the note.
+NUMWORDS is the max number of words to display in the note, or
+nil for all words."
   (with-temp-buffer
     (when (ekg-note-text note)
-      (insert (ekg-note-text note)))
+      (insert (ekg-insert-inlines-results
+               (ekg-note-text note)
+               (ekg-note-inlines note))))
     (when (ekg-note-mode note)
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
