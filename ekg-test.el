@@ -220,6 +220,7 @@
 
 (ekg-deftest ekg-test-double-transclude-note ()
   (let ((note (ekg-note-create "transclusion1" 'text-mode nil)))
+    (ekg-save-note note)
     (ekg-capture '("test1"))
     (insert (format "%%(transclude-note %S)" (ekg-note-id note)))
     (ekg-capture-finalize))
