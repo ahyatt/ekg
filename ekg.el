@@ -91,6 +91,11 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
   :type '(string :tag "tag")
   :group 'ekg)
 
+(defcustom ekg-note-display-max-words 1000
+  "How many words to display for notes."
+  :type 'integer
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -231,25 +236,26 @@ non-nil, it will be used as the filename, otherwise
 This
   1) makes sure all tags are lowercase and trimmed.
   2) removes commas in tags, since those are used to separate tags.
-  3) trim the text of any trailing or leading whitespace."
+  3) trim the text of any trailing or leading whitespace.
+  4) removes any properties from the text."
   (setf (ekg-note-tags note)
         (mapcar (lambda (tag)
                   (string-trim (downcase (string-replace "," "" tag)))) (ekg-note-tags note)))
   (setf (ekg-note-text note)
-        (string-trim (ekg-note-text note))))
+        (string-trim (substring-no-properties
+                      (ekg-note-text note)))))
 
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
   (ekg--connect)
   (ekg--normalize-note note)
   (run-hook-with-args 'ekg-note-pre-save-hook note)
-  (triples-with-transaction ekg-db
+  (triples-with-transaction
+    ekg-db
     (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
-    ;; Remove properties from notes, they take up a lot of room and occasionally
-    ;; they cannot be read back out of the database.
     (triples-set-type ekg-db (ekg-note-id note) 'text
-                      :text (substring-no-properties (ekg-note-text note))
-                      :mode (ekg-note-mode note))
+                        :text (ekg-note-text note)
+                        :mode (ekg-note-mode note))
     ;; Delete any previous linked inlines.
     (cl-loop for inline-id in (triples-subjects-with-predicate-object
                             ekg-db 'inline/for-text (ekg-note-id note))
@@ -295,18 +301,19 @@ This returns only notes that have all the tags in TAGS."
 (defun ekg-get-note-with-id (id)
   "Get the specific note with ID.
 If the ID does not exist, create a new note with that ID."
-  (let ((v (triples-get-subject ekg-db id)))
+  (let* ((v (triples-get-subject ekg-db id))
+         (inlines (mapcar (lambda (iid)
+                            (let ((iv (triples-get-type ekg-db iid
+                                                        'inline)))
+                              (make-ekg-inline :pos (plist-get iv :pos)
+                                               :command (cons
+                                                         (plist-get iv :command)
+                                                         (plist-get iv :args)))))
+                          (plist-get v :text/inlines))))
     (make-ekg-note :id id
                    :text (plist-get v :text/text)
                    :mode (plist-get v :text/mode)
-                   :inlines (mapcar (lambda (iid)
-                                      (let ((iv (triples-get-type ekg-db iid
-                                                                  'inline)))
-                                        (make-ekg-inline :pos (plist-get iv :pos)
-                                                         :command (cons
-                                                                   (plist-get iv :command)
-                                                                   (plist-get iv :args)))))
-                             (plist-get v :text/inlines))
+                   :inlines inlines
                    :tags (plist-get v :tagged/tag)
                    :creation-time (plist-get v :time-tracked/creation-time)
                    :modified-time (plist-get v :time-tracked/modified-time)
@@ -434,8 +441,8 @@ INLINES are inserted "
      (let ((f (intern (format "ekg-inline-command-%s"
                               (car command)))))
        (if (fboundp f)
-           (apply f (cdr command))
-         (format "%Unknown command %s: `%s' not found"
+           (apply f (append (cdr command) (list numwords)))
+         (format "%%Unknown command %s: `%s' not found"
                  (car command) f))))
    numwords))
 
@@ -448,7 +455,8 @@ nil for all words."
     (when (ekg-note-text note)
       (insert (ekg-insert-inlines-results
                (ekg-note-text note)
-               (ekg-note-inlines note))))
+               (ekg-note-inlines note)
+               (or numwords ekg-note-display-max-words))))
     (when (ekg-note-mode note)
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
@@ -458,9 +466,9 @@ nil for all words."
     (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
     (buffer-string)))
 
-(defun ekg-inline-command-transclude (id)
+(defun ekg-inline-command-transclude-note (id numwords)
   "Return the text of ID."
-  (ekg-displayable-note-text (ekg-get-note-with-id id)))
+  (ekg-displayable-note-text (ekg-get-note-with-id id) numwords))
 
 (defun ekg-note-snippet (note &optional max-length)
   "Return a short snippet for NOTE.
@@ -728,11 +736,13 @@ However, if URL already exists, we edit the existing note on it."
 Return the latest `ekg-note' object."
   (ekg--connect)
   (widen)
-  (setf (ekg-note-text ekg-note)
-        (buffer-substring (overlay-end (ekg--metadata-overlay))
-                          (point-max))
-        (ekg-note-mode ekg-note) major-mode
-        (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note)))
+  (let* ((text (buffer-substring (overlay-end (ekg--metadata-overlay))
+                                 (point-max)))
+         (ticons (ekg-extract-inlines text)))
+    (setf (ekg-note-text ekg-note) (car ticons)
+          (ekg-note-inlines ekg-note) (cdr ticons)
+          (ekg-note-mode ekg-note) major-mode
+          (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note))))
   (ekg-save-note ekg-note)
   ekg-note)
 

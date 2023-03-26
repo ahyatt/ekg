@@ -183,7 +183,7 @@
     (ekg-save-note note1)
     (ekg-save-note note2)
     (let ((ex-cons (ekg-extract-inlines
-                    (format "Foo %%(transclude %S) %%(transclude %S) Bar"
+                    (format "Foo %%(transclude-note %S) %%(transclude-note %S) Bar"
                             (ekg-note-id note1) (ekg-note-id note2)))))
       (should (equal "Foo text1 text2 text3 text4 Bar"
                      (ekg-insert-inlines-results
@@ -218,6 +218,19 @@
       (ekg-note-delete (ekg-note-id note))
       (should (= 0 (length (triples-with-predicate ekg-db 'inline/command)))))))
 
+(ekg-deftest ekg-test-double-transclude-note ()
+  (let ((note (ekg-note-create "transclusion1" 'text-mode nil)))
+    (ekg-capture '("test1"))
+    (insert (format "%%(transclude-note %S)" (ekg-note-id note)))
+    (ekg-capture-finalize))
+  (ekg-capture '("test2"))
+  (insert (format "%%(transclude-note %S)"
+                  (ekg-note-id
+                   (car (ekg-get-notes-with-tag "test1")))))
+  (ekg-capture-finalize)
+  (should (string-match-p "transclusion1"
+                          (ekg-displayable-note-text
+                           (car (ekg-get-notes-with-tag "test2"))))))
 
 (provide 'ekg-test)
 
