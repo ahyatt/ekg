@@ -470,6 +470,55 @@ nil for all words."
   "Return the text of ID."
   (ekg-displayable-note-text (ekg-get-note-with-id id) numwords))
 
+(defun ekg-inline-command-transclude-file (file _)
+  "Return the contents of FILE."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (buffer-string)))
+
+(defun ekg-inline-command-transclude-website (url _)
+  "Return the contents of the URL."
+  (let ((url-buffer (url-retrieve-synchronously url)))
+    (with-current-buffer url-buffer
+      (goto-char (point-min))
+      (re-search-forward "^$" nil 'move) ; skip headers
+      (shr-render-region (point) (point-max))
+      (buffer-string))))
+
+(defun ekg-select-note ()
+  "Select a note interactively.
+Returns the ID of the note."
+  (if (y-or-n-p "Select note by title? ")
+      (let* ((title-id-pairs (mapcar (lambda (note) (cons (cdr note) (car note)))
+                                     (ekg-document-titles)))
+             (selected-title (completing-read "Title: " title-id-pairs nil t)))
+        (cdr (assoc selected-title title-id-pairs)))
+    (let* ((notes (ekg-get-notes-with-tag
+                 (completing-read "Tag: " (ekg-tags) nil t)))
+           (completion-pairs (mapcar
+                              (lambda (note)
+                                (cons (ekg-displayable-note-text note 10)
+                                      note)) notes)))
+      (ekg-note-id (cdr (assoc (completing-read "Note: " completion-pairs nil t)
+                               completion-pairs))))))
+
+(defun ekg-edit-add-inline ()
+  "Add an inline command to the current note."
+  (interactive)
+  (let ((command (completing-read
+                  "Add inline: "
+                  (mapcar (lambda (name)
+                            (string-remove-prefix "ekg-inline-command-" name))
+                          (seq-difference
+                           (mapcar #'symbol-name
+                                   (apropos-internal "^ekg-inline-command-"))
+                           '("ekg-inline-command--cmacro")))))
+        (args))
+    (pcase command
+      ("transclude-note" (setq args (list (ekg-select-note))))
+      ("transclude-file" (setq args (list (read-file-name "File: ")))))
+    (insert (format "%%%S" (cons (intern command) args)))))
+
 (defun ekg-note-snippet (note &optional max-length)
   "Return a short snippet for NOTE.
 The snippet is just the beginning of the text, cut off after
@@ -480,6 +529,7 @@ not supplied, we use a default of 10."
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
+    (define-key map "\C-c#" #'ekg-edit-add-inline)
     map)
   "Key map for `ekg-capture-mode', a minor mode.
 This is used when capturing new notes.")
@@ -503,6 +553,7 @@ This is used when capturing new notes.")
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
+    (define-key map "\C-c#" #'ekg-edit-add-inline)
     map)
   "Key map for `ekg-edit-mode', a minor mode.
 This is used when editing existing blocks.")
@@ -727,7 +778,8 @@ However, if URL already exists, we edit the existing note on it."
                   ekg-note (copy-ekg-note note)
                   ekg-note-orig-id (ekg-note-id note))
       (ekg-edit-display-metadata)
-      (insert (ekg-note-text note))
+      (insert (ekg-insert-inlines-representation
+               (ekg-note-text note) (ekg-note-inlines note)))
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay)))))
     (switch-to-buffer-other-window buf)))
 
