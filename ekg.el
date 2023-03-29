@@ -446,6 +446,33 @@ INLINES are inserted "
                  (car command) f))))
    numwords))
 
+(defun ekg--transclude-titled-note-completion ()
+  "Completion function for file transclusion."
+  (let ((begin (save-excursion
+                 (search-backward ">t" (line-beginning-position) t)
+                 (+ 1 (point))))
+        (end (point)))
+    (list begin end
+          (completion-table-dynamic (lambda (_)
+                                      (mapcar (lambda (title-cons)
+                                                (cons (cdr title-cons)
+                                                      (car title-cons)))
+                                              (ekg-document-titles))))
+          :exclusive t :exit-function #'ekg--transclude-cap-exit)))
+
+(defun ekg--transclude-cap-exit (completion finished)
+  "Clean up CAP after completion."
+  (when finished
+    (save-excursion
+      (let* ((docs (mapcar (lambda (title-cons)
+                               (cons (cdr title-cons)
+                                     (car title-cons)))
+                             (ekg-document-titles)))
+             (id (cdr (assoc completion docs #'equal))))
+        (unless id (error "No document with title %s" completion))
+        (when (search-backward (format ">%s" completion) (line-beginning-position) t)
+          (replace-match (format "%%(transclude-note %S)" id)))))))
+
 (defun ekg-displayable-note-text (note &optional numwords)
   "Return text, with mode-specific properties, of NOTE.
 A text property `ekg-note-id' is added with the id of the note.
@@ -541,7 +568,8 @@ This is used when capturing new notes.")
   :interactive nil
   (when ekg-capture-mode
     (setq-local completion-at-point-functions
-                (cons #'ekg--capf completion-at-point-functions)
+                (append (list #'ekg--capf #'ekg--transclude-titled-note-completion)
+                        completion-at-point-functions)
                 header-line-format
                 (substitute-command-keys
                  "\\<ekg-capture-mode-map>Capture buffer.  Finish \
