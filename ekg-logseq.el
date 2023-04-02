@@ -74,7 +74,7 @@ We just use the first tag that is not a date tag, if it exists."
       (cl-loop for note in notes do
                ;; Only export when it's the primary tag, and we actually have
                ;; text to export.
-               (when (and (eq tag (ekg-logseq-primary-tag (ekg-note-tags note)))
+               (when (and (equal tag (ekg-logseq-primary-tag (ekg-note-tags note)))
                           (ekg-note-text note))
                  (insert (format (if (eq ekg-capture-default-mode 'org-mode)
                                    "* %s\n" "- %s")
