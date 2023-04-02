@@ -59,19 +59,9 @@ We just use the first tag that is not a date tag, if it exists."
             tags
             (car tags)))
 
-(defun ekg-logseq-export-tag (tag)
-  "Export TAG to logseq.
-This may make files with no content if there are notes with no
-backlinks."
-  (with-temp-file (expand-file-name
-                   (replace-regexp-in-string
-                    "/" "$"
-                    (format "%s.%s" (ekg-logseq-convert-ekg-tag tag)
-                            (if (eq ekg-capture-default-mode 'org-mode)
-                                "org" "md")))
-                   (file-name-concat ekg-logseq-dir
-                                     (if (ekg-date-tag-p tag)
-                                         "journals" "pages")))
+(defun ekg-logseq-tag-to-file (tag)
+  "Return text to populate to a logseq file for TAG."
+  (with-temp-buffer
     (when (eq ekg-capture-default-mode 'org-mode)
       (org-mode))
     (insert (ekg-logseq-property "title" (ekg-logseq-convert-ekg-tag tag))
@@ -104,7 +94,44 @@ backlinks."
                    (if (and (eq ekg-capture-default-mode 'org-mode)
                             (org-kill-is-subtree-p text))
                        (org-paste-subtree nil text)
-                     (insert "\n" text "\n"))))))))
+                     (insert "\n" text "\n"))))))
+    (buffer-string)))
+
+(defun ekg-logseq-tag-to-filename (tag)
+  "Return the filename for TAG."
+  (replace-regexp-in-string
+                    "/" "$"
+                    (format "%s.%s"
+                            (ekg-logseq-convert-ekg-tag tag)
+                            (if (eq ekg-capture-default-mode 'org-mode)
+                                "org" "md"))))
+
+(defun ekg-logseq-filename-to-tag (filename)
+  "Return the tag for FILENAME."
+  (replace-regexp-in-string
+   (rx "$") "/"
+   (file-name-sans-extension (file-name-nondirectory filename))))
+
+(defun ekg-logseq-export-tag (tag)
+  "Export TAG to logseq.
+This may make files with no content if there are notes with no
+backlinks.
+
+Do not overwrite a file if nothing has changed."
+  (let ((contents (ekg-logseq-tag-to-file tag))
+        (filename (expand-file-name
+                   (ekg-logseq-tag-to-filename tag)
+                   (file-name-concat ekg-logseq-dir
+                                     (if (ekg-date-tag-p tag)
+                                         "journals" "pages")))))
+    (unless
+        (and
+         (file-exists-p filename)
+         (string= contents (with-temp-buffer
+                             (insert-file-contents filename)
+                             (buffer-string))))
+      (with-temp-file filename
+        (insert contents)))))
 
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.
@@ -112,25 +139,29 @@ This is a one-way export, everything exported should never be
 imported again, or else the ekg database will become corrupted
 with duplicate data.
 
-This will remove any file previously exported.  We determine this
- by looking for a line reading `#+ekg-export: true'."
+This will remove any file previously exported but no longer in
+our list of tags. However only previously exported files will be
+removed."
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
-  ;; Remove all pages we created in the logseq subdirectories before we export.
-  (cl-loop for subdir in '("journals" "pages") do
-           (cl-loop for file in
-                    (seq-filter #'file-regular-p
-                                (directory-files
-                                 (file-name-concat ekg-logseq-dir subdir) t)) do
-                                 (with-temp-buffer
-                                   (insert-file-contents file)
-                                   (when (string-match
-                                          (rx (seq line-start "#+ekg-export: true" line-end))
-                                          (buffer-substring-no-properties
-                                           (point-min)
-                                           (point-max)))
-                                     (delete-file file)))))
+  (cl-loop for subdir in '("journals" "pages")
+             with tags = (ekg-tags) do
+             (cl-loop for file in
+                      (seq-filter #'file-regular-p
+                                  (directory-files
+                                   (file-name-concat ekg-logseq-dir subdir) t))
+                      do
+                      (unless (member (concat (if (equal subdir "journals") "date/" "")
+                                              (ekg-logseq-filename-to-tag file)) tags)
+                        (with-temp-buffer
+                          (insert-file-contents file)
+                          (when (string-match
+                                 (rx (seq line-start "#+ekg-export: true" line-end))
+                                 (buffer-substring-no-properties
+                                  (point-min)
+                                  (point-max)))
+                            (delete-file file))))))
   (cl-loop for tag in (ekg-tags) do
            (ekg-logseq-export-tag tag)))
 
