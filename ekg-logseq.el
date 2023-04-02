@@ -76,8 +76,11 @@ backlinks."
       (org-mode))
     (insert (ekg-logseq-property "title" (ekg-logseq-convert-ekg-tag tag))
             (ekg-logseq-property "ekg-export" "true"))
-
-    (let ((notes (ekg-get-notes-with-tag tag)))
+    (let ((notes
+           (sort
+            (ekg-get-notes-with-tag tag)
+            (lambda (a b)
+              (time-less-p (ekg-note-creation-time a) (ekg-note-creation-time b))))))
       (cl-loop for note in notes do
                ;; Only export when it's the primary tag, and we actually have
                ;; text to export.
