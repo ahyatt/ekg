@@ -107,18 +107,27 @@ backlinks."
   "Export the current ekg database to logseq.
 This is a one-way export, everything exported should never be
 imported again, or else the ekg database will become corrupted
-with duplicate data."
+with duplicate data.
+
+This will remove any file previously exported.  We determine this
+ by looking for a line reading `#+ekg-export: true'."
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
-    ;; Remove all pages in the logseq subdirectories before we export.
+  ;; Remove all pages we created in the logseq subdirectories before we export.
   (cl-loop for subdir in '("journals" "pages") do
            (cl-loop for file in
                     (seq-filter #'file-regular-p
                                 (directory-files
                                  (file-name-concat ekg-logseq-dir subdir) t)) do
-                                 (delete-file file)))
-
+                                 (with-temp-buffer
+                                   (insert-file-contents file)
+                                   (when (string-match
+                                          (rx (seq line-start "#+ekg-export: true" line-end))
+                                          (buffer-substring-no-properties
+                                           (point-min)
+                                           (point-max)))
+                                     (delete-file file)))))
   (cl-loop for tag in (ekg-tags) do
            (ekg-logseq-export-tag tag)))
 
