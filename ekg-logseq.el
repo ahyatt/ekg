@@ -101,6 +101,13 @@ with duplicate data."
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
+  ;; Remove all pages in the logseq subdirectories before we export.
+  (cl-loop for subdir in '("journals" "pages") do
+           (cl-loop for file in
+                    (seq-filter #'file-regular-p
+                                (directory-files
+                                 (file-name-concat ekg-logseq-dir subdir) t)) do
+                                 (delete-file file)))
   (let ((date-tags)
         (normal-tags)
         (exported-note-ids))
