@@ -176,7 +176,7 @@ Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
 @node Database
 @chapter Database
 
-By default, ekg uses the default triple database, which is set in the variable @code{triples-default-database-filename}. The default value of this is @samp{~/.emacs.d/triples.db}.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable @code{ekg-eb-file}. When this is @code{nil}, it uses the filename up to the triples package.
+By default, ekg uses the default triple database, which is set in the variable @code{triples-default-database-filename}. The default value of this is @samp{~/.emacs.d/triples.db}.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable @code{ekg-db-file}. When this is @code{nil}, it uses the filename up to the triples package.
 
 @node Concepts and data model in ekg
 @chapter Concepts and data model in ekg
@@ -515,7 +515,7 @@ embedding has to be generated separately with its own API call. Once you've done
 @node Logseq exporting
 @section Logseq exporting
 
-ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.
+ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.  As currently written, it works as an export-only option, for those who have no pre-existing data in logseq and don't plan to use logseq for writing, just reading.  @strong{This will overwrite logseq files with data from ekg, so it will likely destroy data}.  As a result, @strong{only use this to read ekg notes in logseq, and avoid writing in logseq}.  It's recommended to backup any logseq files you have before starting.
 
 To export to logseq, start by requiring the @samp{ekg-logseq} module and setting up @code{ekg-logseq-dir}, which points to the base of your logseq file (where there is a "pages" and "journals" directory):
 @lisp

@@ -312,7 +312,7 @@ Important: *your API key is a secret key, so do not store it anywhere it can be 
 Once you have this set up, and you have already called ~(require 'ekg-embedding)~ you can call =M-x ekg-embedding-generate-all=. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in =ekg-notes-mode=, =ekg-embedding-show-similar= to get a list of similar notes. You can also call =ekg-embedding-search= to perform a search over your notes using embeddings.  In any buffer, you can call =ekg-embedding-show-similar-to-current-buffer= to similar notes to whatever the text is in the curent buffer.
 ** Logseq exporting
-ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.
+ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.  As currently written, it works as an export-only option, for those who have no pre-existing data in logseq and don't plan to use logseq for writing, just reading.  *This will overwrite logseq files with data from ekg, so it will likely destroy data*.  As a result, *only use this to read ekg notes in logseq, and avoid writing in logseq*.  It's recommended to backup any logseq files you have before starting.
 
 To export to logseq, start by requiring the =ekg-logseq= module and setting up ~ekg-logseq-dir~, which points to the base of your logseq file (where there is a "pages" and "journals" directory):
 #+begin_src emacs-lisp
