@@ -20,6 +20,8 @@
 @author Andrew Hyatt (@email{ahyatt@@gmail.com})
 @end titlepage
 
+@contents
+
 @ifnottex
 @node Top
 @top ekg, the Emacs Knowledge Graph
@@ -83,6 +85,7 @@ Viewing tags or notes
 Extras
 
 * Embeddings::
+* Logseq exporting::
 
 @end detailmenu
 @end menu
@@ -486,6 +489,7 @@ The ekg module can have any number of functionality additions. These may appear 
 
 @menu
 * Embeddings::
+* Logseq exporting::
 @end menu
 
 @node Embeddings
@@ -507,5 +511,44 @@ Important: @strong{your API key is a secret key, so do not store it anywhere it 
 
 Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the text is in the curent buffer.
+
+@node Logseq exporting
+@section Logseq exporting
+
+ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.
+
+To export to logseq, start by requiring the @samp{ekg-logseq} module and setting up @code{ekg-logseq-dir}, which points to the base of your logseq file (where there is a "pages" and "journals" directory):
+@lisp
+(require 'ekg-logseq)
+(setq ekg-logseq-dir "~/my/logseq")
+@end lisp
+
+Then, whenever you want to export, simply run the command @samp{ekg-logseq-export}.  This currently may take a few seconds to a minute, depending on how much data you have.  We attempt to not write any files that are unchanged.
+
+When exporting, it's important to understand the differences between ekg and logseq.  Logseq has one page per tag, and one page is one file.  Within the page there are many sections, which can be individually referenced.  The pages are the same as tags, and the sections are similar to ekg notes.  However, logseq has a design where the user is seeing mostly one page at a time.  ekg's design is one where notes are shown in a variety of contexts, mostly tag related, but not always.  In logseq, notes lives in a page and is referenced from others, whereas in ekg, notes don't live anywhere, but are just tagged.  To compensate for this difference, we export notes their first non-date tag as the page where the text will apear, and reference other tags, where they will appear as backlinks.  In addition, in org-mode, notes in a page appear as top-level outlines, which are supposed to have text for the outline node.  If there is an ekg note with a title, the title will appear as the text, otherwise the outline node will just read "Untitled note".
+
+@noindent
+For example, take the following note:
+@example
+Tags: date/2023-04-05, ekg, logseq
+
+ekg can export into logseq!
+@end example
+
+This will be exported into "pages/ekg.org":
+
+@example
+#+title: ekg
+#+ekg-export: true
+
+* Untitled note
+:PROPERTIES:
+:EKG_ID: 33134561605
+:END:
+ekg can export into logseq
+@end example
+
+@noindent
+The "ekg-export:true" on each file indicates that this file was exported by logseq, and each node points to its ID in ekg.  This is to keep track of what exported each piece of text in case we implement future two-way syncing.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
 
 @bye
