@@ -139,6 +139,10 @@ This is a one-way export, everything exported should never be
 imported again, or else the ekg database will become corrupted
 with duplicate data.
 
+Existing logseq files with the names of ekg tags, or diary
+entries, will be overwritten, so backing up data before running
+for the first time is recommended.
+
 This will remove any file previously exported but no longer in
 our list of tags. However only previously exported files will be
 removed."
