@@ -271,6 +271,10 @@ This returns only notes that have all the tags in TAGS."
   "Get all notes with TAG, returning a list of `ekg-note' structs."
   (ekg-get-notes-with-tags (list tag)))
 
+(defun ekg-note-with-id-exists-p (id)
+  "Return non-nil if a note with ID exists."
+  (triples-get-subject ekg-db id))
+
 (defun ekg-get-note-with-id (id)
   "Get the specific note with ID.
 If the ID does not exist, create a new note with that ID."
@@ -723,13 +727,13 @@ The metadata fields are comma separated."
 (defun ekg--metadata-update-resource (val)
   "Update the resource to the metadata VAL."
   (when (and (not (string= val (format "%s" (ekg-note-id ekg-note))))
-             (or (not (ekg-note-id ekg-note))
+             (or (not (ekg-note-with-id-exists-p (ekg-note-id ekg-note)))
                  (y-or-n-p "Changing the resource of this note will also change all references to it.  Are you sure?")))
     (triples-with-transaction ekg-db
       (when (ekg-note-id ekg-note)
         (let* ((old-id (ekg-note-id ekg-note))
                (existing-types (triples-get-types ekg-db old-id))
-               (conflicting-types (seq-union existing-types '(text tag titled))))
+               (conflicting-types (seq-intersection existing-types '(text tag titled))))
           (when (and conflicting-types
                      (y-or-n-p "Existing data exists on this resource, replace?"))
             (mapc (lambda (type) (triples-remove-type ekg-db old-id type)) conflicting-types))
