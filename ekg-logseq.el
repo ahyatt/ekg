@@ -70,6 +70,10 @@ We just use the first tag that is not a date tag, if it exists."
             tags
             (car tags)))
 
+(defun ekg-logseq-hash (text)
+  "Return the hash of TEXT."
+  (secure-hash 'sha1 text))
+
 (defun ekg-logseq-note-to-logseq-org (note tag)
   "Return logseq text to store for NOTE in TAG.
 This will store the note text as org-mode, regardless of the mode
@@ -99,8 +103,8 @@ of the note."
                                 (seq-filter (lambda (tag) (not (string-match-p "^trash/" tag)))
                                             (ekg-note-tags note)) (list tag))
                        " ")))
-      (insert (format ":PROPERTIES:\n:ID: %s\n:EKG_LAST_MODIFIED: %d\n:END:\n%s%s"
-                      (ekg-note-id note) (ekg-note-modified-time note)
+      (insert (format ":PROPERTIES:\n:ID: %s\n:EKG_HASH: %s\n:END:\n%s%s"
+                      (ekg-note-id note) (ekg-logseq-hash (ekg-note-text note))
                       tag-text (if (> (length tag-text) 0) "\n" ""))))
     (buffer-substring-no-properties (point-min) (point-max))))
 
@@ -113,8 +117,8 @@ of the note."
             (or (plist-get (ekg-note-properties note) :titled/title)
                 "Untitled Note")
             "\n  "
-            (format "id:: %s\n  ekg_last_modified:: %d\n  "
-                    (ekg-note-id note) (ekg-note-modified-time note))
+            (format "id:: %s\n  ekg_hash:: %s\n  "
+                    (ekg-note-id note) (ekg-logseq-hash (ekg-note-text note)))
             (mapconcat (lambda (tag)
                          (format "#[[%s]]"
                                  (ekg-logseq-convert-ekg-tag tag)))
@@ -208,8 +212,8 @@ make less sense without it."
     (if (eq major-mode 'org-mode)
         (org-element-map (org-element-parse-buffer) 'headline
           (lambda (headline)
-            (unless (or (org-element-property :ekg_last_modified headline)
-                        (org-element-property :EKG_LAST_MODIFIED headline)
+            (unless (or (org-element-property :ekg_hash headline)
+                        (org-element-property :EKG_HASH headline)
                         (> (org-element-property :level headline) 1))
               (buffer-substring-no-properties
                (org-element-property :begin headline)
@@ -235,7 +239,7 @@ make less sense without it."
                     ;; Don't take the text pre-first item.
                     (eq pos (point-min))
                     (equal text "")
-                    (string-match-p "ekg_last_modified::" text))
+                    (string-match-p "ekg_hash::" text))
              (push text items))
            (setq pos (match-end 0)))
          until (eq (point) (point-max)))

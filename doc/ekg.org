@@ -339,14 +339,14 @@ This will be exported into "pages/ekg.org":
 ,* Untitled note
 :PROPERTIES:
 :ID: 33134561605
-:EKG_LAST_MODIFIED: 1681071520
+:EKG_HASH: 89471eadbd7cc56b088f5513c11f68cb1d11d045
 :END:
 #[[2023-04-05]] #[[logseq]]
 ekg can export into logseq
 #+end_example
 
 #+texinfo: @noindent
-Each node points to its ID which is from ekg (but, if it was originally imported, the ekg ID might originally be from logseq).  This is to keep track of what was exported, so we do not re-import it.  For now, even if the data is changed, it is not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
+Each node points to its ID which is from ekg (but, if it was originally imported, the ekg ID might originally be from logseq).  We also encode the hash of the exported data.  This is to keep track of what was exported, so we do not re-import it unless it has changed.  For now, even if the data is changed, it is not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
 *** Importing
 #+texinfo: @noindent
 Imports from logseq will return all top-level items as separate notes.  So, for example, assuming we're reading from the logseq file "pages/logseq.org":

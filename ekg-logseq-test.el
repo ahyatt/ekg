@@ -29,8 +29,8 @@
 (ert-deftest ekg-logseq-test-to-import-text ()
   (with-temp-buffer
     (insert "* Heading\n** Subheading\n*** Subsubheading\n"
-            "* Heading 2\n:PROPERTIES:\n:EKG_LAST_MODIFIED: 123\n:END:\n"
-            "* Heading 3\n:PROPERTIES:\n:ekg_last_modified: 456\n:END:\n"
+            "* Heading 2\n:PROPERTIES:\n:EKG_HASH: 123\n:END:\n"
+            "* Heading 3\n:PROPERTIES:\n:ekg_hash: 456\n:END:\n"
             "* Heading 4\nText for another subheading")
     (org-mode)
     (should (equal '("* Heading\n** Subheading\n*** Subsubheading\n"
@@ -45,7 +45,7 @@
     (insert "id:: 123\n- ## My markdown file\n" "Contents")
     (should (equal '("## My markdown file\nContents") (ekg-logseq--to-import-text))))
   (with-temp-buffer
-    (insert "- Item 1\nid:: abc\nText 1\n- Item 2\n  - ekg_last_modified:: 123 \n- ## Heading 1\nid:: def\n"
+    (insert "- Item 1\nid:: abc\nText 1\n- Item 2\n  - ekg_hash:: 123 \n- ## Heading 1\nid:: def\n"
             "- ## Heading 2\nText 2")
     (should (equal (ekg-logseq--to-import-text)
                    '("Item 1\nid:: abc\nText 1\n"
@@ -71,10 +71,10 @@
     (setf (ekg-note-id note) "123")
     (setf (ekg-note-modified-time note) 123456789)
     (should (equal
-             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_LAST_MODIFIED: 123456789\n:END:\n#[[tag1]] #[[tag2]]\nline1\nline2\n"
+             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: c696f3d4b296c737155637d3a708d2b986ab6f6f\n:END:\n#[[tag1]] #[[tag2]]\nline1\nline2\n"
              (ekg-logseq-note-to-logseq-org note "tag3")))
     (should (equal
-             "- Untitled Note\n  id:: 123\n  ekg_last_modified:: 123456789\n  #[[tag1]] #[[tag2]]\n  line1\n  line2\n"
+             "- Untitled Note\n  id:: 123\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  #[[tag1]] #[[tag2]]\n  line1\n  line2\n"
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
 (ert-deftest ekg-logseq-test-note-to-logseq-org-demotion ()
@@ -82,7 +82,7 @@
     (setf (ekg-note-id note) "123")
     (setf (ekg-note-modified-time note) 123456789)
     (should (equal
-             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_LAST_MODIFIED: 123456789\n:END:\n** Heading 1\n** Heading 2"
+             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: c3475d5573fae5cd21fb32a9ec2e75a7d0e4d409\n:END:\n** Heading 1\n** Heading 2"
              (ekg-logseq-note-to-logseq-org note "tag3")))))
 
 (ert-deftest ekg-logseq-test-notes-to-logseq ()
@@ -95,12 +95,12 @@
     (setf (ekg-note-id note4) "4")
     (setf (ekg-note-modified-time note1) 123456789)
     (equal (concat
-            "* Untitled Note\n:PROPERTIES:\n:ID: 1\n:EKG_LAST_MODIFIED: 123456789\n:END:\n#[[b]] #[[c]]\nnote1\n"
-            "* Untitled Note\n:PROPERTIES:\n:ID: 4\n:EKG_LAST_MODIFIED: 123456789\n:END:\n#[[b]] #[[c]]\nnote4\n")
+            "* Untitled Note\n:PROPERTIES:\n:ID: 1\n:EKG_HASH: 123456789\n:END:\n#[[b]] #[[c]]\nnote1\n"
+            "* Untitled Note\n:PROPERTIES:\n:ID: 4\n:EKG_HASH: 123456789\n:END:\n#[[b]] #[[c]]\nnote4\n")
            (ekg-logseq-notes-to-logseq (list note1 note2 note3 note4) "a" t))
     (equal (concat
-            "- Untitled Note\n  id:: 1\n  ekg_last_modified:: 123456789\n#[[b]] #[[c]]\nnote1\n"
-            "- Untitled Note\n  id:: 4\n  ekg_last_modified:: 123456789\n#[[b]] #[[c]]\nnote4\n")
+            "- Untitled Note\n  id:: 1\n  ekg_hash:: 123456789\n#[[b]] #[[c]]\nnote1\n"
+            "- Untitled Note\n  id:: 4\n  ekg_hash:: 123456789\n#[[b]] #[[c]]\nnote4\n")
            (ekg-logseq-notes-to-logseq (list note1 note2 note3 note4) "a" nil))))
 
 ;;; ekg-logseq-test.el ends here
