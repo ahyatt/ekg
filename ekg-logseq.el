@@ -28,6 +28,7 @@
 (require 'ekg)
 (require 'seq)
 (require 'org nil t)
+(require 'org-element nil t)
 
 (defgroup ekg-logseq nil
   "Customization for ekg's logseq integration."
@@ -43,10 +44,10 @@
   (if (ekg-date-tag-p tag)
       (replace-regexp-in-string "date/" "" tag) tag))
 
-(defun ekg-logseq-property (name value)
-  "Create a logseq property with NAME and VALUE."
-  (if (eq ekg-capture-default-mode 'org-mode)
-      (format "#+%s: %s\n" name value)
+(defun ekg-logseq-property (name value org-mode-p)
+  "Create a logseq property with NAME and VALUE.
+If ORG-MODE-P is true, use org-mode syntax."
+  (if org-mode-p (format "#+%s: %s\n" name value)
     (format "%s:: %s\n" name value)))
 
 (defun ekg-logseq-primary-tag (tags)
@@ -59,43 +60,91 @@ We just use the first tag that is not a date tag, if it exists."
             tags
             (car tags)))
 
+(defun ekg-logseq-note-to-logseq-org (note tag)
+  "Return logseq text to store for NOTE in TAG.
+This will store the note text as org-mode, regardless of the mode
+of the note."
+  (with-temp-buffer
+    (org-mode)
+    (insert (ekg-note-text note))
+    ;; Demote all other headings to level 2.
+    (org-map-entries (lambda () (org-do-demote)))
+    (org-element-map (org-element-parse-buffer) 'link
+      (lambda (link)
+        (when (string= "ekg" (org-element-property :type link))
+          (let ((id (org-element-property :path link)))
+            (org-element-put-property link :type "id")
+            (org-element-put-property link :path id)))))
+    (goto-char (point-min))
+    (insert (org-element-interpret-data
+             (org-element-create 'headline
+                                 `(:level 1 :title ,(or (plist-get (ekg-note-properties note) :titled/title)
+                                                        "Untitled Note")))))
+    ;; Can't figure out how to get org-element to do this for me based off of
+    ;; properties in the headline, so let's put the properties on here manually.
+    (let ((tag-text (mapconcat (lambda (tag)
+                         (format "#[[%s]]"
+                                 (ekg-logseq-convert-ekg-tag tag)))
+                               (seq-difference
+                                (seq-filter (lambda (tag) (not (string-match-p "^trash/" tag)))
+                                            (ekg-note-tags note)) (list tag))
+                       " ")))
+      (insert (format ":PROPERTIES:\n:ID: %s\n:EKG_LAST_MODIFIED: %d\n:END:\n%s%s"
+                      (ekg-note-id note) (ekg-note-modified-time note)
+                      tag-text (if (> (length tag-text) 0) "\n" ""))))
+    (buffer-substring-no-properties (point-min) (point-max))))
+
+(defun ekg-logseq-note-to-logseq-md (note tag)
+  "Return logseq text to store for NOTE in TAG.
+This will store the note text as markdown, regardless of the mode
+of the note."
+  (with-temp-buffer
+    (insert "- "
+            (or (plist-get (ekg-note-properties note) :titled/title)
+                "Untitled Note")
+            "\n  "
+            (format "id:: %s\n  ekg_last_modified:: %d\n  "
+                    (ekg-note-id note) (ekg-note-modified-time note))
+            (mapconcat (lambda (tag)
+                         (format "#[[%s]]"
+                                 (ekg-logseq-convert-ekg-tag tag)))
+                       (seq-difference (ekg-note-tags note) (list tag))
+                       " ")
+            "\n  "
+            (string-replace "\n" "\n  " (ekg-note-text note)))
+    (string-trim (buffer-substring-no-properties (point-min) (point-max)) nil (rx (1+ blank)))))
+
+(defun ekg-logseq-notes-to-logseq (notes tag org-mode-p)
+  "Return logseq text to store for NOTES in TAG.
+If ORG-MODE-P is non-nil, store the notes as org-mode, otherwise
+store as markdown."
+  (concat
+   (ekg-logseq-property "title" (ekg-logseq-convert-ekg-tag tag)
+                        org-mode-p)
+   (ekg-logseq-property "ekg_export" "true" org-mode-p)
+   "\n"
+   (mapconcat (lambda (note)
+               (if org-mode-p
+                   (ekg-logseq-note-to-logseq-org note tag)
+                 (ekg-logseq-note-to-logseq-md note tag)))
+              (seq-filter (lambda (note)
+                            (and (equal tag (ekg-logseq-primary-tag (ekg-note-tags note)))
+                                 (not (equal "" (ekg-note-text note))))) notes)
+             "\n\n")))
+
 (defun ekg-logseq-tag-to-file (tag)
   "Return text to populate to a logseq file for TAG."
   (with-temp-buffer
     (when (eq ekg-capture-default-mode 'org-mode)
       (org-mode))
-    (insert (ekg-logseq-property "title" (ekg-logseq-convert-ekg-tag tag))
-            (ekg-logseq-property "ekg-export" "true"))
-    (let ((notes
-           (sort
-            (ekg-get-notes-with-tag tag)
-            (lambda (a b)
-              (time-less-p (ekg-note-creation-time a) (ekg-note-creation-time b))))))
-      (cl-loop for note in notes do
-               ;; Only export when it's the primary tag, and we actually have
-               ;; text to export.
-               (when (and (equal tag (ekg-logseq-primary-tag (ekg-note-tags note)))
-                          (ekg-note-text note))
-                 (insert (format (if (eq ekg-capture-default-mode 'org-mode)
-                                   "* %s\n" "- %s")
-                           (or (plist-get (ekg-note-properties note) :titled/title)
-                               "Untitled note")))
-                 (if (eq ekg-capture-default-mode 'org-mode)
-                     (org-set-property "EKG_ID" (format "%s" (ekg-note-id note)))
-                   (insert (ekg-logseq-property "ekg-id" (ekg-note-id note))))
-                 (let ((text (concat (string-trim (ekg-note-text note)) "\n"
-                                     (mapconcat (lambda (tag)
-                                                  (format "[[%s]]"
-                                                          (ekg-logseq-convert-ekg-tag tag)))
-                                                (seq-difference (ekg-note-tags note)
-                                                                (list tag))
-                                                " ")
-                                     "\n")))
-                   (if (and (eq ekg-capture-default-mode 'org-mode)
-                            (org-kill-is-subtree-p text))
-                       (org-paste-subtree nil text)
-                     (insert "\n" text "\n"))))))
-    (buffer-string)))
+    (insert (ekg-logseq-notes-to-logseq
+             (sort
+              (ekg-get-notes-with-tag tag)
+              (lambda (a b)
+                (time-less-p (ekg-note-creation-time a) (ekg-note-creation-time b))))
+             tag
+             (eq major-mode 'org-mode)))
+    (buffer-substring-no-properties (point-min) (point-max))))
 
 (defun ekg-logseq-tag-to-filename (tag)
   "Return the filename for TAG."
@@ -133,6 +182,125 @@ Do not overwrite a file if nothing has changed."
       (with-temp-file filename
         (insert contents)))))
 
+(defun ekg-logseq--to-import-text ()
+  "Return a list of notes to the current buffer to import.
+This is the text not marked as exported by ekg. If org-mode, the
+buffer is divided into its top level subtrees. Any subtree that
+isn't exported by EKG is included.
+
+For markdown, it's the same thing except for list items, which
+are always the top-level constructs in markdown mode.
+
+For markdown, remove the leading dash. For org-mode, don't remove
+the leading star, because a nested structure beneath seems to
+make less sense without it."
+  (save-excursion
+    (if (eq major-mode 'org-mode)
+        (org-element-map (org-element-parse-buffer) 'headline
+          (lambda (headline)
+            (unless (or (org-element-property :ekg_last_modified headline)
+                        (org-element-property :EKG_LAST_MODIFIED headline)
+                        (> (org-element-property :level headline) 1))
+              (buffer-substring-no-properties
+               (org-element-property :begin headline)
+               (org-element-property :end headline))))
+          nil nil 'headline)
+      ;; Not org-mode, it must be markdown. Iterate over the top-level list
+      ;; items, keeping any that don't have an "ekg_id".
+      (let ((pos (point-min))
+            (items nil))
+        (goto-char (point-min))
+        (cl-loop
+         do
+         ;; According to the docs this should set the point to the end when
+         ;; there is no match, but it doesn't seem to happen.
+         (unless (re-search-forward "^- " nil t)
+           (goto-char (point-max)))
+         (let ((text
+                (replace-regexp-in-string
+                 (rx bol "- ") ""
+                 (buffer-substring-no-properties
+                  pos (point)))))
+           (unless (or
+                    ;; Don't take the text pre-first item.
+                    (eq pos (point-min))
+                    (equal text "")
+                    (string-match-p "ekg_last_modified::" text))
+             (push text items))
+           (setq pos (match-end 0)))
+         until (eq (point) (point-max)))
+        (nreverse items)))))
+
+(defun ekg-logseq--to-import-tags (text)
+  "Return a list of tags in logseq format to import from TEXT.
+We look for strings of the format #tag and #[[tag]]."
+  (with-temp-buffer
+    (insert text)
+    (let ((tags ()))
+      (goto-char (point-min))
+      (while (re-search-forward
+              (rx (or (seq "#" (group-n 1 (1+ alnum)))
+                      (seq "#[[" (group-n 1 (1+ (or alnum space))) "]]"))) nil t)
+        (when-let ((tag (match-string-no-properties 1)))
+          (push tag tags)))
+      (nreverse (seq-uniq tags)))))
+
+(defun ekg-logseq--to-import-md-id (text)
+  "Return the logseq id from markdown TEXT."
+  (when (string-match (rx (seq "id:: " (group-n 1 (1+ (or "-" hex-digit))))) text)
+    (match-string-no-properties 1 text)))
+
+(defun ekg-logseq--to-import-org-id (text)
+  "Return the logseq id from org TEXT."
+    (with-temp-buffer
+      (insert text)
+      (org-mode)
+      ;; There should just be one thing here.
+      (car
+       (org-element-map (org-element-parse-buffer) 'headline
+        (lambda (headline)
+          (org-element-property :ID headline))
+        nil nil 'headline))))
+
+(defun ekg-logseq-import ()
+  "Import from the current logseq directory.
+This will create new nodes based on parts of the logseq pages
+that were previously not exported. It will never re-import
+something exported, so it's expected that changing things in
+logseq will not result in those things showing up in ekg.
+
+An import must be followed by an export, otherwise we can end up
+importing the same thing multiple times."
+  (interactive)
+  (ekg--connect)
+  (unless ekg-logseq-dir
+    (error "ekg-logseq-dir must be set"))
+  ;; Force a backup pre-import.
+  (triples-backup ekg-db ekg-db-file most-positive-fixnum)
+  (cl-loop for subdir in '("journals" "pages") do
+           (cl-loop for file in
+                    (directory-files
+                     (file-name-concat ekg-logseq-dir subdir) t
+                     (rx (seq "." (or "org" "md") eol))) do
+                     (let ((tag (ekg-logseq-filename-to-tag file)))
+                       (with-temp-buffer
+                         (insert-file-contents file)
+                         (when (equal "org" (file-name-extension file))
+                           (org-mode))
+                         ;; No need to do the same for markdown, because we
+                         ;; don't need any special parsing capabilities.
+                         (let ((items (ekg-logseq--to-import-text)))
+                           (cl-loop for text in items
+                                    do
+                                    (let ((note (ekg-note-create text (when (eq major-mode 'org-mode)
+                                                                        'org-mode 'markdown-mode)
+                                                                 (cons tag (ekg-logseq--to-import-tags text)))))
+                                      (when-let (id (if (eq major-mode 'org-mode)
+                                                        (ekg-logseq--to-import-org-id text)
+                                                      (ekg-logseq--to-import-md-id text)))
+                                        (setf (ekg-note-id note) id))
+                                      (ekg-save-note note)))))))))
+
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.
 This is a one-way export, everything exported should never be
@@ -149,6 +317,7 @@ removed."
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
+  (ekg--connect)
   (cl-loop for subdir in '("journals" "pages")
              with tags = (ekg-tags) do
              (cl-loop for file in
