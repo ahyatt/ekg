@@ -85,7 +85,12 @@ Viewing tags or notes
 Extras
 
 * Embeddings::
-* Logseq exporting::
+* Logseq::
+
+Logseq
+
+* Exporting::
+* Importing::
 
 @end detailmenu
 @end menu
@@ -489,7 +494,7 @@ The ekg module can have any number of functionality additions. These may appear 
 
 @menu
 * Embeddings::
-* Logseq exporting::
+* Logseq::
 @end menu
 
 @node Embeddings
@@ -512,10 +517,12 @@ Important: @strong{your API key is a secret key, so do not store it anywhere it 
 Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the text is in the curent buffer.
 
-@node Logseq exporting
-@section Logseq exporting
+@node Logseq
+@section Logseq
 
-ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.  As currently written, it works as an export-only option, for those who have no pre-existing data in logseq and don't plan to use logseq for writing, just reading.  @strong{This will overwrite logseq files with data from ekg, so it will likely destroy data}.  As a result, @strong{only use this to read ekg notes in logseq, and avoid writing in logseq}.  It's recommended to backup any logseq files you have before starting.
+ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.  ekg and logseq are not designed to be perfectly compatible, because each one has a different design on how it organizes notes.  Because of this, perfect compatibility is not possible.  The ekg and logseq compatibility are designed to favor ekg's system when a conflict arises.
+
+There are two ways to use logseq, one is maintaining logseq as an export-only copy of ekg data, where you don't plan to modify anything in logseq, just using it to access your notes on other platforms.  Exporting from ekg is destructive, though, so without an initial import, @strong{exporting will overwrite logseq files with data from ekg, so it may destroy data}.  The other way is to sync bidirectionally.  This starts by importing anything from logseq that has never been imported before, and then writing ekg's data on top.  This will preserve data, but will lose the initial formatting of ordering of pages.  Both of these methods, then, will significantly impact your logseq notes.  @strong{It is highly advised to back up your logseq files before starting}.
 
 To export to logseq, start by requiring the @samp{ekg-logseq} module and setting up @code{ekg-logseq-dir}, which points to the base of your logseq file (where there is a "pages" and "journals" directory):
 @lisp
@@ -523,9 +530,17 @@ To export to logseq, start by requiring the @samp{ekg-logseq} module and setting
 (setq ekg-logseq-dir "~/my/logseq")
 @end lisp
 
-Then, whenever you want to export, simply run the command @samp{ekg-logseq-export}.  This currently may take a few seconds to a minute, depending on how much data you have.  We attempt to not write any files that are unchanged.
+If you wish to maintain logseq as a read-only copy of ekg, just run @samp{ekg-logseq-export} when you wish to export data.  This currently may take a few seconds to a minute, depending on how much data you have.  We attempt to not write any files that are unchanged.  To have a bidirectional synchronization, run @samp{ekg-logseq-sync}, which will first import data from logseq, then export data.
 
-When exporting, it's important to understand the differences between ekg and logseq.  Logseq has one page per tag, and one page is one file.  Within the page there are many sections, which can be individually referenced.  The pages are the same as tags, and the sections are similar to ekg notes.  However, logseq has a design where the user is seeing mostly one page at a time.  ekg's design is one where notes are shown in a variety of contexts, mostly tag related, but not always.  In logseq, notes lives in a page and is referenced from others, whereas in ekg, notes don't live anywhere, but are just tagged.  To compensate for this difference, we export notes their first non-date tag as the page where the text will apear, and reference other tags, where they will appear as backlinks.  In addition, in org-mode, notes in a page appear as top-level outlines, which are supposed to have text for the outline node.  If there is an ekg note with a title, the title will appear as the text, otherwise the outline node will just read "Untitled note".
+@menu
+* Exporting::
+* Importing::
+@end menu
+
+@node Exporting
+@subsection Exporting
+
+When exporting, it's important to understand the differences between ekg and logseq.  Logseq has one page per tag, and one page is one file.  Within the page there are many sections, which can be individually referenced.  The pages are the same as tags, and the sections are similar to ekg notes.  However, logseq has a design where the user is seeing mostly one page at a time.  ekg's design is one where notes are shown in a variety of contexts, mostly tag related, but not always.  In logseq, notes lives in a page and is referenced from others, whereas in ekg, notes don't "live" anywhere, but are just tagged.  To compensate for this difference, we export notes based on their first non-date tag as the page where the text will apear, and reference other tags, where they will appear as backlinks.  In addition, in org-mode, notes in a page appear as top-level outlines, which are supposed to have text for the outline node.  If there is an ekg note with a title, the title will appear as the text, otherwise the outline node will just read "Untitled note".  Because this initial headline is where various properties are stored, and is followed immediately by tags, it makes sense that this is a title instead of just part of the content.
 
 @noindent
 For example, take the following note:
@@ -539,16 +554,36 @@ This will be exported into "pages/ekg.org":
 
 @example
 #+title: ekg
-#+ekg-export: true
 
 * Untitled note
 :PROPERTIES:
-:EKG_ID: 33134561605
+:ID: 33134561605
+:EKG_LAST_MODIFIED: 1681071520
 :END:
+#[[2023-04-05]] #[[logseq]]
 ekg can export into logseq
 @end example
 
 @noindent
-The "ekg-export:true" on each file indicates that this file was exported by logseq, and each node points to its ID in ekg.  This is to keep track of what exported each piece of text in case we implement future two-way syncing.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
+Each node points to its ID which is from ekg (but, if it was originally imported, the ekg ID might originally be from logseq).  This is to keep track of what was exported, so we do not re-import it.  For now, even if the data is changed, it is not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
+
+@node Importing
+@subsection Importing
+
+@noindent
+Imports from logseq will return all top-level items as separate notes.  So, for example, assuming we're reading from the logseq file "pages/logseq.org":
+
+@example
+* This is my first time trying logseq  #testing
+* The org compatibility here is especially nice  #org
+
+   It really helps me feel comfortable in using the various formatting options I had gotten used to.
+@end example
+
+@noindent
+This will turn into two notes, one that has text "* This is my first time trying logseq  #testing", and with tags @samp{logseq}, and @samp{testing}, and the other with the rest of the text, with the tags @samp{logseq} and @samp{org}.
+
+@noindent
+There are a few things to be aware of.  In logseq, any level of the hierarchy can have an id and be referenced separately.  In ekg, we don't support notes inside of other notes, so these will be imported in the context of the parent note, and won't be available to reference as its own separate note.  Also, logseq has other functionality not supported by ekg, such as queries and potentially anything provided by plugins.  These will be imported as-is to ekg, but without any corresponding functionality.
 
 @bye
