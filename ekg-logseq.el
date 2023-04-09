@@ -30,6 +30,16 @@
 (require 'org nil t)
 (require 'org-element nil t)
 
+(declare-function org-element-map "ext:org-element.el")
+(declare-function org-element-property "ext:org-element.el")
+(declare-function org-element-put-property "ext:org-element.el")
+(declare-function org-element-interpret-data "ext:org-element.el")
+(declare-function org-element-parse-buffer "ext:org-element.el")
+(declare-function org-element-create "ext:org-element.el")
+(declare-function org-map-entries "ext:org.el")
+(declare-function org-mode "ext:org.el")
+(declare-function org-do-demote "ext:org.el")
+
 (defgroup ekg-logseq nil
   "Customization for ekg's logseq integration."
   :group 'ekg)

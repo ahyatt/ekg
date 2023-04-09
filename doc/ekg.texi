@@ -46,7 +46,6 @@ The README is also informative, has screenshots, and can be found in the source 
 * Viewing tags or notes::
 * The trash::
 * Links to ekg in org-mode::
-* Importing from org-roam and logseq::
 * Importing from org-roam::
 * Backups::
 * Database maintenance::
@@ -401,9 +400,6 @@ If all of a notes tags are trashed, then the note itself is considered to be tra
 
 Both notes in ekg and certain note list buffers can be stored and linked to in org-mode. To store a link to a note, you have to edit that note and call @samp{org-store-link}. That function can also be called in a @samp{ekg-notes-mode} buffer created by @samp{ekg-show-notes-with-any-tags}. Other list types currently will just store their tags assuming the user wants a link to a list with any of the tags in the list.
 
-@node Importing from org-roam and logseq
-@chapter Importing from org-roam and logseq
-
 @node Importing from org-roam
 @chapter Importing from org-roam
 
@@ -416,8 +412,6 @@ The import is idempotent, so it always will import to the same entities, overwri
 @end lisp
 
 Then, when a note is found that is tagged with "idea", but with title "emacs is a powerful tool", then the title in org-roam will be turned into the ekg tag "idea/emacs is a powerful tool", and anything linked with it will also get the same prefix.
-
-Logseq is also imported as well when @samp{ekg-org-roam-import} is executed, if any files are found.  There isn't true compatability, since ekg does not support many logseq functions.
 
 @node Backups
 @chapter Backups
@@ -520,7 +514,7 @@ embedding has to be generated separately with its own API call. Once you've done
 @node Logseq
 @section Logseq
 
-ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.  ekg and logseq are not designed to be perfectly compatible, because each one has a different design on how it organizes notes.  Because of this, perfect compatibility is not possible.  The ekg and logseq compatibility are designed to favor ekg's system when a conflict arises.
+ekg can sync with logseq, a PKMS application that can run on a laptop or phone.  Logseq is particularly convenient as a way to view or enter notes on your phone, and various synchronization solutions exist to sync local files with your phone.  Because ekg and logseq have different designs, these apps are not perfectly compatible. The ekg and logseq syncing is designed to favor ekg's system when a conflict arises.
 
 There are two ways to use logseq, one is maintaining logseq as an export-only copy of ekg data, where you don't plan to modify anything in logseq, just using it to access your notes on other platforms.  Exporting from ekg is destructive, though, so without an initial import, @strong{exporting will overwrite logseq files with data from ekg, so it may destroy data}.  The other way is to sync bidirectionally.  This starts by importing anything from logseq that has never been imported before, and then writing ekg's data on top.  This will preserve data, but will lose the initial formatting of ordering of pages.  Both of these methods, then, will significantly impact your logseq notes.  @strong{It is highly advised to back up your logseq files before starting}.
 

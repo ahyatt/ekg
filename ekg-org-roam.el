@@ -93,48 +93,6 @@ However, we do pay attention to
             (cl-pushnew (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node)) tags-from-links)))))
     tags-from-links))
 
-(defun ekg-org-roam-import-logseq (pages-dir journal-dir)
-  "Import Logseq data from PAGES-DIR and JOURNAL-DIR.
-This assumes that org-roam is also being used alongside logseq.
-Only data that org-roam doesn't have in its cache is imported,
-the rest should have been imported with `ekg-org-roam-import'.
-JOURNAL-DIR should be relative to PAGES-DIR."
-  (triples-add-schema ekg-db 'logseq '(file (:base/unique t :base/type string)))
-  (cl-loop for dir in (list pages-dir (concat (file-name-as-directory pages-dir) journal-dir))
-           do
-           (cl-loop for file in (directory-files dir) do
-                    (unless (or
-                             (string-match (rx (seq string-start ?\.)) file)
-                             (not (member (file-name-extension file) '("org" "txt" "md")))
-                             (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] (concat (file-name-as-directory pages-dir) file))
-                             (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] (concat (file-name-as-directory journal-dir) file)))
-                      (let ((title
-                             (if (string-match-p "journal" dir) (string-replace "_" "-" (file-name-base file))
-                               (replace-regexp-in-string (rx (seq string-start (one-or-more digit) ?\-)) "" (file-name-base file))))
-                            (filename (concat (file-name-as-directory dir) file)))
-                        (save-excursion
-                          (find-file filename)
-                          (unless (or (= 0 (length (string-trim (buffer-string))))
-                                      ;; Don't re-import files that we have exported, since it will lead to duplication.
-                                      (string-match-p (rx (seq line-start "ekg-export" (** 1 2 ":") space "true" line-end))
-                                                      (downcase (buffer-string))))
-                            (let ((tags))
-                              (when (re-search-forward (rx (seq line-start "TAGS:" (group (zero-or-more not-newline)) line-end)) nil t)
-                                (setq tags (split-string (match-string 1))))
-                              (font-lock-ensure)
-                              (triples-with-transaction ekg-db
-                                (let* ((note (ekg-note-create
-                                              (buffer-string)
-                                              major-mode
-                                              (seq-difference (cons (ekg-org-roam-import-title-to-tag title tags) tags)
-                                                              (seq-union ekg-org-roam-import-tag-to-ignore
-                                                                         ekg-org-roam-import-tag-to-prefix
-                                                                         #'equal)
-                                                              #'equal))))
-                                  (setf (ekg-note-id note) filename)
-                                  (ekg-save-note note)
-                                  (triples-set-type ekg-db (ekg-note-id note) 'logseq `(:file ,filename))))))))))))
-
 (defun ekg-org-roam-import ()
   "Import all data from org-roam into ekg."
   (ekg--connect)
@@ -170,8 +128,7 @@ JOURNAL-DIR should be relative to PAGES-DIR."
                 (when (org-roam-node-refs node)
                   (setf (ekg-note-properties note) `(:reference/url ,(org-roam-node-refs node))))
                 (ekg-save-note note)
-                (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node))))))))))
-  (ekg-org-roam-import-logseq org-roam-directory org-roam-dailies-directory))
+                (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node)))))))))))
 
 (provide 'ekg-org-roam)
 

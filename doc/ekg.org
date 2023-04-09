@@ -227,8 +227,6 @@ Notes deleted from note lists (=ekg-notes-mode=) buffers are not deleted outrigh
 If all of a notes tags are trashed, then the note itself is considered to be trashed. Trashed notes can be seen by calling =ekg-show-notes-in-trash=. If notes are deleted from this list, they are deleted permanently. However, if you want to un-trash the note, you can edit the note and remove the trash prefix from one or more of the tags.
 * Links to ekg in org-mode
 Both notes in ekg and certain note list buffers can be stored and linked to in org-mode. To store a link to a note, you have to edit that note and call =org-store-link=. That function can also be called in a =ekg-notes-mode= buffer created by =ekg-show-notes-with-any-tags=. Other list types currently will just store their tags assuming the user wants a link to a list with any of the tags in the list.
-* Importing from org-roam and logseq
-
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags, and all links will become tags as well. At the moment, this is done via executing elisp, since importing can be fairly idiosyncratic, and ekg and org-roam have different ways of expressing the same thing that you may want to change. It's best if you looked over =ekg-org-roam.el= and see what is going on, but at least read the following description before manually executing ~(ekg-org-roam-import)~.
 
@@ -239,8 +237,6 @@ The import is idempotent, so it always will import to the same entities, overwri
 #+end_src
 
 Then, when a note is found that is tagged with "idea", but with title "emacs is a powerful tool", then the title in org-roam will be turned into the ekg tag "idea/emacs is a powerful tool", and anything linked with it will also get the same prefix.
-
-Logseq is also imported as well when =ekg-org-roam-import= is executed, if any files are found.  There isn't true compatability, since ekg does not support many logseq functions.
 * Backups
 By default, the ekg package will back up its database, using the backup functionality built into the triples library. By default, behavior is set by ~ekg-default-num-backups~, set to =5= by default, and ~ekg-default-backups-strategy~, set to =daily=. These are, on first use of ekg, stored in the database itself, but it can be set again at any time by running:
 #+begin_
@@ -312,7 +308,7 @@ Important: *your API key is a secret key, so do not store it anywhere it can be 
 Once you have this set up, and you have already called ~(require 'ekg-embedding)~ you can call =M-x ekg-embedding-generate-all=. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in =ekg-notes-mode=, =ekg-embedding-show-similar= to get a list of similar notes. You can also call =ekg-embedding-search= to perform a search over your notes using embeddings.  In any buffer, you can call =ekg-embedding-show-similar-to-current-buffer= to similar notes to whatever the text is in the curent buffer.
 ** Logseq
-ekg can export to logseq, a PKMS application that can run on a laptop or phone.  It is particularly convenient as a way to view notes on your phone, and various synchronization solutions exist to sync local files with your phone.  ekg and logseq are not designed to be perfectly compatible, because each one has a different design on how it organizes notes.  Because of this, perfect compatibility is not possible.  The ekg and logseq compatibility are designed to favor ekg's system when a conflict arises.
+ekg can sync with logseq, a PKMS application that can run on a laptop or phone.  Logseq is particularly convenient as a way to view or enter notes on your phone, and various synchronization solutions exist to sync local files with your phone.  Because ekg and logseq have different designs, these apps are not perfectly compatible. The ekg and logseq syncing is designed to favor ekg's system when a conflict arises.
 
 There are two ways to use logseq, one is maintaining logseq as an export-only copy of ekg data, where you don't plan to modify anything in logseq, just using it to access your notes on other platforms.  Exporting from ekg is destructive, though, so without an initial import, *exporting will overwrite logseq files with data from ekg, so it may destroy data*.  The other way is to sync bidirectionally.  This starts by importing anything from logseq that has never been imported before, and then writing ekg's data on top.  This will preserve data, but will lose the initial formatting of ordering of pages.  Both of these methods, then, will significantly impact your logseq notes.  *It is highly advised to back up your logseq files before starting*.
 
