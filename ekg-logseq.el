@@ -270,9 +270,10 @@ something exported, so it's expected that changing things in
 logseq will not result in those things showing up in ekg.
 
 An import must be followed by an export, otherwise we can end up
-importing the same thing multiple times."
-  (interactive)
-  (ekg--connect)
+importing the same thing multiple times. Because of this, if you
+run this interactively, only run it once if you want an initial
+population of data into ekg. Otherwise, run `ekg-logseq-sync',
+which will import and re-export back to logseq."
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
   ;; Force a backup pre-import.
@@ -299,21 +300,17 @@ importing the same thing multiple times."
                                                         (ekg-logseq--to-import-org-id text)
                                                       (ekg-logseq--to-import-md-id text)))
                                         (setf (ekg-note-id note) id))
+                                      (message "ekg-logseq-import: saving note from file %s" file)
                                       (ekg-save-note note)))))))))
 
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.
-This is a one-way export, everything exported should never be
-imported again, or else the ekg database will become corrupted
-with duplicate data.
 
-Existing logseq files with the names of ekg tags, or diary
-entries, will be overwritten, so backing up data before running
-for the first time is recommended.
-
-This will remove any file previously exported but no longer in
-our list of tags. However only previously exported files will be
-removed."
+Because this overwrites logseq data, running this by itself
+should only be done if your logseq is meant as a read-only copy
+of your ekg database. If you intend to add to your logseq, or you
+have already have information in logseq, you should run
+`ekg-logseq-sync' instead."
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
@@ -337,6 +334,16 @@ removed."
                             (delete-file file))))))
   (cl-loop for tag in (ekg-tags) do
            (ekg-logseq-export-tag tag)))
+
+(defun ekg-logseq-sync ()
+  "Sync ekg and logseq.
+This will import from logseq to populate anything new into ekg,
+then export ekg so that logseq is up to date, and information in
+logseq is marked as being part of logseq."
+  (interactive)
+  (ekg--connect)
+  (ekg-logseq-import)
+  (ekg-logseq-export))
 
 (provide 'ekg-logseq)
 ;;; ekg-logseq.el ends here
