@@ -193,6 +193,7 @@ Do not overwrite a file if nothing has changed."
          (string= contents (with-temp-buffer
                              (insert-file-contents filename)
                              (buffer-string))))
+      (message "ekg-logseq-export: exporting to file %s" filename)
       (with-temp-file filename
         (insert contents)))))
 
@@ -297,7 +298,9 @@ which will import and re-export back to logseq."
                     (directory-files
                      (file-name-concat ekg-logseq-dir subdir) t
                      (rx (seq "." (or "org" "md") eol))) do
-                     (let ((tag (ekg-logseq-filename-to-tag file)))
+                     (let ((tag (concat (if (equal subdir "journals")
+                                            "date/" "")
+                                        (ekg-logseq-filename-to-tag file))))
                        (with-temp-buffer
                          (insert-file-contents file)
                          (when (equal "org" (file-name-extension file))

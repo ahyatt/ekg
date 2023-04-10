@@ -103,4 +103,8 @@
             "- Untitled Note\n  id:: 4\n  ekg_hash:: 123456789\n#[[b]] #[[c]]\nnote4\n")
            (ekg-logseq-notes-to-logseq (list note1 note2 note3 note4) "a" nil))))
 
+(ert-deftest ekg-logseq-test-filename-to-tag ()
+  (should (equal "foo" (ekg-logseq-filename-to-tag "foo.org")))
+  (should (equal "foo/bar" (ekg-logseq-filename-to-tag "foo$bar.org"))))
+
 ;;; ekg-logseq-test.el ends here
