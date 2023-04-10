@@ -34,6 +34,8 @@ edit in a separate buffer.
 
 The editing of notes combines the editing of the text of the note with various properties stored in the database such as the tags of the note.
 * Installation
+** Sqlite dependency
+If using Emacs version 29, you are likely have =sqlite= as a library compiled into Emacs.  Versions prior to the use =emacsql= for access to sqlite.  If you are using a pre-Emacs 29 version, you need to have =sqlite= installed on your system.
 ** Installing via Melpa
 This is the easiest and recommended way to install ekg. If you have not set up Melpa yet, follow the instructions at https://melpa.org/#/getting-started.
 

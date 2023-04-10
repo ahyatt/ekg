@@ -20,6 +20,8 @@
 @author Andrew Hyatt (@email{ahyatt@@gmail.com})
 @end titlepage
 
+@contents
+
 @ifnottex
 @node Top
 @top ekg, the Emacs Knowledge Graph
@@ -57,6 +59,7 @@ The README is also informative, has screenshots, and can be found in the source 
 
 Installation
 
+* Sqlite dependency::
 * Installing via Melpa::
 * Installing by hand::
 
@@ -105,9 +108,15 @@ The editing of notes combines the editing of the text of the note with various p
 @chapter Installation
 
 @menu
+* Sqlite dependency::
 * Installing via Melpa::
 * Installing by hand::
 @end menu
+
+@node Sqlite dependency
+@section Sqlite dependency
+
+If using Emacs version 29, you are likely have @samp{sqlite} as a library compiled into Emacs.  Versions prior to the use @samp{emacsql} for access to sqlite.  If you are using a pre-Emacs 29 version, you need to have @samp{sqlite} installed on your system.
 
 @node Installing via Melpa
 @section Installing via Melpa
@@ -173,7 +182,7 @@ Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
 @node Database
 @chapter Database
 
-By default, ekg uses the default triple database, which is set in the variable @code{triples-default-database-filename}. The default value of this is @samp{~/.emacs.d/triples.db}.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable @code{ekg-eb-file}. When this is @code{nil}, it uses the filename up to the triples package.
+By default, ekg uses the default triple database, which is set in the variable @code{triples-default-database-filename}. The default value of this is @samp{~/.emacs.d/triples.db}.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable @code{ekg-db-file}. When this is @code{nil}, it uses the filename up to the triples package.
 
 @node Concepts and data model in ekg
 @chapter Concepts and data model in ekg
