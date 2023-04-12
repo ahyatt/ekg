@@ -781,6 +781,11 @@ The metadata fields are comma separated."
   (and (stringp tag)
        (string-match-p (rx (seq string-start "trash/")) tag)))
 
+(defun ekg-note-active-tags (note)
+  "Return the tags of NOTE that are not part of the trash."
+  (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag)))
+              (ekg-note-tags note)))
+
 (defun ekg-mark-trashed (tag)
   "Return TAG transformed to mark it as trash."
   (format "trash/%s" tag))

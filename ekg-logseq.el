@@ -100,8 +100,7 @@ of the note."
                          (format "#[[%s]]"
                                  (ekg-logseq-convert-ekg-tag tag)))
                                (seq-difference
-                                (seq-filter (lambda (tag) (not (string-match-p "^trash/" tag)))
-                                            (ekg-note-tags note)) (list tag))
+                                (ekg-note-active-tags note) (list tag))
                        " ")))
       (insert (format ":PROPERTIES:\n:ID: %s\n:EKG_HASH: %s\n:END:\n%s%s"
                       (ekg-note-id note) (ekg-logseq-hash (ekg-note-text note))
@@ -122,7 +121,7 @@ of the note."
             (mapconcat (lambda (tag)
                          (format "#[[%s]]"
                                  (ekg-logseq-convert-ekg-tag tag)))
-                       (seq-difference (ekg-note-tags note) (list tag))
+                       (seq-difference (ekg-note-active-tags note) (list tag))
                        " ")
             "\n  "
             (string-replace "\n" "\n  " (ekg-note-text note)))
@@ -144,7 +143,7 @@ store as markdown."
               (seq-filter (lambda (note)
                             (and (equal tag (ekg-logseq-primary-tag (ekg-note-tags note)))
                                  (not (equal "" (ekg-note-text note))))) notes)
-             "\n\n")))
+             "\n")))
 
 (defun ekg-logseq-tag-to-file (tag)
   "Return text to populate to a logseq file for TAG."
