@@ -53,6 +53,7 @@ The README is also informative, has screenshots, and can be found in the source 
 * Customizing ekg with hooks::
 * Integration with ekg::
 * Extras::
+* Design::
 
 @detailmenu
 --- The Detailed Node Listing ---
@@ -86,6 +87,11 @@ Viewing tags or notes
 Extras
 
 * Embeddings::
+
+Design
+
+* The triple database::
+* The metadata section::
 
 @end detailmenu
 @end menu
@@ -446,6 +452,8 @@ Remove all tags with no uses.
 Remove notes with no text, or just a "*", which is something that often happens with org-mode buffers.
 @end itemize
 
+Tags may need to be renamed because the concept has changed in some way.  The command @samp{ekg-rename-tag} can quickly rename one tag to another.
+
 @node Customizing ekg with hooks
 @chapter Customizing ekg with hooks
 
@@ -516,5 +524,43 @@ Important: @strong{your API key is a secret key, so do not store it anywhere it 
 
 Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the text is in the curent buffer.
+
+@node Design
+@chapter Design
+
+@menu
+* The triple database::
+* The metadata section::
+@end menu
+
+@node The triple database
+@section The triple database
+
+The ekg package uses the triples package to interface with a sqlite database.  The reason a database is useful, even for text, is because databases are extremely fast, very flexible, and extremely easy to change.  In general, the less your data looks like just files with text in them, the more database make sense.  In ekg, we can separate the notion of tags from the text, which makes writing functions such as @samp{ekg-rename-tag} trivial, and the execution extremely fast.
+
+The decision to use the triples package, though, is related to a different design choice.  In a triple-based system, there's only one database table with four columns, a @samp{subject}, @samp{predicate}, @samp{object}, and @samp{properties}.  One way to think of this schema is that it defines links of different types from a subject to an object. This is combined with a schema, itself defined in triples.  The triples define that subjects can have types, and those types can have properties.  Those properties are expressed in this triple format.  In ekg, the subjects correspond to the IDs of the notes, or tags.  Subjects can have multiple types, and data is factored into types that belong together, with a specific meaning.  To give an example, listing out the data for a note might look something like:
+
+@example
+33204698034|base/type|tagged|()
+33204698034|tagged/tag|"date/2022-11-06"|(:index 0)
+33204698034|tagged/tag|"lentil stew"|(:index 1)
+33204698034|base/type|text|()
+33204698034|text/text|"Made a great lentil stew with dried porcini mushrooms and delicata squash."
+33204698034|text/mode|org-mode|()
+33204698034|base/type|time-tracked|()
+33204698034|time-tracked/creation-time|1667787928|()
+33204698034|time-tracked/modified-time|1667787986|()
+@end example
+
+In this example, @samp{33204698034} is the ID for this note.  It has a type (@samp{base/type}), of @samp{tagged}, which means this is something that has tags.  The tags are a list, so the properties contain their index in the list.  Because each one is stored individually, we can easy find all entities with each tag, by querying on all subjects with a particular object value.  This is how reverse links work in the triples package.  In this case, there are two tags, "date/2022-11-06", and "lentil stew".  The note comes from another type, @samp{text}.  And yet another important property, the modification time, is on yet another type, @samp{time-tracked}.  These are all independent.  It is possible to have subjects that have tags but not text, although this doesn't happen currently in ekg.  It's also possible to have any object have a creation and modified time.
+
+Using a triples scheme has the advantage that it is very easy to integrate with.  All data is very "flat", without having to worry about tables and their schemas.  The uniformity means that it lends itself well to integrations, which typically would provide a new type and new data.  The disadvantage is that it is typically less efficient to query, at least for more complicated queries.  On databases that typically will be used with ekg, this should be not noticeable.
+
+IDs (stored as subjects), can be resources.  This is useful when we want to store data about some unique thing, such as an URL@.  Because triples define a graph, every object can be a subject.  For an example, if some data in the graph has a value of "@uref{http://emacs.org}", then we can attach more data to that value, such as tags, notes or anything else.  This is how we store notes about web pages (@samp{ekg-capture-url}).  Having IDs that are meaningful is also useful to enforce unique data, and force that data isn't duplicated.  For example, with this design, you couldn't have both a "tag" entity and a "page" entity that are separate, if they are the same object value, they will be the same subject, with the same ID@. This leads, in our opinion, to a better design.  Also it's useful to note that IDs can be anything, even different types of objects.  Integers, strings, symbols.  This is useful, because objects can be anything.  Because of the design of the triple database, all data can be expanded on with their own data, and that data itself expanded on.  This seems like a useful property to have for a personal knowledge system.
+
+@node The metadata section
+@section The metadata section
+
+Because the user may want to modify or create both the text and other database properties at the same time, we use a single buffer that lets the user do both.  Because of this design choice, we have to divide the buffer up into two sections: a metadata section and the text section.  The metadata section is on top, and has a specific format.  Because of this, some @samp{org-mode} functions may not work correctly, because they assume the whole buffer is an org-mode file.  Without this design, however, it isn't clear how the user can easily see and modify everything they need.  Theoretically, having another window might work, but this adds other complications: the user may not want several windows, the user may select or bury one of them, and more.  There isn't an obvious ideal solution, however it could be that the design of the capture/edit buffer changes in the future to fix some of the issues we see with the current implementation.
 
 @bye
