@@ -157,6 +157,29 @@
   (should-not (ekg-get-notes-with-tags '("none" "foo")))
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
 
+(ekg-deftest ekg-test-overlay-interaction ()
+  (let ((ekg-capture-auto-tag-funcs nil))
+    (ekg-capture '("test"))
+    (let ((o (ekg--metadata-overlay)))
+      (should (= (overlay-start o) 1))
+      ;; The overlay end is the character just past the end of the visible
+      ;; overlay, but still in the overlay's extent.
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      ;; Go to the end of the overlay, insert, the overlay should grow
+      (goto-char (overlay-end o))
+      (insert "Property: ")
+      (ekg--metadata-modification o t nil nil)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: "))))
+      ;; Insert a new line, the overlay should grow again
+      (insert "\n")
+      (ekg--metadata-modification o t nil nil)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n"))))
+      ;; But there shouldn't be two newlines in a row in the overlay, so the
+      ;; overlay should not grow.
+      (insert "\n")
+      (ekg--metadata-modification o t nil nil)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n")))))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here
