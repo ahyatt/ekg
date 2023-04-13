@@ -179,7 +179,8 @@ store as markdown."
 This may make files with no content if there are notes with no
 backlinks.
 
-Do not overwrite a file if nothing has changed."
+Do not overwrite a file if nothing has changed.
+Return non-nil if the file was written."
   (let ((contents (ekg-logseq-tag-to-file tag))
         (filename (expand-file-name
                    (ekg-logseq-tag-to-filename tag)
@@ -194,7 +195,8 @@ Do not overwrite a file if nothing has changed."
                              (buffer-string))))
       (message "ekg-logseq-export: exporting to file %s" filename)
       (with-temp-file filename
-        (insert contents)))))
+        (insert contents)
+        t))))
 
 (defun ekg-logseq--to-import-text ()
   "Return a list of notes to the current buffer to import.
@@ -292,11 +294,13 @@ which will import and re-export back to logseq."
     (error "ekg-logseq-dir must be set"))
   ;; Force a backup pre-import.
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
-  (cl-loop for subdir in '("journals" "pages") do
+  (let ((count 0))
+    (cl-loop for subdir in '("journals" "pages") do
            (cl-loop for file in
                     (directory-files
                      (file-name-concat ekg-logseq-dir subdir) t
                      (rx (seq "." (or "org" "md") eol))) do
+                     (thread-yield)
                      (let ((tag (concat (if (equal subdir "journals")
                                             "date/" "")
                                         (ekg-logseq-filename-to-tag file))))
@@ -317,27 +321,22 @@ which will import and re-export back to logseq."
                                                       (ekg-logseq--to-import-md-id text)))
                                         (setf (ekg-note-id note) id))
                                       (message "ekg-logseq-import: saving note from file %s" file)
-                                      (ekg-save-note note)))))))))
+                                      (cl-incf count)
+                                      (ekg-save-note note))))))))
+    (message "ekg-logseq-import: imported %d notes" count)))
 
-(defun ekg-logseq-export ()
-  "Export the current ekg database to logseq.
-
-Because this overwrites logseq data, running this by itself
-should only be done if your logseq is meant as a read-only copy
-of your ekg database. If you intend to add to your logseq, or you
-have already have information in logseq, you should run
-`ekg-logseq-sync' instead."
-  (interactive)
-  (unless ekg-logseq-dir
-    (error "ekg-logseq-dir must be set"))
-  (ekg--connect)
-  (cl-loop for subdir in '("journals" "pages")
+(defun ekg-logseq--export-within-thread ()
+  "Logic for `ekg-logseq-export', which will be run in a thread."
+  (let ((deleted 0)
+        (modified 0))
+    (cl-loop for subdir in '("journals" "pages")
              with tags = (ekg-tags) do
              (cl-loop for file in
                       (seq-filter #'file-regular-p
                                   (directory-files
                                    (file-name-concat ekg-logseq-dir subdir) t))
                       do
+                      (thread-yield)
                       (unless (member (concat (if (equal subdir "journals") "date/" "")
                                               (ekg-logseq-filename-to-tag file)) tags)
                         (with-temp-buffer
@@ -347,19 +346,47 @@ have already have information in logseq, you should run
                                  (buffer-substring-no-properties
                                   (point-min)
                                   (point-max)))
-                            (delete-file file))))))
+                            (delete-file file)
+                            (message "ekg-logseq-export: deleting obsolete previously exported file %s" file)
+                            (cl-incf deleted)))))
   (cl-loop for tag in (ekg-tags) do
-           (ekg-logseq-export-tag tag)))
+           (when (ekg-logseq-export-tag tag)
+             (cl-incf modified)))
+  (message "ekg-logseq-export: deleted %d files, modified %d files" deleted modified))))
+  
+(defun ekg-logseq-export ()
+  "Export the current ekg database to logseq.
+
+Because this overwrites logseq data, running this by itself
+should only be done if your logseq is meant as a read-only copy
+of your ekg database. If you intend to add to your logseq, or you
+have already have information in logseq, you should run
+`ekg-logseq-sync' instead.
+
+All exporting will be run in the background. If it already is
+being run in the background, no new thread will be spawned."
+  (interactive)
+  (unless ekg-logseq-dir
+    (error "ekg-logseq-dir must be set"))
+  (ekg--connect)
+  (if (eq (current-thread) main-thread)
+      (make-thread #'ekg-logseq--export-within-thread "ekg-logseq-export")
+    (ekg-logseq--export-within-thread)))
 
 (defun ekg-logseq-sync ()
   "Sync ekg and logseq.
 This will import from logseq to populate anything new into ekg,
 then export ekg so that logseq is up to date, and information in
-logseq is marked as being part of logseq."
+logseq is marked as being part of logseq.
+
+All logic will be run in the background."
   (interactive)
   (ekg--connect)
-  (ekg-logseq-import)
-  (ekg-logseq-export))
+  (message "ekg-logseeq-sync: Starting in the background")
+  (make-thread (lambda ()
+                 (ekg-logseq-import)
+                 (ekg-logseq-export))
+               "ekg-logseq-sync"))
 
 (provide 'ekg-logseq)
 ;;; ekg-logseq.el ends here
