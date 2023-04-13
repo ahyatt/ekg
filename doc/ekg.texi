@@ -164,7 +164,9 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 
 @itemize
 @item
-Removed @samp{ekg-notes-remove}, which removed one or more tags from a note from a note list buffer. 
+Removed @samp{ekg-notes-remove}, which removed one or more tags from a note from a note list buffer.
+@item
+New keybinding, "q" in the notes buffer, which kills the buffer (thanks to Jay Rajput for the idea).
 @end itemize
 
 @node Version 02
@@ -395,6 +397,8 @@ The notes buffer is navigated via the following commands (the default binding is
 @samp{ekg-notes-any-note-tags} (@samp{a}), open a new notes list showing any of the tags that appear in the selected note.
 
 @samp{ekg-notes-any-tags} (@samp{A}), open a new notes list showing any of the tags that appear in any of the notes in note list. In other words, if the buffer was displaying notes with tag @samp{emacs}, and there are two notes displayed, one with tags @samp{emacs} and @samp{org-mode}, and the other with @samp{emacs} and @samp{ekg}, a new buffer displaying notes with any of the tags @samp{emacs}, @samp{org-mode}, or @samp{ekg} is created.
+
+@samp{q} will kill the notes buffer.
 
 Many of these commands use the notion that notes lists have associated lists of tags. That is the case for many commands, but not all. For example,
 @samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, and @samp{ekg-show-notes-in-trash} have no associated tags.

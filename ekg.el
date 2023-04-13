@@ -407,6 +407,7 @@ This is needed to identify references to refresh when the subject is changed." )
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
     (define-key map "t" #'ekg-notes-tag)
+    (define-key map "q" #'kill-current-buffer)
     map))
 
 (define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
