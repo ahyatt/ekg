@@ -66,7 +66,7 @@ Installation
 
 Changelog
 
-* Version 0.3: Version 03. 
+* Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 
 Understanding and editing the note buffer
@@ -155,12 +155,12 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
-* Version 0.3: Version 03. 
+* Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
 
-@node Version 03
-@section Version 0.3
+@node Version 021
+@section Version 0.2.1
 
 @itemize
 @item
