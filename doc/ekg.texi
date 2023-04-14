@@ -59,11 +59,13 @@ The README is also informative, has screenshots, and can be found in the source 
 
 Installation
 
+* Sqlite dependency::
 * Installing via Melpa::
 * Installing by hand::
 
 Changelog
 
+* Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 
 Understanding and editing the note buffer
@@ -118,9 +120,15 @@ The editing of notes combines the editing of the text of the note with various p
 @chapter Installation
 
 @menu
+* Sqlite dependency::
 * Installing via Melpa::
 * Installing by hand::
 @end menu
+
+@node Sqlite dependency
+@section Sqlite dependency
+
+If using Emacs version 29, you are likely have @samp{sqlite} as a library compiled into Emacs.  Versions prior to the use @samp{emacsql} for access to sqlite.  If you are using a pre-Emacs 29 version, you need to have @samp{sqlite} installed on your system.
 
 @node Installing via Melpa
 @section Installing via Melpa
@@ -152,8 +160,19 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
+* Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 021
+@section Version 0.2.1
+
+@itemize
+@item
+Removed @samp{ekg-notes-remove}, which removed one or more tags from a note from a note list buffer.
+@item
+New keybinding, "q" in the notes buffer, which kills the buffer (thanks to Jay Rajput for the idea).
+@end itemize
 
 @node Version 02
 @section Version 0.2
@@ -368,8 +387,6 @@ The notes buffer is navigated via the following commands (the default binding is
 
 @samp{ekg-notes-delete} (@samp{d}), trash the current note (or, if this is the trash list, truly delete it).
 
-@samp{ekg-notes-remove} (@samp{r}), remove the note buffer's tags from the currently selected note. This does not delete the tags but prepends them with a trash prefix so they are ignored, but can be restored if the user wishes. For more details, see the @ref{The trash, , trash} section.
-
 @samp{ekg-notes-browse} (@samp{b}), open the resource attached to the current note, if it exists, otherwise do nothing.
 
 @samp{ekg-notes-select-and-browse-url} (@samp{B}), select from all the titles of URL resources in the any of the notes, and browse the URL@.
@@ -386,6 +403,8 @@ The notes buffer is navigated via the following commands (the default binding is
 
 @samp{ekg-notes-any-tags} (@samp{A}), open a new notes list showing any of the tags that appear in any of the notes in note list. In other words, if the buffer was displaying notes with tag @samp{emacs}, and there are two notes displayed, one with tags @samp{emacs} and @samp{org-mode}, and the other with @samp{emacs} and @samp{ekg}, a new buffer displaying notes with any of the tags @samp{emacs}, @samp{org-mode}, or @samp{ekg} is created.
 
+@samp{q} will kill the notes buffer.
+
 Many of these commands use the notion that notes lists have associated lists of tags. That is the case for many commands, but not all. For example,
 @samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, and @samp{ekg-show-notes-in-trash} have no associated tags.
 
@@ -397,9 +416,9 @@ The variable @code{ekg-format-funcs} has functions to run to format what ekg dis
 @node The trash
 @chapter The trash
 
-Notes deleted from note lists (@samp{ekg-notes-mode}) buffers are not deleted outright, but rather put in the trash. There are two concepts here: trashed tags, and trashed note. A trash tag is a tag with the prefix "trash/" added. Such tags are ignored and not shown to users except when editing notes, at which point the user can choose to remove the trash prefix to un-trash them. This is what happens when @samp{ekg-notes-remove} is called; it trashes all the tags associated with the current list.
+Notes deleted from note lists (@samp{ekg-notes-mode}) buffers are not deleted outright, but rather put in the trash. There are two concepts here: trashed tags, and trashed note. A trash tag is a tag with the prefix "trash/" added. Such tags are ignored and not shown to users except when editing notes, at which point the user can choose to remove the trash prefix to un-trash them.  When @samp{ekg-notes-delete} is called, all tags are prefixed with "trash/".
 
-If all of a notes tags are trashed, then the note itself is considered to be trashed. Trashed notes can be seen by calling @samp{ekg-show-notes-in-trash}. If notes are deleted from this list, they are deleted permanently. However, if you want to un-trash the note, you can edit the note and remove the trash prefix from one or more of the tags.
+If all of a note's tags are trashed, then the note itself is considered to be trashed. Trashed notes can be seen by calling @samp{ekg-show-notes-in-trash}. If notes are deleted from this list via @samp{ekg-notes-delete} again, they are deleted permanently.  The function @samp{ekg-notes-delete} will only permanently delete something in which all tags are trashed. If you want to un-trash the note, you can edit the note and remove the trash prefix from one or more of the tags.
 
 @node Links to ekg in org-mode
 @chapter Links to ekg in org-mode

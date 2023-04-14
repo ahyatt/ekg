@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.2.5") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.2.0
+;; Version: 0.2.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -410,8 +410,8 @@ This is needed to identify references to refresh when the subject is changed." )
     (define-key map "b" #'ekg-notes-browse)
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
-    (define-key map "r" #'ekg-notes-remove)
     (define-key map "t" #'ekg-notes-tag)
+    (define-key map "q" #'kill-current-buffer)
     map))
 
 (define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
@@ -896,23 +896,6 @@ tags."
       (ekg-note-trash note)
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
-
-(defun ekg-notes-remove ()
-  "Remove the current tags from the current note.
-This prepends the tags with trash, which removes them from view,
-but allows for re-instatement later."
-  (interactive nil ekg-notes-mode)
-  (let ((note (ekg--current-note-or-error)))
-    (setf (ekg-note-tags note)
-          (mapcar (lambda (tag)
-                    (if (member tag ekg-notes-tags)
-                        (ekg-mark-trashed tag)
-                      tag)) (ekg-note-tags note)))
-    (ekg-save-note note))
-  (setq buffer-read-only nil)
-    (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
-    (setq buffer-read-only t)
-    (ekg--note-highlight))
 
 (defun ekg-notes-browse ()
   "If the note is about a browseable resource, browse to it.

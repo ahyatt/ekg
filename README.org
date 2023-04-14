@@ -91,7 +91,9 @@ kinds of bugs.
 * Installation
 ekg is currently hosted on MELPA. It requires Emacs 28.1 or higher and the
 [[https://github.com/ahyatt/triples][triples]] package, which is a way to express a graph in sqlite in emacs, alongside
-basic querying functionality.
+basic querying functionality. Emacs versions prior to version 29 are dependent
+on =emacsql= to provide sqlite functionality, which itself has a dependency on
+having a =sqlite= binary available on your system.
 
 An example installation using =use-package= is below:
 #+begin_src emacs-lisp
