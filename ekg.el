@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.2.5") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.2.0
+;; Version: 0.2.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -297,6 +297,10 @@ This returns only notes that have all the tags in TAGS."
 (defun ekg-get-notes-with-tag (tag)
   "Get all notes with TAG, returning a list of `ekg-note' structs."
   (ekg-get-notes-with-tags (list tag)))
+
+(defun ekg-note-with-id-exists-p (id)
+  "Return non-nil if a note with ID exists."
+  (triples-get-subject ekg-db id))
 
 (defun ekg-get-note-with-id (id)
   "Get the specific note with ID.
@@ -615,8 +619,8 @@ This is needed to identify references to refresh when the subject is changed." )
     (define-key map "b" #'ekg-notes-browse)
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
-    (define-key map "r" #'ekg-notes-remove)
     (define-key map "t" #'ekg-notes-tag)
+    (define-key map "q" #'kill-current-buffer)
     map))
 
 (define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
@@ -701,27 +705,38 @@ The ID can represent a browseable resource, which is meaningful to the user."
 This function is called on modification within the metadata.
 We want to make sure of a few things:
   1) The user isn't adding more than one empty line.
+
   2) There is at least one non-metadata line in the buffer.
 Argument OVERLAY is overlay whose modification triggers this method.
-Argument AFTER is non-nil if method is being called after the modification."
+Argument AFTER is non-nil if method is being called after the modification.
+
+  3) The user can't delete the metadata - if the user tries to
+delete from the end of the metadata, we need to fix it back up."
   (when after
-    (save-excursion
-      (forward-line -1)
-      (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
-        (kill-line)
-        (forward-line -1))
-      (when (= (overlay-end overlay)
-               (buffer-end 1))
-        (let ((p (point)))
-          (goto-char (buffer-end 1))
-          ;; Walk backward until we get to content
-          (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
-            (forward-line -1))
-          (forward-line)
-          (setq p (point))
-          (delete-region (point) (overlay-end overlay))
+    ;; If we're at the end of the metadata, we need to make sure we don't delete
+    ;; it from the previous line.
+    (if (and (= (point) (overlay-end overlay))
+             (not (string-match-p (rx bol (* space) eol) (string-trim (thing-at-point 'line) "" "\n"))))
+        (progn
           (insert "\n")
-          (move-overlay overlay (overlay-start overlay) p))))))
+          (move-overlay overlay (point-min) (point)))
+      (save-excursion
+        (forward-line -1)
+        (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
+          (kill-line)
+          (forward-line -1))))
+    (when (= (overlay-end overlay)
+             (buffer-end 1))
+      (let ((p (point)))
+        (goto-char (buffer-end 1))
+        ;; Walk backward until we get to content
+        (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
+          (forward-line -1))
+        (forward-line)
+        (setq p (point))
+        (delete-region (point) (overlay-end overlay))
+        (insert "\n")
+        (move-overlay overlay (overlay-start overlay) p)))))
 
 (defun ekg-edit-display-metadata ()
   "Create or edit the overlay to show metadata."
@@ -733,8 +748,7 @@ Argument AFTER is non-nil if method is being called after the modification."
     (goto-char (overlay-end o))
     (insert "\n")
     (move-overlay o (point-min) (- (overlay-end o) 1))
-    (overlay-put o 'before-string (propertize "Note properties\n" 'face '(underline ekg-metadata)
-                                              'read-only t))
+    (overlay-put o 'after-string (propertize "--text follows this line--\n" 'read-only t))
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
     (overlay-put o 'face 'ekg-metadata)
@@ -935,13 +949,13 @@ The metadata fields are comma separated."
 (defun ekg--metadata-update-resource (val)
   "Update the resource to the metadata VAL."
   (when (and (not (string= val (format "%s" (ekg-note-id ekg-note))))
-             (or (not (ekg-note-id ekg-note))
+             (or (not (ekg-note-with-id-exists-p (ekg-note-id ekg-note)))
                  (y-or-n-p "Changing the resource of this note will also change all references to it.  Are you sure?")))
     (triples-with-transaction ekg-db
       (when (ekg-note-id ekg-note)
         (let* ((old-id (ekg-note-id ekg-note))
                (existing-types (triples-get-types ekg-db old-id))
-               (conflicting-types (seq-union existing-types '(text tag titled))))
+               (conflicting-types (seq-intersection existing-types '(text tag titled))))
           (when (and conflicting-types
                      (y-or-n-p "Existing data exists on this resource, replace?"))
             (mapc (lambda (type) (triples-remove-type ekg-db old-id type)) conflicting-types))
@@ -988,6 +1002,11 @@ The metadata fields are comma separated."
   ;; All tags should be strings, but better to ignore violations here.
   (and (stringp tag)
        (string-match-p (rx (seq string-start "trash/")) tag)))
+
+(defun ekg-note-active-tags (note)
+  "Return the tags of NOTE that are not part of the trash."
+  (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag)))
+              (ekg-note-tags note)))
 
 (defun ekg-mark-trashed (tag)
   "Return TAG transformed to mark it as trash."
@@ -1089,23 +1108,6 @@ tags."
       (ekg-note-trash note)
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
-
-(defun ekg-notes-remove ()
-  "Remove the current tags from the current note.
-This prepends the tags with trash, which removes them from view,
-but allows for re-instatement later."
-  (interactive nil ekg-notes-mode)
-  (let ((note (ekg--current-note-or-error)))
-    (setf (ekg-note-tags note)
-          (mapcar (lambda (tag)
-                    (if (member tag ekg-notes-tags)
-                        (ekg-mark-trashed tag)
-                      tag)) (ekg-note-tags note)))
-    (ekg-save-note note))
-  (setq buffer-read-only nil)
-    (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
-    (setq buffer-read-only t)
-    (ekg--note-highlight))
 
 (defun ekg-notes-browse ()
   "If the note is about a browseable resource, browse to it.

@@ -34,6 +34,8 @@ edit in a separate buffer.
 
 The editing of notes combines the editing of the text of the note with various properties stored in the database such as the tags of the note.
 * Installation
+** Sqlite dependency
+If using Emacs version 29, you are likely have =sqlite= as a library compiled into Emacs.  Versions prior to the use =emacsql= for access to sqlite.  If you are using a pre-Emacs 29 version, you need to have =sqlite= installed on your system.
 ** Installing via Melpa
 This is the easiest and recommended way to install ekg. If you have not set up Melpa yet, follow the instructions at https://melpa.org/#/getting-started.
 
@@ -55,6 +57,9 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.2.1
+- Removed =ekg-notes-remove=, which removed one or more tags from a note from a note list buffer.
+- New keybinding, "q" in the notes buffer, which kills the buffer (thanks to Jay Rajput for the idea).
 ** Version 0.2
 - Added hooks ~ekg-add-schema-hook~, ~ekg-note-pre-save-hook~, ~ekg-note-save-hook~, ~ekg-note-delete-hook~, and ~ekg-note-add-tag-hook~  to enable customization.
 - New commands =ekg-show-notes-latest-captured=, =ekg-show-notes-latest-modified=, for showing notes created or modified recently.
@@ -106,7 +111,7 @@ Title: This is my title
 #+end_quote
 
 #+texinfo: @noindent
-It's important to note that everything in the section with the different background color is a property and will be treated as such. Text that doesn't look like a property there will cause problems, and properties outside this area will instead be treated as note text.
+It's important to note that everything in the section with the different background color is a property and will be treated as such. Text that doesn't look like a property there will cause problems, and properties outside this area will instead be treated as note text.  The end of the property section ends with an uneditable "--text follows this line--", below which the text of the note starts.
 
 #+texinfo: @noindent
 Not every property has a representation in the property list, only the properties which users may want to change manually.
@@ -195,8 +200,6 @@ The notes buffer is navigated via the following commands (the default binding is
 
 =ekg-notes-delete= (=d=), trash the current note (or, if this is the trash list, truly delete it).
 
-=ekg-notes-remove= (=r=), remove the note buffer's tags from the currently selected note. This does not delete the tags but prepends them with a trash prefix so they are ignored, but can be restored if the user wishes. For more details, see the [[#trash][trash]] section.
-
 =ekg-notes-browse= (=b=), open the resource attached to the current note, if it exists, otherwise do nothing.
 
 =ekg-notes-select-and-browse-url= (=B=), select from all the titles of URL resources in the any of the notes, and browse the URL.
@@ -213,6 +216,8 @@ The notes buffer is navigated via the following commands (the default binding is
 
 =ekg-notes-any-tags= (=A=), open a new notes list showing any of the tags that appear in any of the notes in note list. In other words, if the buffer was displaying notes with tag =emacs=, and there are two notes displayed, one with tags =emacs= and =org-mode=, and the other with =emacs= and =ekg=, a new buffer displaying notes with any of the tags =emacs=, =org-mode=, or =ekg= is created.
 
+=q= will kill the notes buffer.
+
 Many of these commands use the notion that notes lists have associated lists of tags. That is the case for many commands, but not all. For example,
 =ekg-show-notes-latest-captured=, =ekg-show-notes-latest-modified=, and =ekg-show-notes-in-trash= have no associated tags.
 ** Customizing note display in =ekg-notes-mode=
@@ -222,13 +227,11 @@ The variable ~ekg-format-funcs~ has functions to run to format what ekg displays
 :CUSTOM_ID: trash
 :END:
 
-Notes deleted from note lists (=ekg-notes-mode=) buffers are not deleted outright, but rather put in the trash. There are two concepts here: trashed tags, and trashed note. A trash tag is a tag with the prefix "trash/" added. Such tags are ignored and not shown to users except when editing notes, at which point the user can choose to remove the trash prefix to un-trash them. This is what happens when =ekg-notes-remove= is called; it trashes all the tags associated with the current list.
+Notes deleted from note lists (=ekg-notes-mode=) buffers are not deleted outright, but rather put in the trash. There are two concepts here: trashed tags, and trashed note. A trash tag is a tag with the prefix "trash/" added. Such tags are ignored and not shown to users except when editing notes, at which point the user can choose to remove the trash prefix to un-trash them.  When =ekg-notes-delete= is called, all tags are prefixed with "trash/".
 
-If all of a notes tags are trashed, then the note itself is considered to be trashed. Trashed notes can be seen by calling =ekg-show-notes-in-trash=. If notes are deleted from this list, they are deleted permanently. However, if you want to un-trash the note, you can edit the note and remove the trash prefix from one or more of the tags.
+If all of a note's tags are trashed, then the note itself is considered to be trashed. Trashed notes can be seen by calling =ekg-show-notes-in-trash=. If notes are deleted from this list via =ekg-notes-delete= again, they are deleted permanently.  The function =ekg-notes-delete= will only permanently delete something in which all tags are trashed. If you want to un-trash the note, you can edit the note and remove the trash prefix from one or more of the tags.
 * Links to ekg in org-mode
 Both notes in ekg and certain note list buffers can be stored and linked to in org-mode. To store a link to a note, you have to edit that note and call =org-store-link=. That function can also be called in a =ekg-notes-mode= buffer created by =ekg-show-notes-with-any-tags=. Other list types currently will just store their tags assuming the user wants a link to a list with any of the tags in the list.
-* Importing from org-roam and logseq
-
 * Importing from org-roam
 You can import your notes from org-roam. This will turn all titles into tags, and all links will become tags as well. At the moment, this is done via executing elisp, since importing can be fairly idiosyncratic, and ekg and org-roam have different ways of expressing the same thing that you may want to change. It's best if you looked over =ekg-org-roam.el= and see what is going on, but at least read the following description before manually executing ~(ekg-org-roam-import)~.
 
@@ -239,8 +242,6 @@ The import is idempotent, so it always will import to the same entities, overwri
 #+end_src
 
 Then, when a note is found that is tagged with "idea", but with title "emacs is a powerful tool", then the title in org-roam will be turned into the ekg tag "idea/emacs is a powerful tool", and anything linked with it will also get the same prefix.
-
-Logseq is also imported as well when =ekg-org-roam-import= is executed, if any files are found.  There isn't true compatability, since ekg does not support many logseq functions.
 * Backups
 By default, the ekg package will back up its database, using the backup functionality built into the triples library. By default, behavior is set by ~ekg-default-num-backups~, set to =5= by default, and ~ekg-default-backups-strategy~, set to =daily=. These are, on first use of ekg, stored in the database itself, but it can be set again at any time by running:
 #+begin_
@@ -256,6 +257,8 @@ You may occasionally notice that certain tags are obsolete and have no notes, or
 - First, force a backup.
 - Remove all tags with no uses.
 - Remove notes with no text, or just a "*", which is something that often happens with org-mode buffers.
+
+Tags may need to be renamed because the concept has changed in some way.  The command =ekg-rename-tag= can quickly rename one tag to another.
 * Customizing ekg with hooks
 You can customize the behavior of ekg in a number of ways.
 
@@ -311,3 +314,85 @@ Important: *your API key is a secret key, so do not store it anywhere it can be 
 
 Once you have this set up, and you have already called ~(require 'ekg-embedding)~ you can call =M-x ekg-embedding-generate-all=. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in =ekg-notes-mode=, =ekg-embedding-show-similar= to get a list of similar notes. You can also call =ekg-embedding-search= to perform a search over your notes using embeddings.  In any buffer, you can call =ekg-embedding-show-similar-to-current-buffer= to similar notes to whatever the text is in the curent buffer.
+** Logseq
+ekg can sync with logseq, a PKMS application that can run on a laptop or phone.  Logseq is particularly convenient as a way to view or enter notes on your phone, and various synchronization solutions exist to sync local files with your phone.  Because ekg and logseq have different designs, these apps are not perfectly compatible. The ekg and logseq syncing is designed to favor ekg's system when a conflict arises.
+
+There are two ways to use logseq, one is maintaining logseq as an export-only copy of ekg data, where you don't plan to modify anything in logseq, just using it to access your notes on other platforms.  Exporting from ekg is destructive, though, so without an initial import, *exporting will overwrite logseq files with data from ekg, so it may destroy data*.  The other way is to sync bidirectionally.  This starts by importing anything from logseq that has never been imported before, and then writing ekg's data on top.  This will preserve data, but will lose the initial formatting of ordering of pages.  Both of these methods, then, will significantly impact your logseq notes.  *It is highly advised to back up your logseq files before starting*.
+
+To export to logseq, start by requiring the =ekg-logseq= module and setting up ~ekg-logseq-dir~, which points to the base of your logseq file (where there is a "pages" and "journals" directory):
+#+begin_src emacs-lisp
+(require 'ekg-logseq)
+(setq ekg-logseq-dir "~/my/logseq")
+#+end_src
+
+If you wish to maintain logseq as a read-only copy of ekg, just run =ekg-logseq-export= when you wish to export data.  This currently may take a few seconds to a minute, depending on how much data you have.  We attempt to not write any files that are unchanged.  To have a bidirectional synchronization, run =ekg-logseq-sync=, which will first import data from logseq, then export data.
+
+*** Exporting 
+When exporting, it's important to understand the differences between ekg and logseq.  Logseq has one page per tag, and one page is one file.  Within the page there are many sections, which can be individually referenced.  The pages are the same as tags, and the sections are similar to ekg notes.  However, logseq has a design where the user is seeing mostly one page at a time.  ekg's design is one where notes are shown in a variety of contexts, mostly tag related, but not always.  In logseq, notes lives in a page and is referenced from others, whereas in ekg, notes don't "live" anywhere, but are just tagged.  To compensate for this difference, we export notes based on their first non-date tag as the page where the text will apear, and reference other tags, where they will appear as backlinks.  In addition, in org-mode, notes in a page appear as top-level outlines, which are supposed to have text for the outline node.  If there is an ekg note with a title, the title will appear as the text, otherwise the outline node will just read "Untitled note".  Because this initial headline is where various properties are stored, and is followed immediately by tags, it makes sense that this is a title instead of just part of the content.
+
+#+texinfo: @noindent
+For example, take the following note:
+#+begin_example
+Tags: date/2023-04-05, ekg, logseq
+
+ekg can export into logseq!
+#+end_example
+
+This will be exported into "pages/ekg.org":
+
+#+begin_example
+,#+title: ekg
+
+,* Untitled note
+:PROPERTIES:
+:ID: 33134561605
+:EKG_HASH: 89471eadbd7cc56b088f5513c11f68cb1d11d045
+:END:
+#[[2023-04-05]] #[[logseq]]
+ekg can export into logseq
+#+end_example
+
+#+texinfo: @noindent
+Each node points to its ID which is from ekg (but, if it was originally imported, the ekg ID might originally be from logseq).  We also encode the hash of the exported data.  This is to keep track of what was exported, so we do not re-import it unless it has changed.  For now, even if the data is changed, it is not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
+*** Importing
+#+texinfo: @noindent
+Imports from logseq will return all top-level items as separate notes.  So, for example, assuming we're reading from the logseq file "pages/logseq.org":
+
+#+begin_example
+,* This is my first time trying logseq  #testing
+,* The org compatibility here is especially nice  #org
+
+   It really helps me feel comfortable in using the various formatting options I had gotten used to.
+#+end_example
+
+#+texinfo: @noindent
+This will turn into two notes, one that has text "* This is my first time trying logseq  #testing", and with tags =logseq=, and =testing=, and the other with the rest of the text, with the tags =logseq= and =org=.
+
+#+texinfo: @noindent
+There are a few things to be aware of.  In logseq, any level of the hierarchy can have an id and be referenced separately.  In ekg, we don't support notes inside of other notes, so these will be imported in the context of the parent note, and won't be available to reference as its own separate note.  Also, logseq has other functionality not supported by ekg, such as queries and potentially anything provided by plugins.  These will be imported as-is to ekg, but without any corresponding functionality.
+* Design
+** The triple database
+The ekg package uses the triples package to interface with a sqlite database.  The reason a database is useful, even for text, is because databases are extremely fast, very flexible, and extremely easy to change.  In general, the less your data looks like just files with text in them, the more database make sense.  In ekg, we can separate the notion of tags from the text, which makes writing functions such as =ekg-rename-tag= trivial, and the execution extremely fast.
+
+The decision to use the triples package, though, is related to a different design choice.  In a triple-based system, there's only one database table with four columns, a =subject=, =predicate=, =object=, and =properties=.  One way to think of this schema is that it defines links of different types from a subject to an object. This is combined with a schema, itself defined in triples.  The triples define that subjects can have types, and those types can have properties.  Those properties are expressed in this triple format.  In ekg, the subjects correspond to the IDs of the notes, or tags.  Subjects can have multiple types, and data is factored into types that belong together, with a specific meaning.  To give an example, listing out the data for a note might look something like:
+
+#+begin_example
+33204698034|base/type|tagged|()
+33204698034|tagged/tag|"date/2022-11-06"|(:index 0)
+33204698034|tagged/tag|"lentil stew"|(:index 1)
+33204698034|base/type|text|()
+33204698034|text/text|"Made a great lentil stew with dried porcini mushrooms and delicata squash."
+33204698034|text/mode|org-mode|()
+33204698034|base/type|time-tracked|()
+33204698034|time-tracked/creation-time|1667787928|()
+33204698034|time-tracked/modified-time|1667787986|()
+#+end_example
+
+In this example, =33204698034= is the ID for this note.  It has a type (=base/type=), of =tagged=, which means this is something that has tags.  The tags are a list, so the properties contain their index in the list.  Because each one is stored individually, we can easy find all entities with each tag, by querying on all subjects with a particular object value.  This is how reverse links work in the triples package.  In this case, there are two tags, "date/2022-11-06", and "lentil stew".  The note comes from another type, =text=.  And yet another important property, the modification time, is on yet another type, =time-tracked=.  These are all independent.  It is possible to have subjects that have tags but not text, although this doesn't happen currently in ekg.  It's also possible to have any object have a creation and modified time.
+
+Using a triples scheme has the advantage that it is very easy to integrate with.  All data is very "flat", without having to worry about tables and their schemas.  The uniformity means that it lends itself well to integrations, which typically would provide a new type and new data.  The disadvantage is that it is typically less efficient to query, at least for more complicated queries.  On databases that typically will be used with ekg, this should be not noticeable.
+
+IDs (stored as subjects), can be resources.  This is useful when we want to store data about some unique thing, such as an URL.  Because triples define a graph, every object can be a subject.  For an example, if some data in the graph has a value of "http://emacs.org", then we can attach more data to that value, such as tags, notes or anything else.  This is how we store notes about web pages (=ekg-capture-url=).  Having IDs that are meaningful is also useful to enforce unique data, and force that data isn't duplicated.  For example, with this design, you couldn't have both a "tag" entity and a "page" entity that are separate, if they are the same object value, they will be the same subject, with the same ID. This leads, in our opinion, to a better design.  Also it's useful to note that IDs can be anything, even different types of objects.  Integers, strings, symbols.  This is useful, because objects can be anything.  Because of the design of the triple database, all data can be expanded on with their own data, and that data itself expanded on.  This seems like a useful property to have for a personal knowledge system.
+** The metadata section
+Because the user may want to modify or create both the text and other database properties at the same time, we use a single buffer that lets the user do both.  Because of this design choice, we have to divide the buffer up into two sections: a metadata section and the text section.  The metadata section is on top, and has a specific format.  Because of this, some =org-mode= functions may not work correctly, because they assume the whole buffer is an org-mode file.  Without this design, however, it isn't clear how the user can easily see and modify everything they need.  Theoretically, having another window might work, but this adds other complications: the user may not want several windows, the user may select or bury one of them, and more.  There isn't an obvious ideal solution, however it could be that the design of the capture/edit buffer changes in the future to fix some of the issues we see with the current implementation.
+

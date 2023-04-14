@@ -233,6 +233,38 @@
                           (ekg-displayable-note-text
                            (car (ekg-get-notes-with-tag "test2"))))))
 
+(ekg-deftest ekg-test-overlay-interaction-growth ()
+  (let ((ekg-capture-auto-tag-funcs nil))
+    (ekg-capture '("test"))
+    (let ((o (ekg--metadata-overlay)))
+      (should (= (overlay-start o) 1))
+      ;; The overlay end is the character just past the end of the visible
+      ;; overlay, but still in the overlay's extent.
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      ;; Go to the end of the overlay, insert, the overlay should grow
+      (goto-char (overlay-end o))
+      (insert "Property: ")
+      (ekg--metadata-modification o t nil nil)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n"))))
+      ;; But there shouldn't be two newlines in a row in the overlay, so the
+      ;; overlay should not grow.
+      (insert "\n")
+      (ekg--metadata-modification o t nil nil)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n")))))))
+
+(ekg-deftest ekg-test-overlay-interaction-resist-shrinking ()
+  (let ((ekg-capture-auto-tag-funcs nil))
+    (ekg-capture '("test"))
+    (let ((o (ekg--metadata-overlay)))
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      ;; Go to the end of the overlay, delete the newline, it should be that you
+      ;; can't really do it, the newline should regenerate itself after the
+      ;; modification hook runs.
+      (goto-char (overlay-end o))
+      (delete-char -1)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      (should (= (point) (overlay-end o))))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here
