@@ -80,6 +80,8 @@ This will store the note text as org-mode, regardless of the mode
 of the note."
   (with-temp-buffer
     (org-mode)
+    (when (ekg--should-show-id-p (ekg-note-id note))
+      (insert (ekg-note-id note) "\n"))
     (insert (ekg-note-text note))
     ;; Demote all other headings to level 2.
     (org-map-entries (lambda () (org-do-demote)))
@@ -101,7 +103,7 @@ of the note."
                                  (ekg-logseq-convert-ekg-tag tag)))
                                (seq-difference
                                 (ekg-note-active-tags note) (list tag))
-                       " ")))
+                               " ")))
       (insert (format ":PROPERTIES:\n:ID: %s\n:EKG_HASH: %s\n:END:\n%s%s"
                       (ekg-note-id note) (ekg-logseq-hash (ekg-note-text note))
                       tag-text (if (> (length tag-text) 0) "\n" ""))))
@@ -124,6 +126,9 @@ of the note."
                        (seq-difference (ekg-note-active-tags note) (list tag))
                        " ")
             "\n  "
+            (if (ekg--should-show-id-p (ekg-note-id note))
+                (format "%s\n  " (ekg-note-id note))
+              "")
             (string-replace "\n" "\n  " (ekg-note-text note)))
     (string-trim (buffer-substring-no-properties (point-min) (point-max)) nil (rx (1+ blank)))))
 
