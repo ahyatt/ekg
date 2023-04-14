@@ -157,7 +157,7 @@
   (should-not (ekg-get-notes-with-tags '("none" "foo")))
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
 
-(ekg-deftest ekg-test-overlay-interaction ()
+(ekg-deftest ekg-test-overlay-interaction-growth ()
   (let ((ekg-capture-auto-tag-funcs nil))
     (ekg-capture '("test"))
     (let ((o (ekg--metadata-overlay)))
@@ -169,16 +169,25 @@
       (goto-char (overlay-end o))
       (insert "Property: ")
       (ekg--metadata-modification o t nil nil)
-      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: "))))
-      ;; Insert a new line, the overlay should grow again
-      (insert "\n")
-      (ekg--metadata-modification o t nil nil)
       (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n"))))
       ;; But there shouldn't be two newlines in a row in the overlay, so the
       ;; overlay should not grow.
       (insert "\n")
       (ekg--metadata-modification o t nil nil)
       (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n")))))))
+
+(ekg-deftest ekg-test-overlay-interaction-resist-shrinking ()
+  (let ((ekg-capture-auto-tag-funcs nil))
+    (ekg-capture '("test"))
+    (let ((o (ekg--metadata-overlay)))
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      ;; Go to the end of the overlay, delete the newline, it should be that you
+      ;; can't really do it, the newline should regenerate itself after the
+      ;; modification hook runs.
+      (goto-char (overlay-end o))
+      (delete-char -1)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      (should (= (point) (overlay-end o))))))
 
 (provide 'ekg-test)
 

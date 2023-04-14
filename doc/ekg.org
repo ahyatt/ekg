@@ -106,7 +106,7 @@ Title: This is my title
 #+end_quote
 
 #+texinfo: @noindent
-It's important to note that everything in the section with the different background color is a property and will be treated as such. Text that doesn't look like a property there will cause problems, and properties outside this area will instead be treated as note text.
+It's important to note that everything in the section with the different background color is a property and will be treated as such. Text that doesn't look like a property there will cause problems, and properties outside this area will instead be treated as note text.  The end of the property section ends with an uneditable "--text follows this line--", below which the text of the note starts.
 
 #+texinfo: @noindent
 Not every property has a representation in the property list, only the properties which users may want to change manually.

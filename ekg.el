@@ -496,27 +496,38 @@ The ID can represent a browseable resource, which is meaningful to the user."
 This function is called on modification within the metadata.
 We want to make sure of a few things:
   1) The user isn't adding more than one empty line.
+
   2) There is at least one non-metadata line in the buffer.
 Argument OVERLAY is overlay whose modification triggers this method.
-Argument AFTER is non-nil if method is being called after the modification."
+Argument AFTER is non-nil if method is being called after the modification.
+
+  3) The user can't delete the metadata - if the user tries to
+delete from the end of the metadata, we need to fix it back up."
   (when after
-    (save-excursion
-      (forward-line -1)
-      (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
-        (kill-line)
-        (forward-line -1))
-      (when (= (overlay-end overlay)
-               (buffer-end 1))
-        (let ((p (point)))
-          (goto-char (buffer-end 1))
-          ;; Walk backward until we get to content
-          (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
-            (forward-line -1))
-          (forward-line)
-          (setq p (point))
-          (delete-region (point) (overlay-end overlay))
+    ;; If we're at the end of the metadata, we need to make sure we don't delete
+    ;; it from the previous line.
+    (if (and (= (point) (overlay-end overlay))
+             (not (string-match-p (rx bol (* space) eol) (string-trim (thing-at-point 'line) "" "\n"))))
+        (progn
           (insert "\n")
-          (move-overlay overlay (overlay-start overlay) p))))))
+          (move-overlay overlay (point-min) (point)))
+      (save-excursion
+        (forward-line -1)
+        (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
+          (kill-line)
+          (forward-line -1))))
+    (when (= (overlay-end overlay)
+             (buffer-end 1))
+      (let ((p (point)))
+        (goto-char (buffer-end 1))
+        ;; Walk backward until we get to content
+        (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
+          (forward-line -1))
+        (forward-line)
+        (setq p (point))
+        (delete-region (point) (overlay-end overlay))
+        (insert "\n")
+        (move-overlay overlay (overlay-start overlay) p)))))
 
 (defun ekg-edit-display-metadata ()
   "Create or edit the overlay to show metadata."
@@ -528,8 +539,7 @@ Argument AFTER is non-nil if method is being called after the modification."
     (goto-char (overlay-end o))
     (insert "\n")
     (move-overlay o (point-min) (- (overlay-end o) 1))
-    (overlay-put o 'before-string (propertize "Note properties\n" 'face '(underline ekg-metadata)
-                                              'read-only t))
+    (overlay-put o 'after-string (propertize "--text follows this line--\n" 'read-only t))
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
     (overlay-put o 'face 'ekg-metadata)

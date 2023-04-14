@@ -247,7 +247,7 @@ Title: This is my title
 @end quotation
 
 @noindent
-It's important to note that everything in the section with the different background color is a property and will be treated as such. Text that doesn't look like a property there will cause problems, and properties outside this area will instead be treated as note text.
+It's important to note that everything in the section with the different background color is a property and will be treated as such. Text that doesn't look like a property there will cause problems, and properties outside this area will instead be treated as note text.  The end of the property section ends with an uneditable "--text follows this line--", below which the text of the note starts.
 
 @noindent
 Not every property has a representation in the property list, only the properties which users may want to change manually.
@@ -618,6 +618,8 @@ The decision to use the triples package, though, is related to a different desig
 In this example, @samp{33204698034} is the ID for this note.  It has a type (@samp{base/type}), of @samp{tagged}, which means this is something that has tags.  The tags are a list, so the properties contain their index in the list.  Because each one is stored individually, we can easy find all entities with each tag, by querying on all subjects with a particular object value.  This is how reverse links work in the triples package.  In this case, there are two tags, "date/2022-11-06", and "lentil stew".  The note comes from another type, @samp{text}.  And yet another important property, the modification time, is on yet another type, @samp{time-tracked}.  These are all independent.  It is possible to have subjects that have tags but not text, although this doesn't happen currently in ekg.  It's also possible to have any object have a creation and modified time.
 
 Using a triples scheme has the advantage that it is very easy to integrate with.  All data is very "flat", without having to worry about tables and their schemas.  The uniformity means that it lends itself well to integrations, which typically would provide a new type and new data.  The disadvantage is that it is typically less efficient to query, at least for more complicated queries.  On databases that typically will be used with ekg, this should be not noticeable.
+
+IDs (stored as subjects), can be resources.  This is useful when we want to store data about some unique thing, such as an URL@.  Because triples define a graph, every object can be a subject.  For an example, if some data in the graph has a value of "@uref{http://emacs.org}", then we can attach more data to that value, such as tags, notes or anything else.  This is how we store notes about web pages (@samp{ekg-capture-url}).  Having IDs that are meaningful is also useful to enforce unique data, and force that data isn't duplicated.  For example, with this design, you couldn't have both a "tag" entity and a "page" entity that are separate, if they are the same object value, they will be the same subject, with the same ID@. This leads, in our opinion, to a better design.  Also it's useful to note that IDs can be anything, even different types of objects.  Integers, strings, symbols.  This is useful, because objects can be anything.  Because of the design of the triple database, all data can be expanded on with their own data, and that data itself expanded on.  This seems like a useful property to have for a personal knowledge system.
 
 @node The metadata section
 @section The metadata section
