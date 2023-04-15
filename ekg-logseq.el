@@ -332,32 +332,34 @@ which will import and re-export back to logseq."
 
 (defun ekg-logseq--export-within-thread ()
   "Logic for `ekg-logseq-export', which will be run in a thread."
-  (let ((deleted 0)
-        (modified 0))
-    (cl-loop for subdir in '("journals" "pages")
-             with tags = (ekg-tags) do
-             (cl-loop for file in
-                      (seq-filter #'file-regular-p
-                                  (directory-files
-                                   (file-name-concat ekg-logseq-dir subdir) t))
-                      do
-                      (thread-yield)
-                      (unless (member (concat (if (equal subdir "journals") "date/" "")
-                                              (ekg-logseq-filename-to-tag file)) tags)
-                        (with-temp-buffer
-                          (insert-file-contents file)
-                          (when (string-match
-                                 (rx (seq line-start "#+ekg-export: true" line-end))
-                                 (buffer-substring-no-properties
-                                  (point-min)
-                                  (point-max)))
-                            (delete-file file)
-                            (message "ekg-logseq-export: deleting obsolete previously exported file %s" file)
-                            (cl-incf deleted)))))
-  (cl-loop for tag in (ekg-tags) do
-           (when (ekg-logseq-export-tag tag)
-             (cl-incf modified)))
-  (message "ekg-logseq-export: deleted %d files, modified %d files" deleted modified))))
+  (condition-case err
+      (let ((deleted 0)
+            (modified 0))
+        (cl-loop for subdir in '("journals" "pages")
+                 with tags = (ekg-tags) do
+                 (cl-loop for file in
+                          (seq-filter #'file-regular-p
+                                      (directory-files
+                                       (file-name-concat ekg-logseq-dir subdir) t))
+                          do
+                          (thread-yield)
+                          (unless (member (concat (if (equal subdir "journals") "date/" "")
+                                                  (ekg-logseq-filename-to-tag file)) tags)
+                            (with-temp-buffer
+                              (insert-file-contents file)
+                              (when (string-match
+                                     (rx (seq line-start "#+ekg-export: true" line-end))
+                                     (buffer-substring-no-properties
+                                      (point-min)
+                                      (point-max)))
+                                (delete-file file)
+                                (message "ekg-logseq-export: deleting obsolete previously exported file %s" file)
+                                (cl-incf deleted)))))
+                 (cl-loop for tag in (ekg-tags) do
+                          (when (ekg-logseq-export-tag tag)
+                            (cl-incf modified)))
+                 (message "ekg-logseq-export: deleted %d files, modified %d files" deleted modified)))
+    ((debug error) (warn "ekg-logseq-export: exited with error: %s" (error-message-string err)))))
   
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.
@@ -389,7 +391,9 @@ All logic will be run in the background."
   (ekg--connect)
   (message "ekg-logseeq-sync: Starting in the background")
   (make-thread (lambda ()
-                 (ekg-logseq-import)
+                 (condition-case err
+                     (ekg-logseq-import)
+                   ((debug error) (warn "ekg-logseq-export: error: %s" (error-message-string err))))
                  (ekg-logseq-export))
                "ekg-logseq-sync"))
 
