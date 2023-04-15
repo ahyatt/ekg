@@ -853,7 +853,8 @@ The tags are separated by spaces."
       'face 'ekg-resource)))
   (insert (ekg-displayable-note-text note))
   (insert "\n")
-  (insert (ekg-tags-display (ekg-note-tags note))))
+  (insert (ekg-tags-display (ekg-note-tags note)))
+  (insert "\n"))
 
 (defun ekg--note-highlight ()
   "In the buffer, highlight the current note."
