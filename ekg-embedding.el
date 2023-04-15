@@ -93,12 +93,12 @@ take minutes or hours depending on how much data there is.."
   (interactive "P")
   (ekg--connect)
   (cl-loop for s in (ekg-active-note-ids) do
-           (let ((note (ekg-get-note-with-id s))
-                 (embedding (triples-get-type ekg-db s 'embedding)))
+           (let* ((note (ekg-get-note-with-id s))
+                  (embedding (triples-get-type ekg-db s 'embedding))
+                  (text (substring-no-properties (ekg-displayable-note-text note))))
              (when (and (or arg (null embedding))
-                        (> (length (ekg-note-text note)) 0))
-               (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
-                                                                 (substring-no-properties (ekg-note-text note)))))))
+                        (> (length text) 0))
+               (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding text)))))
   (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
            (ekg-embedding-refresh-tag-embedding s))
   (triples-backups-maybe-backup ekg-db (ekg--db-file)))
