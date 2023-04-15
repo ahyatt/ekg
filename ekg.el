@@ -736,7 +736,13 @@ delete from the end of the metadata, we need to fix it back up."
         (setq p (point))
         (delete-region (point) (overlay-end overlay))
         (insert "\n")
-        (move-overlay overlay (overlay-start overlay) p)))))
+        (move-overlay overlay (overlay-start overlay) p)))
+    ;; Make sure the overlay ends on a newline, if not, insert one.
+    (save-excursion
+      (goto-char (- (overlay-end overlay) 1))
+      (unless (looking-at "\n")
+        (forward-char 1)
+        (insert "\n")))))
 
 (defun ekg-edit-display-metadata ()
   "Create or edit the overlay to show metadata."
@@ -751,6 +757,7 @@ delete from the end of the metadata, we need to fix it back up."
     (overlay-put o 'after-string (propertize "--text follows this line--\n" 'read-only t))
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
+    (overlay-put o 'insert-behind-hooks '(ekg--metadata-modification))
     (overlay-put o 'face 'ekg-metadata)
     (buffer-enable-undo)
     ;; If org-mode is on, the metadata messes up the org-element-cache, so let's disable it.

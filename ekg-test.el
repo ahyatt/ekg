@@ -24,6 +24,7 @@
 (require 'ekg)
 (require 'ert)
 (require 'ert-x)
+(require 'org)
 
 (defmacro ekg-deftest (name _ &rest body)
   "A test that will set up an empty `ekg-db' for use."
@@ -251,6 +252,16 @@
       (insert "\n")
       (ekg--metadata-modification o t nil nil)
       (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n")))))))
+
+(ekg-deftest ekg-test-overlay-interaction-growth-by-new-headline ()
+  (let ((ekg-capture-auto-tag-funcs nil))
+    (ekg-capture '("test"))
+    (let ((o (ekg--metadata-overlay)))
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      (goto-char (point-min))
+      (org-insert-heading)
+      ;; Inserting a new heading shouldn't mess with the overlay.
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n")))))))
 
 (ekg-deftest ekg-test-overlay-interaction-resist-shrinking ()
   (let ((ekg-capture-auto-tag-funcs nil))
