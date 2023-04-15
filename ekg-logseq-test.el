@@ -77,6 +77,18 @@
              "- Untitled Note\n  id:: 123\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  #[[tag1]] #[[tag2]]\n  line1\n  line2\n"
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
+(ert-deftest ekg-logseq-test-note-with-resource-and-title-to-logseq ()
+  (let ((note (ekg-note-create "line1\nline2\n" 'org-mode '("tag1" "tag2" "tag3"))))
+    (setf (ekg-note-id note) "http://www.example.com")
+    (setf (ekg-note-modified-time note) 123456789)
+    (setf (ekg-note-properties note) '(:titled/title "Title"))
+    (should (equal
+             "* Title\n:PROPERTIES:\n:ID: http://www.example.com\n:EKG_HASH: c696f3d4b296c737155637d3a708d2b986ab6f6f\n:END:\n#[[tag1]] #[[tag2]]\nhttp://www.example.com\nline1\nline2\n"
+             (ekg-logseq-note-to-logseq-org note "tag3")))
+    (should (equal
+             "- Title\n  id:: http://www.example.com\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  #[[tag1]] #[[tag2]]\n  http://www.example.com\n  line1\n  line2\n"
+             (ekg-logseq-note-to-logseq-md note "tag3")))))
+
 (ert-deftest ekg-logseq-test-note-to-logseq-org-demotion ()
   (let ((note (ekg-note-create "* Heading 1\n* Heading 2" 'org-mode nil)))
     (setf (ekg-note-id note) "123")
