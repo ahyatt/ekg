@@ -57,6 +57,11 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 3
+- Added logseq import / export in its own module, and removed it from the =ekg-org-roam= module.  See the [[#logseq][logseq]] section for more details.
+- Improve window management, now we play nicer with customized window configuration, and now opening a list of notes will also switch to that window.
+- Improved metadata overlay look and function, it now looks just like =message-mode=, which hopefully will help with people's intuitions on how it works.
+- Added a blank line between notes in notes list buffers, for a cleaner look.
 ** Version 0.2.1
 - Removed =ekg-notes-remove=, which removed one or more tags from a note from a note list buffer.
 - New keybinding, "q" in the notes buffer, which kills the buffer (thanks to Jay Rajput for the idea).
@@ -315,6 +320,9 @@ Important: *your API key is a secret key, so do not store it anywhere it can be 
 Once you have this set up, and you have already called ~(require 'ekg-embedding)~ you can call =M-x ekg-embedding-generate-all=. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in =ekg-notes-mode=, =ekg-embedding-show-similar= to get a list of similar notes. You can also call =ekg-embedding-search= to perform a search over your notes using embeddings.  In any buffer, you can call =ekg-embedding-show-similar-to-current-buffer= to similar notes to whatever the text is in the curent buffer.
 ** Logseq
+:PROPERTIES:
+:CUSTOM_ID: logseq
+:END:
 ekg can sync with logseq, a PKMS application that can run on a laptop or phone.  Logseq is particularly convenient as a way to view or enter notes on your phone, and various synchronization solutions exist to sync local files with your phone.  Because ekg and logseq have different designs, these apps are not perfectly compatible. The ekg and logseq syncing is designed to favor ekg's system when a conflict arises.
 
 There are two ways to use logseq, one is maintaining logseq as an export-only copy of ekg data, where you don't plan to modify anything in logseq, just using it to access your notes on other platforms.  Exporting from ekg is destructive, though, so without an initial import, *exporting will overwrite logseq files with data from ekg, so it may destroy data*.  The other way is to sync bidirectionally.  This starts by importing anything from logseq that has never been imported before, and then writing ekg's data on top.  This will preserve data, but will lose the initial formatting of ordering of pages.  Both of these methods, then, will significantly impact your logseq notes.  *It is highly advised to back up your logseq files before starting*.
