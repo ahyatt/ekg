@@ -25,27 +25,7 @@
 (require 'ert)
 (require 'ert-x)
 (require 'org)
-
-(defmacro ekg-deftest (name _ &rest body)
-  "A test that will set up an empty `ekg-db' for use."
-  (declare (debug t) (indent defun))
-  `(ert-deftest ,name ()
-     (let ((ekg-db-file (make-temp-file "ekg-test"))
-           (ekg-db nil)
-           (orig-buffers (buffer-list))
-           ;; Remove hooks
-           (ekg-add-schema-hook nil)
-           (ekg-note-pre-save-hook nil)
-           (ekg-note-save-hook nil)
-           (ekg-note-pre-delete-hook nil)
-           (ekg-note-delete-hook nil)
-           (ekg-note-add-tag-hook nil))
-       (ekg--connect)
-       (save-excursion
-         (unwind-protect
-             (progn ,@body)
-           ;; Kill all opened bufferes
-           (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers)))))))
+(require 'ekg-test-utils)
 
 (ekg-deftest ekg-test-note-lifecycle ()
   (let ((note (ekg-note-create "Test text" 'text-mode '("tag1" "tag2"))))
