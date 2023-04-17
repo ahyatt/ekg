@@ -92,16 +92,23 @@ embeddings already exist. This is a fairly slow function, and may
 take minutes or hours depending on how much data there is.."
   (interactive "P")
   (ekg--connect)
-  (cl-loop for s in (ekg-active-note-ids) do
-           (let* ((note (ekg-get-note-with-id s))
-                  (embedding (triples-get-type ekg-db s 'embedding))
-                  (text (substring-no-properties (ekg-display-note note))))
-             (when (and (or arg (null embedding))
-                        (> (length text) 0))
-               (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding text)))))
-  (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
-           (ekg-embedding-refresh-tag-embedding s))
-  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
+  (message "ekg-embedding-generate-all starting in the background")
+  (make-thread
+   (lambda ()
+     (let ((count 0))
+       (cl-loop for s in (ekg-active-note-ids) do
+                (thread-yield)
+                (cl-incf count)
+                (let ((note (ekg-get-note-with-id s))
+                      (embedding (triples-get-type ekg-db s 'embedding)))
+                  (when (and (or arg (null embedding))
+                             (> (length (ekg-note-text note)) 0))
+                    (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
+                                                                      (substring-no-properties (ekg-note-text note)))))))
+       (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
+                (ekg-embedding-refresh-tag-embedding s))
+       (triples-backups-maybe-backup ekg-db (ekg--db-file))
+       (message ("Finished generating %s embeddings" count))))))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
