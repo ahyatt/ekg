@@ -176,7 +176,7 @@ This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
 (cl-defstruct ekg-note
-  id text mode inlines tags creation-time modified-time properties)
+  id text mode tags creation-time modified-time properties inlines)
 
 (cl-defstruct ekg-inline pos command)
 
