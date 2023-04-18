@@ -22,6 +22,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'ekg-test-utils)
 (require 'ekg-logseq)
 (require 'cl-lib)
 (require 'org)
@@ -121,5 +122,38 @@
 (ert-deftest ekg-logseq-test-filename-to-tag ()
   (should (equal "foo" (ekg-logseq-filename-to-tag "foo.org")))
   (should (equal "foo/bar" (ekg-logseq-filename-to-tag "foo$bar.org"))))
+
+(ekg-deftest ekg-logseq-test-last-import-export ()
+  (should (= 0 (ekg-logseq-get-last-export)))
+  (should (= 0 (ekg-logseq-get-last-import)))
+  (ekg-logseq-set-last-export 123)
+  (should (= 123 (ekg-logseq-get-last-export)))
+  (should (= 0 (ekg-logseq-get-last-import)))
+  (ekg-logseq-set-last-import 456)
+  (should (= 123 (ekg-logseq-get-last-export)))
+  (should (= 456 (ekg-logseq-get-last-import))))
+
+(ekg-deftest ekg-logseq-test-tags-with-notes-modified-since ()
+  (cl-flet ((create (time tags)
+              (let ((note (ekg-note-create "" 'org-mode tags)))
+                (cl-letf (((symbol-function 'time-convert)
+                           (lambda (&rest _) time)))
+                  (ekg-save-note note)))))
+    (create 100 '("a"))
+    (create 200 '("a" "b"))
+    (create 300 '("b"))
+    (create 400 '("c" "d"))
+    (should (equal
+             (sort (ekg-logseq-tags-with-notes-modified-since 0) #'string<)
+             '("a" "b" "c" "d")))
+    (should (equal
+             (sort (ekg-logseq-tags-with-notes-modified-since 1) #'string<)
+             '("a" "b" "c" "d")))
+    (should (equal
+             (ekg-logseq-tags-with-notes-modified-since 1000)
+             nil))
+    (should (equal
+             (sort (ekg-logseq-tags-with-notes-modified-since 300) #'string<)
+             '("c" "d")))))
 
 ;;; ekg-logseq-test.el ends here

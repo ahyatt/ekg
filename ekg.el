@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.2.5") (emacs "28.1"))
+;; Package-Requires: ((triples "0.2.7") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.2.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -783,7 +783,7 @@ If SUBJECT is given, force the triple subject to be that value."
     (ekg-edit-display-metadata)
     (goto-char (point-max))
     (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag)) (ekg-note-tags ekg-note))
-    (switch-to-buffer-other-window buf)))
+    (pop-to-buffer buf)))
 
 (defun ekg-capture-url (&optional url title)
   "Capture a new note given a URL and its TITLE.
@@ -830,7 +830,7 @@ However, if URL already exists, we edit the existing note on it."
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay)))))
-    (switch-to-buffer-other-window buf)))
+    (pop-to-buffer buf)))
 
 (defun ekg--save-note-in-buffer ()
   "Save the current note.
@@ -1210,7 +1210,7 @@ are created with additional tags TAGS."
   (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
-    (display-buffer buf)))
+    (pop-to-buffer buf)))
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."

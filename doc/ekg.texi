@@ -65,6 +65,7 @@ Installation
 
 Changelog
 
+* Version 3::
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 
@@ -160,9 +161,24 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
+* Version 3::
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 3
+@section Version 3
+
+@itemize
+@item
+Added logseq import / export in its own module, and removed it from the @samp{ekg-org-roam} module.  See the @ref{Logseq, , logseq} section for more details.
+@item
+Improve window management, now we play nicer with customized window configuration, and now opening a list of notes will also switch to that window.
+@item
+Improved metadata overlay look and function, it now looks just like @samp{message-mode}, which hopefully will help with people's intuitions on how it works.
+@item
+Added a blank line between notes in notes list buffers, for a cleaner look.
+@end itemize
 
 @node Version 021
 @section Version 0.2.1

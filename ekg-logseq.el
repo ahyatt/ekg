@@ -26,6 +26,7 @@
 
 
 (require 'ekg)
+(require 'triples)
 (require 'seq)
 (require 'org nil t)
 (require 'org-element nil t)
@@ -48,6 +49,36 @@
   "Parent directory for logseq files, contains pages and diary directories."
   :type 'directory
   :group 'ekg-logseq)
+
+(defun ekg-logseq-add-schema ()
+  "Add the logseq schema to the ekg database."
+  (triples-add-schema ekg-db 'logseq
+                      '(last-export :base/unique t :base/type integer)
+                      '(last-import :base/unique t :base/type integer)))
+
+(defun ekg-logseq-get-last-export ()
+  "Get the last export time."
+  (or (plist-get
+       (triples-get-type ekg-db 'logseq 'logseq)
+       :last-export) 0))
+
+(defun ekg-logseq-get-last-import ()
+  "Get the last export time."
+  (or (plist-get
+       (triples-get-type ekg-db 'logseq 'logseq)
+       :last-import) 0))
+
+(defun ekg-logseq-set-last-export (time)
+  "Set the last export time to TIME."
+  (let ((plist (triples-get-type ekg-db 'logseq 'logseq)))
+    (apply #'triples-set-type ekg-db 'logseq 'logseq
+           (plist-put plist :last-export (floor (float-time time))))))
+
+(defun ekg-logseq-set-last-import (time)
+  "Set the last import time to TIME."
+  (let ((plist (triples-get-type ekg-db 'logseq 'logseq)))
+    (apply #'triples-set-type ekg-db 'logseq 'logseq
+           (plist-put plist :last-import (floor (float-time time))))))
 
 (defun ekg-logseq-convert-ekg-tag (tag)
   "Convert an ekg TAG to a logseq tag."
@@ -299,49 +330,77 @@ which will import and re-export back to logseq."
     (error "ekg-logseq-dir must be set"))
   ;; Force a backup pre-import.
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
-  (let ((count 0))
+  (let ((count 0)
+        (last-import (ekg-logseq-get-last-import))
+        (start-time (current-time)))
+    (message "ekg-logseq-import: importing logseq files changed since %s"
+             (if (= last-import 0) "the beginning of time itself"
+               (format-time-string "%F %X" last-import)))
     (cl-loop for subdir in '("journals" "pages") do
            (cl-loop for file in
                     (directory-files
                      (file-name-concat ekg-logseq-dir subdir) t
                      (rx (seq "." (or "org" "md") eol))) do
-                     (thread-yield)
-                     (let ((tag (concat (if (equal subdir "journals")
-                                            "date/" "")
-                                        (ekg-logseq-filename-to-tag file))))
-                       (with-temp-buffer
-                         (insert-file-contents file)
-                         (when (equal "org" (file-name-extension file))
-                           (org-mode))
-                         ;; No need to do the same for markdown, because we
-                         ;; don't need any special parsing capabilities.
-                         (let ((items (ekg-logseq--to-import-text)))
-                           (cl-loop for text in items
-                                    do
-                                    (let ((note (ekg-note-create text (when (eq major-mode 'org-mode)
-                                                                        'org-mode 'markdown-mode)
-                                                                 (cons tag (ekg-logseq--to-import-tags text)))))
-                                      (when-let (id (if (eq major-mode 'org-mode)
-                                                        (ekg-logseq--to-import-org-id text)
-                                                      (ekg-logseq--to-import-md-id text)))
-                                        (setf (ekg-note-id note) id))
-                                      (message "ekg-logseq-import: saving note from file %s" file)
-                                      (cl-incf count)
-                                      (ekg-save-note note))))))))
-    (message "ekg-logseq-import: imported %d notes" count)))
+                     ;; Only import files not modified since last-import
+                     (when (time-less-p last-import
+                                        (nth 5 (file-attributes file)))
+                       (let ((tag (concat (if (equal subdir "journals")
+                                              "date/" "")
+                                          (ekg-logseq-filename-to-tag file))))
+                         (with-temp-buffer
+                           (insert-file-contents file)
+                           (when (equal "org" (file-name-extension file))
+                             (org-mode))
+                           ;; No need to do the same for markdown, because we
+                           ;; don't need any special parsing capabilities.
+                           (let ((items (ekg-logseq--to-import-text)))
+                             (cl-loop for text in items
+                                      do
+                                      (let ((note (ekg-note-create text (when (eq major-mode 'org-mode)
+                                                                          'org-mode 'markdown-mode)
+                                                                   (cons tag (ekg-logseq--to-import-tags text)))))
+                                        (when-let (id (if (eq major-mode 'org-mode)
+                                                          (ekg-logseq--to-import-org-id text)
+                                                        (ekg-logseq--to-import-md-id text)))
+                                          (setf (ekg-note-id note) id))
+                                        (message "ekg-logseq-import: saving note from file %s" file)
+                                        (cl-incf count)
+                                        (ekg-save-note note)))))))))
+    (message "ekg-logseq-import: imported %d notes" count)
+    (ekg-logseq-set-last-import start-time)))
 
-(defun ekg-logseq--export-within-thread ()
-  "Logic for `ekg-logseq-export', which will be run in a thread."
-  (let ((deleted 0)
-        (modified 0))
-    (cl-loop for subdir in '("journals" "pages")
-             with tags = (ekg-tags) do
+(defun ekg-logseq-tags-with-notes-modified-since (time)
+  "Return a list of tags with notes modified since TIME."
+  (if (= time 0)
+      (ekg-tags)
+    (seq-uniq
+     (cl-loop for triples in
+              (triples-db-select-pred-op ekg-db :time-tracked/modified-time '> time)
+              nconc (ekg-note-tags (ekg-get-note-with-id (car triples)))))))
+
+(defun ekg-logseq-export ()
+  "Export the current ekg database to logseq.
+
+Because this overwrites logseq data, running this by itself
+should only be done if your logseq is meant as a read-only copy
+of your ekg database. If you intend to add to your logseq, or you
+have already have information in logseq, you should run
+`ekg-logseq-sync' instead."
+  (interactive)
+  (unless ekg-logseq-dir
+    (error "ekg-logseq-dir must be set"))
+  (ekg--connect)
+  (let* ((deleted 0)
+         (modified 0)
+         (export-time (ekg-logseq-get-last-export))
+         (start-time (current-time))
+         (tags (ekg-logseq-tags-with-notes-modified-since export-time)))
+    (cl-loop for subdir in '("journals" "pages") do
              (cl-loop for file in
                       (seq-filter #'file-regular-p
                                   (directory-files
                                    (file-name-concat ekg-logseq-dir subdir) t))
                       do
-                      (thread-yield)
                       (unless (member (concat (if (equal subdir "journals") "date/" "")
                                               (ekg-logseq-filename-to-tag file)) tags)
                         (with-temp-buffer
@@ -353,30 +412,17 @@ which will import and re-export back to logseq."
                                   (point-max)))
                             (delete-file file)
                             (message "ekg-logseq-export: deleting obsolete previously exported file %s" file)
-                            (cl-incf deleted)))))
-  (cl-loop for tag in (ekg-tags) do
-           (when (ekg-logseq-export-tag tag)
-             (cl-incf modified)))
-  (message "ekg-logseq-export: deleted %d files, modified %d files" deleted modified))))
-  
-(defun ekg-logseq-export ()
-  "Export the current ekg database to logseq.
-
-Because this overwrites logseq data, running this by itself
-should only be done if your logseq is meant as a read-only copy
-of your ekg database. If you intend to add to your logseq, or you
-have already have information in logseq, you should run
-`ekg-logseq-sync' instead.
-
-All exporting will be run in the background. If it already is
-being run in the background, no new thread will be spawned."
-  (interactive)
-  (unless ekg-logseq-dir
-    (error "ekg-logseq-dir must be set"))
-  (ekg--connect)
-  (if (eq (current-thread) main-thread)
-      (make-thread #'ekg-logseq--export-within-thread "ekg-logseq-export")
-    (ekg-logseq--export-within-thread)))
+                            (cl-incf deleted))))))
+    (message "ekg-logseq-export: exporting all tags modified since %s: %S"
+                      (if (= 0 export-time)
+                          "the beginning of time itself"
+                        (format-time-string "%F %X" export-time))
+                      tags)
+    (cl-loop for tag in tags do
+             (when (ekg-logseq-export-tag tag)
+               (cl-incf modified)))
+    (message "ekg-logseq-export: deleted %d files, modified %d files" deleted modified)
+    (ekg-logseq-set-last-export start-time)))
 
 (defun ekg-logseq-sync ()
   "Sync ekg and logseq.
@@ -388,10 +434,10 @@ All logic will be run in the background."
   (interactive)
   (ekg--connect)
   (message "ekg-logseeq-sync: Starting in the background")
-  (make-thread (lambda ()
-                 (ekg-logseq-import)
-                 (ekg-logseq-export))
-               "ekg-logseq-sync"))
+  (ekg-logseq-import)
+  (ekg-logseq-export))
+
+(add-hook 'ekg-add-schema-hook #'ekg-logseq-add-schema)
 
 (provide 'ekg-logseq)
 ;;; ekg-logseq.el ends here
