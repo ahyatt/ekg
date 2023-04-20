@@ -164,16 +164,11 @@
     (ekg-save-note note1)
     (ekg-save-note note2)
     (let ((ex-cons (ekg-extract-inlines
-                    (format "Foo %%(transclude-note %S) %%(transclude-note %S) Bar"
+                    (format "Foo %%(transclude-note %S 1) %%(transclude-note %S 1) Bar"
                             (ekg-note-id note1) (ekg-note-id note2)))))
-      (should (equal "Foo text1 text2 text3 text4 Bar"
-                     (ekg-insert-inlines-results
-                      (car ex-cons) (cdr ex-cons)
-                      1000)))
-      (should (equal "Foo text1… text3… Bar"
-                     (ekg-insert-inlines-results
-                      (car ex-cons) (cdr ex-cons)
-                      4))))))
+      (should (string-equal "Foo text1… text3… Bar"
+                            (ekg-insert-inlines-results
+                             (car ex-cons) (cdr ex-cons)))))))
 
 (ekg-deftest ekg-test-inline-storage ()
   (let ((id)

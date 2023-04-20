@@ -91,8 +91,8 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
   :type '(string :tag "tag")
   :group 'ekg)
 
-(defcustom ekg-note-display-max-words 1000
-  "How many words to display for notes."
+(defcustom ekg-note-inline-max-words 500
+  "How many words to display for inlines if the caller does not specify."
   :type 'integer
   :group 'ekg)
 
@@ -388,7 +388,7 @@ or, if unknown, `ekg-inline'."
              (setq newtext (replace-match "" nil nil newtext 1))))
     (cons newtext (nreverse inlines))))
 
-(defun ekg-inline-truncate-at (s numwords)
+(defun ekg-truncate-at (s numwords)
   "Return S with ellipses after NUMWORDS words.
 If NUMWORDS is greater than the number of words of S, return S
 unchanged."
@@ -403,7 +403,7 @@ unchanged."
       (delete-region (point) (point-max)))
     (buffer-string)))
 
-(defun ekg-insert-inlines-and-process (text inlines func numwords)
+(defun ekg-insert-inlines-and-process (text inlines func)
   "Returns the result of inserting INLINES into TEXT.
 FUNC will be executed with the cdr of each inline command and
 return value is inserted into the buffer at the appropriate
@@ -414,15 +414,8 @@ NUMTOK is the number of tokens available to be used."
     (let ((mils (cl-loop for il in inlines do
                          (goto-char (+ (ekg-inline-pos il) 1))
                          collect (cons (point-marker)
-                                       (if (> numwords 0)
-                                           (ekg-inline-truncate-at
-                                            (funcall func
-                                                   (ekg-inline-command il))
-                                            (/ (- numwords
-                                                  (count-words (point-min) (point-max)))
-                                               (length inlines)))
-                                         "")))))
-
+                                       (funcall func
+                                                    (ekg-inline-command il))))))
       (cl-loop for mil in mils do
                (goto-char (car mil))
                (insert-before-markers (cdr mil))))
@@ -434,10 +427,9 @@ INLINES are inserted "
   (ekg-insert-inlines-and-process
    text inlines
    (lambda (command)
-     (format "%%%S" command))
-   most-positive-fixnum))
+     (format "%%%S" command))))
 
-(defun ekg-insert-inlines-results (text inlines numwords)
+(defun ekg-insert-inlines-results (text inlines)
   "Return the results of executing INLINES into TEXT."
   (ekg-insert-inlines-and-process
    text inlines
@@ -445,10 +437,9 @@ INLINES are inserted "
      (let ((f (intern (format "ekg-inline-command-%s"
                               (car command)))))
        (if (fboundp f)
-           (apply f (append (cdr command) (list numwords)))
+           (apply f (cdr command))
          (format "%%Unknown command %s: `%s' not found"
-                 (car command) f))))
-   numwords))
+                 (car command) f))))))
 
 (defun ekg--transclude-titled-note-completion ()
   "Completion function for file transclusion."
@@ -477,7 +468,7 @@ INLINES are inserted "
         (when (search-backward (format ">%s" completion) (line-beginning-position) t)
           (replace-match (format "%%(transclude-note %S)" id)))))))
 
-(defun ekg-displayable-note-text (note &optional numwords)
+(defun ekg-displayable-note-text (note)
   "Return text, with mode-specific properties, of NOTE.
 A text property `ekg-note-id' is added with the id of the note.
 NUMWORDS is the max number of words to display in the note, or
@@ -486,8 +477,7 @@ nil for all words."
     (when (ekg-note-text note)
       (insert (ekg-insert-inlines-results
                (ekg-note-text note)
-               (ekg-note-inlines note)
-               (or numwords ekg-note-display-max-words))))
+               (ekg-note-inlines note))))
     (when (ekg-note-mode note)
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
@@ -497,24 +487,26 @@ nil for all words."
     (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
     (buffer-string)))
 
-(defun ekg-inline-command-transclude-note (id numwords)
+(defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID."
-  (ekg-displayable-note-text (ekg-get-note-with-id id) numwords))
+  (ekg-truncate-at
+   (ekg-displayable-note-text (ekg-get-note-with-id id))
+   (or numwords ekg-note-inline-max-words)))
 
-(defun ekg-inline-command-transclude-file (file _)
+(defun ekg-inline-command-transclude-file (file &optional numwords)
   "Return the contents of FILE."
   (with-temp-buffer
     (insert-file-contents file)
-    (buffer-string)))
+    (ekg-truncate-at (buffer-string) (or numwords ekg-note-inline-max-words))))
 
-(defun ekg-inline-command-transclude-website (url _)
+(defun ekg-inline-command-transclude-website (url &optional numwords)
   "Return the contents of the URL."
   (let ((url-buffer (url-retrieve-synchronously url)))
     (with-current-buffer url-buffer
       (goto-char (point-min))
       (re-search-forward "^$" nil 'move) ; skip headers
       (shr-render-region (point) (point-max))
-      (buffer-string))))
+      (ekg-truncate-at (buffer-string) (or numwords ekg-note-inline-max-words)))))
 
 (defun ekg-select-note ()
   "Select a note interactively.
@@ -528,7 +520,7 @@ Returns the ID of the note."
                  (completing-read "Tag: " (ekg-tags) nil t)))
            (completion-pairs (mapcar
                               (lambda (note)
-                                (cons (ekg-displayable-note-text note 10)
+                                (cons (ekg-truncate-at (ekg-displayable-note-text note) 10)
                                       note)) notes)))
       (ekg-note-id (cdr (assoc (completing-read "Note: " completion-pairs nil t)
                                completion-pairs))))))
@@ -667,7 +659,7 @@ This will be displayed at the top of the note buffer."
   (format "%s: %s\n" (propertize property 'face 'bold 'read-only t)
           value))
 
-(defun ekg--should-show-id-p (id)
+(defun ekg-should-show-id-p (id)
   "Return non-nil if the note ID should be shown to the user.
 The ID can represent a browseable resource, which is meaningful to the user."
   (ffap-url-p id))
@@ -676,7 +668,7 @@ The ID can represent a browseable resource, which is meaningful to the user."
   "Replace the metadata in a buffer."
   (let ((note ekg-note))
     (with-temp-buffer
-      (when (ekg--should-show-id-p (ekg-note-id note))
+      (when (ekg-should-show-id-p (ekg-note-id note))
         (insert (ekg--metadata-string "Resource" (ekg-note-id note))))
       (insert
        (ekg--metadata-string "Tags"
@@ -1065,7 +1057,7 @@ The tags are separated by spaces."
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
-  (when (ekg--should-show-id-p (ekg-note-id note))
+  (when (ekg-should-show-id-p (ekg-note-id note))
     (insert
      (propertize
       (format "[%s]\n" (ekg-note-id note))

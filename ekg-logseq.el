@@ -111,7 +111,7 @@ This will store the note text as org-mode, regardless of the mode
 of the note."
   (with-temp-buffer
     (org-mode)
-    (when (ekg--should-show-id-p (ekg-note-id note))
+    (when (ekg-should-show-id-p (ekg-note-id note))
       (insert (ekg-note-id note) "\n"))
     (insert (ekg-note-text note))
     ;; Demote all other headings to level 2.
