@@ -68,7 +68,7 @@ updates NOTE."
         (plist-put (ekg-note-properties note)
                    :embedding/embedding
                    (ekg-embedding (substring-no-properties
-                                   (ekg-displayable-note-text note)))))
+                                   (ekg-display-note note)))))
   (cl-loop for tag in (ekg-note-tags note) do
            (ekg-embedding-refresh-tag-embedding tag)))
 
@@ -95,7 +95,7 @@ take minutes or hours depending on how much data there is.."
   (cl-loop for s in (ekg-active-note-ids) do
            (let* ((note (ekg-get-note-with-id s))
                   (embedding (triples-get-type ekg-db s 'embedding))
-                  (text (substring-no-properties (ekg-displayable-note-text note))))
+                  (text (substring-no-properties (ekg-display-note note))))
              (when (and (or arg (null embedding))
                         (> (length text) 0))
                (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding text)))))
