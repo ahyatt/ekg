@@ -559,7 +559,7 @@ FORMAT-STR controls how the time is formatted."
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID."
-  (ekg-display-note-text (ekg-get-note-with-id id) numwords))
+  (string-trim-right (ekg-display-note-text (ekg-get-note-with-id id) numwords) "\n"))
 
 (defun ekg-inline-command-transclude-file (file &optional numwords)
   "Return the contents of FILE."
