@@ -97,7 +97,7 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
   :group 'ekg)
 
 
-(defcustom ekg-display-note-template "%n(id)%n(tagged)\n%n(titled)%n(text 500)%n(other)"
+(defcustom ekg-display-note-template "%n(id)%n(tagged)%n(titled)%n(text 500)%n(other)"
   "Template for displaying notes in notes buffers.
 This follows normal templating rules, but it is most likely the
 user is interested in the various %n templates that correspond to

@@ -214,7 +214,7 @@
 
 (ert-deftest ekg-test-display-note-template ()
   (let ((ekg-display-note-template
-         "%n(id)%n(tagged)\n%n(text 100)%n(other)%n(time-tracked)")
+         "%n(id)%n(tagged)%n(text 100)%n(other)%n(time-tracked)")
         (note (ekg-note-create "text" 'text-mode '("tag1" "tag2"))))
     (setf (ekg-note-properties note) '(:titled/title ("Title")
                                                      :unknown/ignored "unknown"
