@@ -537,8 +537,8 @@ nil for all words."
 
 (defun ekg-display-note-tagged (note)
   "Return text of the tags of NOTE."
-  (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
-             (ekg-note-tags note) " "))
+  (concat (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
+             (ekg-note-tags note) " ") "\n"))
 
 (defun ekg-display-note-time-tracked (note &optional format-str)
   "Return text of the times NOTE was created and modified.
