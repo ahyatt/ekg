@@ -401,6 +401,8 @@ The other kind of inline command is a note command.  That functions similarly, w
 @samp{%n(time-tracked <format-str>)}: The created and modified time of a note.  @samp{format-str}, if passed, controls how the times are formatted (see documentation for @code{format-time-string}, default is @code{%Y-%m-%d}).
 @item
 @samp{%n(titled)}: The title of a note.
+@item
+@samp{%n(other)}: A special note that will substitute itself with all type-relevant type note commands that haven't already appeared. So, for example, if there is a type such as @samp{person}, and a note has information with this type, that information will be shown in the @samp{other} command, as if it was substituted by @samp{%n(person)}.  However, if @samp{%n(person)} already appears as a command, it will not add it again in the @samp{other} command.
 @end itemize
 
 The @samp{%n(id <force>)} is implemented in @code{ekg-display-note-id}, @samp{%n(text <numwords>)} is implemented in @code{ekg-display-note-text}, and so on.  All these are designed to be useful for customizing the note display (see @ref{Customizing note display in @samp{ekg-notes-mode}, , Customizing note display in ekg-notes-mode}).  Because we want to have these possibly not insert anything, each function must end with a newline if the content is likely to be needing a line to itself.  The functions must always return a string.  Although the default note commands are all based around types, a note command could be anything that needs a note.
