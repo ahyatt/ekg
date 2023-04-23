@@ -58,6 +58,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 #+end_src
 * Changelog
 ** Version 3
+- Added inline commands, see the [[#inlines][inlines]] section for more detail.
 - Added logseq import / export in its own module, and removed it from the =ekg-org-roam= module.  See the [[#logseq][logseq]] section for more details.
 - Improve window management, now we play nicer with customized window configuration, and now opening a list of notes will also switch to that window.
 - Improved metadata overlay look and function, it now looks just like =message-mode=, which hopefully will help with people's intuitions on how it works.
@@ -82,19 +83,17 @@ By default, ekg uses the default triple database, which is set in the variable ~
 * Concepts and data model in ekg
 The ekg package is built on a flexible database scheme called "triples", where everything is stored as a graph structure; a subject, a predicate, and an object. The implication for the ekg package is that new kinds of data is easy to add, and lives alongside other data. Values of properties, stored as "objects" can themselves have values by adding data where the same value is the "subject". If you plan to do extensive integration work in elisp, it will help to understand these concepts, and the best way to do so is reading the triples package README.
 
-For notes, we can think of the subject of the triples as an ID. Notes are created, and have the following potential properties by default:
-  - ID
-  - Tags
-  - Text and it's major mode
-  - Creation time and modification time
-  - Title
+For notes, we can think of the subject of the triples as an ID. Notes are created, and have the following types by default, with the type having properties.
+  - =tagged=: Tags
+  - =text=: Text, it's major mode, and any inline commands.
+  - =time-tracked=: Creation time and modification time
+  - =titled=: Title
 
 The ID for notes is by default an integer UUID. However, you can have notes about anything. In EKG an ID can be a resource identifier as well, such as a URL.  When this happens, the ID is the data interesting in its own right.
 
 Tags may have spaces, but cannot have commas, which are used to separate them when showing them to the user and parsing them back out into properties to store.
 
 Because of the triples model, there is data about the tags for each note. Tags themselves just have type markers indicating they are tags, and can dynamically query for all notes with their tag, so tags always have a current list of notes with their tag.
-
 * Understanding and editing the note buffer
 When capturing or creating a note, the note buffer has two areas important to understand. The first is the area for note properties, which has a different background color.  The second is the area for the note text.
 ** Note properties
@@ -180,6 +179,31 @@ This functionality is enabled through the function =ekg-on-add-tag-insert-templa
 #+end_src
 ** Changing the initial tags of a note
 The variable ~ekg-capture-auto-tag-funcs~ has a list of functions to call to add tags. Each function is called, and returns a list (or ~nil~, the empty list), which are all added to a new note. By default, this variable has the function =ekg-date-tag=, which returns the tag of today's date. If you do not want this, you can remove this function. You can also add your own functions to add the year, the week number, or any tag you feel is appropriate.
+** Inline commands
+:PROPERTIES:
+:CUSTOM_ID: inlines
+:END:
+An inline command is a way to insert generated content into notes.  A command has a representation, and can be evaluated.  The representation is an s-expression limited to a subset of functions.  An example of a representation is "My .emacs file: %(transclude-file \"~/.emacs.d/init.el\")". When you are capturing or editing the note, you can create this representation, or see one already created.  When viewing the note in a notes buffer, the inline command is evaluated and the results are inserted into the note.
+
+There are two kinds of inline commands, a normal command, and a note command.  A normal command can do anything, and takes the form "%(<command> <arg 1> <arg 2> ... <arg n>)".  In other words, this is just like an elisp function, except with a "%" in front.  When executing we look for a function starting with =ekg-inline-command-=.  So, for example, we have the following commands available for use:
+
+- =%(transclude-note id <numwords>)=: Include the contents of another note.  =numwords= is optional, and controls the maximum number of words to include.  If not included, there is no limit.
+- =%(transclude-file filename <numwords>)=: Include the contents of a file.  =numwords= functions the same here as in =transclude-note=.
+- =%(transclude-website url <numwords>)=: Include the contents of a website.  As of now, no attempt is made to only include the "main content", so this is best suited to simple text sites that have content without any navigational elements.
+
+These are defined in ~ekg-inline-command-transclude-note~, and so on.  A user can define new commands just by creating new functions that fit this pattern.  All of these will be executed and content calculated every time the note containing them is re-displayed.  Note that there is currently no automatic refresh when the content being transcluded changes.
+
+The other kind of inline command is a note command.  That functions similarly, with the key difference that the form is now "%n(<command> <arg 1> <arg 2> ... <arg n>)", note the "n" in front.  The difference here is that there is an implicit first argument that is the note that is being displayed in the current context.  After that note argument "<arg 1>" and so on will be added.  These are used primarily for controlling the read-only display of notes in notes lists.  The note commands are primarily driven by types, with the idea that a note can have many types, and each type has a note command that displays information related to that type.  Note commands are defined in functions with the prefix =ekg-display-note-=.  The following note commands exist:
+
+- =%n(id <force>)=: Shows the ID of the note, if it is interesting.  Interesting mainly means it isn't a random-seeming ID that we normally generate for notes, and is instead some sort of resource. If =force= is true, then show it regardless of whether it is interesting or not.
+- =%n(text <numwords>)=: The text of a note (with any inline commands calculated and their results displayed inline).  =numwords= functions as noted above.
+- =%n(tagged)=: The tags of a note.
+- =%n(time-tracked <format-str>)=: The created and modified time of a note.  =format-str=, if passed, controls how the times are formatted (see documentation for ~format-time-string~, default is ~%Y-%m-%d~).
+- =%n(titled)=: The title of a note.
+
+The =%n(id <force>)= is implemented in ~ekg-display-note-id~, =%n(text <numwords>)= is implemented in ~ekg-display-note-text~, and so on.  All these are designed to be useful for customizing the note display (see [[#customizing-note-display][Customizing note display in ekg-notes-mode]]).  Because we want to have these possibly not insert anything, each function must end with a newline if the content is likely to be needing a line to itself.  The functions must always return a string.  Although the default note commands are all based around types, a note command could be anything that needs a note.
+
+Inlines can be added by simply typing them, or a few special commands.  =ekg-edit-add-inline= will add an inline note or file.  For notes, it will prompt to select a note by title or tag and then text. For files, it will prompt for the file name.  The other way is to use completion at point, by typing ">t" and completing by notes with titles.  After completion, the ">t" will be replaced with the correct =transclude-note= command that refers to the titled note selected.  This is only useful for notes with titles, since they are more easily selected by completion.
 * Viewing tags or notes
 There are several functions to view notes in various ways. All of these show a list of notes in read-only view, that can be navigated and interacted with. This is a =ekg-notes-mode= buffer.
 
@@ -226,6 +250,11 @@ The notes buffer is navigated via the following commands (the default binding is
 Many of these commands use the notion that notes lists have associated lists of tags. That is the case for many commands, but not all. For example,
 =ekg-show-notes-latest-captured=, =ekg-show-notes-latest-modified=, and =ekg-show-notes-in-trash= have no associated tags.
 ** Customizing note display in =ekg-notes-mode=
+:PROPERTIES:
+:CUSTOM_ID: customizing-note-display
+:END:
+The main way to customize displays is via the variable ~ekg-display-note-template~, which is a string that has inline commands in it (normally inline note commands).  See the [[#inlines][inlines]] section for more details on these commands.  Through changing this, the ordering or inclusion of various type-related information can be configured, or extra text added, or anything, really.
+
 The variable ~ekg-format-funcs~ has functions to run to format what ekg displays to the user. They are each run on a temporary buffer with the note text in it, and can make whatever changes necessary before they are displayed in a note list.
 * The trash
 :PROPERTIES:
@@ -299,7 +328,11 @@ If you wanted to re-use an existing note and append to it, you can do that as we
 
 There isn't a special API, but the basic defuns such as ~ekg-save-note~, ~ekg-note-create-text~, ~ekg-get-notes-with-tags~, ~ekg-get-note-with-id~, along with the struct ~ekg-note~ are good starting points.
 
+#+texinfo: @noindent
 If you add schema and you want the user to be able to modify it, you should supply new alist entries to ~ekg-metadata-parsers~, and ~ekg-metadata-labels~.
+
+#+texinfo: @noindent
+Because inline commands exist, the complete text of a note should be retrieved with ~ekg-display-note~.  The function ~ekg-note-text~, will only get the text as stored, which is missing mode related text properties and any text generated from inline commands.
 * Extras
 The ekg module can have any number of functionality additions. These may appear as other packages with other maintainers, but some are included as part of this package.
 ** Embeddings
