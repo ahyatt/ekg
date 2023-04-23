@@ -145,7 +145,7 @@
      (should (equal
               (list
                (make-ekg-inline :pos 4 :command '(transclude 1) :type 'command)
-               (make-ekg-inline :pos 5 :command '(transclude "abc") :type 'display))
+               (make-ekg-inline :pos 5 :command '(transclude "abc") :type 'note))
               inlines)))
     (_ (ert-fail "Expected cons"))))
 
@@ -175,7 +175,7 @@
         (inlines (list
                   (make-ekg-inline :pos 3 :command '(transclude-file "transcluded") :type 'command)
                   (make-ekg-inline :pos 4 :command '(transclude-website "http://www.example.com")
-                                   :type 'display)))
+                                   :type 'note)))
         (new-inlines (list
                       (make-ekg-inline :pos 0
                                        :command '(transclude-api-call "http://api.com" 'current-weather)

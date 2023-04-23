@@ -406,7 +406,7 @@ or, if unknown, `ekg-inline'."
                                     :command (read (format "(%s)" (match-string 3 newtext)))
                                     :type (pcase (match-string 2 newtext)
                                             ("" 'command)
-                                            ("n" 'display)))
+                                            ("n" 'note)))
                    inlines)
              (setq newtext (replace-match "" nil nil newtext 1))))
     (cons newtext (nreverse inlines))))
@@ -450,7 +450,7 @@ INLINES are inserted "
   (ekg-insert-inlines-and-process
    text inlines
    (lambda (inline)
-     (format "%%%s%S" (if (eq 'display (ekg-inline-type inline))
+     (format "%%%s%S" (if (eq 'note (ekg-inline-type inline))
                           "n" "") (ekg-inline-command inline)))))
 
 (defun ekg-insert-inlines-results (text inlines note)
@@ -463,13 +463,13 @@ inlines."
      (let ((f (intern (format
                        (pcase (ekg-inline-type inline)
                          ('command "ekg-inline-command-%s")
-                         ('display "ekg-display-note-%s")
+                         ('note "ekg-display-note-%s")
                          (_ (error "Unknown inline type %s" (ekg-inline-type inline))))
                        (car (ekg-inline-command inline))))))
        (if (fboundp f)
            (pcase (ekg-inline-type inline)
              ('command (apply f (cdr (ekg-inline-command inline))))
-             ('display (progn
+             ('note (progn
                          (unless note
                            (error "No note supplied for display inline"))
                          (apply f note (cdr (ekg-inline-command inline))))))
@@ -1127,7 +1127,7 @@ The tags are separated by spaces."
   "Display NOTE in buffer."
   (let* ((ic (ekg-extract-inlines ekg-display-note-template))
          (template-types (mapcan (lambda (i)
-                                   (when (eq 'display (ekg-inline-type i))
+                                   (when (eq 'note (ekg-inline-type i))
                                      (list (car (ekg-inline-command i)))))
                                  (cdr ic))))
          ;; If there is a command for the type of "other", then we need to add
@@ -1136,8 +1136,8 @@ The tags are separated by spaces."
          (when (memq 'other template-types)
            (setf (cdr ic)
                  (mapcan (lambda (i)
-                           (if (and (eq 'display (ekg-inline-type i))
-                                      (eq 'other (car (ekg-inline-command i))))
+                           (if (and (eq 'note (ekg-inline-type i))
+                                    (eq 'other (car (ekg-inline-command i))))
                                (cl-loop for type in
                                         (seq-difference
                                          (mapcar (lambda (prop)
@@ -1145,7 +1145,7 @@ The tags are separated by spaces."
                                                  (map-keys (ekg-note-properties note)))
                                          template-types)
                                         when (fboundp (intern (format "ekg-display-note-%s" type)))
-                                        collect (make-ekg-inline :type 'display
+                                        collect (make-ekg-inline :type 'note
                                                                  :command (list type)
                                                                  :pos (ekg-inline-pos i)))
                              (list i)))
