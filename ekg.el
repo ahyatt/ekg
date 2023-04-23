@@ -96,6 +96,17 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
   :type 'integer
   :group 'ekg)
 
+
+(defcustom ekg-display-note-template "%n(id)%n(tagged)\n%n(titled)%n(text 500)%n(other)"
+  "Template for displaying notes in notes buffers.
+This follows normal templating rules, but it is most likely the
+user is interested in the various %n templates that correspond to
+the types that the note can have. An exception is the %n(other)
+inline, which displays all other types that are displayable, but
+not in the template."
+  :type 'string
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -121,6 +132,11 @@ backups in your database after it has been created, run
   '((((type graphic)) :height 1.0 :box t)
     (((type tty))) :underline t)
   "Face shown for EKG tags.")
+
+(defface ekg-title
+  '((((type graphic)) :height 1.2 :underline t)
+    (((type tty))) :underline t)
+  "Face shown for EKG titles.")
 
 (defface ekg-resource
   '((((type graphic)) :inherit fixed-pitch)
@@ -178,7 +194,7 @@ passed the tag, and run in the buffer editing the note.")
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties inlines)
 
-(cl-defstruct ekg-inline pos command)
+(cl-defstruct ekg-inline pos command type)
 
 (defun ekg--db-file ()
   "Return the database file we should use in ekg.
@@ -219,6 +235,7 @@ non-nil, it will be used as the filename, otherwise
                       '(command :base/unique t :base/type symbol)
                       'args
                       '(pos :base/unique t :base/type integer)
+                      '(type :base/unique t :base/type symbol)
                       '(for-text :base/unique t))
   (triples-add-schema ekg-db 'tag
                       '(tagged :base/virtual-reversed tagged/tag))
@@ -268,7 +285,8 @@ This
                                :command (car (ekg-inline-command inline))
                                :args (cdr (ekg-inline-command inline))
                                :pos (ekg-inline-pos inline)
-                               :for-text (ekg-note-id note)))
+                               :for-text (ekg-note-id note)
+                               :type (ekg-inline-type inline)))
     ;; Note that we recalculate modified time here, since we are modifying the
     ;; entity.
     (let ((modified-time (time-convert (current-time) 'integer)))
@@ -312,7 +330,8 @@ If the ID does not exist, create a new note with that ID."
                               (make-ekg-inline :pos (plist-get iv :pos)
                                                :command (cons
                                                          (plist-get iv :command)
-                                                         (plist-get iv :args)))))
+                                                         (plist-get iv :args))
+                                               :type (plist-get iv :type))))
                           (plist-get v :text/inlines))))
     (make-ekg-note :id id
                    :text (plist-get v :text/text)
@@ -375,15 +394,19 @@ The commands returned are the most specific type of struct known,
 or, if unknown, `ekg-inline'."
   (let ((inlines)
         (newtext text)
-        (inline-rx (rx (seq (group
-                             (literal "%(")
-                             (group (*? anychar))
-                             (literal ")"))))))
+        (inline-rx (rx (seq (group-n 1 "%"
+                                     (group-n 2 (zero-or-one "n"))
+                                     (literal "(")
+                                     (group-n 3 (*? anychar))
+                                     (literal ")"))))))
     ;; Keep removing commands left to right to make sure our positions are
     ;; without commands, since that's how they will need to be inserted.
     (while (when-let (index (string-match inline-rx newtext))
              (push (make-ekg-inline :pos index
-                                    :command (read (format "(%s)" (match-string 2 newtext))))
+                                    :command (read (format "(%s)" (match-string 3 newtext)))
+                                    :type (pcase (match-string 2 newtext)
+                                            ("" 'command)
+                                            ("n" 'display)))
                    inlines)
              (setq newtext (replace-match "" nil nil newtext 1))))
     (cons newtext (nreverse inlines))))
@@ -403,6 +426,7 @@ unchanged."
       (delete-region (point) (point-max)))
     (buffer-string)))
 
+
 (defun ekg-insert-inlines-and-process (text inlines func)
   "Returns the result of inserting INLINES into TEXT.
 FUNC will be executed with the cdr of each inline command and
@@ -414,8 +438,7 @@ NUMTOK is the number of tokens available to be used."
     (let ((mils (cl-loop for il in inlines do
                          (goto-char (+ (ekg-inline-pos il) 1))
                          collect (cons (point-marker)
-                                       (funcall func
-                                                    (ekg-inline-command il))))))
+                                       (funcall func il)))))
       (cl-loop for mil in mils do
                (goto-char (car mil))
                (insert-before-markers (cdr mil))))
@@ -426,20 +449,32 @@ NUMTOK is the number of tokens available to be used."
 INLINES are inserted "
   (ekg-insert-inlines-and-process
    text inlines
-   (lambda (command)
-     (format "%%%S" command))))
+   (lambda (inline)
+     (format "%%%s%S" (if (eq 'display (ekg-inline-type inline))
+                          "n" "") (ekg-inline-command inline)))))
 
-(defun ekg-insert-inlines-results (text inlines)
-  "Return the results of executing INLINES into TEXT."
+(defun ekg-insert-inlines-results (text inlines note)
+  "Return the results of executing INLINES into TEXT.
+NOTE is the `ekg-note' that needs to exist for the `display'
+inlines."
   (ekg-insert-inlines-and-process
    text inlines
-   (lambda (command)
-     (let ((f (intern (format "ekg-inline-command-%s"
-                              (car command)))))
+   (lambda (inline)
+     (let ((f (intern (format
+                       (pcase (ekg-inline-type inline)
+                         ('command "ekg-inline-command-%s")
+                         ('display "ekg-display-note-%s")
+                         (_ (error "Unknown inline type %s" (ekg-inline-type inline))))
+                       (car (ekg-inline-command inline))))))
        (if (fboundp f)
-           (apply f (cdr command))
+           (pcase (ekg-inline-type inline)
+             ('command (apply f (cdr (ekg-inline-command inline))))
+             ('display (progn
+                         (unless note
+                           (error "No note supplied for display inline"))
+                         (apply f note (cdr (ekg-inline-command inline))))))
          (format "%%Unknown command %s: `%s' not found"
-                 (car command) f))))))
+                   (car (ekg-inline-command inline)) (symbol-name f)))))))
 
 (defun ekg--transclude-titled-note-completion ()
   "Completion function for file transclusion."
@@ -468,16 +503,27 @@ INLINES are inserted "
         (when (search-backward (format ">%s" completion) (line-beginning-position) t)
           (replace-match (format "%%(transclude-note %S)" id)))))))
 
-(defun ekg-displayable-note-text (note)
+(defun ekg-display-note-id (note &optional force)
+  "Show the id of NOTE, if it is interesting.
+Interesting is defined by whether it has meaning in itself.
+However, if FORCE is non-nil, it will be shown regardless."
+  (if (or force
+          (ekg-should-show-id-p (ekg-note-id note)))
+      (propertize
+       (format "[%s]\n" (ekg-note-id note))
+       'face 'ekg-resource)
+    ""))
+
+(defun ekg-display-note-text (note &optional numwords)
   "Return text, with mode-specific properties, of NOTE.
-A text property `ekg-note-id' is added with the id of the note.
 NUMWORDS is the max number of words to display in the note, or
 nil for all words."
   (with-temp-buffer
     (when (ekg-note-text note)
       (insert (ekg-insert-inlines-results
                (ekg-note-text note)
-               (ekg-note-inlines note))))
+               (ekg-note-inlines note)
+               note)))
     (when (ekg-note-mode note)
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
@@ -485,13 +531,35 @@ nil for all words."
     (mapc #'funcall ekg-format-funcs)
     (font-lock-ensure)
     (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
-    (buffer-string)))
+    (concat (string-trim-right
+             (ekg-truncate-at (buffer-string)
+                              (or numwords ekg-note-inline-max-words))) "\n")))
+
+(defun ekg-display-note-tagged (note)
+  "Return text of the tags of NOTE."
+  (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
+             (ekg-note-tags note) " "))
+
+(defun ekg-display-note-time-tracked (note &optional format-str)
+  "Return text of the times NOTE was created and modified.
+FORMAT-STR controls how the time is formatted."
+  (let ((format-str (or format-str "%Y-%m-%d")))
+    (format "Created: %s   Modified: %s\n"
+            (format-time-string format-str (ekg-note-creation-time note))
+            (format-time-string format-str (ekg-note-modified-time note)))))
+
+(defun ekg-display-note-titled (note)
+  "Return text of the title of NOTE."
+  (if-let (title (plist-get (ekg-note-properties note) :titled/title))
+      (propertize (concat
+               (mapconcat #'identity (plist-get (ekg-note-properties note) :titled/title)
+                          " / ") "\n")
+              'face 'ekg-title)
+    ""))
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID."
-  (ekg-truncate-at
-   (ekg-displayable-note-text (ekg-get-note-with-id id))
-   (or numwords ekg-note-inline-max-words)))
+  (ekg-display-note-text (ekg-get-note-with-id id) numwords))
 
 (defun ekg-inline-command-transclude-file (file &optional numwords)
   "Return the contents of FILE."
@@ -520,7 +588,7 @@ Returns the ID of the note."
                  (completing-read "Tag: " (ekg-tags) nil t)))
            (completion-pairs (mapcar
                               (lambda (note)
-                                (cons (ekg-truncate-at (ekg-displayable-note-text note) 10)
+                                (cons (ekg-display-note-text note 10)
                                       note)) notes)))
       (ekg-note-id (cdr (assoc (completing-read "Note: " completion-pairs nil t)
                                completion-pairs))))))
@@ -1057,15 +1125,36 @@ The tags are separated by spaces."
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
-  (when (ekg-should-show-id-p (ekg-note-id note))
-    (insert
-     (propertize
-      (format "[%s]\n" (ekg-note-id note))
-      'face 'ekg-resource)))
-  (insert (ekg-displayable-note-text note))
-  (insert "\n")
-  (insert (ekg-tags-display (ekg-note-tags note)))
-  (insert "\n"))
+  (let* ((ic (ekg-extract-inlines ekg-display-note-template))
+         (template-types (mapcan (lambda (i)
+                                   (when (eq 'display (ekg-inline-type i))
+                                     (list (car (ekg-inline-command i)))))
+                                 (cdr ic))))
+         ;; If there is a command for the type of "other", then we need to add
+         ;; in all types that are in the note properties, and have valid
+         ;; functions.
+         (when (memq 'other template-types)
+           (setf (cdr ic)
+                 (mapcan (lambda (i)
+                           (if (and (eq 'display (ekg-inline-type i))
+                                      (eq 'other (car (ekg-inline-command i))))
+                               (cl-loop for type in
+                                        (seq-difference
+                                         (mapcar (lambda (prop)
+                                                   (car (triples-combined-to-type-and-prop prop)))
+                                                 (map-keys (ekg-note-properties note)))
+                                         template-types)
+                                        when (fboundp (intern (format "ekg-display-note-%s" type)))
+                                        collect (make-ekg-inline :type 'display
+                                                                 :command (list type)
+                                                                 :pos (ekg-inline-pos i)))
+                             (list i)))
+                         (cdr ic))))
+         (ekg-insert-inlines-results (car ic) (cdr ic) note)))
+
+(defun ekg-display-note-insert (note)
+  "Insert the result of `ekg-display-note' into the buffer."
+  (insert (ekg-display-note note)))
 
 (defun ekg--note-highlight ()
   "In the buffer, highlight the current note."
@@ -1137,7 +1226,7 @@ New notes are created with additional tags TAGS.
 NAME is displayed at the top of the buffer."
   (setq buffer-read-only nil)
   (erase-buffer)
-  (let ((ewoc (ewoc-create #'ekg-display-note
+  (let ((ewoc (ewoc-create #'ekg-display-note-insert
                            (propertize name 'face 'ekg-notes-mode-title))))
     (mapc (lambda (note) (ewoc-enter-last ewoc note)) (funcall notes-func))
     (ekg-notes-mode)

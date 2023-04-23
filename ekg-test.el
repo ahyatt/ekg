@@ -139,18 +139,18 @@
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
 
 (ekg-deftest ekg-test-extract-inlines ()
-  (pcase (ekg-extract-inlines "Foo %(transclude 1) %(transclude \"abc\") Bar")
+  (pcase (ekg-extract-inlines "Foo %(transclude 1) %n(transclude \"abc\") Bar")
     (`(,text . ,inlines)
      (should (equal "Foo   Bar" text))
      (should (equal
               (list
-               (make-ekg-inline :pos 4 :command '(transclude 1))
-               (make-ekg-inline :pos 5 :command '(transclude "abc")))
+               (make-ekg-inline :pos 4 :command '(transclude 1) :type 'command)
+               (make-ekg-inline :pos 5 :command '(transclude "abc") :type 'display))
               inlines)))
     (_ (ert-fail "Expected cons"))))
 
 (ekg-deftest ekg-test-extract-and-insert-inlines ()
-  (cl-loop for testcase in '("foo" "Foo %(transclude 1) %(transclude \"abc\") Bar"
+  (cl-loop for testcase in '("foo" "Foo %(transclude 1) %n(transclude \"abc\") Bar"
                              "Foo%(transclude 1)%(transclude 2)Bar")
            do
            (should (equal testcase
@@ -158,7 +158,7 @@
                             (ekg-insert-inlines-representation
                              (car ex-cons) (cdr ex-cons)))))))
 
-(ekg-deftest ekg-test-tranclude ()
+(ekg-deftest ekg-test-transclude ()
   (let ((note1 (ekg-note-create "text1 text2" 'org-mode nil))
         (note2 (ekg-note-create "text3 text4" 'text-mode nil)))
     (ekg-save-note note1)
@@ -168,18 +168,21 @@
                             (ekg-note-id note1) (ekg-note-id note2)))))
       (should (string-equal "Foo text1… text3… Bar"
                             (ekg-insert-inlines-results
-                             (car ex-cons) (cdr ex-cons)))))))
+                             (car ex-cons) (cdr ex-cons) nil))))))
 
 (ekg-deftest ekg-test-inline-storage ()
   (let ((id)
         (inlines (list
-                  (make-ekg-inline :pos 3 :command '(transclude-file "transcluded"))
-                  (make-ekg-inline :pos 4 :command '(transclude-website "http://www.example.com"))))
+                  (make-ekg-inline :pos 3 :command '(transclude-file "transcluded") :type 'command)
+                  (make-ekg-inline :pos 4 :command '(transclude-website "http://www.example.com")
+                                   :type 'display)))
         (new-inlines (list
                       (make-ekg-inline :pos 0
-                                       :command '(transclude-api-call "http://api.com" 'current-weather))
+                                       :command '(transclude-api-call "http://api.com" 'current-weather)
+                                       :type 'command)
                       (make-ekg-inline :pos 1
-                                       :command '(calc "2 ^ 10")))))
+                                       :command '(calc "2 ^ 10")
+                                       :type 'command))))
     (let ((note (ekg-note-create "foo bar" 'text-mode nil)))
       (setf (ekg-note-inlines note) inlines)
       (ekg-save-note note)
@@ -206,8 +209,21 @@
                    (car (ekg-get-notes-with-tag "test1")))))
   (ekg-capture-finalize)
   (should (string-match-p "transclusion1"
-                          (ekg-displayable-note-text
+                          (ekg-display-note-text
                            (car (ekg-get-notes-with-tag "test2"))))))
+
+(ert-deftest ekg-test-display-note-template ()
+  (let ((ekg-display-note-template
+         "%n(id)%n(tagged)\n%n(text 100)%n(other)%n(time-tracked)")
+        (note (ekg-note-create "text" 'text-mode '("tag1" "tag2"))))
+    (setf (ekg-note-properties note) '(:titled/title ("Title")
+                                                     :unknown/ignored "unknown"
+                                                     :rendered/text "rendered"))
+    (setf (ekg-note-id note) 1)
+    (setf (ekg-note-modified-time note) 1682139975)
+    (setf (ekg-note-creation-time note)  1682053575)
+    (should (string-equal "tag1 tag2\ntext\nTitle\nCreated: 2023-04-21   Modified: 2023-04-22\n"
+                          (ekg-display-note note)))))
 
 (ekg-deftest ekg-test-overlay-interaction-growth ()
   (let ((ekg-capture-auto-tag-funcs nil))
