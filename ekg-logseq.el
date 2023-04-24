@@ -105,6 +105,18 @@ We just use the first tag that is not a date tag, if it exists."
   "Return the hash of TEXT."
   (secure-hash 'sha1 text))
 
+(defun ekg-logseq-text-to-logseq (note)
+  "Convert a note's text to logseq format.
+This inserts the results of inlines, although for note
+transclusion, it uses the logseq equivalent."
+  (ekg-insert-inlines-and-process
+   (ekg-note-text note)
+   (ekg-note-inlines note)
+   (lambda (i)
+     (if (eq (car (ekg-inline-command i)) 'transclude-note)
+         (format "{{embed ((%s))}}" (cadr (ekg-inline-command i)))
+       (ekg-inline-to-result i note)))))
+
 (defun ekg-logseq-note-to-logseq-org (note tag)
   "Return logseq text to store for NOTE in TAG.
 This will store the note text as org-mode, regardless of the mode
@@ -113,7 +125,7 @@ of the note."
     (org-mode)
     (when (ekg-should-show-id-p (ekg-note-id note))
       (insert (ekg-note-id note) "\n"))
-    (insert (ekg-note-text note))
+    (insert (ekg-logseq-text-to-logseq note))
     ;; Demote all other headings to level 2.
     (org-map-entries (lambda () (org-do-demote)))
     (org-element-map (org-element-parse-buffer) 'link
@@ -157,10 +169,10 @@ of the note."
                        (seq-difference (ekg-note-active-tags note) (list tag))
                        " ")
             "\n  "
-            (if (ekg--should-show-id-p (ekg-note-id note))
+            (if (ekg-should-show-id-p (ekg-note-id note))
                 (format "%s\n  " (ekg-note-id note))
               "")
-            (string-replace "\n" "\n  " (ekg-note-text note)))
+            (string-replace "\n" "\n  " (ekg-logseq-text-to-logseq note)))
     (string-trim (buffer-substring-no-properties (point-min) (point-max)) nil (rx (1+ blank)))))
 
 (defun ekg-logseq-notes-to-logseq (notes tag org-mode-p)
@@ -314,6 +326,34 @@ We look for strings of the format #tag and #[[tag]]."
           (org-element-property :ID headline))
         nil nil 'headline))))
 
+(defun ekg-logseq--text-to-note (tag text)
+  "Return the note to import from logseq TEXT.
+TAG is the current tag being imported in logseq."
+  (let* ((in-cons (ekg-extract-inlines
+                   (replace-regexp-in-string
+                    (rx (seq "{{embed" (* space) "(("
+                             (group-n 1 (1+ (not ")"))) "))}}"))
+                    "%(transclude-note \"\\1\")" text)))
+         (note (ekg-note-create (car in-cons)
+                                (when (eq major-mode 'org-mode)
+                                  'org-mode 'markdown-mode)
+                                (cons tag (ekg-logseq--to-import-tags text)))))
+    (setf (ekg-note-inlines note)
+          ;; These must all be transclusion commands, check each id (the first
+          ;; argument) against the database to understand whether it should be
+          ;; quoted or not.
+          (mapcar (lambda (i)
+                    (if (ekg-note-with-id-exists-p (read (nth 1 (ekg-inline-command i))))
+                        (progn
+                          (setf (ekg-inline-command i)
+                                (list 'transclude-note (read (nth 1 (ekg-inline-command i)))))
+                          i) i)) (cdr in-cons)))
+    (when-let (id (if (eq major-mode 'org-mode)
+                      (ekg-logseq--to-import-org-id text)
+                    (ekg-logseq--to-import-md-id text)))
+      (setf (ekg-note-id note) (if (ekg-note-with-id-exists-p (read id)) (read id) id)))
+    note))
+
 (defun ekg-logseq-import ()
   "Import from the current logseq directory.
 This will create new nodes based on parts of the logseq pages
@@ -356,16 +396,9 @@ which will import and re-export back to logseq."
                            (let ((items (ekg-logseq--to-import-text)))
                              (cl-loop for text in items
                                       do
-                                      (let ((note (ekg-note-create text (when (eq major-mode 'org-mode)
-                                                                          'org-mode 'markdown-mode)
-                                                                   (cons tag (ekg-logseq--to-import-tags text)))))
-                                        (when-let (id (if (eq major-mode 'org-mode)
-                                                          (ekg-logseq--to-import-org-id text)
-                                                        (ekg-logseq--to-import-md-id text)))
-                                          (setf (ekg-note-id note) id))
-                                        (message "ekg-logseq-import: saving note from file %s" file)
+                                      (message "ekg-logseq-import: saving note from file %s" file)
                                         (cl-incf count)
-                                        (ekg-save-note note)))))))))
+                                        (ekg-save-note (ekg-logseq--text-to-note tag text)))))))))
     (message "ekg-logseq-import: imported %d notes" count)
     (ekg-logseq-set-last-import start-time)))
 

@@ -380,6 +380,7 @@ Tags: date/2023-04-05, ekg, logseq
 ekg can export into logseq!
 #+end_example
 
+#+texinfo: @noindent
 This will be exported into "pages/ekg.org":
 
 #+begin_example
@@ -396,6 +397,9 @@ ekg can export into logseq
 
 #+texinfo: @noindent
 Each node points to its ID which is from ekg (but, if it was originally imported, the ekg ID might originally be from logseq).  We also encode the hash of the exported data.  This is to keep track of what was exported, so we do not re-import it unless it has changed.  For now, even if the data is changed, it is not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
+
+#+texinfo: @noindent
+When exporting, inline commands (see [[#inlines][inlines]] section), are evaluated before exporting to logseq, with the exception of note transclusions, which turn into logseq embeds to the same ID.  So, other kinds of transclusions or any other commands will evaluate to whatever text they normally evaluate to when viewing the note before exporting to logseq.  For example, if the note has a file tranclusion inline command, the file contents will be exported to logseq.  Logseq embeds are roughly equivalent to note transclusions, but only roughly, since a key difference is that logseq embeds occupy their own lines and appear visually distinct, and ekg transclusions don't.  Because of this, some formatting strangness between the two may happen.
 *** Importing
 #+texinfo: @noindent
 Imports from logseq will return all top-level items as separate notes.  So, for example, assuming we're reading from the logseq file "pages/logseq.org":
@@ -412,6 +416,9 @@ This will turn into two notes, one that has text "* This is my first time trying
 
 #+texinfo: @noindent
 There are a few things to be aware of.  In logseq, any level of the hierarchy can have an id and be referenced separately.  In ekg, we don't support notes inside of other notes, so these will be imported in the context of the parent note, and won't be available to reference as its own separate note.  Also, logseq has other functionality not supported by ekg, such as queries and potentially anything provided by plugins.  These will be imported as-is to ekg, but without any corresponding functionality.
+
+#+texinfo: @noindent
+Logseq embeds are imported as note transclusions.
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.  The reason a database is useful, even for text, is because databases are extremely fast, very flexible, and extremely easy to change.  In general, the less your data looks like just files with text in them, the more database make sense.  In ekg, we can separate the notion of tags from the text, which makes writing functions such as =ekg-rename-tag= trivial, and the execution extremely fast.

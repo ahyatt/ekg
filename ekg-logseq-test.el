@@ -67,6 +67,18 @@
   (should (equal "123" (ekg-logseq--to-import-org-id "* Headline\n:PROPERTIES:\n:ID: 123\n:END:\nText")))
   (should (equal "123" (ekg-logseq--to-import-org-id "* Headline\n:PROPERTIES:\n:id: 123\n:END:\nText"))))
 
+(ert-deftest ekg-logseq-test-text-to-note ()
+  (let ((note (ekg-logseq--text-to-note "tag1" "Headline\n  id:: 123\nText and {{embed ((abc))}} {{embed ((321))}}")))
+    (cl-letf (((symbol-function 'ekg-note-with-id-exists-p) (lambda (id) (or (equal id 321) (equal id 123)))))
+      (should (equal "Headline\n  id:: 123\nText and  " (ekg-note-text note)))
+      (should (= 2 (length (ekg-note-inlines note))))
+      (should (equal (nth 0 (ekg-note-inlines note))
+                     (make-ekg-inline :pos 29 :command '(transclude-note "abc") :type 'command)))
+      (should (equal (nth 1 (ekg-note-inlines note))
+                     (make-ekg-inline :pos 30 :command '(transclude-note 321) :type 'command)))
+      (should (equal 123 (ekg-note-id note)))
+      (should (equal '("tag1") (ekg-note-tags note))))))
+
 (ert-deftest ekg-logseq-test-note-to-logseq ()
   (let ((note (ekg-note-create "line1\nline2\n" 'org-mode '("tag1" "tag2" "tag3"))))
     (setf (ekg-note-id note) "123")
@@ -76,6 +88,21 @@
              (ekg-logseq-note-to-logseq-org note "tag3")))
     (should (equal
              "- Untitled Note\n  id:: 123\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  #[[tag1]] #[[tag2]]\n  line1\n  line2\n"
+             (ekg-logseq-note-to-logseq-md note "tag3")))))
+
+(ert-deftest ekg-logseq-test-note-to-logseq-with-inlines ()
+  (let ((note (ekg-note-create " " 'org-mode '("tag1" "tag2" "tag3"))))
+    (setf (ekg-note-id note) "123")
+    (setf (ekg-note-modified-time note) 1682139975)
+    (setf (ekg-note-creation-time note) 1682053575)
+    (setf (ekg-note-inlines note)
+          (list (make-ekg-inline :pos 0 :command '(transclude-note "abc") :type 'command)
+                (make-ekg-inline :pos 1 :command '(time-tracked) :type 'note)))
+    (should (equal
+             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: b858cb282617fb0956d960215c8e84d1ccf909c6\n:END:\n#[[tag1]] #[[tag2]]\n{{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
+             (ekg-logseq-note-to-logseq-org note "tag3")))
+    (should (equal
+             "- Untitled Note\n  id:: 123\n  ekg_hash:: b858cb282617fb0956d960215c8e84d1ccf909c6\n  #[[tag1]] #[[tag2]]\n  {{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
 (ert-deftest ekg-logseq-test-note-with-resource-and-title-to-logseq ()

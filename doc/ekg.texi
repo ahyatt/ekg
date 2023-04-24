@@ -634,6 +634,7 @@ Tags: date/2023-04-05, ekg, logseq
 ekg can export into logseq!
 @end example
 
+@noindent
 This will be exported into "pages/ekg.org":
 
 @example
@@ -650,6 +651,9 @@ ekg can export into logseq
 
 @noindent
 Each node points to its ID which is from ekg (but, if it was originally imported, the ekg ID might originally be from logseq).  We also encode the hash of the exported data.  This is to keep track of what was exported, so we do not re-import it unless it has changed.  For now, even if the data is changed, it is not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will also be created, although they won't have any content from this note.
+
+@noindent
+When exporting, inline commands (see @ref{Inline commands, , inlines} section), are evaluated before exporting to logseq, with the exception of note transclusions, which turn into logseq embeds to the same ID@.  So, other kinds of transclusions or any other commands will evaluate to whatever text they normally evaluate to when viewing the note before exporting to logseq.  For example, if the note has a file tranclusion inline command, the file contents will be exported to logseq.  Logseq embeds are roughly equivalent to note transclusions, but only roughly, since a key difference is that logseq embeds occupy their own lines and appear visually distinct, and ekg transclusions don't.  Because of this, some formatting strangness between the two may happen.
 
 @node Importing
 @subsection Importing
@@ -669,6 +673,9 @@ This will turn into two notes, one that has text "* This is my first time trying
 
 @noindent
 There are a few things to be aware of.  In logseq, any level of the hierarchy can have an id and be referenced separately.  In ekg, we don't support notes inside of other notes, so these will be imported in the context of the parent note, and won't be available to reference as its own separate note.  Also, logseq has other functionality not supported by ekg, such as queries and potentially anything provided by plugins.  These will be imported as-is to ekg, but without any corresponding functionality.
+
+@noindent
+Logseq embeds are imported as note transclusions.
 
 @node Design
 @chapter Design

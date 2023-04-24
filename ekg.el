@@ -96,7 +96,6 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
   :type 'integer
   :group 'ekg)
 
-
 (defcustom ekg-display-note-template "%n(id)%n(tagged)%n(titled)%n(text 500)%n(other)"
   "Template for displaying notes in notes buffers.
 This follows normal templating rules, but it is most likely the
@@ -453,28 +452,31 @@ INLINES are inserted "
      (format "%%%s%S" (if (eq 'note (ekg-inline-type inline))
                           "n" "") (ekg-inline-command inline)))))
 
+(defun ekg-inline-to-result (inline note)
+  "Return the result of evaluating INLINE with NOTE as context."
+  (let ((f (intern (format
+                    (pcase (ekg-inline-type inline)
+                      ('command "ekg-inline-command-%s")
+                      ('note "ekg-display-note-%s")
+                      (_ (error "Unknown inline type %s" (ekg-inline-type inline))))
+                    (car (ekg-inline-command inline))))))
+    (if (fboundp f)
+        (pcase (ekg-inline-type inline)
+          ('command (apply f (cdr (ekg-inline-command inline))))
+          ('note (progn
+                   (unless note
+                     (error "No note supplied for display inline"))
+                   (apply f note (cdr (ekg-inline-command inline))))))
+      (format "%%Unknown command %s: `%s' not found"
+              (car (ekg-inline-command inline)) (symbol-name f)))))
+
 (defun ekg-insert-inlines-results (text inlines note)
   "Return the results of executing INLINES into TEXT.
 NOTE is the `ekg-note' that needs to exist for the `display'
 inlines."
   (ekg-insert-inlines-and-process
    text inlines
-   (lambda (inline)
-     (let ((f (intern (format
-                       (pcase (ekg-inline-type inline)
-                         ('command "ekg-inline-command-%s")
-                         ('note "ekg-display-note-%s")
-                         (_ (error "Unknown inline type %s" (ekg-inline-type inline))))
-                       (car (ekg-inline-command inline))))))
-       (if (fboundp f)
-           (pcase (ekg-inline-type inline)
-             ('command (apply f (cdr (ekg-inline-command inline))))
-             ('note (progn
-                         (unless note
-                           (error "No note supplied for display inline"))
-                         (apply f note (cdr (ekg-inline-command inline))))))
-         (format "%%Unknown command %s: `%s' not found"
-                   (car (ekg-inline-command inline)) (symbol-name f)))))))
+   (lambda (inline) (ekg-inline-to-result inline note))))
 
 (defun ekg--transclude-titled-note-completion ()
   "Completion function for file transclusion."
