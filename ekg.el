@@ -1479,16 +1479,20 @@ will not delete any backups, regardless of other settings."
 Some of this are tags which have no uses, which we consider
 useless. This will always make a backup, regardless of backup
 settings, and will not delete any backups, regardless of other
-settings."
+settings.
+
+In general, this isn't necessary to run, but it may help if you
+have a lot of tags that you no longer use, or feel like your
+database is bigger than it should be.
+
+Specifically, this does a few things:
+
+1) Calls `ekg-remove-unused-tags' to remove all tags that no note is using.
+2) Remove any notes that have no content or almost no content."
   (interactive)
   (ekg--connect)
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (ekg-remove-unused-tags)
-  (cl-loop for tag in (seq-filter
-                          (lambda (tag) (not (triples-get-subject ekg-db tag)))
-                          (mapcar #'car (triples-with-predicate ekg-db 'tagged/tag)))
-           do
-           (ekg-tag-delete tag))
   (cl-loop for id in (triples-subjects-of-type ekg-db 'text) do
            (let ((note (ekg-get-note-with-id id)))
              (when (or (not (ekg-has-live-tags-p id))
