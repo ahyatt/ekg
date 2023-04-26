@@ -63,6 +63,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 - Improve window management, now we play nicer with customized window configuration, and now opening a list of notes will also switch to that window.
 - Improved metadata overlay look and function, it now looks just like =message-mode=, which hopefully will help with people's intuitions on how it works.
 - Added a blank line between notes in notes list buffers, for a cleaner look.
+- Renamed =ekg-rename-tag= to =ekg-global-rename-tag= to clarify this isn't for changing an individual tag in a note.
 ** Version 0.2.1
 - Removed =ekg-notes-remove=, which removed one or more tags from a note from a note list buffer.
 - New keybinding, "q" in the notes buffer, which kills the buffer (thanks to Jay Rajput for the idea).
@@ -293,7 +294,7 @@ You may occasionally notice that certain tags are obsolete and have no notes, or
 - Remove all tags with no uses.
 - Remove notes with no text, or just a "*", which is something that often happens with org-mode buffers.
 
-Tags may need to be renamed because the concept has changed in some way.  The command =ekg-rename-tag= can quickly rename one tag to another.
+Tags may need to be renamed because the concept has changed in some way.  The command =ekg-global-rename-tag= can quickly rename one tag to another globally across the database, so all tags with the old tag now have the new tag.
 * Customizing ekg with hooks
 You can customize the behavior of ekg in a number of ways.
 
@@ -421,7 +422,7 @@ There are a few things to be aware of.  In logseq, any level of the hierarchy ca
 Logseq embeds are imported as note transclusions.
 * Design
 ** The triple database
-The ekg package uses the triples package to interface with a sqlite database.  The reason a database is useful, even for text, is because databases are extremely fast, very flexible, and extremely easy to change.  In general, the less your data looks like just files with text in them, the more database make sense.  In ekg, we can separate the notion of tags from the text, which makes writing functions such as =ekg-rename-tag= trivial, and the execution extremely fast.
+The ekg package uses the triples package to interface with a sqlite database.  The reason a database is useful, even for text, is because databases are extremely fast, very flexible, and extremely easy to change.  In general, the less your data looks like just files with text in them, the more database make sense.  In ekg, we can separate the notion of tags from the text, which makes writing functions such as =ekg-global-rename-tag= trivial, and the execution extremely fast.
 
 The decision to use the triples package, though, is related to a different design choice.  In a triple-based system, there's only one database table with four columns, a =subject=, =predicate=, =object=, and =properties=.  One way to think of this schema is that it defines links of different types from a subject to an object. This is combined with a schema, itself defined in triples.  The triples define that subjects can have types, and those types can have properties.  Those properties are expressed in this triple format.  In ekg, the subjects correspond to the IDs of the notes, or tags.  Subjects can have multiple types, and data is factored into types that belong together, with a specific meaning.  To give an example, listing out the data for a note might look something like:
 

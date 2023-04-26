@@ -181,6 +181,8 @@ Improve window management, now we play nicer with customized window configuratio
 Improved metadata overlay look and function, it now looks just like @samp{message-mode}, which hopefully will help with people's intuitions on how it works.
 @item
 Added a blank line between notes in notes list buffers, for a cleaner look.
+@item
+Renamed @samp{ekg-rename-tag} to @samp{ekg-global-rename-tag} to clarify this isn't for changing an individual tag in a note.
 @end itemize
 
 @node Version 021
@@ -523,7 +525,7 @@ Remove all tags with no uses.
 Remove notes with no text, or just a "*", which is something that often happens with org-mode buffers.
 @end itemize
 
-Tags may need to be renamed because the concept has changed in some way.  The command @samp{ekg-rename-tag} can quickly rename one tag to another.
+Tags may need to be renamed because the concept has changed in some way.  The command @samp{ekg-global-rename-tag} can quickly rename one tag to another globally across the database, so all tags with the old tag now have the new tag.
 
 @node Customizing ekg with hooks
 @chapter Customizing ekg with hooks
@@ -688,7 +690,7 @@ Logseq embeds are imported as note transclusions.
 @node The triple database
 @section The triple database
 
-The ekg package uses the triples package to interface with a sqlite database.  The reason a database is useful, even for text, is because databases are extremely fast, very flexible, and extremely easy to change.  In general, the less your data looks like just files with text in them, the more database make sense.  In ekg, we can separate the notion of tags from the text, which makes writing functions such as @samp{ekg-rename-tag} trivial, and the execution extremely fast.
+The ekg package uses the triples package to interface with a sqlite database.  The reason a database is useful, even for text, is because databases are extremely fast, very flexible, and extremely easy to change.  In general, the less your data looks like just files with text in them, the more database make sense.  In ekg, we can separate the notion of tags from the text, which makes writing functions such as @samp{ekg-global-rename-tag} trivial, and the execution extremely fast.
 
 The decision to use the triples package, though, is related to a different design choice.  In a triple-based system, there's only one database table with four columns, a @samp{subject}, @samp{predicate}, @samp{object}, and @samp{properties}.  One way to think of this schema is that it defines links of different types from a subject to an object. This is combined with a schema, itself defined in triples.  The triples define that subjects can have types, and those types can have properties.  Those properties are expressed in this triple format.  In ekg, the subjects correspond to the IDs of the notes, or tags.  Subjects can have multiple types, and data is factored into types that belong together, with a specific meaning.  To give an example, listing out the data for a note might look something like:
 

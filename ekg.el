@@ -1087,9 +1087,11 @@ The metadata fields are comma separated."
 (declare-function emacsql "ext:emacsql.el")
 (declare-function sqlite-execute "ext:sqlite.c")
 
-(defun ekg-rename-tag (from-tag to-tag)
+(defun ekg-global-rename-tag (from-tag to-tag)
   "Rename FROM-TAG to TO-TAG.
-This can be done whether or not TO-TAG exists or not."
+This can be done whether or not TO-TAG exists or not. This
+renames all instances of the tag globally, and all notes with
+FROM-TAG will use TO-TAG."
   (interactive (list (completing-read "From tag: " (ekg-tags))
                      (completing-read "To tag: " (ekg-tags))))
   (triples-with-transaction
