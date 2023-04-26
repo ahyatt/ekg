@@ -68,8 +68,8 @@
   (should (equal "123" (ekg-logseq--to-import-org-id "* Headline\n:PROPERTIES:\n:id: 123\n:END:\nText"))))
 
 (ert-deftest ekg-logseq-test-text-to-note ()
-  (let ((note (ekg-logseq--text-to-note "tag1" "Headline\n  id:: 123\nText and {{embed ((abc))}} {{embed ((321))}}")))
-    (cl-letf (((symbol-function 'ekg-note-with-id-exists-p) (lambda (id) (or (equal id 321) (equal id 123)))))
+  (cl-letf (((symbol-function 'ekg-note-with-id-exists-p) (lambda (id) (or (equal id 321) (equal id 123)))))
+    (let ((note (ekg-logseq--text-to-note "tag1" "Headline\n  id:: 123\nText and {{embed ((abc))}} {{embed ((321))}}")))
       (should (equal "Headline\n  id:: 123\nText and  " (ekg-note-text note)))
       (should (= 2 (length (ekg-note-inlines note))))
       (should (equal (nth 0 (ekg-note-inlines note))
