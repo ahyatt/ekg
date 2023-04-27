@@ -1460,7 +1460,7 @@ will not delete any backups, regardless of other settings."
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (cl-loop for tag in (seq-filter #'iso8601-valid-p (ekg-tags))
            do
-           (ekg-rename-tag tag (format "date/%s" tag)))
+           (ekg-global-rename-tag tag (format "date/%s" tag)))
   (cl-loop for sub in (seq-uniq (mapcar #'car (triples-with-predicate ekg-db :reference/url)))
            do
            (triples-db-delete ekg-db sub 'reference/url)))
