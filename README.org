@@ -114,7 +114,7 @@ tags available to use.
 
 The basic read operation in ekg is to show a list of notes according to some
 rule. An example is =ekg-show-notes-with-tag=. The notes displayed can be
-navigated between using =f= and =b=, and interacted with. The following section has
+navigated between using =n= and =p=, and interacted with. The following section has
 a complete list of commands and keybindings.
 * Command summary
 Global commands, can be run everywhere, and most should be bound to useful keybindings:
