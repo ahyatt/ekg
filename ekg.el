@@ -746,8 +746,10 @@ displayed.")
 (defun ekg--metadata-string (property value)
   "Return a representation of PROPERTY with VALUE for the metadata.
 This will be displayed at the top of the note buffer."
-  (format "%s: %s\n" (propertize property 'face 'bold 'read-only t)
-          value))
+  (format "%s%s%s"
+          (propertize (concat property ": ") 'face 'bold 'read-only t 'rear-nonsticky t)
+          value
+          (propertize "\n" 'read-only t)))
 
 (defun ekg-should-show-id-p (id)
   "Return non-nil if the note ID should be shown to the user.
