@@ -170,6 +170,19 @@
                             (ekg-insert-inlines-results
                              (car ex-cons) (cdr ex-cons) nil))))))
 
+(ert-deftest ekg-test-inline-with-error ()
+  (let ((target (concat "Inline: Error executing inline command "
+                        "%(transclude-file \"/does/not/exist\"): ")))
+    ;; We only want to compare to a certain point, since we don't want this test
+    ;; to break if emacs decides to change the error message for file errors.
+    (should (string-equal
+             target
+             (substring (ekg-insert-inlines-results
+                         "Inline: "
+                         (list (make-ekg-inline :pos 8 :command '(transclude-file "/does/not/exist")
+                                                :type 'command))
+                         nil) 0 (length target))))))
+
 (ekg-deftest ekg-test-inline-storage ()
   (let ((id)
         (inlines (list

@@ -437,20 +437,30 @@ NUMTOK is the number of tokens available to be used."
     (let ((mils (cl-loop for il in inlines do
                          (goto-char (+ (ekg-inline-pos il) 1))
                          collect (cons (point-marker)
-                                       (funcall func il)))))
+                                       (condition-case err
+                                           (funcall func il)
+                                         (error
+                                          (propertize
+                                           (format "Error executing inline command %s: %s"
+                                                   (ekg-inline-to-text il)
+                                                   (error-message-string err))
+                                           'face 'error)))))))
       (cl-loop for mil in mils do
                (goto-char (car mil))
                (insert-before-markers (cdr mil))))
     (buffer-string)))
 
+(defun ekg-inline-to-text (inline)
+  "Return the text representation of INLINE."
+  (format "%%%s%S"
+          (if (eq 'note (ekg-inline-type inline))
+              "n" "") (ekg-inline-command inline)))
+
 (defun ekg-insert-inlines-representation (text inlines)
   "Returns the result of inserting INLINES into TEXT.
 INLINES are inserted "
   (ekg-insert-inlines-and-process
-   text inlines
-   (lambda (inline)
-     (format "%%%s%S" (if (eq 'note (ekg-inline-type inline))
-                          "n" "") (ekg-inline-command inline)))))
+   text inlines #'ekg-inline-to-text))
 
 (defun ekg-inline-to-result (inline note)
   "Return the result of evaluating INLINE with NOTE as context."
