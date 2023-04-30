@@ -170,6 +170,24 @@
                             (ekg-insert-inlines-results
                              (car ex-cons) (cdr ex-cons) nil))))))
 
+(ekg-deftest ekg-test-transclude-stability ()
+  (let ((note (ekg-note-create "transcluded" 'org-mode nil)))
+    (ekg-save-note note)
+    (ekg-capture '("tag"))
+    (let ((transclude-txt (format "12%%(transclude-note %S)34" (ekg-note-id note)) ))
+      (insert transclude-txt)
+      (ert-simulate-command '(ekg-capture-finalize))
+      (let ((transcluding-note (car (ekg-get-notes-with-tag "tag"))))
+        ;; First, just make sure we put the transclusion in the right place.
+        (ekg-edit transcluding-note)
+        (should (string-match transclude-txt (buffer-substring-no-properties (point-min) (point-max))))
+        (kill-buffer)
+        ;; Now, add a tag and make sure the added text in the buffer doesn't
+        ;; cause the transclusion to shift.
+        (setf (ekg-note-tags transcluding-note) '("tag" "newtag"))
+        (ekg-edit transcluding-note)
+        (should (string-match transclude-txt (buffer-substring-no-properties (point-min) (point-max))))))))
+
 (ert-deftest ekg-test-inline-with-error ()
   (let ((target (concat "Inline: Error executing inline command "
                         "%(transclude-file \"/does/not/exist\"): ")))

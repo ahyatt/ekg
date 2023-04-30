@@ -909,7 +909,7 @@ However, if URL already exists, we edit the existing note on it."
 Return the latest `ekg-note' object."
   (ekg--connect)
   (widen)
-  (let* ((text (buffer-substring (overlay-end (ekg--metadata-overlay))
+  (let* ((text (buffer-substring (+ 1 (overlay-end (ekg--metadata-overlay)))
                                  (point-max)))
          (ticons (ekg-extract-inlines text)))
     (setf (ekg-note-text ekg-note) (car ticons)
