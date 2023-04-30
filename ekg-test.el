@@ -174,7 +174,9 @@
   (let ((note (ekg-note-create "transcluded" 'org-mode nil)))
     (ekg-save-note note)
     (ekg-capture '("tag"))
-    (let ((transclude-txt (format "12%%(transclude-note %S)34" (ekg-note-id note)) ))
+    (let ((transclude-txt (format "12%%(transclude-note %S)34 %%(transclude-note %S)"
+                                  (ekg-note-id note)
+                                  (ekg-note-id note)) ))
       (insert transclude-txt)
       (ert-simulate-command '(ekg-capture-finalize))
       (let ((transcluding-note (car (ekg-get-notes-with-tag "tag"))))

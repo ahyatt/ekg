@@ -252,14 +252,16 @@ non-nil, it will be used as the filename, otherwise
 This
   1) makes sure all tags are lowercase and trimmed.
   2) removes commas in tags, since those are used to separate tags.
-  3) trim the text of any trailing or leading whitespace.
-  4) removes any properties from the text."
+  3) removes any properties from the text.
+
+Note: we used to also trim text, but with inline commands, that
+is not a great idea, because an inline command sits outside of
+the text and may be after trailing whitespace."
   (setf (ekg-note-tags note)
         (mapcar (lambda (tag)
                   (string-trim (downcase (string-replace "," "" tag)))) (ekg-note-tags note)))
   (setf (ekg-note-text note)
-        (string-trim (substring-no-properties
-                      (ekg-note-text note)))))
+        (substring-no-properties (ekg-note-text note))))
 
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
