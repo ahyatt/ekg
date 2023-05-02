@@ -963,7 +963,7 @@ attempt the completion."
         (completion-table-dynamic
          (lambda (_)
            (seq-difference (mapcar #'car ekg-metadata-parsers)
-                           (mapcar #'car (ekg--metadata-fields)))))))
+                           (mapcar #'car (ekg--metadata-fields nil)))))))
 
 (defun ekg--tags-cap-exit (completion finished)
   "Cleanup after completion at point happened in a tag.
@@ -1043,8 +1043,9 @@ The metadata fields are comma separated."
           (triples-move-subject ekg-db old-id val))))
     (setf (ekg-note-id ekg-note) val)))
 
-(defun ekg--metadata-fields ()
-  "Return all metadata fields as a cons of labels and values."
+(defun ekg--metadata-fields (expect-valid)
+  "Return all metadata fields as a cons of labels and values.
+If EXPECT-VALID is true, warn when we encounter an unparseable field."
   (save-excursion
     (let ((mo (ekg--metadata-overlay))
           (fields))
@@ -1052,13 +1053,14 @@ The metadata fields are comma separated."
       (while (< (point) (overlay-end mo))
         (if-let (field (ekg--metadata-current-field))
             (push field fields)
-          (warn "EKG: No field could be parsed from metadata line at point %s" (point)))
+          (when expect-valid
+            (warn "EKG: No field could be parsed from metadata line at point %s" (point))))
         (forward-line))
       fields)))
 
 (defun ekg--update-from-metadata ()
   "Update the `ekg-note' object from the metadata."
-  (cl-loop for field in (ekg--metadata-fields)
+  (cl-loop for field in (ekg--metadata-fields t)
            do
            (if-let (func (assoc (car field) ekg-metadata-parsers))
                 (funcall (cdr func) (cdr field))
