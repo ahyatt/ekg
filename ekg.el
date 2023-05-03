@@ -774,9 +774,13 @@ The ID can represent a browseable resource, which is meaningful to the user."
             (overlays-in (point-min) (point-max))))
       (make-overlay (point-min) (point-max) nil nil t)))
 
-(defun ekg--metadata-modification (overlay after _ _ &optional _)
+(defun ekg--metadata-modification (overlay after begin-mod end-mod &optional _)
   "Make sure that metadata region doesn't interfere with editing.
 This function is called on modification within the metadata.
+
+BEGIN-MOD and END-MOD are the beginning and end points of the
+modification by the user.
+
 We want to make sure of a few things:
   1) The user isn't adding more than one empty line.
 
@@ -788,12 +792,12 @@ Argument AFTER is non-nil if method is being called after the modification.
 delete from the end of the metadata, we need to fix it back up."
   (when after
     ;; If we're at the end of the metadata, we need to make sure we don't delete
-    ;; it from the previous line.
+    ;; it from the previous line. Moving after is also suspicious, because we
+    ;; don't know where to move it. It's easiest and clearest if we just do
+    ;; nothing.
     (if (and (= (point) (overlay-end overlay))
              (not (string-match-p (rx bol (* space) eol) (string-trim (thing-at-point 'line) "" "\n"))))
-        (progn
-          (insert "\n")
-          (move-overlay overlay (point-min) (point)))
+        (delete-region begin-mod end-mod)
       (save-excursion
         (forward-line -1)
         (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
@@ -812,11 +816,10 @@ delete from the end of the metadata, we need to fix it back up."
         (insert "\n")
         (move-overlay overlay (overlay-start overlay) p)))
     ;; Make sure the overlay ends on a newline, if not, insert one.
-    (save-excursion
-      (goto-char (- (overlay-end overlay) 1))
+    (goto-char (- (overlay-end overlay) 1))
       (unless (looking-at "\n")
         (forward-char 1)
-        (insert "\n")))))
+        (insert "\n"))))
 
 (defun ekg-edit-display-metadata ()
   "Create or edit the overlay to show metadata."

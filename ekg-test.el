@@ -266,25 +266,12 @@
       ;; The overlay end is the character just past the end of the visible
       ;; overlay, but still in the overlay's extent.
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
-      ;; Go to the end of the overlay, insert, the overlay should grow
+      ;; Go to the end of the overlay, insert, the overlay should stay the same
+      ;; - we don't allow anything to happen at the end of the overlay due to
+      ;; how confusing it is.
       (goto-char (overlay-end o))
       (insert "Property: ")
       (ekg--metadata-modification o t nil nil)
-      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n"))))
-      ;; But there shouldn't be two newlines in a row in the overlay, so the
-      ;; overlay should not grow.
-      (insert "\n")
-      (ekg--metadata-modification o t nil nil)
-      (should (= (overlay-end o) (+ 1 (length "Tags: test\nProperty: \n")))))))
-
-(ekg-deftest ekg-test-overlay-interaction-growth-by-new-headline ()
-  (let ((ekg-capture-auto-tag-funcs nil))
-    (ekg-capture '("test"))
-    (let ((o (ekg--metadata-overlay)))
-      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
-      (goto-char (point-min))
-      (org-insert-heading)
-      ;; Inserting a new heading shouldn't mess with the overlay.
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n")))))))
 
 (ekg-deftest ekg-test-overlay-interaction-resist-shrinking ()
