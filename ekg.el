@@ -899,7 +899,7 @@ However, if URL already exists, we edit the existing note on it."
                   (cons #'ekg--capf completion-at-point-functions)
                   header-line-format
                   (substitute-command-keys
-                   "\\<ekg-edit-mode-map>Capture buffer.  Finish \
+                   "\\<ekg-edit-mode-map>Edit buffer.  Finish \
 `\\[ekg-edit-finalize]'.")
                   ekg-note (copy-ekg-note note)
                   ekg-note-orig-id (ekg-note-id note))
