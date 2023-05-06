@@ -772,7 +772,15 @@ The ID can represent a browseable resource, which is meaningful to the user."
   (or (car (seq-filter
             (lambda (o) (eq 'ekg-metadata (overlay-get o 'category)))
             (overlays-in (point-min) (point-max))))
-      (make-overlay (point-min) (point-max) nil nil t)))
+      (make-overlay (point-min) (point-max) nil nil t
+
+(defun ekg--metadata-on-insert-behind (_ after begin-mod eng-mod &optional _)
+  "Make sure nothing is inserted behind the metadata overlay.
+Also make sure we always have a line with which the user can add text."
+  (when after
+    (delete-region begin-mod eng-mod)
+    (when (= (point) (point-max))
+      (insert "\n")))))
 
 (defun ekg--metadata-modification (overlay after begin-mod end-mod &optional _)
   "Make sure that metadata region doesn't interfere with editing.
@@ -795,14 +803,11 @@ delete from the end of the metadata, we need to fix it back up."
     ;; it from the previous line. Moving after is also suspicious, because we
     ;; don't know where to move it. It's easiest and clearest if we just do
     ;; nothing.
-    (if (and (= (point) (overlay-end overlay))
-             (not (string-match-p (rx bol (* space) eol) (string-trim (thing-at-point 'line) "" "\n"))))
-        (delete-region begin-mod end-mod)
-      (save-excursion
+    (save-excursion
         (forward-line -1)
         (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
           (kill-line)
-          (forward-line -1))))
+          (forward-line -1)))
     (when (= (overlay-end overlay)
              (buffer-end 1))
       (let ((p (point)))
@@ -836,10 +841,11 @@ delete from the end of the metadata, we need to fix it back up."
     (goto-char (overlay-end o))
     (insert "\n")
     (move-overlay o (point-min) (- (overlay-end o) 1))
-    (overlay-put o 'after-string (propertize "--text follows this line--\n" 'read-only t))
+    (overlay-put o 'after-string (propertize "--text follows this line--\n"
+                                             'read-only t 'rear-nonsticky t))
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
-    (overlay-put o 'insert-behind-hooks '(ekg--metadata-modification))
+    (overlay-put o 'insert-behind-hooks '(ekg--metadata-on-insert-behind))
     (overlay-put o 'face 'ekg-metadata)
     (buffer-enable-undo)
     ;; If org-mode is on, the metadata messes up the org-element-cache, so let's disable it.
