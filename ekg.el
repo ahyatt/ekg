@@ -816,10 +816,15 @@ delete from the end of the metadata, we need to fix it back up."
         (insert "\n")
         (move-overlay overlay (overlay-start overlay) p)))
     ;; Make sure the overlay ends on a newline, if not, insert one.
-    (goto-char (- (overlay-end overlay) 1))
-      (unless (looking-at "\n")
-        (forward-char 1)
-        (insert "\n"))))
+    (when
+        (save-excursion
+          (goto-char (- (overlay-end overlay) 1))
+          (unless (looking-at "\n")
+            (forward-char 1)
+            (insert "\n")
+            t ;; Return true if we inserted a newline.
+            ))
+      (goto-char (overlay-end overlay)))))
 
 (defun ekg-edit-display-metadata ()
   "Create or edit the overlay to show metadata."
