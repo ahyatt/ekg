@@ -806,7 +806,7 @@ delete from the end of the metadata, we need to fix it back up."
     (save-excursion
         (forward-line -1)
         (while (looking-at (rx (seq line-start (zero-or-more space) line-end)))
-          (kill-line)
+          (delete-line)
           (forward-line -1)))
     (when (= (overlay-end overlay)
              (buffer-end 1))
