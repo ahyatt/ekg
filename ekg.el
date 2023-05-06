@@ -1375,7 +1375,7 @@ notes to show. But with an prefix ARG, ask the user."
                                              'time-tracked/creation-time)
                                             (lambda (trip1 trip2) (> (nth 2 trip1)
                                                                      (nth 2 trip2)))))
-              until (= (length selected) num)
+              until (= (length selected) (or num ekg-notes-size))
               when (ekg-has-live-tags-p id)
               collect (ekg-get-note-with-id id) into selected
               finally return selected))
@@ -1388,6 +1388,7 @@ notes to show. But with an prefix ARG, ask the user."
   (interactive (list (if current-prefix-arg
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
+  (ekg--connect)
   (ekg-setup-notes-buffer
    "Latest modified notes"
    (lambda ()
@@ -1396,7 +1397,7 @@ notes to show. But with an prefix ARG, ask the user."
                                              'time-tracked/modified-time)
                                             (lambda (trip1 trip2) (> (nth 2 trip1)
                                                                      (nth 2 trip2)))))
-              until (= (length selected) num)
+              until (= (length selected) (or num ekg-notes-size))
               when (ekg-has-live-tags-p id)
               collect (ekg-get-note-with-id id) into selected
               finally return selected))
