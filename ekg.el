@@ -772,7 +772,7 @@ The ID can represent a browseable resource, which is meaningful to the user."
   (or (car (seq-filter
             (lambda (o) (eq 'ekg-metadata (overlay-get o 'category)))
             (overlays-in (point-min) (point-max))))
-      (make-overlay (point-min) (point-max) nil nil t
+      (make-overlay (point-min) (point-max) nil nil t)))
 
 (defun ekg--metadata-on-insert-behind (_ after begin-mod eng-mod &optional _)
   "Make sure nothing is inserted behind the metadata overlay.
@@ -780,9 +780,9 @@ Also make sure we always have a line with which the user can add text."
   (when after
     (delete-region begin-mod eng-mod)
     (when (= (point) (point-max))
-      (insert "\n")))))
+      (insert "\n"))))
 
-(defun ekg--metadata-modification (overlay after begin-mod end-mod &optional _)
+(defun ekg--metadata-modification (overlay after _ _ &optional _)
   "Make sure that metadata region doesn't interfere with editing.
 This function is called on modification within the metadata.
 
