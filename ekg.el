@@ -247,12 +247,19 @@ non-nil, it will be used as the filename, otherwise
   (triples-add-schema ekg-db 'titled '(title :base/type string))
   (run-hooks 'ekg-add-schema-hook))
 
+(defun ekg--generate-id ()
+  "Return a unique ID for a note.
+This is not suitable for generating a large number of IDs in a
+small time frame. About one ID per second is reasonable."
+  (sxhash (cons (time-convert (current-time) 'integer)  (random 100))))
+
 (defun ekg--normalize-note (note)
   "Make sure NOTE adheres to ekg-wide constraints before saving.
 This
   1) makes sure all tags are lowercase and trimmed.
   2) removes commas in tags, since those are used to separate tags.
   3) removes any properties from the text.
+  4) makes sure the note has an reasonable ID, otherwise generates one.
 
 Note: we used to also trim text, but with inline commands, that
 is not a great idea, because an inline command sits outside of
@@ -261,7 +268,9 @@ the text and may be after trailing whitespace."
         (mapcar (lambda (tag)
                   (string-trim (downcase (string-replace "," "" tag)))) (ekg-note-tags note)))
   (setf (ekg-note-text note)
-        (substring-no-properties (ekg-note-text note))))
+        (substring-no-properties (ekg-note-text note)))
+  (when (or (equal (ekg-note-id note) "") (not (ekg-note-id note)))
+    (setf (ekg-note-id note) (ekg--generate-id))))
 
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
@@ -722,9 +731,8 @@ displayed.")
 
 (defun ekg-note-create (text mode tags)
   "Create a new `ekg-note' with TEXT, MODE and TAGS."
-  (let* ((time (time-convert (current-time) 'integer))
-         (subject (sxhash (cons time (random 100)))))
-    (make-ekg-note :id subject
+  (let* ((time (time-convert (current-time) 'integer)))
+    (make-ekg-note :id (ekg--generate-id)
                    :text text
                    :mode mode
                    :tags tags
@@ -932,7 +940,25 @@ Return the latest `ekg-note' object."
           (ekg-note-inlines ekg-note) (cdr ticons)
           (ekg-note-mode ekg-note) major-mode
           (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note))))
-  (ekg-save-note ekg-note)
+  ;; Even though we will do this later in `ekg--normalize-note', we have to do
+  ;; this now in case we removed the resource.
+  (when (or (equal (ekg-note-id ekg-note) "") (not (ekg-note-id ekg-note)))
+    (setf (ekg-note-id ekg-note) (ekg--generate-id)))
+  (triples-with-transaction
+    ekg-db
+    (when (and ekg-note-orig-id
+               (not (eq ekg-note-orig-id (ekg-note-id ekg-note)))
+               (ekg-note-with-id-exists-p ekg-note-orig-id)
+               (not (ekg-note-with-id-exists-p (ekg-note-id ekg-note)))
+               (y-or-n-p "Changing the resource of this note will also change all references to it.  Are you sure?"))
+      (let* ((existing-types (triples-get-types ekg-db (ekg-note-id ekg-note)))
+             (conflicting-types (seq-intersection existing-types '(text tag titled))))
+          (when (and conflicting-types
+                     (y-or-n-p "Existing data exists on this resource, replace?"))
+            (mapc (lambda (type) (triples-remove-type ekg-db ekg-note-orig-id type))
+                  conflicting-types))
+          (triples-move-subject ekg-db ekg-note-orig-id (ekg-note-id ekg-note))))
+    (ekg-save-note ekg-note))
   ekg-note)
 
 (defun ekg--in-metadata-p ()
@@ -1041,19 +1067,7 @@ The metadata fields are comma separated."
 
 (defun ekg--metadata-update-resource (val)
   "Update the resource to the metadata VAL."
-  (when (and (not (string= val (format "%s" (ekg-note-id ekg-note))))
-             (or (not (ekg-note-with-id-exists-p (ekg-note-id ekg-note)))
-                 (y-or-n-p "Changing the resource of this note will also change all references to it.  Are you sure?")))
-    (triples-with-transaction ekg-db
-      (when (ekg-note-id ekg-note)
-        (let* ((old-id (ekg-note-id ekg-note))
-               (existing-types (triples-get-types ekg-db old-id))
-               (conflicting-types (seq-intersection existing-types '(text tag titled))))
-          (when (and conflicting-types
-                     (y-or-n-p "Existing data exists on this resource, replace?"))
-            (mapc (lambda (type) (triples-remove-type ekg-db old-id type)) conflicting-types))
-          (triples-move-subject ekg-db old-id val))))
-    (setf (ekg-note-id ekg-note) val)))
+  (setf (ekg-note-id ekg-note) val))
 
 (defun ekg--metadata-fields (expect-valid)
   "Return all metadata fields as a cons of labels and values.
