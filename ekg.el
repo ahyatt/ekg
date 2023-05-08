@@ -849,10 +849,8 @@ delete from the end of the metadata, we need to fix it back up."
     (replace-region-contents (overlay-start o) (overlay-end o)
                              #'ekg--replace-metadata)
     (goto-char (overlay-end o))
-    (insert "\n")
+    (insert (propertize "\n" 'display "--text follows this line--\n\n" 'read-only t 'rear-nonsticky t))
     (move-overlay o (point-min) (- (overlay-end o) 1))
-    (overlay-put o 'after-string (propertize "--text follows this line--\n"
-                                             'read-only t 'rear-nonsticky t))
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
     (overlay-put o 'insert-behind-hooks '(ekg--metadata-on-insert-behind))
