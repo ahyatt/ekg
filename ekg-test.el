@@ -283,7 +283,9 @@
       ;; can't really do it, the newline should regenerate itself after the
       ;; modification hook runs.
       (goto-char (overlay-end o))
-      (delete-char -1)
+      ;; When we delete, if it errors, that's OK, we don't yet have a strong
+      ;; opinion on whether it should result in an error or not.
+      (ignore-errors (delete-char -1))
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
       (should (= (point) (overlay-end o))))))
 
