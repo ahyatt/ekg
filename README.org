@@ -80,9 +80,7 @@ certain type if necessary.
 
 There are a few other types of prefixes commonly used for tags. One is that
 titled resources have default tags that are prefixed with "doc/", followed by
-the name of the document. Removed tags are prefixed with "trash/", but these are
-normally invisible to the user. There's a section on these trash tags below
-which goes into more detail.
+the name of the document.
 * Warning
 ekg is a fairly new package, and as such, there may be significant bugs. Testing
 is done, but this package has not yet had the wide use that will surface many
