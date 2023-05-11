@@ -57,7 +57,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 (require 'ekg)
 #+end_src
 * Changelog
-** Version 3
+** Version 0.3
 - Added inline commands, see the [[#inlines][inlines]] section for more detail.
 - Added logseq import / export in its own module, and removed it from the =ekg-org-roam= module.  See the [[#logseq][logseq]] section for more details.
 - Improve window management, now we play nicer with customized window configuration, and now opening a list of notes will also switch to that window.

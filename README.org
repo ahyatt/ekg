@@ -20,9 +20,13 @@ both the note's data and the text of the note itself in a buffer.
 #+CAPTION: An eample of editing a note
 [[./screenshots/ekg-edit.jpg]]
 
+ekg supports import from org-roam, and import and export to logseq. It also
+supports inline commands, which can be used for transclusion and any other
+functionality you may need.
+
 Additionally, [[https://youtu.be/qxa2VrseFUA][a video demonstration and explanation of ekg]] is on YouTube. This
-README has some basic information, but the full information can be found on the
-[[https://github.com/ahyatt/ekg/blob/develop/doc/ekg.org][manual]], which can be viewed in the Emacs info after installing.
+README has only the most basic information, but the full information can be
+found on the [[https://github.com/ahyatt/ekg/blob/develop/doc/ekg.org][manual]], which can be viewed in the Emacs info after installing.
 
 * Design of ekg
 There are a few core ideas driving the design of ekg. The first is that a title
