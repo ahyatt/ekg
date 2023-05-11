@@ -1236,15 +1236,20 @@ tags."
   (interactive nil ekg-notes-mode)
   (ekg-edit (ekg--current-note-or-error)))
 
-(defun ekg-notes-delete ()
-  "Delete the current note."
-  (interactive nil ekg-notes-mode)
-  (let ((note (ekg--current-note-or-error))
-        (inhibit-read-only t))
-    (when (y-or-n-p "Are you sure you want to delete this note?")
-      (ekg-note-trash note)
-      (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
-      (ekg--note-highlight))))
+(defun ekg-notes-delete (arg)
+  "Delete the current note.
+With a `C-u' prefix silently delete the current note without a prompt."
+  (interactive "P" ekg-notes-mode)
+  (let* ((note (ekg--current-note-or-error))
+         (inhibit-read-only t)
+         (delete-note (lambda ()
+			(progn (ekg-note-trash note)
+			       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
+			       (ekg--note-highlight)))))
+    (if arg
+        (funcall delete-note)
+      (when (y-or-n-p "Are you sure you want to delete this note?")
+        (funcall delete-note)))))
 
 (defun ekg-notes-browse ()
   "If the note is about a browseable resource, browse to it.
