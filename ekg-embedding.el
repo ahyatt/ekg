@@ -108,7 +108,7 @@ take minutes or hours depending on how much data there is.."
        (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
                 (ekg-embedding-refresh-tag-embedding s))
        (triples-backups-maybe-backup ekg-db (ekg--db-file))
-       (message ("Finished generating %s embeddings" count))))))
+       (message "Finished generating %s embeddings" count)))))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
