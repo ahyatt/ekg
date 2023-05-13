@@ -1238,7 +1238,8 @@ tags."
 
 (defun ekg-notes-delete (arg)
   "Delete the current note.
-With a `C-u' prefix or when ARG is non-nil, silently delete the current note without a prompt."
+With a `C-u' prefix or when ARG is non-nil, silently delete the
+current note without a prompt."
   (interactive "P" ekg-notes-mode)
   (let ((note (ekg--current-note-or-error))
         (inhibit-read-only t))
