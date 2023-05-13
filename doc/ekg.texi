@@ -174,6 +174,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @item
 Added inline commands, see the @ref{Inline commands, , inlines} section for more detail.
 @item
+Added customization of note display, using inline commands.
+@item
 Added logseq import / export in its own module, and removed it from the @samp{ekg-org-roam} module.  See the @ref{Logseq, , logseq} section for more details.
 @item
 Improve window management, now we play nicer with customized window configuration, and now opening a list of notes will also switch to that window.
@@ -183,7 +185,11 @@ Improved metadata overlay look and function, it now looks just like @samp{messag
 Added a blank line between notes in notes list buffers, for a cleaner look.
 @item
 Renamed @samp{ekg-rename-tag} to @samp{ekg-global-rename-tag} to clarify this isn't for changing an individual tag in a note.
+@item
+Added arg prefix behavior to @samp{ekg-notes-delete} to allow deleting notes without a warning.
 @end itemize
+
+Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}, @uref{https://github.com/qingshuizheng, Qingshui Zheng}, and @uref{https://github.com/cuprum, cuprum}.
 
 @node Version 021
 @section Version 0.2.1
