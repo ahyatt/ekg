@@ -47,7 +47,7 @@
   :type 'symbol
   :group 'ekg)
 
-(defcustom ekg-capture-acceptable-modes '(org-mode markdown-mode text-mode)
+(defcustom ekg-acceptable-modes '(org-mode markdown-mode text-mode)
   "Modes that make sense to use as note types."
   :type '(set symbol)
   :group 'ekg)
@@ -897,17 +897,18 @@ However, if URL already exists, we edit the existing note on it."
                      ;; Remove commas from the value.
                    `(:titled/title ,cleaned-title) url))))
 
-(defun ekg-capture-change-mode (mode)
+(defun ekg-change-mode (mode)
   "Change the mode to MODE of the current note."
-  (interactive (list
-                (completing-read "Mode: " ekg-capture-acceptable-modes)) ekg-capture-mode)
-  (let ((note ekg-note))
+  (interactive (list (completing-read "Mode: " ekg-acceptable-modes))
+               ekg-capture-mode ekg-edit-mode)
+  (let ((minor-mode (if ekg-capture-mode "capture" "edit"))
+        (note ekg-note))
     (funcall (intern mode))
-    (ekg-capture-mode 1)
-    (setq-local header-line-format
-                (substitute-command-keys
-                 "\\<ekg-capture-mode-map>Capture buffer.  Finish \
-`\\[ekg-capture-finalize]'."))
+    (funcall (intern (format "ekg-%s-mode" minor-mode)))
+    (setq header-line-format
+          (substitute-command-keys
+           (format "\\<ekg-%s-mode-map>%s buffer.  Finish \
+`\\[ekg-%s-finalize]'." minor-mode (capitalize minor-mode) minor-mode)))
     (setq ekg-note note)))
 
 (defun ekg-edit (note)
