@@ -868,7 +868,8 @@ delete from the end of the metadata, we need to fix it back up."
   "Capture a new note, with TAGS and other PROPERTIES.
 If SUBJECT is given, force the triple subject to be that value."
   (interactive)
-  (let ((buf (get-buffer-create "*EKG Capture*")))
+  (let* ((subject (or subject (ekg--generate-id)))
+         (buf (get-buffer-create (format "*EKG Capture (note %s)*" subject))))
     (set-buffer buf)
     (funcall ekg-capture-default-mode)
     (ekg-capture-mode 1)
@@ -877,8 +878,7 @@ If SUBJECT is given, force the triple subject to be that value."
                              (seq-uniq (append
                                         tags
                                         (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs)))))
-    (when subject
-      (setf (ekg-note-id ekg-note) subject))
+    (setf (ekg-note-id ekg-note) subject)
     (setf (ekg-note-properties ekg-note) properties)
     (ekg-edit-display-metadata)
     (goto-char (point-max))

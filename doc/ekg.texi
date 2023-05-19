@@ -187,6 +187,8 @@ Added a blank line between notes in notes list buffers, for a cleaner look.
 Renamed @samp{ekg-rename-tag} to @samp{ekg-global-rename-tag} to clarify this isn't for changing an individual tag in a note.
 @item
 Added arg prefix behavior to @samp{ekg-notes-delete} to allow deleting notes without a warning.
+@item
+Made @samp{ekg-capture} have unique buffer names, so the user can capture multiple notes at the same time.
 @end itemize
 
 Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}, @uref{https://github.com/qingshuizheng, Qingshui Zheng}, and @uref{https://github.com/cuprum, cuprum}.
