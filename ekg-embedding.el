@@ -67,7 +67,8 @@ updates NOTE."
   (setf (ekg-note-properties note)
         (plist-put (ekg-note-properties note)
                    :embedding/embedding
-                   (ekg-embedding (substring-no-properties (ekg-note-text note)))))
+                   (ekg-embedding (substring-no-properties
+                                   (ekg-display-note note)))))
   (cl-loop for tag in (ekg-note-tags note) do
            (ekg-embedding-refresh-tag-embedding tag)))
 
@@ -91,16 +92,20 @@ embeddings already exist. This is a fairly slow function, and may
 take minutes or hours depending on how much data there is.."
   (interactive "P")
   (ekg--connect)
-  (cl-loop for s in (ekg-active-note-ids) do
-           (let ((note (ekg-get-note-with-id s))
-                 (embedding (triples-get-type ekg-db s 'embedding)))
-             (when (and (or arg (null embedding))
-                        (> (length (ekg-note-text note)) 0))
-               (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
-                                                                 (substring-no-properties (ekg-note-text note)))))))
-  (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
-           (ekg-embedding-refresh-tag-embedding s))
-  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
+  (let ((count 0))
+       (cl-loop for s in (ekg-active-note-ids) do
+                (thread-yield)
+                (let ((note (ekg-get-note-with-id s))
+                      (embedding (triples-get-type ekg-db s 'embedding)))
+                  (when (and (or arg (null embedding))
+                             (> (length (ekg-note-text note)) 0))
+                    (cl-incf count)
+                    (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
+                                                                      (substring-no-properties (ekg-note-text note)))))))
+       (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
+                (ekg-embedding-refresh-tag-embedding s))
+       (triples-backups-maybe-backup ekg-db (ekg--db-file))
+       (message "Generated %s embeddings" count)))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.

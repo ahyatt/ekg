@@ -24,27 +24,8 @@
 (require 'ekg)
 (require 'ert)
 (require 'ert-x)
-
-(defmacro ekg-deftest (name _ &rest body)
-  "A test that will set up an empty `ekg-db' for use."
-  (declare (debug t) (indent defun))
-  `(ert-deftest ,name ()
-     (let ((ekg-db-file (make-temp-file "ekg-test"))
-           (ekg-db nil)
-           (orig-buffers (buffer-list))
-           ;; Remove hooks
-           (ekg-add-schema-hook nil)
-           (ekg-note-pre-save-hook nil)
-           (ekg-note-save-hook nil)
-           (ekg-note-pre-delete-hook nil)
-           (ekg-note-delete-hook nil)
-           (ekg-note-add-tag-hook nil))
-       (ekg--connect)
-       (save-excursion
-         (unwind-protect
-             (progn ,@body)
-           ;; Kill all opened bufferes
-           (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers)))))))
+(require 'org)
+(require 'ekg-test-utils)
 
 (ekg-deftest ekg-test-note-lifecycle ()
   (let ((note (ekg-note-create "Test text" 'text-mode '("tag1" "tag2"))))
@@ -156,6 +137,157 @@
   (should-not (ekg-get-notes-with-tags '("foo" "none")))
   (should-not (ekg-get-notes-with-tags '("none" "foo")))
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
+
+(ekg-deftest ekg-test-extract-inlines ()
+  (pcase (ekg-extract-inlines "Foo %(transclude 1) %n(transclude \"abc\") Bar")
+    (`(,text . ,inlines)
+     (should (equal "Foo   Bar" text))
+     (should (equal
+              (list
+               (make-ekg-inline :pos 4 :command '(transclude 1) :type 'command)
+               (make-ekg-inline :pos 5 :command '(transclude "abc") :type 'note))
+              inlines)))
+    (_ (ert-fail "Expected cons"))))
+
+(ekg-deftest ekg-test-extract-and-insert-inlines ()
+  (cl-loop for testcase in '("foo" "Foo %(transclude 1) %n(transclude \"abc\") Bar"
+                             "Foo%(transclude 1)%(transclude 2)Bar")
+           do
+           (should (equal testcase
+                          (let ((ex-cons (ekg-extract-inlines testcase)))
+                            (ekg-insert-inlines-representation
+                             (car ex-cons) (cdr ex-cons)))))))
+
+(ekg-deftest ekg-test-transclude ()
+  (let ((note1 (ekg-note-create "text1 text2" 'org-mode nil))
+        (note2 (ekg-note-create "text3 text4" 'text-mode nil)))
+    (ekg-save-note note1)
+    (ekg-save-note note2)
+    (let ((ex-cons (ekg-extract-inlines
+                    (format "Foo %%(transclude-note %S 1) %%(transclude-note %S 1) Bar"
+                            (ekg-note-id note1) (ekg-note-id note2)))))
+      (should (string-equal "Foo text1… text3… Bar"
+                            (ekg-insert-inlines-results
+                             (car ex-cons) (cdr ex-cons) nil))))))
+
+(ekg-deftest ekg-test-transclude-stability ()
+  (let ((note (ekg-note-create "transcluded" 'org-mode nil)))
+    (ekg-save-note note)
+    (ekg-capture '("tag"))
+    (let ((transclude-txt (format "12%%(transclude-note %S)34 %%(transclude-note %S)"
+                                  (ekg-note-id note)
+                                  (ekg-note-id note)) ))
+      (insert transclude-txt)
+      (ert-simulate-command '(ekg-capture-finalize))
+      (let ((transcluding-note (car (ekg-get-notes-with-tag "tag"))))
+        ;; First, just make sure we put the transclusion in the right place.
+        (ekg-edit transcluding-note)
+        (should (string-match transclude-txt (buffer-substring-no-properties (point-min) (point-max))))
+        (kill-buffer)
+        ;; Now, add a tag and make sure the added text in the buffer doesn't
+        ;; cause the transclusion to shift.
+        (setf (ekg-note-tags transcluding-note) '("tag" "newtag"))
+        (ekg-edit transcluding-note)
+        (should (string-match transclude-txt (buffer-substring-no-properties (point-min) (point-max))))))))
+
+(ert-deftest ekg-test-inline-with-error ()
+  (let ((target (concat "Inline: Error executing inline command "
+                        "%(transclude-file \"/does/not/exist\"): ")))
+    ;; We only want to compare to a certain point, since we don't want this test
+    ;; to break if emacs decides to change the error message for file errors.
+    (should (string-equal
+             target
+             (substring (ekg-insert-inlines-results
+                         "Inline: "
+                         (list (make-ekg-inline :pos 8 :command '(transclude-file "/does/not/exist")
+                                                :type 'command))
+                         nil) 0 (length target))))))
+
+(ekg-deftest ekg-test-inline-storage ()
+  (let ((id)
+        (inlines (list
+                  (make-ekg-inline :pos 3 :command '(transclude-file "transcluded") :type 'command)
+                  (make-ekg-inline :pos 4 :command '(transclude-website "http://www.example.com")
+                                   :type 'note)))
+        (new-inlines (list
+                      (make-ekg-inline :pos 0
+                                       :command '(transclude-api-call "http://api.com" 'current-weather)
+                                       :type 'command)
+                      (make-ekg-inline :pos 1
+                                       :command '(calc "2 ^ 10")
+                                       :type 'command))))
+    (let ((note (ekg-note-create "foo bar" 'text-mode nil)))
+      (setf (ekg-note-inlines note) inlines)
+      (ekg-save-note note)
+      (setq id (ekg-note-id note)))
+    (let ((note (ekg-get-note-with-id id)))
+      (should (equal inlines (ekg-note-inlines note)))
+      (setf (ekg-note-inlines note) new-inlines)
+      (ekg-save-note note)
+      (should (= 2 (length (triples-with-predicate ekg-db 'inline/command)))))
+    (let ((note (ekg-get-note-with-id id)))
+      (should (equal new-inlines (ekg-note-inlines note)))
+      (ekg-note-delete (ekg-note-id note))
+      (should (= 0 (length (triples-with-predicate ekg-db 'inline/command)))))))
+
+(ekg-deftest ekg-test-double-transclude-note ()
+  (let ((note (ekg-note-create "transclusion1" 'text-mode nil)))
+    (ekg-save-note note)
+    (ekg-capture '("test1"))
+    (insert (format "%%(transclude-note %S)" (ekg-note-id note)))
+    (ekg-capture-finalize))
+  (ekg-capture '("test2"))
+  (insert (format "%%(transclude-note %S)"
+                  (ekg-note-id
+                   (car (ekg-get-notes-with-tag "test1")))))
+  (ekg-capture-finalize)
+  (should (string-match-p "transclusion1"
+                          (ekg-display-note-text
+                           (car (ekg-get-notes-with-tag "test2"))))))
+
+(ert-deftest ekg-test-display-note-template ()
+  (let ((ekg-display-note-template
+         "%n(id)%n(tagged)%n(text 100)%n(other)%n(time-tracked)")
+        (note (ekg-note-create "text" 'text-mode '("tag1" "tag2"))))
+    (setf (ekg-note-properties note) '(:titled/title ("Title")
+                                                     :unknown/ignored "unknown"
+                                                     :rendered/text "rendered"))
+    (setf (ekg-note-id note) 1)
+    (setf (ekg-note-modified-time note) 1682139975)
+    (setf (ekg-note-creation-time note) 1682053575)
+    (should (string-equal "tag1 tag2\ntext\nTitle\nCreated: 2023-04-21   Modified: 2023-04-22\n"
+                          (ekg-display-note note)))))
+
+(ekg-deftest ekg-test-overlay-interaction-growth ()
+  (let ((ekg-capture-auto-tag-funcs nil))
+    (ekg-capture '("test"))
+    (let ((o (ekg--metadata-overlay)))
+      (should (= (overlay-start o) 1))
+      ;; The overlay end is the character just past the end of the visible
+      ;; overlay, but still in the overlay's extent.
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      ;; Go to the end of the overlay, insert, the overlay should stay the same
+      ;; - we don't allow anything to happen at the end of the overlay due to
+      ;; how confusing it is.
+      (goto-char (overlay-end o))
+      (insert "Property: ")
+      (ekg--metadata-modification o t nil nil)
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n")))))))
+
+(ekg-deftest ekg-test-overlay-interaction-resist-shrinking ()
+  (let ((ekg-capture-auto-tag-funcs nil))
+    (ekg-capture '("test"))
+    (let ((o (ekg--metadata-overlay)))
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      ;; Go to the end of the overlay, delete the newline, it should be that you
+      ;; can't really do it, the newline should regenerate itself after the
+      ;; modification hook runs.
+      (goto-char (overlay-end o))
+      ;; When we delete, if it errors, that's OK, we don't yet have a strong
+      ;; opinion on whether it should result in an error or not.
+      (ignore-errors (delete-char -1))
+      (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
+      (should (= (point) (overlay-end o))))))
 
 (provide 'ekg-test)
 
