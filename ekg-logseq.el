@@ -422,7 +422,7 @@ have already have information in logseq, you should run
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
-  (ekg--connect)
+  (ekg-connect)
   (let* ((deleted 0)
          (modified 0)
          (export-time (ekg-logseq-get-last-export))
@@ -465,7 +465,7 @@ logseq is marked as being part of logseq.
 
 All logic will be run in the background."
   (interactive)
-  (ekg--connect)
+  (ekg-connect)
   (message "ekg-logseeq-sync: Starting in the background")
   (ekg-logseq-import)
   (ekg-logseq-export))

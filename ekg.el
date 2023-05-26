@@ -195,7 +195,7 @@ passed the tag, and run in the buffer editing the note.")
 
 (cl-defstruct ekg-inline pos command type)
 
-(defun ekg--db-file ()
+(defun ekg-db-file ()
   "Return the database file we should use in ekg.
 If `ekg-db-file' is nil and `ekg-db-file-obsolete' exists, use
 `ekg-db-file-obsolete', otherwise use `ekg-db-file'. If that is
@@ -205,10 +205,10 @@ non-nil, it will be used as the filename, otherwise
       ekg-db-file-obsolete
     ekg-db-file))
 
-(defun ekg--connect ()
+(defun ekg-connect ()
   "Ensure EKG-DB is connected."
   (unless ekg-db
-    (setq ekg-db (triples-connect (ekg--db-file)))
+    (setq ekg-db (triples-connect (ekg-db-file)))
     (ekg-add-schema)
     (unless (triples-backups-configuration ekg-db)
       (triples-backups-setup ekg-db ekg-default-num-backups
@@ -274,7 +274,7 @@ the text and may be after trailing whitespace."
 
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
-  (ekg--connect)
+  (ekg-connect)
   (ekg--normalize-note note)
   (run-hook-with-args 'ekg-note-pre-save-hook note)
   (triples-with-transaction
@@ -307,12 +307,12 @@ the text and may be after trailing whitespace."
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
     (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
     (run-hook-with-args 'ekg-note-save-hook note))
-  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
+  (triples-backups-maybe-backup ekg-db (ekg-db-file)))
 
 (defun ekg-get-notes-with-tags (tags)
   "Get all notes with TAGS, returning a list of `ekg-note' structs.
 This returns only notes that have all the tags in TAGS."
-  (ekg--connect)
+  (ekg-connect)
   (let ((ids-by-tag
          (mapcar (lambda (tag)
                    (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
@@ -392,7 +392,7 @@ note is really deleted."
                                     (ekg-mark-trashed tag)))
                     (ekg-note-tags note)))
       (ekg-save-note note)))
-  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
+  (triples-backups-maybe-backup ekg-db (ekg-db-file)))
 
 (defun ekg-has-live-tags-p (sub)
   "Return non-nil if SUB represents an undeleted note."
@@ -936,7 +936,7 @@ However, if URL already exists, we edit the existing note on it."
 (defun ekg--save-note-in-buffer ()
   "Save the current note.
 Return the latest `ekg-note' object."
-  (ekg--connect)
+  (ekg-connect)
   (widen)
   (let* ((text (buffer-substring (+ 1 (overlay-end (ekg--metadata-overlay)))
                                  (point-max)))
@@ -1150,18 +1150,18 @@ FROM-TAG will use TO-TAG."
                          to-tag from-tag)))
     (triples-remove-type ekg-db from-tag 'tag)
     (triples-set-type ekg-db to-tag 'tag))
-  (triples-backups-maybe-backup ekg-db (ekg--db-file)))
+  (triples-backups-maybe-backup ekg-db (ekg-db-file)))
 
 (defun ekg-tags ()
   "Return a list of all tags.
 Does not include any trash tags."
-  (ekg--connect)
+  (ekg-connect)
   (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag)))
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-including (substring)
   "Return all tags including SUBSTRING."
-  (ekg--connect)
+  (ekg-connect)
   (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
                                  (string-match-p (rx (literal substring)) tag)))
               (triples-subjects-of-type ekg-db 'tag)))
@@ -1215,7 +1215,7 @@ The tags are separated by spaces."
                                (ewoc-location next)
                              (point-max))) 1)))))
 
-(defun ekg--current-note-or-error ()
+(defun ekg-current-note-or-error ()
   "Return the current `ekg-note'.
 Raise an error if there is no current note."
   (unless (eq major-mode 'ekg-notes-mode)
@@ -1228,21 +1228,21 @@ Raise an error if there is no current note."
   "Show notes associated with TAG.
 If TAG is nil, it will be read, selecting from the list of the current note's
 tags."
-  (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg--current-note-or-error))))
+  (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg-current-note-or-error))))
                ekg-notes-mode)
   (ekg-show-notes-with-tag tag))
 
 (defun ekg-notes-open ()
   "Open the current note."
   (interactive nil ekg-notes-mode)
-  (ekg-edit (ekg--current-note-or-error)))
+  (ekg-edit (ekg-current-note-or-error)))
 
 (defun ekg-notes-delete (arg)
   "Delete the current note.
 With a `C-u' prefix or when ARG is non-nil, silently delete the
 current note without a prompt."
   (interactive "P" ekg-notes-mode)
-  (let ((note (ekg--current-note-or-error))
+  (let ((note (ekg-current-note-or-error))
         (inhibit-read-only t))
     (when (or arg (y-or-n-p "Are you sure you want to delete this note?"))
       (ekg-note-trash note)
@@ -1253,7 +1253,7 @@ current note without a prompt."
   "If the note is about a browseable resource, browse to it.
 For URLs, this will use `browse-url'."
   (interactive nil ekg-notes-mode)
-  (let ((note (ekg--current-note-or-error)))
+  (let ((note (ekg-current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
            (browse-url (ekg-note-id note))))))
 
@@ -1398,7 +1398,7 @@ notes to show. But with an prefix ARG, ask the user."
   (interactive (list (if current-prefix-arg
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
-  (ekg--connect)
+  (ekg-connect)
   (ekg-setup-notes-buffer
    "Latest captured notes"
    (lambda ()
@@ -1420,7 +1420,7 @@ notes to show. But with an prefix ARG, ask the user."
   (interactive (list (if current-prefix-arg
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
-  (ekg--connect)
+  (ekg-connect)
   (ekg-setup-notes-buffer
    "Latest modified notes"
    (lambda ()
@@ -1438,7 +1438,7 @@ notes to show. But with an prefix ARG, ask the user."
 (defun ekg-document-titles ()
   "Return an alist of all titles.
 The key is the subject and the value is the title."
-  (ekg--connect)
+  (ekg-connect)
   (mapcan (lambda (sub)
             (mapcar (lambda (title) (cons sub title)) (plist-get (triples-get-type ekg-db sub 'titled) :title)))
           (seq-filter #'ekg-has-live-tags-p
@@ -1504,7 +1504,7 @@ times, if there's nothing to do, it won't have any affect. This
 will always make a backup, regardless of backup settings, and
 will not delete any backups, regardless of other settings."
   (interactive)
-  (ekg--connect)
+  (ekg-connect)
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (cl-loop for tag in (seq-filter #'iso8601-valid-p (ekg-tags))
            do
@@ -1515,7 +1515,7 @@ will not delete any backups, regardless of other settings."
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
-  (ekg--connect)
+  (ekg-connect)
   (triples-get-subject ekg-db tag))
 
 (defun ekg-remove-unused-tags ()
@@ -1540,7 +1540,7 @@ Specifically, this does a few things:
 1) Calls `ekg-remove-unused-tags' to remove all tags that no note is using.
 2) Remove any notes that have no content or almost no content."
   (interactive)
-  (ekg--connect)
+  (ekg-connect)
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (ekg-remove-unused-tags)
   (cl-loop for id in (triples-subjects-of-type ekg-db 'text) do

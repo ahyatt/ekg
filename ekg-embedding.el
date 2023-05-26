@@ -91,7 +91,7 @@ If called with a prefix arg, embeddings will be generated even if
 embeddings already exist. This is a fairly slow function, and may
 take minutes or hours depending on how much data there is.."
   (interactive "P")
-  (ekg--connect)
+  (ekg-connect)
   (let ((count 0))
        (cl-loop for s in (ekg-active-note-ids) do
                 (thread-yield)
@@ -104,7 +104,7 @@ take minutes or hours depending on how much data there is.."
                                                                       (substring-no-properties (ekg-note-text note)))))))
        (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
                 (ekg-embedding-refresh-tag-embedding s))
-       (triples-backups-maybe-backup ekg-db (ekg--db-file))
+       (triples-backups-maybe-backup ekg-db (ekg-db-file))
        (message "Generated %s embeddings" count)))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
@@ -194,7 +194,7 @@ The results are in order of most similar to least similar."
 (defun ekg-embedding-show-similar ()
   "Show similar notes to the current note in a new buffer."
   (interactive nil ekg-notes-mode)
-  (let ((note (ekg--current-note-or-error)))
+  (let ((note (ekg-current-note-or-error)))
     (ekg-setup-notes-buffer
      (format "similar to note \"%s\"" (ekg-note-snippet note))
      (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size)))
