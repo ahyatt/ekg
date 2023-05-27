@@ -349,7 +349,9 @@ The embeddings functionality can be turned on by requiring the embeddings file, 
 (require 'ekg-embedding)
 #+end_src
 
-This module contains functionality to explore similar notes and search using techniques associated with large language models. The idea behind an embedding is that it is an abstract representation of text, represented as a multi-dimensional vector. Because it is just a vector, you can compare the distance between different embeddings, and embedding vectors that are similar should represent similar concepts. This can be used to find similar notes, but also to search, where the search string is transformed into an embedding.
+This module contains functionality to explore similar notes and search using techniques associated with large language models.  Embeddings let you do searches at a semantic level, based on an understood meaning that is separate from the words used.  For example, if I have a note with a recipe for linguini, embeddings will let me see that it is similar to notes about spaghetti, and not similar to notes about cold fusion.  Because the search is not based on words, but meaning derived from those words, notes that describe the same thing in two different languages should be very similar.  In ekg these let you find notes similar to a current note, or in fact any buffer.  You can also do a query via embeddings.
+
+The idea behind an embedding is that it is an abstract representation of text, represented as a multi-dimensional vector. Because it is just a vector, you can compare the distance between different embeddings, and embedding vectors that are similar should represent similar concepts. This can be used to find similar notes, but also to search, where the search string is transformed into an embedding.
 
 Using embeddings in ekg are dependent on an API to transform text into embeddings. This is not something that can be done locally. Right now such APIs are rare, but Open AI does offer this, so this is what we support out of the box.
 
