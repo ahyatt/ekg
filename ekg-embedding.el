@@ -39,6 +39,14 @@ Needs to be recognized by `ekg-embedding'."
   :type '(symbol)
   :group 'ekg-embedding)
 
+(defcustom ekg-embedding-text-selector #'ekg-embedding-text-selector-initial
+  "Function to select the text of the embedding, which is necessary
+because there are usually token limits in the API calls. The
+function will be passed the full text and will return the text to
+pass to the embedding API."
+  :type '(function)
+  :group 'ekg-embedding)
+
 (defconst ekg-embedding-api-key nil
   "Key used to access whatever embedding API used.")
 
@@ -150,11 +158,31 @@ closer it is to 1, the more similar it is."
                 :sync t)))
     (cdr (assoc 'embedding (aref (cdr (assoc 'data (request-response-data resp))) 0)))))
 
+(defun ekg-embedding-text-selector-initial (text)
+  "Return the TEXT to use for generating embeddings.
+This is shortened to abide by token limits, using a conservative
+approach, since it is difficult to predict the number of tokens
+exactly."
+  (with-temp-buffer
+    (insert text)
+    (goto-char (point-min))
+    ;; The target number of words we want is 8191 (the open AI limit is 8192),
+    ;; divided by a factor of 1.5 to be conservative, since one word can be
+    ;; multiple tokens.
+    (let ((target-num-words (floor (/ 8191 1.5)))
+          (num-words 0))
+      (while (and (< num-words target-num-words)
+                  (not (eobp)))
+        (forward-word)
+        (cl-incf num-words))
+      (buffer-substring-no-properties (point-min) (point)))))
+
 (defun ekg-embedding (text)
   "Get an embedding of TEXT.
 Returns the vector representing the embedding."
-  (pcase ekg-embedding-provider
-    ('openapi (ekg-embedding-openai text))))
+  (let ((selected-text (funcall ekg-embedding-text-selector text)))
+    (pcase ekg-embedding-provider
+      ('openapi (ekg-embedding-openai text)))))
 
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."
