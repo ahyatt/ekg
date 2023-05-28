@@ -1516,7 +1516,7 @@ will not delete any backups, regardless of other settings."
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
   (ekg-connect)
-  (triples-get-subject ekg-db tag))
+  (triples-get-type ekg-db tag 'tag))
 
 (defun ekg-remove-unused-tags ()
   "Remove all tags that are not used and have no info."
