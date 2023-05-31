@@ -215,8 +215,9 @@ non-nil, it will be used as the filename, otherwise
       (triples-backups-setup ekg-db ekg-default-num-backups
                              ekg-default-backups-strategy))))
 
-(defun ekg--close ()
+(defun ekg-close ()
   "Close the EKG-DB connection."
+  (triples-close ekg-db)
   (setq ekg-db nil))
 
 (defun ekg-add-schema ()
