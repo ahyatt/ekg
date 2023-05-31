@@ -4,9 +4,9 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.2.7") (emacs "28.1"))
+;; Package-Requires: ((triples "0.3") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.3
+;; Version: 0.3.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -28,6 +28,7 @@
 
 (require 'triples)
 (require 'triples-backups)
+(require 'triples-upgrade)
 (require 'seq)
 (require 'ewoc)
 (require 'cl-lib)
@@ -1508,10 +1509,13 @@ will not delete any backups, regardless of other settings."
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (cl-loop for tag in (seq-filter #'iso8601-valid-p (ekg-tags))
            do
+           (message "Renaming date tag %s to date/%s" tag tag)
            (ekg-global-rename-tag tag (format "date/%s" tag)))
   (cl-loop for sub in (seq-uniq (mapcar #'car (triples-with-predicate ekg-db :reference/url)))
            do
-           (triples-db-delete ekg-db sub 'reference/url)))
+           (message "Adding reference tag to %s" sub)
+           (triples-db-delete ekg-db sub 'reference/url))
+  (triples-upgrade-to-0.3 ekg-db))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
