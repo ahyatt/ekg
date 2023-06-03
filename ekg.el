@@ -191,6 +191,10 @@ functions are passed in the ID of the note that is being deleted.")
 This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
+(defconst ekg-version "0.3.1"
+  "The version of ekg, used to understand when the database needs
+upgrading.")
+
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties inlines)
 
@@ -207,13 +211,19 @@ non-nil, it will be used as the filename, otherwise
     ekg-db-file))
 
 (defun ekg-connect ()
-  "Ensure EKG-DB is connected."
+  "Ensure EKG-DB is connected.
+Also make sure the database is set up correctly."
   (unless ekg-db
-    (setq ekg-db (triples-connect (ekg-db-file)))
-    (ekg-add-schema)
-    (unless (triples-backups-configuration ekg-db)
-      (triples-backups-setup ekg-db ekg-default-num-backups
-                             ekg-default-backups-strategy))))
+    (setq ekg-db (triples-connect (ekg-db-file))))
+  (let ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg)))
+    (when (or (null (plist-get ekg-plist :version))
+              (version-list-< (plist-get ekg-plist :version) (version-to-list ekg-version)))
+      (ekg-add-schema)
+      (ekg-upgrade-db (plist-get ekg-plist :version))
+      (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))))
+  (unless (triples-backups-configuration ekg-db)
+    (triples-backups-setup ekg-db ekg-default-num-backups
+                           ekg-default-backups-strategy)))
 
 (defun ekg-close ()
   "Close the EKG-DB connection."
@@ -248,6 +258,7 @@ non-nil, it will be used as the filename, otherwise
   ;; A URL can be a subject too, and has data, including the title. The title is
   ;; something that can be used to select the subject via completion.
   (triples-add-schema ekg-db 'titled '(title :base/type string))
+  (triples-add-schema ekg-db 'ekg '(version :base/type cons :base/unique t))
   (run-hooks 'ekg-add-schema-hook))
 
 (defun ekg--generate-id ()
@@ -1500,24 +1511,36 @@ This uses ISO 8601 format."
   "Get single tag representing the date as a ISO 8601 format."
   (list (ekg-tag-for-date)))
 
-(defun ekg-upgrade-db ()
-  "After updating, do any necessary upgrades needed by change in schema or use.
+(defun ekg-upgrade-db (from-version)
+  "After updating, do any necessary upgrades.
 This is designed so that it can be run an arbitrary number of
-times, if there's nothing to do, it won't have any affect. This
-will always make a backup, regardless of backup settings, and
-will not delete any backups, regardless of other settings."
-  (interactive)
-  (ekg-connect)
-  (triples-backup ekg-db ekg-db-file most-positive-fixnum)
-  (cl-loop for tag in (seq-filter #'iso8601-valid-p (ekg-tags))
-           do
-           (message "Renaming date tag %s to date/%s" tag tag)
-           (ekg-global-rename-tag tag (format "date/%s" tag)))
-  (cl-loop for sub in (seq-uniq (mapcar #'car (triples-with-predicate ekg-db :reference/url)))
-           do
-           (message "Adding reference tag to %s" sub)
-           (triples-db-delete ekg-db sub 'reference/url))
-  (triples-upgrade-to-0.3 ekg-db))
+times, if there's nothing to do, it won't have any affect. If an
+upgrade is needed, it will always make a backup, regardless of
+backup settings, and will not delete any backups, regardless of
+other settings. FROM-VERSION is the version of the database
+before the upgrade, in list form. TO-VERSION is the version of
+the database after the upgrade, in list form."
+  (let ((need-triple-0.3-upgrade
+         (or (null from-version)
+             (version-list-< from-version '(0 3 1)))))
+    ;; In the future, we can separate out the backup from the upgrades.
+    (when need-triple-0.3-upgrade
+      (triples-backup ekg-db ekg-db-file most-positive-fixnum)
+      ;; This converts all string integers in subjects and objects to real integers.
+      (triples-upgrade-to-0.3 ekg-db)
+      ;; The above may cause issues if there tags that are integers, since tags have
+      ;; to be strings. So let's iterate through all tag subjects and re-convert
+      ;; them to strings.
+      (cl-loop for tag in (triples-subjects-of-type ekg-db 'tag) do
+               (when (numberp tag)
+                 (ekg-global-rename-tag tag (format "%d" tag))))
+      ;; Also, we need to convert any text back to strings. We only need to do
+      ;; this for the builtin sqlite, since that's the only case that
+      ;; triples-upgrade-to-0.3 will do anything.
+      (when (eq 'builtin triples-sqlite-interface)
+        (sqlite-execute
+         ekg-db
+         "UPDATE OR IGNORE triples SET object = CAST(object AS TEXT) WHERE predicate = 'text/text' AND typeof(object) = 'integer'")))))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
