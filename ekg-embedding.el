@@ -182,7 +182,7 @@ exactly."
 Returns the vector representing the embedding."
   (let ((selected-text (funcall ekg-embedding-text-selector text)))
     (pcase ekg-embedding-provider
-      ('openapi (ekg-embedding-openai text)))))
+      ('openapi (ekg-embedding-openai selected-text)))))
 
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."
