@@ -95,7 +95,7 @@ However, we do pay attention to
 
 (defun ekg-org-roam-import ()
   "Import all data from org-roam into ekg."
-  (ekg--connect)
+  (ekg-connect)
   (triples-add-schema ekg-db 'org-roam '(id (:base/unique t)))
   (dolist (node (org-roam-node-list))
     (save-excursion
