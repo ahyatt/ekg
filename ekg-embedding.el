@@ -50,6 +50,11 @@ pass to the embedding API."
 (defconst ekg-embedding-api-key nil
   "Key used to access whatever embedding API used.")
 
+(defun ekg-embedding-connect ()
+  "Ensure the database is connected and ekg-embedding schema exists."
+  (ekg-connect)
+  (ekg-embedding-add-schema))
+
 (defun ekg-embedding-add-schema ()
   "Add the triples schema for storing embeddings."
   (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector)))
@@ -72,6 +77,7 @@ same size.  There must be at least one embedding passed in."
   "Calculate and set the embedding for NOTE.
 The caller is responsible for storing the embedding, this just
 updates NOTE."
+  (ekg-embedding-connect)
   (setf (ekg-note-properties note)
         (plist-put (ekg-note-properties note)
                    :embedding/embedding
@@ -99,7 +105,7 @@ If called with a prefix arg, embeddings will be generated even if
 embeddings already exist. This is a fairly slow function, and may
 take minutes or hours depending on how much data there is.."
   (interactive "P")
-  (ekg-connect)
+  (ekg-embedding-connect)
   (let ((count 0))
        (cl-loop for s in (ekg-active-note-ids) do
                 (thread-yield)
@@ -186,6 +192,7 @@ Returns the vector representing the embedding."
 
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."
+  (ekg-embedding-connect)
   (triples-remove-type ekg-db id 'embedding))
 
 (defun ekg-embedding-get (id)
@@ -222,6 +229,7 @@ The results are in order of most similar to least similar."
 (defun ekg-embedding-show-similar ()
   "Show similar notes to the current note in a new buffer."
   (interactive nil ekg-notes-mode)
+  (ekg-embedding-connect)
   (let ((note (ekg-current-note-or-error)))
     (ekg-setup-notes-buffer
      (format "similar to note \"%s\"" (ekg-note-snippet note))
@@ -231,6 +239,7 @@ The results are in order of most similar to least similar."
 (defun ekg-embedding-search (&optional text)
   "Show similar notes to the current note in a new buffer."
   (interactive "MSearch: ")
+  (ekg-embedding-connect)
   (ekg-setup-notes-buffer
      (format "similar to \"%s\"" text)
      (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
@@ -240,6 +249,7 @@ The results are in order of most similar to least similar."
 (defun ekg-embedding-show-similar-to-current-buffer ()
   "Show similar notes to the text in the current buffer."
   (interactive)
+  (ekg-embedding-connect)
   (ekg-setup-notes-buffer
      (format "similar to buffer \"%s\"" (buffer-name (current-buffer)))
      (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
@@ -248,8 +258,7 @@ The results are in order of most similar to least similar."
 
 (add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note)
 (add-hook 'ekg-note-delete-hook #'ekg-embedding-delete)
-(add-hook 'ekg-add-schema-hook #'ekg-embedding-add-schema)
 
 (provide 'ekg-embedding)
 
-;;; ekg-embedding.el ends here
+;;; ekg-embedding.el ends 

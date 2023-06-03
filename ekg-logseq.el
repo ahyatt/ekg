@@ -50,6 +50,11 @@
   :type 'directory
   :group 'ekg-logseq)
 
+(defun ekg-logseq-connect ()
+  "Connect to ekg and ensure logseq schema is set up."
+  (ekg-connect)
+  (ekg-logseq-add-schema))
+
 (defun ekg-logseq-add-schema ()
   "Add the logseq schema to the ekg database."
   (triples-add-schema ekg-db 'logseq
@@ -422,7 +427,7 @@ have already have information in logseq, you should run
   (interactive)
   (unless ekg-logseq-dir
     (error "ekg-logseq-dir must be set"))
-  (ekg-connect)
+  (ekg-logseq-connect)
   (let* ((deleted 0)
          (modified 0)
          (export-time (ekg-logseq-get-last-export))
@@ -465,12 +470,10 @@ logseq is marked as being part of logseq.
 
 All logic will be run in the background."
   (interactive)
-  (ekg-connect)
+  (ekg-logseq-connect)
   (message "ekg-logseeq-sync: Starting in the background")
   (ekg-logseq-import)
   (ekg-logseq-export))
-
-(add-hook 'ekg-add-schema-hook #'ekg-logseq-add-schema)
 
 (provide 'ekg-logseq)
 ;;; ekg-logseq.el ends here
