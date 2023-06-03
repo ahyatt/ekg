@@ -258,6 +258,11 @@
     (should (string-equal "tag1 tag2\ntext\nTitle\nCreated: 2023-04-21   Modified: 2023-04-22\n"
                           (ekg-display-note note)))))
 
+(ert-deftest ekg-test-note-snippet ()
+  (should (equal "" (ekg-note-snippet (ekg-note-create "" 'text-mode nil))))
+  (should (equal "foo" (ekg-note-snippet (ekg-note-create "foo" 'text-mode nil))))
+  (should (equal "foo…" (ekg-note-snippet (ekg-note-create "foo bar" 'text-mode nil) 3))))
+
 (ekg-deftest ekg-test-overlay-interaction-growth ()
   (let ((ekg-capture-auto-tag-funcs nil))
     (ekg-capture '("test"))
