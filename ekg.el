@@ -217,8 +217,9 @@ non-nil, it will be used as the filename, otherwise
 
 (defun ekg-close ()
   "Close the EKG-DB connection."
-  (triples-close ekg-db)
-  (setq ekg-db nil))
+  (when ekg-db
+    (triples-close ekg-db)
+    (setq ekg-db nil)))
 
 (defun ekg-add-schema ()
   "Add schema necessary for EKG to function."
