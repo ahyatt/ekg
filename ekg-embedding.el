@@ -86,6 +86,10 @@ updates NOTE."
   (cl-loop for tag in (ekg-note-tags note) do
            (ekg-embedding-refresh-tag-embedding tag)))
 
+(defun ekg-embedding-valid-p (embedding)
+  "Return non-nil if the embedding is valid."
+  (and (vectorp embedding) (> (reduce #'+ embedding) 0.0)))
+
 (defun ekg-embedding-refresh-tag-embedding (tag)
   "Refresh the embedding for TAG.
 The embedding for TAG is recomputed by averaging all the
@@ -94,7 +98,9 @@ embeddings of notes with the given tag."
                              (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
                              collect (plist-get (triples-get-type ekg-db tagged 'embedding)
                                                 :embedding))))
-    (triples-set-type ekg-db tag 'embedding :embedding (ekg-embedding-average embeddings))))
+    (triples-set-type ekg-db tag 'embedding
+                      :embedding (ekg-embedding-average
+                                  (seq-filter #'ekg-embedding-valid-p embeddings)))))
 
 (defun ekg-embedding-generate-all (arg)
   "Generate and store embeddings for every entity.
@@ -111,7 +117,7 @@ take minutes or hours depending on how much data there is.."
                 (thread-yield)
                 (let ((note (ekg-get-note-with-id s))
                       (embedding (triples-get-type ekg-db s 'embedding)))
-                  (when (and (or arg (null embedding))
+                  (when (and (or arg (not (ekg-embedding-valid-p embedding)))
                              (> (length (ekg-note-text note)) 0))
                     (cl-incf count)
                     (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
