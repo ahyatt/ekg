@@ -720,6 +720,7 @@ This is needed to identify references to refresh when the subject is changed." )
     (define-key map "p" #'ekg-notes-previous)
     (define-key map "t" #'ekg-notes-tag)
     (define-key map "q" #'kill-current-buffer)
+    (define-key map "k" #'ekg-notes-hide)
     map))
 
 (define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
@@ -1252,6 +1253,14 @@ tags."
   "Open the current note."
   (interactive nil ekg-notes-mode)
   (ekg-edit (ekg-current-note-or-error)))
+
+(defun ekg-notes-hide ()
+  "Hide the current note."
+  (interactive nil ekg-notes-mode)
+  (let ((note (ekg-current-note-or-error))
+	(inhibit-read-only t))
+    (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
+    (ekg--note-highlight)))
 
 (defun ekg-notes-delete (arg)
   "Delete the current note.
