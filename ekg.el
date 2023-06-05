@@ -1259,8 +1259,7 @@ tags."
 Note is not deleted from the database and will re-appear when the
 view is refreshed."
   (interactive nil ekg-notes-mode)
-  (let ((note (ekg-current-note-or-error))
-	(inhibit-read-only t))
+  (let ((inhibit-read-only t))
     (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
     (ekg--note-highlight)))
 

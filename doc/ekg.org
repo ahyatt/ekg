@@ -254,6 +254,8 @@ The notes buffer is navigated via the following commands (the default binding is
 
 =ekg-notes-any-tags= (=A=), open a new notes list showing any of the tags that appear in any of the notes in note list. In other words, if the buffer was displaying notes with tag =emacs=, and there are two notes displayed, one with tags =emacs= and =org-mode=, and the other with =emacs= and =ekg=, a new buffer displaying notes with any of the tags =emacs=, =org-mode=, or =ekg= is created.
 
+=ekg-notes-kill= (=k=), kill a note from the current view.  This only removes the note in the current buffer; the database is not changed.  If the view is refreshed, the note will come back.
+
 =q= will kill the notes buffer.
 
 Many of these commands use the notion that notes lists have associated lists of tags. That is the case for many commands, but not all. For example,
