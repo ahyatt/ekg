@@ -1542,7 +1542,7 @@ the database after the upgrade, in list form."
       (when (eq 'builtin triples-sqlite-interface)
         (sqlite-execute
          ekg-db
-         "UPDATE OR IGNORE triples SET object = CAST(object AS TEXT) WHERE predicate = 'text/text' AND typeof(object) = 'integer'")))))
+         "UPDATE OR IGNORE triples SET object = '\"' || CAST(object AS TEXT) || '\"' WHERE predicate = 'text/text' AND typeof(object) = 'integer'")))))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
