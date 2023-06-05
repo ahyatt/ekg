@@ -1255,8 +1255,9 @@ tags."
   (ekg-edit (ekg-current-note-or-error)))
 
 (defun ekg-notes-kill ()
-  "Kill/hide the current note from the view. Note is not deleted
-from the database and will re-appear when the view is refreshed."
+  "Kill/hide the current note from the view.
+Note is not deleted from the database and will re-appear when the
+view is refreshed."
   (interactive nil ekg-notes-mode)
   (let ((note (ekg-current-note-or-error))
 	(inhibit-read-only t))
