@@ -768,15 +768,19 @@ displayed.")
 (defvar-local ekg-notes-tags nil
   "List of associated tags for creating and removing notes.")
 
-(defun ekg-note-create (text mode tags)
-  "Create a new `ekg-note' with TEXT, MODE and TAGS."
-  (let* ((time (time-convert (current-time) 'integer)))
-    (make-ekg-note :id (ekg--generate-id)
+(cl-defun ekg-note-create (&key text mode tags properties id)
+  "Create a new `ekg-note' with TEXT, MODE, TAGS, PROPERTIES and ID."
+  (let* ((time (time-convert (current-time) 'integer))
+         (id (or id (ekg--generate-id)))
+         (text (or text ""))
+         (mode (or mode ekg-capture-default-mode)))
+    (make-ekg-note :id id
                    :text text
                    :mode mode
                    :tags tags
                    :creation-time time
-                   :modified-time time)))
+                   :modified-time time
+                   :properties properties)))
 
 (defun ekg--metadata-string-to-tag (s)
   "Return string S as a tag."
@@ -903,25 +907,29 @@ delete from the end of the metadata, we need to fix it back up."
     (when (eq major-mode 'org-mode)
       (setq-local org-element-use-cache nil))))
 
-(defun ekg-capture (&optional tags properties subject)
-  "Capture a new note, with TAGS and other PROPERTIES.
-If SUBJECT is given, force the triple subject to be that value."
+(cl-defun ekg-capture (&key text mode tags properties id)
+  "Capture a new note, with TEXT, MODE, TAGS and other PROPERTIES.
+If ID is given, force the triple subject to be that value."
   (interactive)
-  (let* ((subject (or subject (ekg--generate-id)))
-         (buf (get-buffer-create (format "*EKG Capture (note %s)*" subject))))
+  (let* ((id (or id (ekg--generate-id)))
+         (buf (get-buffer-create (format "*EKG Capture (note %s)*" id)))
+         (text (or text ""))
+         (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
+         (tags (seq-uniq (append tags auto-tags))))
     (set-buffer buf)
     (funcall ekg-capture-default-mode)
     (ekg-capture-mode 1)
     (setq ekg-note
-            (ekg-note-create nil ekg-capture-default-mode
-                             (seq-uniq (append
-                                        tags
-                                        (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs)))))
-    (setf (ekg-note-id ekg-note) subject)
-    (setf (ekg-note-properties ekg-note) properties)
+          (ekg-note-create :id id
+                           :text text
+                           :mode mode
+                           :tags tags
+                           :properties properties))
     (ekg-edit-display-metadata)
     (goto-char (point-max))
-    (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag)) (ekg-note-tags ekg-note))
+    (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag))
+          (ekg-note-tags ekg-note))
+    (insert text)
     (pop-to-buffer buf)))
 
 (defun ekg-capture-url (&optional url title)
@@ -933,9 +941,10 @@ However, if URL already exists, we edit the existing note on it."
         (existing (triples-get-subject ekg-db url)))
     (if existing
         (ekg-edit (ekg-get-note-with-id url))
-      (ekg-capture (list (concat "doc/" (downcase cleaned-title)))
-                     ;; Remove commas from the value.
-                   `(:titled/title ,cleaned-title) url))))
+      (ekg-capture :tags (list (concat "doc/" (downcase cleaned-title)))
+                   ;; Remove commas from the value.
+                   :properties `(:titled/title ,cleaned-title)
+                   :id url))))
 
 (defun ekg-change-mode (mode)
   "Change the mode to MODE of the current note."
@@ -1353,7 +1362,7 @@ NAME is displayed at the top of the buffer."
 (defun ekg-notes-create ()
   "Add a note that by default has all the tags in the buffer."
   (interactive nil ekg-notes-mode)
-  (ekg-capture ekg-notes-tags))
+  (ekg-capture :tags ekg-notes-tags))
 
 (defun ekg-notes-next ()
   "Move to the next note, if possible."

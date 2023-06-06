@@ -80,7 +80,7 @@
       (should (equal '("tag1") (ekg-note-tags note))))))
 
 (ert-deftest ekg-logseq-test-note-to-logseq ()
-  (let ((note (ekg-note-create "line1\nline2\n" 'org-mode '("tag1" "tag2" "tag3"))))
+  (let ((note (ekg-note-create :text "line1\nline2\n" :mode 'org-mode :tags '("tag1" "tag2" "tag3"))))
     (setf (ekg-note-id note) "123")
     (setf (ekg-note-modified-time note) 123456789)
     (should (equal
@@ -91,7 +91,7 @@
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
 (ert-deftest ekg-logseq-test-note-to-logseq-with-inlines ()
-  (let ((note (ekg-note-create " " 'org-mode '("tag1" "tag2" "tag3"))))
+  (let ((note (ekg-note-create :text " " :mode 'org-mode :tags '("tag1" "tag2" "tag3"))))
     (setf (ekg-note-id note) "123")
     (setf (ekg-note-modified-time note) 1682139975)
     (setf (ekg-note-creation-time note) 1682053575)
@@ -106,7 +106,7 @@
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
 (ert-deftest ekg-logseq-test-note-with-resource-and-title-to-logseq ()
-  (let ((note (ekg-note-create "line1\nline2\n" 'org-mode '("tag1" "tag2" "tag3"))))
+  (let ((note (ekg-note-create :text "line1\nline2\n" :mode 'org-mode :tags '("tag1" "tag2" "tag3"))))
     (setf (ekg-note-id note) "http://www.example.com")
     (setf (ekg-note-modified-time note) 123456789)
     (setf (ekg-note-properties note) '(:titled/title "Title"))
@@ -118,7 +118,7 @@
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
 (ert-deftest ekg-logseq-test-note-to-logseq-org-demotion ()
-  (let ((note (ekg-note-create "* Heading 1\n* Heading 2" 'org-mode nil)))
+  (let ((note (ekg-note-create :text "* Heading 1\n* Heading 2" :mode 'org-mode :tags nil)))
     (setf (ekg-note-id note) "123")
     (setf (ekg-note-modified-time note) 123456789)
     (should (equal
@@ -126,10 +126,10 @@
              (ekg-logseq-note-to-logseq-org note "tag3")))))
 
 (ert-deftest ekg-logseq-test-notes-to-logseq ()
-  (let ((note1 (ekg-note-create "note1" 'org-mode '("a" "b" "c")))
-        (note2 (ekg-note-create "note2" 'org-mode '("b" "a" "c")))
-        (note3 (ekg-note-create "" 'org-mode '("a" "b" "c")))
-        (note4 (ekg-note-create "note4" 'org-mode '("a" "b" "c" "trash/d"))))
+  (let ((note1 (ekg-note-create :text "note1" :mode 'org-mode :tags '("a" "b" "c")))
+        (note2 (ekg-note-create :text "note2" :mode 'org-mode :tags '("b" "a" "c")))
+        (note3 (ekg-note-create :text "" :mode 'org-mode :tags '("a" "b" "c")))
+        (note4 (ekg-note-create :text "note4" :mode 'org-mode :tags '("a" "b" "c" "trash/d"))))
     (setf (ekg-note-id note1) "1")
     (setf (ekg-note-modified-time note1) 123456789)
     (setf (ekg-note-id note4) "4")
@@ -162,7 +162,7 @@
 
 (ekg-deftest ekg-logseq-test-tags-with-notes-modified-since ()
   (cl-flet ((create (time tags)
-              (let ((note (ekg-note-create "" 'org-mode tags)))
+              (let ((note (ekg-note-create :text "" :mode 'org-mode :tags tags)))
                 (cl-letf (((symbol-function 'time-convert)
                            (lambda (&rest _) time)))
                   (ekg-save-note note)))))

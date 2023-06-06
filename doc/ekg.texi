@@ -586,7 +586,7 @@ The ekg package is designed to be easy to integrate with.  For example, if you w
 @lisp
 (defun my/log-to-ekg (text)
   "Log TEXT as a note to EKG's date"
-  (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))
+  (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(,(ekg-tag-for-date) "log"))))
 @end lisp
 
 @noindent
@@ -600,7 +600,7 @@ If you wanted to re-use an existing note and append to it, you can do that as we
         (progn
           (setf (ekg-note-text (car notes)) (concat (ekg-note-text (car notes)) "\n" text))
           (ekg-save-note (car notes)))
-      (ekg-save-note (ekg-note-create text 'text-mode `(,(ekg-tag-for-date) "log"))))))
+      (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(,(ekg-tag-for-date) "log"))))))
 @end lisp
 
 There isn't a special API, but the basic defuns such as @code{ekg-save-note}, @code{ekg-note-create-text}, @code{ekg-get-notes-with-tags}, @code{ekg-get-note-with-id}, along with the struct @code{ekg-note} are good starting points.  Capturing notes in different ways can be done by wrapping @code{ekg-capture}, and is how functions such as @code{ekg-capture-url} work.
