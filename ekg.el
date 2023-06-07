@@ -107,6 +107,11 @@ not in the template."
   :type 'string
   :group 'ekg)
 
+(defcustom ekg-notes-browse-func 'ekg--browse-url
+  "Function to browse the notes"
+  :type '(set function)
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -1274,13 +1279,24 @@ current note without a prompt."
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
 
-(defun ekg-notes-browse ()
-  "If the note is about a browseable resource, browse to it.
-For URLs, this will use `browse-url'."
+(defun ekg--browse-url (url)
+  "Open the URL.
+If the link is a web address, open in browser with `browse-url'.
+Otherwise, open in Emacs with `find-file'"
+  (let* ((struct (url-generic-parse-url url))
+         (full (url-fullness struct))
+         (file (car (url-path-and-query struct))))
+    (if full
+        (browse-url url)
+      (when (and file (> (length file) 0))
+        (find-file file)))))
+
+(defun ekg-notes-browse ()`
+  "If the note is about a browseable resource, browse to it."
   (interactive nil ekg-notes-mode)
   (let ((note (ekg-current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
-           (browse-url (ekg-note-id note))))))
+           (funcall ekg-notes-browse-func (ekg-note-id note))))))
 
 (defun ekg-notes-select-and-browse-url (title)
   "Browse one of all the resources in the current buffer.
