@@ -320,8 +320,8 @@ Ekg makes some effort to make sure that the user doesn't accidentally extend the
 Below is the property section is the note section. The text could be anything (or nothing). This is the body text of the note, where you write down whatever
 you want to note about, that is relevant to the tags for the note.
 
-There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}. More can be added by customizing the variable @code{ekg-capture-acceptable-modes}, just
-make sure its a mode that makes sense for notes. The default mode is configured in @code{ekg-capture-default-mode}, but can be changed when capturing with the command @samp{ekg-capture-change-mode}.
+There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}. More can be added by customizing the variable @code{ekg-acceptable-modes}, just
+make sure its a mode that makes sense for notes. The default mode is configured in @code{ekg-capture-default-mode}, but can be changed when capturing with the command @samp{ekg-change-mode}.
 
 @node A warning about org-mode
 @section A warning about org-mode
