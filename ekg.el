@@ -227,6 +227,7 @@ Also make sure the database is set up correctly."
 
 (defun ekg-close ()
   "Close the EKG-DB connection."
+  (interactive)
   (when ekg-db
     (triples-close ekg-db)
     (setq ekg-db nil)))
