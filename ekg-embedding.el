@@ -66,7 +66,7 @@ same size.  There must be at least one embedding passed in."
   ;; Remove all nil embeddings
   (let* ((embeddings (seq-filter #'identity embeddings))
          (v (make-vector (length (car embeddings)) 0)))
-    (cl-loop for e in embeddings do
+    (cl-loop for e in (seq-filter (lambda (e) (= (length e) (length v))) embeddings) do
              (cl-loop for i below (length e) do
                       (aset v i (+ (aref v i) (aref e i)))))
     (cl-loop for i below (length v) do
@@ -88,7 +88,11 @@ updates NOTE."
 
 (defun ekg-embedding-valid-p (embedding)
   "Return non-nil if the embedding is valid."
-  (and (vectorp embedding) (> (reduce #'+ embedding) 0.0)))
+  ;; If there's a 0, it can't be a valid embedding - we assume we have to have a
+  ;; non-zero value on every dimension of the embedding. This is likely true,
+  ;; but more likely 0s tend to indicate issues with how the embedding was
+  ;; obtained.
+  (and (vectorp embedding) (not (seq-contains-p (lambda (e) (= 0 e)) embedding))))
 
 (defun ekg-embedding-refresh-tag-embedding (tag)
   "Refresh the embedding for TAG.
