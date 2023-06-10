@@ -58,8 +58,15 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 #+end_src
 * Changelog
 ** Version 0.3.1
-- Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of the built-in sqlite *must* run =ekg-upgrade-db=.
+- Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of sqlite will have their database automatically upgraded.  A backup will always be made beforehand - you may want to find it (alongside your normal emacs backups), and make sure to keep it around in case the upgrade went wrong in some way.  *Important: if you created your database before this version on the built-in sqlite, and afterwards switched to emacsql, you must switch back to the built-in sqlite for the upgrade.*
+- Store the ekg version in the database so we know when we need to do updates in the future.
+- Remove older database updates that should no longer be needed.
 - Ensure we always are connected to the database before any call to the database happens.
+- Make ekg-close interactive.
+- Fixes to ignore bad embeddings which otherwise would cause errors.
+- Added the ability to kill notes in a notes view, which does not change the database, it only alters the view.  Thanks to Jay Rajput for the contribution!
+- Fix for tag cleanups, which were sometimes not cleaned up if the tag had other data (such as embeddings).
+- Added variable =ekg-embedding-text-selector= with a default function so that large notes can have their embeddings taken.
 ** Version 0.3
 - Added inline commands, see the [[#inlines][inlines]] section for more detail.
 - Added customization of note display, using inline commands.
@@ -366,6 +373,8 @@ Important: *your API key is a secret key, so do not store it anywhere it can be 
 
 Once you have this set up, and you have already called ~(require 'ekg-embedding)~ you can call =M-x ekg-embedding-generate-all=. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in =ekg-notes-mode=, =ekg-embedding-show-similar= to get a list of similar notes. You can also call =ekg-embedding-search= to perform a search over your notes using embeddings.  In any buffer, you can call =ekg-embedding-show-similar-to-current-buffer= to similar notes to whatever the text is in the curent buffer.
+
+The variable =ekg-embedding-text-selector= has a value that is a function that will pre-process all text that is sent for embeddings.  The default value is =ekg-embedding-text-selector-initial=, which will estimate the size of the tokens sent and limit the text to the first 8k tokens.  Right now the function is tuned to the limits of Open AI's embedding framework, and a different function may be needed for other embedding APIs.
 ** Logseq
 :PROPERTIES:
 :CUSTOM_ID: logseq

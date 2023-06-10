@@ -174,9 +174,23 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 
 @itemize
 @item
-Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of the built-in sqlite @strong{must} run @samp{ekg-upgrade-db}.
+Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of sqlite will have their database automatically upgraded.  A backup will always be made beforehand - you may want to find it (alongside your normal emacs backups), and make sure to keep it around in case the upgrade went wrong in some way.  @strong{Important: if you created your database before this version on the built-in sqlite, and afterwards switched to emacsql, you must switch back to the built-in sqlite for the upgrade.}
+@item
+Store the ekg version in the database so we know when we need to do updates in the future.
+@item
+Remove older database updates that should no longer be needed.
 @item
 Ensure we always are connected to the database before any call to the database happens.
+@item
+Make ekg-close interactive.
+@item
+Fixes to ignore bad embeddings which otherwise would cause errors.
+@item
+Added the ability to kill notes in a notes view, which does not change the database, it only alters the view.  Thanks to Jay Rajput for the contribution!
+@item
+Fix for tag cleanups, which were sometimes not cleaned up if the tag had other data (such as embeddings).
+@item
+Added variable @samp{ekg-embedding-text-selector} with a default function so that large notes can have their embeddings taken.
 @end itemize
 
 @node Version 03
@@ -626,6 +640,8 @@ Important: @strong{your API key is a secret key, so do not store it anywhere it 
 
 Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the text is in the curent buffer.
+
+The variable @samp{ekg-embedding-text-selector} has a value that is a function that will pre-process all text that is sent for embeddings.  The default value is @samp{ekg-embedding-text-selector-initial}, which will estimate the size of the tokens sent and limit the text to the first 8k tokens.  Right now the function is tuned to the limits of Open AI's embedding framework, and a different function may be needed for other embedding APIs.
 
 @node Logseq
 @section Logseq
