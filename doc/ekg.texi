@@ -175,6 +175,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @itemize
 @item
 Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of the built-in sqlite @strong{must} run @samp{ekg-upgrade-db}.
+@item
+Ensure we always are connected to the database before any call to the database happens.
 @end itemize
 
 @node Version 03

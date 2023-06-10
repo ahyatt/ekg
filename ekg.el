@@ -212,7 +212,9 @@ non-nil, it will be used as the filename, otherwise
 
 (defun ekg-connect ()
   "Ensure EKG-DB is connected.
-Also make sure the database is set up correctly."
+Also make sure the database is set up correctly. This should be
+called before any access to triples, unless we are sure all
+callers have already called this function"
   (unless ekg-db
     (setq ekg-db (triples-connect (ekg-db-file))))
   (let ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg)))
@@ -343,11 +345,13 @@ This returns only notes that have all the tags in TAGS."
 
 (defun ekg-note-with-id-exists-p (id)
   "Return non-nil if a note with ID exists."
+  (ekg-connect)
   (triples-get-subject ekg-db id))
 
 (defun ekg-get-note-with-id (id)
   "Get the specific note with ID.
 If the ID does not exist, create a new note with that ID."
+  (ekg-connect)
   (let* ((v (triples-get-subject ekg-db id))
          (inlines (mapcar (lambda (iid)
                             (let ((iv (triples-get-type ekg-db iid
@@ -379,6 +383,7 @@ If the ID does not exist, create a new note with that ID."
 
 (defun ekg-note-delete (id)
   "Delete all note data associated with ID."
+  (ekg-connect)
   (run-hook-with-args 'ekg-note-pre-delete-hook id)
   (triples-with-transaction
     ekg-db
@@ -391,6 +396,7 @@ If the ID does not exist, create a new note with that ID."
 
 (defun ekg-tag-delete (tag)
   "Delete all tag data associated with tag."
+  (ekg-connect)
   (triples-remove-type ekg-db tag 'tag))
 
 (defun ekg-note-trash (note)
@@ -398,6 +404,7 @@ If the ID does not exist, create a new note with that ID."
 This prepends all tags with `trash/'. This can be garbage
 collected at a later time. If all tags are trash tags, then the
 note is really deleted."
+  (ekg-connect)
   (triples-with-transaction
     ekg-db
     (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
@@ -411,6 +418,7 @@ note is really deleted."
 
 (defun ekg-has-live-tags-p (sub)
   "Return non-nil if SUB represents an undeleted note."
+  (ekg-connect)
   (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag))) (plist-get (triples-get-type ekg-db sub 'tagged) :tag)))
 
 (defun ekg-extract-inlines (text)
@@ -907,6 +915,7 @@ If SUBJECT is given, force the triple subject to be that value."
   "Capture a new note given a URL and its TITLE.
 However, if URL already exists, we edit the existing note on it."
   (interactive "MURL: \nMTitle: \n")
+  (ekg-connect)
   (let ((cleaned-title (string-replace "," "" title))
         (existing (triples-get-subject ekg-db url)))
     (if existing
@@ -1157,6 +1166,7 @@ renames all instances of the tag globally, and all notes with
 FROM-TAG will use TO-TAG."
   (interactive (list (completing-read "From tag: " (ekg-tags))
                      (completing-read "To tag: " (ekg-tags))))
+  (ekg-connect)
   (triples-with-transaction
     ekg-db
     (pcase triples-sqlite-interface
@@ -1192,6 +1202,7 @@ The tags are separated by spaces."
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
+  (ekg-connect)
   (let* ((ic (ekg-extract-inlines ekg-display-note-template))
          (template-types (mapcan (lambda (i)
                                    (when (eq 'note (ekg-inline-type i))
@@ -1406,6 +1417,7 @@ are created with additional tags TAGS."
 (defun ekg-show-notes-in-trash ()
   "Show notes that have only tags that are trashed."
   (interactive)
+  (ekg-connect)
   (ekg-setup-notes-buffer
    "Trash"
    (lambda () (mapcar #'ekg-get-note-with-id
@@ -1480,6 +1492,7 @@ If no corresponding URL is found, an error is thrown."
                                          (when (ffap-url-p (car tcons))
                                            (list (cdr tcons))))
                                        (ekg-document-titles)))))
+  (ekg-connect)
   (let ((subjects (seq-filter #'ffap-url-p (triples-subjects-with-predicate-object ekg-db 'titled/title title))))
     (when (= 0 (length subjects)) (error "Could not fetch existing URL title: %s" title))
     (when (> (length subjects) 1) (warn "Multiple URLs with the same title exist: %s" title))
@@ -1493,6 +1506,7 @@ If no corresponding URL is found, an error is thrown."
 (defun ekg-active-note-ids ()
   "Get a list of ekg-note objects, representing all active notes.
 Active in this context means non-trashed."
+  (ekg-connect)
   (seq-filter #'ekg-has-live-tags-p (triples-subjects-of-type ekg-db 'text)))
 
 (defun ekg-on-add-tag-insert-template (tag)
@@ -1536,6 +1550,7 @@ the database after the upgrade, in list form."
   (let ((need-triple-0.3-upgrade
          (or (null from-version)
              (version-list-< from-version '(0 3 1)))))
+    (ekg-connect)
     ;; In the future, we can separate out the backup from the upgrades.
     (when need-triple-0.3-upgrade
       (triples-backup ekg-db ekg-db-file most-positive-fixnum)

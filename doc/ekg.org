@@ -59,6 +59,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 * Changelog
 ** Version 0.3.1
 - Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of the built-in sqlite *must* run =ekg-upgrade-db=.
+- Ensure we always are connected to the database before any call to the database happens.
 ** Version 0.3
 - Added inline commands, see the [[#inlines][inlines]] section for more detail.
 - Added customization of note display, using inline commands.
