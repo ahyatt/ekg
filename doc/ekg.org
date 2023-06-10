@@ -137,8 +137,8 @@ Ekg makes some effort to make sure that the user doesn't accidentally extend the
 Below is the property section is the note section. The text could be anything (or nothing). This is the body text of the note, where you write down whatever
 you want to note about, that is relevant to the tags for the note.
 
-There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=. More can be added by customizing the variable ~ekg-capture-acceptable-modes~, just
-make sure its a mode that makes sense for notes. The default mode is configured in ~ekg-capture-default-mode~, but can be changed when capturing with the command =ekg-capture-change-mode=.
+There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=. More can be added by customizing the variable ~ekg-acceptable-modes~, just
+make sure its a mode that makes sense for notes. The default mode is configured in ~ekg-capture-default-mode~, but can be changed when capturing with the command =ekg-change-mode=.
 ** A warning about org-mode
 Org-mode notes are primarily to use org-mode formatting on. Org-mode has a lot of funtionality, but much of it depends on the assumption that the buffer is all for use by org-mode (not true in this case, because of the properties portion), and the assumption that the buffer is visiting a file, which is also not true. In particular, attachments will not work, and ekg-notes cannot be added to the agenda.
 * Capturing notes
