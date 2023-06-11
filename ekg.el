@@ -36,6 +36,7 @@
 (require 'ffap)
 (require 'hl-line)
 (require 'iso8601)
+(require 'url-parse)
 
 ;;; Code:
 
@@ -107,8 +108,8 @@ not in the template."
   :type 'string
   :group 'ekg)
 
-(defcustom ekg-notes-browse-func 'ekg--browse-url
-  "Function to browse the notes"
+(defcustom ekg-notes-browse-func 'ekg--browse-url-or-find-file
+  "Function to browse the notes."
   :type '(set function)
   :group 'ekg)
 
@@ -1279,7 +1280,7 @@ current note without a prompt."
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
 
-(defun ekg--browse-url (url)
+(defun ekg--browse-url-or-find-file (url)
   "Open the URL.
 If the link is a web address, open in browser with `browse-url'.
 Otherwise, open in Emacs with `find-file'"

@@ -185,9 +185,9 @@ When capturing file URL make sure to prefix it with =file= scheme. You can wrap 
       (ekg-capture-url file title)))
 #+end_src
 
-By default, Ekg uses its own simple note browsing function which opens web addresses in browser using =browse-url= and everything else in Emacs using =find-file=.
+By default, ekg uses its own simple note browsing function which opens web addresses in browser using =browse-url= and everything else in Emacs using =find-file=.
 
-Users who want to benefit from the more advanced URL/link browsing that is common in interactions with Org mode, can set the user option =ekg-notes-browse-func= to =org-link-open-from-string=.
+Users who want to benefit from the more advanced URL/link browsing that is common in interactions with Org mode, can set the user option =ekg-notes-browse-func= to =org-link-open-from-string=. User needs to take care of aligning the =my/ekg-capture-file= wrapper over =ekg-capture-url= accordingly to provide appropriate formatted file value as needed by the =ekg-notes-browse-func=. The current example =my/ekg-capture-file= works fine for the =ekg-notes-browse-func= set to =org-link-open-from-string= for basic usage in my workflow, but your mileage may wary.
 
 #+texinfo: @noindent
 A final way to capture notes comes from a buffer that is viewing a list of notes, in =ekg-notes-mode=. You can call =ekg-notes-create=, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
