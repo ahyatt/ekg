@@ -381,6 +381,11 @@ If the ID does not exist, create a new note with that ID."
                                                  :time-tracked/modified-time)))) v)
                                 'plist))))
 
+(defun ekg-get-notes-with-title (title)
+  "Get a list of note structs with TITLE."
+  (ekg-connect)
+  (mapcar #'ekg-get-note-with-id (triples-subjects-with-predicate-object ekg-db 'titled/title title)))
+
 (defun ekg-note-delete (id)
   "Delete all note data associated with ID."
   (ekg-connect)

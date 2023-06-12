@@ -191,6 +191,8 @@ Added the ability to kill notes in a notes view, which does not change the datab
 Fix for tag cleanups, which were sometimes not cleaned up if the tag had other data (such as embeddings).
 @item
 Added variable @samp{ekg-embedding-text-selector} with a default function so that large notes can have their embeddings taken.
+@item
+Added @samp{ekg-get-notes-with-title}, which is offered as a useful function for clients.
 @end itemize
 
 @node Version 03

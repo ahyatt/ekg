@@ -67,6 +67,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 - Added the ability to kill notes in a notes view, which does not change the database, it only alters the view.  Thanks to Jay Rajput for the contribution!
 - Fix for tag cleanups, which were sometimes not cleaned up if the tag had other data (such as embeddings).
 - Added variable =ekg-embedding-text-selector= with a default function so that large notes can have their embeddings taken.
+- Added =ekg-get-notes-with-title=, which is offered as a useful function for clients.
 ** Version 0.3
 - Added inline commands, see the [[#inlines][inlines]] section for more detail.
 - Added customization of note display, using inline commands.
