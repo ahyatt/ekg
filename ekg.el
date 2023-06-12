@@ -1275,7 +1275,7 @@ current note without a prompt."
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
 
-(defun ekg-notes-browse ()`
+(defun ekg-notes-browse ()
   "If the note is about a browseable resource, browse to it.
 
 If the link is a web address, open in browser with `browse-url'.
