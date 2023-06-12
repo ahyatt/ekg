@@ -1543,6 +1543,13 @@ This uses ISO 8601 format."
   "Get single tag representing the date as a ISO 8601 format."
   (list (ekg-tag-for-date)))
 
+(defun ekg-force-upgrade ()
+  "Force an upgrade of the ekg database.
+This calls `ekg-upgrade-db', but insures that it does all
+necessary upgrades."
+  (interactive)
+  (ekg-upgrade-db nil))
+
 (defun ekg-upgrade-db (from-version)
   "After updating, do any necessary upgrades.
 This is designed so that it can be run an arbitrary number of
