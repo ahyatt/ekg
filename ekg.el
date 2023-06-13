@@ -229,7 +229,7 @@ non-nil, it will be used as the filename, otherwise
                    (unless (triples-backups-configuration ekg-db)
                      (triples-backups-setup ekg-db ekg-default-num-backups
                                             ekg-default-backups-strategy)))
-          (setq ekg--in-connect-call nil))))))
+          (setq ekg--in-connect-call nil)))))
   "Ensure EKG-DB is connected.
 Also make sure the database is set up correctly. This should be
 called before any access to triples, unless we are sure all
