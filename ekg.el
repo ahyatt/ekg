@@ -210,22 +210,30 @@ non-nil, it will be used as the filename, otherwise
       ekg-db-file-obsolete
     ekg-db-file))
 
-(defun ekg-connect ()
+;; `ekg-connect' will do things that might themselves call `ekg-connect', so we
+;; need to protect against an infinite recursion.
+(defalias 'ekg-connect
+  (let ((ekg--in-connect-call))
+    (lambda ()
+      (unless ekg--in-connect-call
+        (setq ekg--in-connect-call t)
+        (unwind-protect
+            (progn (unless ekg-db
+                     (setq ekg-db (triples-connect (ekg-db-file))))
+                   (let ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg)))
+                     (when (or (null (plist-get ekg-plist :version))
+                               (version-list-< (plist-get ekg-plist :version) (version-to-list ekg-version)))
+                       (ekg-add-schema)
+                       (ekg-upgrade-db (plist-get ekg-plist :version))
+                       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))))
+                   (unless (triples-backups-configuration ekg-db)
+                     (triples-backups-setup ekg-db ekg-default-num-backups
+                                            ekg-default-backups-strategy)))
+          (setq ekg--in-connect-call nil))))))
   "Ensure EKG-DB is connected.
 Also make sure the database is set up correctly. This should be
 called before any access to triples, unless we are sure all
-callers have already called this function"
-  (unless ekg-db
-    (setq ekg-db (triples-connect (ekg-db-file))))
-  (let ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg)))
-    (when (or (null (plist-get ekg-plist :version))
-              (version-list-< (plist-get ekg-plist :version) (version-to-list ekg-version)))
-      (ekg-add-schema)
-      (ekg-upgrade-db (plist-get ekg-plist :version))
-      (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))))
-  (unless (triples-backups-configuration ekg-db)
-    (triples-backups-setup ekg-db ekg-default-num-backups
-                           ekg-default-backups-strategy)))
+callers have already called this function")
 
 (defun ekg-close ()
   "Close the EKG-DB connection."
