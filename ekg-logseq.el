@@ -339,10 +339,10 @@ TAG is the current tag being imported in logseq."
                     (rx (seq "{{embed" (* space) "(("
                              (group-n 1 (1+ (not ")"))) "))}}"))
                     "%(transclude-note \"\\1\")" text)))
-         (note (ekg-note-create (car in-cons)
-                                (when (eq major-mode 'org-mode)
-                                  'org-mode 'markdown-mode)
-                                (cons tag (ekg-logseq--to-import-tags text)))))
+         (note (ekg-note-create :text (car in-cons)
+                                :mode (when (eq major-mode 'org-mode)
+                                        'org-mode 'markdown-mode)
+                                :tags (cons tag (ekg-logseq--to-import-tags text)))))
     (setf (ekg-note-inlines note)
           ;; These must all be transclusion commands, check each id (the first
           ;; argument) against the database to understand whether it should be
