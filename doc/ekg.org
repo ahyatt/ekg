@@ -173,7 +173,28 @@ Title: An example URL
   (ekg-capture-url
    (do-applescript "tell application \"Google Chrome\" to return URL of active tab of front window")
    (do-applescript "tell application \"Google Chrome\" to return Title of active tab of front window")))
+ #+end_src
+
+#+texinfo: @noindent
+URL can also point to local files which will be browsed using =find-file= by default. The idea is that you can tag files and folders to make them easier to find. Here is an example note similar to web address URL:
+
+#+begin_quote
+Resource: file:~/notes/20230510T162600__emacs_init-file.org
+Tags: doc/emacs config, date/2023-05-13, emacs/init
+Title: Emacs Config
+#+end_quote
+
+When capturing file URL make sure to prefix it with =file= scheme. You can wrap it in a function to supply the name and url of the file to have a much easier experience. The following is an example.
+
+#+begin_src emacs-lisp
+  (defun my/ekg-capture-file (file title)
+    (interactive "fFile: \nsTitle: ")
+    (let* ((file (format "file:%s" (string-trim file)))
+	   (title (if (string-empty-p title) file (string-trim title))))
+      (ekg-capture-url file title)))
 #+end_src
+
+Ekg opens web addresses in browser using =browse-url= and everything else in Emacs using =find-file=.
 
 #+texinfo: @noindent
 A final way to capture notes comes from a buffer that is viewing a list of notes, in =ekg-notes-mode=. You can call =ekg-notes-create=, which will capture a new note with whatever tags (if any) are associated with the notes buffer.

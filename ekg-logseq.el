@@ -471,7 +471,7 @@ logseq is marked as being part of logseq.
 All logic will be run in the background."
   (interactive)
   (ekg-logseq-connect)
-  (message "ekg-logseeq-sync: Starting in the background")
+  (message "ekg-logseq-sync: Starting in the background")
   (ekg-logseq-import)
   (ekg-logseq-export))
 

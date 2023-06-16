@@ -36,6 +36,7 @@
 (require 'ffap)
 (require 'hl-line)
 (require 'iso8601)
+(require 'url-parse)
 
 ;;; Code:
 
@@ -1302,11 +1303,20 @@ current note without a prompt."
 
 (defun ekg-notes-browse ()
   "If the note is about a browseable resource, browse to it.
-For URLs, this will use `browse-url'."
+
+If the link is a web address, open in browser with `browse-url'.
+Otherwise, open in Emacs with `find-file'."
   (interactive nil ekg-notes-mode)
   (let ((note (ekg-current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
-           (browse-url (ekg-note-id note))))))
+           (let* ((url (ekg-note-id note))
+		  (struct (url-generic-parse-url url))
+		  (full (url-fullness struct))
+		  (file (car (url-path-and-query struct))))
+	     (if full
+		 (browse-url url)
+	       (when (and file (> (length file) 0))
+		 (find-file file))))))))
 
 (defun ekg-notes-select-and-browse-url (title)
   "Browse one of all the resources in the current buffer.
