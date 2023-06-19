@@ -93,6 +93,14 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
   :type '(string :tag "tag")
   :group 'ekg)
 
+(defcustom ekg-tag-edit-function-tag "tag-defun"
+  "Special tag that holds code run in note buffers with cotags.
+This takes affect on the note buffer when editing or capturing,
+and will take effect for all other tags on the same note that
+holds this tag."
+  :type '(string :tag "tag")
+  :group 'ekg)
+
 (defcustom ekg-note-inline-max-words 500
   "How many words to display for inlines if the caller does not specify."
   :type 'integer
@@ -930,6 +938,7 @@ If ID is given, force the triple subject to be that value."
     (goto-char (point-max))
     (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag))
           (ekg-note-tags ekg-note))
+    (mapc #'ekg-maybe-apply-edit-function (ekg-note-tags ekg-note))
     (insert text)
     (pop-to-buffer buf)))
 
@@ -970,7 +979,9 @@ However, if URL already exists, we edit the existing note on it."
         (funcall (ekg-note-mode note)))
       (ekg-edit-mode 1)
       (setq-local completion-at-point-functions
-                  (cons #'ekg--capf completion-at-point-functions)
+                  (append (list #'ekg--capf
+                                #'ekg--transclude-titled-note-completion)
+                          completion-at-point-functions)
                   header-line-format
                   (substitute-command-keys
                    "\\<ekg-edit-mode-map>Edit buffer.  Finish \
@@ -980,7 +991,8 @@ However, if URL already exists, we edit the existing note on it."
       (ekg-edit-display-metadata)
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
-      (goto-char (+ 1 (overlay-end (ekg--metadata-overlay)))))
+      (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
+      (mapc #'ekg-maybe-apply-edit-function (ekg-note-tags ekg-note)))
     (pop-to-buffer buf)))
 
 (defun ekg--save-note-in-buffer ()
@@ -1071,7 +1083,8 @@ Argument FINISHED is non-nil if the user has chosen a completion."
         (replace-match (format ", %s" completion)))
       (when (search-backward (format ":%s" completion) (line-beginning-position) t)
         (replace-match (format ": %s" completion)))
-      (run-hook-with-args 'ekg-note-add-tag-hook completion))))
+      (run-hook-with-args 'ekg-note-add-tag-hook completion)
+      (ekg-maybe-apply-edit-function completion))))
 
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
@@ -1569,6 +1582,18 @@ This uses ISO 8601 format."
 (defun ekg-date-tag ()
   "Get single tag representing the date as a ISO 8601 format."
   (list (ekg-tag-for-date)))
+
+;; "Magic" tag functions that take effect on editing or capturing a note.
+(defun ekg-maybe-apply-edit-function (tag)
+  "Apply edit function for TAG, if it exists.
+The tag value in `ekg-tag-edit-function-tag' is treated specially
+here - it ensures the mode is `emacs-lisp-mode.'"
+  (if (equal tag ekg-tag-edit-function-tag)
+      (unless (eq major-mode 'emacs-lisp-mode)
+        (ekg-change-mode "emacs-lisp-mode"))
+    (mapc #'eval
+          (mapcar #'read
+                  (mapcar #'ekg-note-text (ekg-get-notes-with-tags (list tag ekg-tag-edit-function-tag)))))))
 
 (defun ekg-force-upgrade ()
   "Force an upgrade of the ekg database.
