@@ -931,6 +931,7 @@ If ID is given, force the triple subject to be that value."
     (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag))
           (ekg-note-tags ekg-note))
     (insert text)
+    (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
 (defun ekg-capture-url (&optional url title)
@@ -981,6 +982,7 @@ However, if URL already exists, we edit the existing note on it."
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay)))))
+    (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
 (defun ekg--save-note-in-buffer ()
@@ -1359,7 +1361,8 @@ NAME is displayed at the top of the buffer."
     (overlay-put ekg-notes-hl 'face hl-line-face)
     ;; Move past the title
     (forward-line 1)
-    (ekg--note-highlight)))
+    (ekg--note-highlight))
+  (set-buffer-modified-p nil))
 
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
