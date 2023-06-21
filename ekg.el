@@ -923,11 +923,11 @@ The ID represents meaningful resource to the user, other than auto-generated id.
             (overlays-in (point-min) (point-max))))
       (make-overlay (point-min) (point-max) nil nil t)))
 
-(defun ekg--metadata-on-insert-behind (_ after begin-mod eng-mod &optional _)
+(defun ekg--metadata-on-insert-behind (_ after begin-mod end-mod &optional _)
   "Make sure nothing is inserted behind the metadata overlay.
 Also make sure we always have a line with which the user can add text."
   (when after
-    (delete-region begin-mod eng-mod)
+    (delete-region begin-mod end-mod)
     (when (= (point) (point-max))
       (insert "\n"))))
 
