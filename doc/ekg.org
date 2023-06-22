@@ -57,6 +57,8 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.3.2
+- Upgrade to triples version 0.3.2, which contains important bug fixes.
 ** Version 0.3.1
 - Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of sqlite will have their database automatically upgraded.  A backup will always be made beforehand - you may want to find it (alongside your normal emacs backups), and make sure to keep it around in case the upgrade went wrong in some way.  *Important: if you created your database before this version on the built-in sqlite, and afterwards switched to emacsql, you must switch back to the built-in sqlite for the upgrade.*
 - Store the ekg version in the database so we know when we need to do updates in the future.

@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.3.2") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.3.1
+;; Version: 0.3.2
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -192,7 +192,7 @@ functions are passed in the ID of the note that is being deleted.")
 This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
-(defconst ekg-version "0.3.1"
+(defconst ekg-version "0.3.2"
   "The version of ekg, used to understand when the database needs
 upgrading.")
 
@@ -1591,7 +1591,10 @@ before the upgrade, in list form. TO-VERSION is the version of
 the database after the upgrade, in list form."
   (let ((need-triple-0.3-upgrade
          (or (null from-version)
-             (version-list-< from-version '(0 3 1)))))
+             ;; We have done upgrades to 0.3.1, but we want to re-do them for
+             ;; additional bugfixes. There should be no downside to doing the
+             ;; upgrade many times.
+             (version-list-< from-version '(0 3 2)))))
     (ekg-connect)
     ;; In the future, we can separate out the backup from the upgrades.
     (when need-triple-0.3-upgrade
