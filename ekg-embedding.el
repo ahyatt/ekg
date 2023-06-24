@@ -82,7 +82,7 @@ updates NOTE."
         (plist-put (ekg-note-properties note)
                    :embedding/embedding
                    (ekg-embedding (substring-no-properties
-                                   (ekg-display-note note)))))
+                                   (ekg-display-note-text note)))))
   (cl-loop for tag in (ekg-note-tags note) do
            (ekg-embedding-refresh-tag-embedding tag)))
 
