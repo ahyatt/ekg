@@ -44,6 +44,7 @@ The README is also informative, has screenshots, and can be found in the source 
 * Understanding and editing the note buffer::
 * Capturing notes::
 * Viewing tags or notes::
+* Magic tags::
 * The trash::
 * Links to ekg in org-mode::
 * Importing from org-roam::
@@ -65,6 +66,7 @@ Installation
 
 Changelog
 
+* Version 0.4: Version 04. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
 * Version 0.2.1: Version 021. 
@@ -163,11 +165,20 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
+* Version 0.4: Version 04. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 04
+@section Version 0.4
+
+@itemize
+@item
+Added "magic tags", tags that cause elisp to be executed.  See the @ref{Magic tags, , magic tags} section for more detail.
+@end itemize
 
 @node Version 031
 @section Version 0.3.1
@@ -375,6 +386,28 @@ Capturing URLs is a bit clunky as is, if you can wrap it in a function to  suppl
 @end lisp
 
 @noindent
+URL can also point to local files which will be browsed using @samp{find-file} by default. The idea is that you can tag files and folders to make them easier to find. Here is an example note similar to web address URL:
+
+@quotation
+Resource: @uref{file:///Users/andrewhyatt/notes/20230510T162600__emacs_init-file.org}
+Tags: doc/emacs config, date/2023-05-13, emacs/init
+Title: Emacs Config
+
+@end quotation
+
+When capturing file URL make sure to prefix it with @samp{file} scheme. You can wrap it in a function to supply the name and url of the file to have a much easier experience. The following is an example.
+
+@lisp
+(defun my/ekg-capture-file (file title)
+  (interactive "fFile: \nsTitle: ")
+  (let* ((file (format "file:%s" (string-trim file)))
+     (title (if (string-empty-p title) file (string-trim title))))
+    (ekg-capture-url file title)))
+@end lisp
+
+Ekg opens web addresses in browser using @samp{browse-url} and everything else in Emacs using @samp{find-file}.
+
+@noindent
 A final way to capture notes comes from a buffer that is viewing a list of notes, in @samp{ekg-notes-mode}. You can call @samp{ekg-notes-create}, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
 
 @noindent
@@ -511,6 +544,22 @@ Many of these commands use the notion that notes lists have associated lists of 
 The main way to customize displays is via the variable @code{ekg-display-note-template}, which is a string that has inline commands in it (normally inline note commands).  See the @ref{Inline commands, , inlines} section for more details on these commands.  Through changing this, the ordering or inclusion of various type-related information can be configured, or extra text added, or anything, really.
 
 The variable @code{ekg-format-funcs} has functions to run to format what ekg displays to the user. They are each run on a temporary buffer with the note text in it, and can make whatever changes necessary before they are displayed in a note list.
+
+@node Magic tags
+@chapter Magic tags
+
+Sometimes you want to have behaviors that are associated with particular tags.  For example, if some of your notes are in Chinese, you may want to have tag them all with the same tag.  Going further, it might be nice to have all notes tagged with "chinese", have your favorite Chinese input method on by default.  With magic tags, you can enable this tag-based customization.
+
+This works in a similar manner to @ref{Templates, , templates}, except that templates take effect when you add them, while magic tags take effect whenever in a buffer with the tag, whether you just added the tag or are editing a note with the tag already there.  But they also share the same shortcoming: to take effect, the tag must be added via completion, or else it won't take effect.
+
+Creating magic tags is also like creating templates.  You create a note and use a special tag that indicates this tag is a magic tag.  That special tag is, by default, "tag-defun", but can be customized by the variable @samp{ekg-function-tag}.  This tag is itself a "magic tag", and once you add it to a note, the note will change to be in @samp{emacs-lisp-mode}.  Notes co-tagged with this will take effect for any notes with those co-tags (again, just like templates).  For this reason, it's probably best to avoid having any date tags co-tagged, since users probably don't want them to be magic tags.  To illustrate the example that in this section, you could have a note with tags "chinese" and "tag-defun".  This note could have the following content:
+
+@lisp
+(set-input-method 'chinese-b5-quick)
+@end lisp
+
+@noindent
+In this example, once a note is added with "chinese", this function will be run, and all subsequent editing of the note will have this function run.  Note that there can be only one elisp expression in the note; if you have multiple, only the first will be used. It is not advised to have complicated elisp here, since it is not amenable to debugging.  The code is run in the context of the note buffer, but before the text has been inserted.
 
 @node The trash
 @chapter The trash
