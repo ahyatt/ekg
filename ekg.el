@@ -1583,17 +1583,28 @@ This uses ISO 8601 format."
   "Get single tag representing the date as a ISO 8601 format."
   (list (ekg-tag-for-date)))
 
-;; "Magic" tag functions that take effect on editing or capturing a note.
+(defun ekg-tag-to-hierarchy (tag)
+  "Given TAG, return a list of the hierarchy of tags.
+This works with TAG having a hierarchy, such as \"foo/bar/baz\",
+which would return `(\"foo\" \"foo/bar\" \"foo/bar/baz\")'."
+  (let ((tags (split-string tag "/")))
+    (cl-loop for i from 1 to (length tags)
+             collect (mapconcat #'identity (seq-take tags i) "/"))))
+
 (defun ekg-maybe-function-tag (tag)
   "Apply edit function for TAG, if it exists.
-The tag value in `ekg-function-tag' is treated specially
-here - it ensures the mode is `emacs-lisp-mode.'"
-  (if (equal tag ekg-function-tag)
-      (unless (eq major-mode 'emacs-lisp-mode)
-        (ekg-change-mode "emacs-lisp-mode"))
-    (mapc #'eval
-          (mapcar #'read
-                  (mapcar #'ekg-note-text (ekg-get-notes-with-tags (list tag ekg-function-tag)))))))
+The tag value in `ekg-function-tag' is treated specially here -
+it ensures the mode is `emacs-lisp-mode.' If TAG is a hierarchy,
+we try applying functions from the top to the bottom of the
+hierarchy, so the most general tag to the most specific tag."
+  (mapc (lambda (tag)
+          (if (equal tag ekg-function-tag)
+              (unless (eq major-mode 'emacs-lisp-mode)
+                (ekg-change-mode "emacs-lisp-mode"))
+            (mapc #'eval
+                  (mapcar #'read
+                          (mapcar #'ekg-note-text (ekg-get-notes-with-tags (list tag ekg-function-tag)))))))
+        (ekg-tag-to-hierarchy tag)))
 
 (defun ekg-force-upgrade ()
   "Force an upgrade of the ekg database.

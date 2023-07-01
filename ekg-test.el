@@ -138,6 +138,10 @@
   (should-not (ekg-get-notes-with-tags '("none" "foo")))
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
 
+(ert-deftest ekg-test-tag-to-hierarchy ()
+  (should (equal (ekg-tag-to-hierarchy "foo/bar") '("foo" "foo/bar")))
+  (should (equal (ekg-tag-to-hierarchy "foo") '("foo"))))
+
 (ekg-deftest ekg-test-extract-inlines ()
   (pcase (ekg-extract-inlines "Foo %(transclude 1) %n(transclude \"abc\") Bar")
     (`(,text . ,inlines)

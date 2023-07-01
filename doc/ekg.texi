@@ -561,6 +561,8 @@ Creating magic tags is also like creating templates.  You create a note and use 
 @noindent
 In this example, once a note is added with "chinese", this function will be run, and all subsequent editing of the note will have this function run.  Note that there can be only one elisp expression in the note; if you have multiple, only the first will be used. It is not advised to have complicated elisp here, since it is not amenable to debugging.  The code is run in the context of the note buffer, but before the text has been inserted.
 
+For tags that are a hierarchy, each level in the hiearchy, from least specific to most specific is tried in order.  So, for example, if the tag was "chinese/writing practice", first we would try "chinese", apply any functions found there, then try "chinese/writing practice", and try and functions found there.
+
 @node The trash
 @chapter The trash
 
