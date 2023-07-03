@@ -926,7 +926,7 @@ If ID is given, force the triple subject to be that value."
          (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
          (tags (seq-uniq (append tags auto-tags))))
     (set-buffer buf)
-    (funcall ekg-capture-default-mode)
+    (funcall (or mode ekg-capture-default-mode))
     (ekg-capture-mode 1)
     (setq ekg-note
           (ekg-note-create :id id
@@ -1692,6 +1692,15 @@ Specifically, this does a few things:
     (org-link-store-props :type "ekg-tags-any" :link (concat "ekg-tags-any:" (format "%S" ekg-notes-tags))
                           :description (format "EKG page for any of the tags: %s"
                                                (mapconcat #'identity ekg-notes-tags ", ")))))
+
+(defun ekg-edit-note-display-text ()
+  "From an edit / capture mode buffer, return display text.
+The display text is the text with all inlines executed, without
+any metadata text."
+  (let* ((text (buffer-substring (+ 1 (overlay-end (ekg--metadata-overlay)))
+                                 (point-max)))
+         (ticons (ekg-extract-inlines text)))
+    (ekg-insert-inlines-results (car ticons) (cdr ticons) nil)))
 
 (defun ekg--open-any-tags-link (stags)
   "Open a link to an ekg page given by STAGS.

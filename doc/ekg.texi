@@ -93,11 +93,17 @@ Extras
 
 * Embeddings::
 * Logseq::
+* LLM::
 
 Logseq
 
 * Exporting::
 * Importing::
+
+LLM
+
+* Augmenting notes with LLM output::
+* Using ekg notes as prompts::
 
 Design
 
@@ -178,6 +184,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @itemize
 @item
 Added "magic tags", tags that cause elisp to be executed.  See the @ref{Magic tags, , magic tags} section for more detail.
+@item
+Added ekg-llm, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
 @end itemize
 
 @node Version 031
@@ -670,6 +678,7 @@ The ekg module can have any number of functionality additions. These may appear 
 @menu
 * Embeddings::
 * Logseq::
+* LLM::
 @end menu
 
 @node Embeddings
@@ -771,6 +780,83 @@ There are a few things to be aware of.  In logseq, any level of the hierarchy ca
 
 @noindent
 Logseq embeds are imported as note transclusions.
+
+@node LLM
+@section LLM
+
+@noindent
+The ekg-llm module provides a way to use large language models (LLMs) in the context of ekg notes, and using ekg notes.  It defines an interface to LLMs and provides an interactive function to call with notes that will add an LLM's response to your note.  This module needs to be configured with an API key, with it shares with the ekg-embedding module.  So, it is necessary to set @samp{ekg-embedding-api-key} to use this.  Currently this works only with Open AI's API, so it will require a paid API account.
+
+@menu
+* Augmenting notes with LLM output::
+* Using ekg notes as prompts::
+@end menu
+
+@node Augmenting notes with LLM output
+@subsection Augmenting notes with LLM output
+
+The variable @code{ekg-llm-interaction-func} holds a function that will perform some LLM interaction.  By default, this is bound to @samp{C-c .} in both @samp{ekg-capture-mode} and @samp{ekg-edit-mode}.  The default interaction is to append to the note with the LLM output, demarcated by being in a block labeled @samp{LLM_OUTPUT}.  The interaction works by default by way of a default prompt, which instructs the LLM to add helpful text in general.  When you execute the @samp{ekg-llm-interaction-func} (by pressing @samp{C-c .}), it will call the LLM, which often takes a few seconds.  The following is an example of what this looks like in practice, with the initial text just notes on cooking monkfish, and the LLM responding with tips.
+
+@example
+Making monkfish again.  It is thick but tends to be wet and hard to get a good sear on.  Maybe I should sous vide it and then blast it with the searzall torch?
+
+#+BEGIN_LLM_OUTPUT
+Monkfish can indeed be challenging to sear properly due to its high water content. Sous-vide cooking followed by searing with a torch can be a great technique to achieve the desired result. The sous-vide process will help to cook the fish evenly and retain moisture, while the searzall torch can give it a beautiful caramelized crust. Just be sure to pat the fish dry before searing for better browning and use high heat to quickly sear the exterior without overcooking the inside. Happy cooking!
+#+END_LLM_OUTPUT
+@end example
+
+The prompt or interaction method can be changed by using @ref{Magic tags, , magic tags} to set @samp{ekg-llm-interaction-func}.  The function @samp{ekg-llm-set-interaction} makes this as trivial as possible.  It takes an argument of a note title containing the prompt, and an optional interaction method.  This means you typically need to create two notes to set up a tag with a custom prompt: the note with the prompt, and the note with magic-tag code that uses it to call @samp{ekg-llm-set-interaction}.
+
+For example, if you want to have the LLM respond to all your diary-style notes as if they were Aristotle commenting on the ethical questions in your notes, you can have a tag called "aristotle".  First, take care of the prompt by making a note with a title you can refer to later, in this case "Aristotle ethical response".  That's all that is technically needed, but it's a good idea to make it findable via tags as well, so in this case the tags "aristotle" and "prompt" would be good.  An example of that note would be:
+
+@example
+You are Aristotle.  Consider the ethical implications of anything contained in the notes, using your ethical principles and writings as a guide, and write a response in your particular style, which should read like a passage from your books.  If there is nothing particularly ethically interesting, note that and do not say more.
+@end example
+
+Next, you can make a note that has the tag "aristotle" and the default magic tag indicator, "tag-defun".  In this case, the default interaction of appending the response is desired, so no need set that variable.  However, for this particular interaction, a temperature of 0.5 seems appropriate - neither too creative or too restrictive.  We can create a  new note with the tags "aristotle" and "tag-defun":
+
+@example
+(ekg-llm-set-interaction "Aristotle ethical response" nil 0.5)
+@end example
+
+@noindent
+Check the docstring to @samp{ekg-llm-set-interaction} to see the full set of options.  If the title is not found, or there is more than one in ekg (which is possible), an error will be thrown.
+
+@noindent
+Finally, to use the new tag that sets the prompt, simply create a note with the "aristotle" tag.  As always, it's important to select the note via completion, so the code associated with the tag "aristotle" gets run.  Write your note and then press @samp{C-c .}.
+
+@example
+Sometimes I see people in the park having a picnic with a Citi Bike lying on the ground.  I always am a bit concerned, because sometimes tourists don't know that the bikes have to be returned in half an hour (or 45 minutes for members).  Should I say something, or mind my own business?  Saying something to people having a picnic seems unusually obtrusive in a way that I'm not very comfortable with.
+
+#+BEGIN_LLM_OUTPUT
+Aristotle believes in virtue ethics and considering the context of actions. So, in this case, he would provide an analysis based on these principles.
+
+The first step is to analyze the situation and identify the relevant virtues and vices involved.
+
+The virtues that seem relevant in this situation are prudence, justice, and temperance. Prudence is related to making sound judgments and understanding the consequences of our actions. Justice, on the other hand, is concerned with treating others fairly and respecting their rights. Finally, temperance involves acting in moderation and avoiding excessive behavior.
+
+It is evident that leaving a Citi Bike lying on the ground is not in accordance with the principles of justice and temperance. One could argue that it is a form of negligence since it deprives others of the opportunity to use the bike within the designated time limit. However, we also need to consider the context and practicality of intervening in this situation.
+
+In this specific case, approaching people who are having a picnic and bringing up the issue of the Citi Bike may be intrusive and disruptive to their enjoyment. It is important to consider the potential consequences of our actions. Will it genuinely benefit others, or will it create unnecessary conflict or discomfort? In this situation, it seems that the potential harm caused by intervening outweighs the possible good.
+
+Instead, it might be more prudent to address the broader issue at hand by informing the relevant authorities, such as the Citi Bike management or local officials, about the potential misuse of the bikes and the necessity of enforcing their return policy. By doing so, you are taking a more indirect and civic-minded approach that aligns with the principles of justice and temperance.
+
+In conclusion, while it is important to uphold principles of justice and temperance, the specific context of a situation must also be considered. In this instance, approaching people enjoying a picnic may not be the most appropriate course of action. Engaging with the appropriate authorities to address the broader issue would be a more prudent approach.
+#+END_LLM_OUTPUT
+@end example
+
+All prompts in org or markdown modes have a prelude that notes that the format of the input and expected output.
+
+@node Using ekg notes as prompts
+@subsection Using ekg notes as prompts
+
+In the previous section, using the @samp{ekg-llm-set-interaction} function was explained, which takes a note title that contains a prompt.  ekg notes are especially suited for prompting, because of the transclusion properties.  Often, in prompting, the prompt is composed of several parts, and some parts are common.  While experimenting with prompts, it's important to be able to iterate on meaningful part of the prompt that may be part of other prompts.
+
+Taking the above example of the "aristotle" prompt, perhaps we want several
+different prompts that focus on different things, but the persona of aristotle
+is common. Having a single prompt establishing the Artistotle identity would be useful.  For example, a note titled "Aristotle prompt" could have the prelude "You are Aristotle."  There can be other prompts using this via transclusion @ref{Inline commands, , inlines}, such as "%(transclude-note 33134561605).  Advise me on the ethical implications of the following text." (where that's the note titled "Aristotle prompt").  Another prompt could be "%(transclude-note 33134561605).  Write your thoughts on justice comes into play in the following text".  Because the note is transcluded, you can iterate on just the common beginning. Perhaps "Pretend you are Aristotle." is more effective?
+
+Additionally, transclusion or other inline commands could help in other ways in forming the prompt, by sharing your schedule, or your current org agenda items as context to the LLM when it is necessary.  These advanced uses will require inline commands that are not part of the base ekg package, but once written, they can be seamless used in prompts.
 
 @node Design
 @chapter Design
