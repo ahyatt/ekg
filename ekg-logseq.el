@@ -411,10 +411,11 @@ which will import and re-export back to logseq."
   "Return a list of tags with notes modified since TIME."
   (if (= time 0)
       (ekg-tags)
-    (seq-uniq
-     (cl-loop for triples in
-              (triples-db-select-pred-op ekg-db :time-tracked/modified-time '> time)
-              nconc (ekg-note-tags (ekg-get-note-with-id (car triples)))))))
+    (seq-filter #'ekg-content-tag-p
+     (seq-uniq
+      (cl-loop for triples in
+               (triples-db-select-pred-op ekg-db :time-tracked/modified-time '> time)
+               nconc (ekg-note-tags (ekg-get-note-with-id (car triples))))))))
 
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.

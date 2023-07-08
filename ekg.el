@@ -93,6 +93,14 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
   :type '(string :tag "tag")
   :group 'ekg)
 
+(defcustom ekg-draft-tag "draft"
+  "The tag that is used to mark a note as a draft.
+If this is nil, then there is no distinction between a draft and
+a saved note. This may mean that saving a note in progress may
+take longer, as more processing will be run on it."
+  :type '(string :tag "tag")
+  :group 'ekg)
+
 (defcustom ekg-note-inline-max-words 500
   "How many words to display for inlines if the caller does not specify."
   :type 'integer
@@ -430,6 +438,30 @@ note is really deleted."
       (ekg-save-note note)))
   (triples-backups-maybe-backup ekg-db (ekg-db-file)))
 
+(defun ekg-content-tag-p (tag)
+  "Return non-nil if TAG represents user content.
+This is opposed to tags that are used for internal purposes."
+  (and (not (member tag (list ekg-draft-tag ekg-template-tag)))
+       (not (ekg-tag-trash-p tag))))
+
+(defun ekg-note-active-p (note)
+  "Return non-nil if NOTE is active.
+This is similar to `ekg-active-id-p', but takes a note, which may
+be unsaved."
+  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag)) 
+                         (ekg-note-tags note)))
+       (not (member ekg-draft-tag (ekg-note-tags note)))))
+
+(defun ekg-active-id-p (id)
+  "Return non-nil if note with ID is active.
+An active note is a normal view of notes, where nothing
+unusual is being asked for.
+
+This will return true if NOTE is not a draft, and has at least
+one non-trash tag."
+  (ekg-connect)
+  (ekg-note-active-p (ekg-get-note-with-id id)))
+
 (defun ekg-has-live-tags-p (sub)
   "Return non-nil if SUB represents an undeleted note."
   (ekg-connect)
@@ -683,6 +715,7 @@ not supplied, we use a default of 10."
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
     (define-key map "\C-c#" #'ekg-edit-add-inline)
+    (substitute-key-definition #'save-buffer #'ekg-save-draft map global-map)
     map)
   "Key map for `ekg-capture-mode', a minor mode.
 This is used when capturing new notes.")
@@ -708,6 +741,7 @@ This is used when capturing new notes.")
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
     (define-key map "\C-c#" #'ekg-edit-add-inline)
+    (substitute-key-definition #'save-buffer #'ekg-save-draft map global-map)
     map)
   "Key map for `ekg-edit-mode', a minor mode.
 This is used when editing existing blocks.")
@@ -978,6 +1012,10 @@ However, if URL already exists, we edit the existing note on it."
 `\\[ekg-edit-finalize]'.")
                   ekg-note (copy-ekg-note note)
                   ekg-note-orig-id (ekg-note-id note))
+      ;; When re-editing a note that's a draft, we need to remove the draft tag
+      ;; so that when we save it, it's not a draft anymore.
+      (setf (ekg-note-tags note)
+            (seq-difference (ekg-note-tags note) (list ekg-draft-tag)))
       (ekg-edit-display-metadata)
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
@@ -1087,6 +1125,14 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                      (lambda (_) (ekg-tags)))
           :exclusive t :exit-function #'ekg--tags-cap-exit)))
 
+(defun ekg-save-draft ()
+  "Save the current note as a draft."
+  (interactive nil ekg-edit-mode ekg-capture-mode)
+  (ekg--update-from-metadata)
+  (when ekg-draft-tag
+        (push ekg-draft-tag (ekg-note-tags ekg-note)))
+  (ekg--save-note-in-buffer))
+
 (defun ekg-edit-finalize ()
   "Save the edited note and refresh where it appears."
   (interactive nil ekg-edit-mode)
@@ -1170,8 +1216,9 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
        (string-match-p (rx (seq string-start "trash/")) tag)))
 
 (defun ekg-note-active-tags (note)
-  "Return the tags of NOTE that are not part of the trash."
-  (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag)))
+  "Return the tags of NOTE that are considered normal tags."
+  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
+                                 (not (equal tag ekg-draft-tag))))
               (ekg-note-tags note)))
 
 (defun ekg-mark-trashed (tag)
@@ -1207,9 +1254,11 @@ FROM-TAG will use TO-TAG."
 
 (defun ekg-tags ()
   "Return a list of all tags.
-Does not include any trash tags."
+Does not include any tags with special uses (e.g. trash and draft
+tags)."
   (ekg-connect)
-  (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag)))
+  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
+                                 (not (equal tag ekg-draft-tag))))
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-including (substring)
@@ -1460,6 +1509,19 @@ are created with additional tags TAGS."
                                   (triples-subjects-of-type ekg-db 'text))))
    nil))
 
+(defun ekg-show-notes-in-drafts ()
+  "Show all notes in the draft state.
+These notes have not yet be saved, and don't show up in most
+other views."
+  (interactive)
+  (unless ekg-draft-tag
+    (error "ekg-draft-tag is nil, so drafts are not used. No drafts can be shown."))
+  (ekg-connect)
+  (ekg-setup-notes-buffer
+   "Drafts"
+   (lambda () (ekg-get-notes-with-tag ekg-draft-tag))
+   nil))
+
 (defun ekg-show-notes-for-today ()
   "Show all notes with today's date as a tag."
   (interactive)
@@ -1482,7 +1544,7 @@ notes to show. But with an prefix ARG, ask the user."
                                             (lambda (trip1 trip2) (> (nth 2 trip1)
                                                                      (nth 2 trip2)))))
               until (= (length selected) (or num ekg-notes-size))
-              when (ekg-has-live-tags-p id)
+              when (ekg-active-id-p id)
               collect (ekg-get-note-with-id id) into selected
               finally return selected))
    nil))
@@ -1504,7 +1566,7 @@ notes to show. But with an prefix ARG, ask the user."
                                             (lambda (trip1 trip2) (> (nth 2 trip1)
                                                                      (nth 2 trip2)))))
               until (= (length selected) (or num ekg-notes-size))
-              when (ekg-has-live-tags-p id)
+              when (ekg-active-id-p id)
               collect (ekg-get-note-with-id id) into selected
               finally return selected))
    nil))
@@ -1515,7 +1577,7 @@ The key is the subject and the value is the title."
   (ekg-connect)
   (mapcan (lambda (sub)
             (mapcar (lambda (title) (cons sub title)) (plist-get (triples-get-type ekg-db sub 'titled) :title)))
-          (seq-filter #'ekg-has-live-tags-p
+          (seq-filter #'ekg-active-id-p
                       (triples-subjects-of-type ekg-db 'titled))))
 
 (defun ekg-browse-url (title)
@@ -1542,7 +1604,7 @@ If no corresponding URL is found, an error is thrown."
   "Get a list of ekg-note objects, representing all active notes.
 Active in this context means non-trashed."
   (ekg-connect)
-  (seq-filter #'ekg-has-live-tags-p (triples-subjects-of-type ekg-db 'text)))
+  (seq-filter #'ekg-active-id-p (triples-subjects-of-type ekg-db 'text)))
 
 (defun ekg-on-add-tag-insert-template (tag)
   "Look for templates for TAG, and insert into current buffer.

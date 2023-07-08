@@ -65,6 +65,7 @@ Installation
 
 Changelog
 
+* Version 0.4: Version 04. 
 * Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
@@ -75,6 +76,7 @@ Understanding and editing the note buffer
 
 * Note properties::
 * Note text::
+* Drafts::
 * A warning about org-mode::
 
 Capturing notes
@@ -164,12 +166,21 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
+* Version 0.4: Version 04. 
 * Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 04
+@section Version 0.4
+
+@itemize
+@item
+Added ability to save in-progress notes.
+@end itemize
 
 @node Version 032
 @section Version 0.3.2
@@ -305,6 +316,7 @@ When capturing or creating a note, the note buffer has two areas important to un
 @menu
 * Note properties::
 * Note text::
+* Drafts::
 * A warning about org-mode::
 @end menu
 
@@ -351,6 +363,11 @@ you want to note about, that is relevant to the tags for the note.
 There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}. More can be added by customizing the variable @code{ekg-acceptable-modes}, just
 make sure its a mode that makes sense for notes. The default mode is configured in @code{ekg-capture-default-mode}, but can be changed when capturing with the command @samp{ekg-change-mode}.
 
+@node Drafts
+@section Drafts
+
+Notes can be saved midway through editing, both for capturing and editing notes.  The normal buffer save keybinding will save a draft.  A draft is like a normal note, but has a special tag, by default "draft".  This can be customized in @samp{ekg-draft-tag}.  Having this tag means it doesn't show up in most views, much like the notes in "trash".  Once a note is saved normally, it loses the draft tag.
+
 @node A warning about org-mode
 @section A warning about org-mode
 
@@ -383,6 +400,28 @@ Capturing URLs is a bit clunky as is, if you can wrap it in a function to  suppl
    (do-applescript "tell application \"Google Chrome\" to return URL of active tab of front window")
    (do-applescript "tell application \"Google Chrome\" to return Title of active tab of front window")))
 @end lisp
+
+@noindent
+URL can also point to local files which will be browsed using @samp{find-file} by default. The idea is that you can tag files and folders to make them easier to find. Here is an example note similar to web address URL:
+
+@quotation
+Resource: @uref{file:///Users/andrewhyatt/notes/20230510T162600__emacs_init-file.org}
+Tags: doc/emacs config, date/2023-05-13, emacs/init
+Title: Emacs Config
+
+@end quotation
+
+When capturing file URL make sure to prefix it with @samp{file} scheme. You can wrap it in a function to supply the name and url of the file to have a much easier experience. The following is an example.
+
+@lisp
+(defun my/ekg-capture-file (file title)
+  (interactive "fFile: \nsTitle: ")
+  (let* ((file (format "file:%s" (string-trim file)))
+     (title (if (string-empty-p title) file (string-trim title))))
+    (ekg-capture-url file title)))
+@end lisp
+
+Ekg opens web addresses in browser using @samp{browse-url} and everything else in Emacs using @samp{find-file}.
 
 @noindent
 A final way to capture notes comes from a buffer that is viewing a list of notes, in @samp{ekg-notes-mode}. You can call @samp{ekg-notes-create}, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
