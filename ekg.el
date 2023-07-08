@@ -345,16 +345,21 @@ the text and may be after trailing whitespace."
 
 (defun ekg-get-notes-with-tags (tags)
   "Get all notes with TAGS, returning a list of `ekg-note' structs.
-This returns only notes that have all the tags in TAGS."
+This returns only notes that have all the tags in TAGS.
+Draft notes are not returned, unless TAGS contains the draft tag."
   (ekg-connect)
   (let ((ids-by-tag
          (mapcar (lambda (tag)
                    (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
                  tags)))
-    (mapcar #'ekg-get-note-with-id
-            (seq-reduce #'seq-intersection
-                        ids-by-tag
-                        (car ids-by-tag)))))
+    (seq-filter
+     (lambda (note)
+       (or (not (member ekg-draft-tag (ekg-note-tags note)))
+           (member ekg-draft-tag tags)))
+     (mapcar #'ekg-get-note-with-id
+             (seq-reduce #'seq-intersection
+                         ids-by-tag
+                         (car ids-by-tag))))))
 
 (defun ekg-get-notes-with-tag (tag)
   "Get all notes with TAG, returning a list of `ekg-note' structs."
@@ -1014,8 +1019,8 @@ However, if URL already exists, we edit the existing note on it."
                   ekg-note-orig-id (ekg-note-id note))
       ;; When re-editing a note that's a draft, we need to remove the draft tag
       ;; so that when we save it, it's not a draft anymore.
-      (setf (ekg-note-tags note)
-            (seq-difference (ekg-note-tags note) (list ekg-draft-tag)))
+      (setf (ekg-note-tags ekg-note)
+            (seq-difference (ekg-note-tags ekg-note) (list ekg-draft-tag)))
       (ekg-edit-display-metadata)
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))

@@ -298,15 +298,19 @@
   (ekg-capture :tags '("test"))
   (insert "foo")
   (ekg-save-draft)
-  ;; Let's make sure we have saved.
-  (let ((note (car (ekg-get-notes-with-tag "test"))))
-    (should (equal "foo" (ekg-note-text note)))
-    (should (member ekg-draft-tag (ekg-note-tags note))))
-  (ekg-capture-finalize)
+  (let ((target-content (substring-no-properties (buffer-string))))
+    (kill-buffer)
+    ;; This note shouldn't show up in ordinary list of notes.
+    (should-not (ekg-get-notes-with-tag "test"))
+    (ekg-edit (car (ekg-get-notes-with-tag ekg-draft-tag)))
+    (should (equal target-content (substring-no-properties (buffer-string))))
+    ;; Now let's finalize the original
+    (ekg-capture-finalize))
   ;; Now that we've finished, let's make sure it is no longer a draft.
   (let ((note (car (ekg-get-notes-with-tag "test"))))
     (should (equal "foo" (ekg-note-text note)))
-    (should-not (member ekg-draft-tag (ekg-note-tags note)))))
+    (should-not (member ekg-draft-tag (ekg-note-tags note))))
+  (should (ekg-get-notes-with-tag "test")))
 
 (ekg-deftest ekg-test-draftless ()
   (let ((ekg-draft-tag))
