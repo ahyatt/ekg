@@ -67,6 +67,7 @@ Installation
 Changelog
 
 * Version 0.4: Version 04. 
+* Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
 * Version 0.2.1: Version 021. 
@@ -76,6 +77,7 @@ Understanding and editing the note buffer
 
 * Note properties::
 * Note text::
+* Drafts::
 * A warning about org-mode::
 
 Capturing notes
@@ -172,6 +174,7 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 
 @menu
 * Version 0.4: Version 04. 
+* Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
 * Version 0.2.1: Version 021. 
@@ -183,9 +186,19 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 
 @itemize
 @item
+Added ability to save in-progress notes.
+@item
 Added "magic tags", tags that cause elisp to be executed.  See the @ref{Magic tags, , magic tags} section for more detail.
 @item
 Added ekg-llm, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
+@end itemize
+
+@node Version 032
+@section Version 0.3.2
+
+@itemize
+@item
+Upgrade to triples version 0.3.2, which contains important bug fixes.
 @end itemize
 
 @node Version 031
@@ -314,6 +327,7 @@ When capturing or creating a note, the note buffer has two areas important to un
 @menu
 * Note properties::
 * Note text::
+* Drafts::
 * A warning about org-mode::
 @end menu
 
@@ -359,6 +373,11 @@ you want to note about, that is relevant to the tags for the note.
 
 There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}. More can be added by customizing the variable @code{ekg-acceptable-modes}, just
 make sure its a mode that makes sense for notes. The default mode is configured in @code{ekg-capture-default-mode}, but can be changed when capturing with the command @samp{ekg-change-mode}.
+
+@node Drafts
+@section Drafts
+
+Notes can be saved midway through editing, both for capturing and editing notes.  The normal buffer save keybinding will save a draft.  A draft is like a normal note, but has a special tag, by default "draft".  This can be customized in @samp{ekg-draft-tag}.  Having this tag means it doesn't show up in most views, much like the notes in "trash".  Once a note is saved normally, it loses the draft tag.
 
 @node A warning about org-mode
 @section A warning about org-mode

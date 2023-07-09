@@ -58,8 +58,11 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 #+end_src
 * Changelog
 ** Version 0.4
+- Added ability to save in-progress notes.
 - Added "magic tags", tags that cause elisp to be executed.  See the [[#magic-tags][magic tags]] section for more detail.
 - Added ekg-llm, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
+** Version 0.3.2
+- Upgrade to triples version 0.3.2, which contains important bug fixes.
 ** Version 0.3.1
 - Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of sqlite will have their database automatically upgraded.  A backup will always be made beforehand - you may want to find it (alongside your normal emacs backups), and make sure to keep it around in case the upgrade went wrong in some way.  *Important: if you created your database before this version on the built-in sqlite, and afterwards switched to emacsql, you must switch back to the built-in sqlite for the upgrade.*
 - Store the ekg version in the database so we know when we need to do updates in the future.
@@ -151,6 +154,8 @@ you want to note about, that is relevant to the tags for the note.
 
 There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=. More can be added by customizing the variable ~ekg-acceptable-modes~, just
 make sure its a mode that makes sense for notes. The default mode is configured in ~ekg-capture-default-mode~, but can be changed when capturing with the command =ekg-change-mode=.
+** Drafts
+Notes can be saved midway through editing, both for capturing and editing notes.  The normal buffer save keybinding will save a draft.  A draft is like a normal note, but has a special tag, by default "draft".  This can be customized in =ekg-draft-tag=.  Having this tag means it doesn't show up in most views, much like the notes in "trash".  Once a note is saved normally, it loses the draft tag.
 ** A warning about org-mode
 Org-mode notes are primarily to use org-mode formatting on. Org-mode has a lot of funtionality, but much of it depends on the assumption that the buffer is all for use by org-mode (not true in this case, because of the properties portion), and the assumption that the buffer is visiting a file, which is also not true. In particular, attachments will not work, and ekg-notes cannot be added to the agenda.
 * Capturing notes

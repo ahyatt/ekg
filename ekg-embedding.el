@@ -78,13 +78,14 @@ same size.  There must be at least one embedding passed in."
 The caller is responsible for storing the embedding, this just
 updates NOTE."
   (ekg-embedding-connect)
-  (setf (ekg-note-properties note)
-        (plist-put (ekg-note-properties note)
-                   :embedding/embedding
-                   (ekg-embedding (substring-no-properties
-                                   (ekg-display-note note)))))
-  (cl-loop for tag in (ekg-note-tags note) do
-           (ekg-embedding-refresh-tag-embedding tag)))
+  (when (ekg-note-active-p note)
+    (setf (ekg-note-properties note)
+          (plist-put (ekg-note-properties note)
+                     :embedding/embedding
+                     (ekg-embedding (substring-no-properties
+                                     (ekg-display-note-text note)))))
+    (cl-loop for tag in (ekg-note-tags note) do
+             (ekg-embedding-refresh-tag-embedding tag))))
 
 (defun ekg-embedding-valid-p (embedding)
   "Return non-nil if the embedding is valid."
