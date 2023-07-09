@@ -283,8 +283,9 @@ It should be a floating point number between 0 and 1."
                   (unless (= 1 (length prompts))
                     (error "Should have exactly one note with title %s, instead there are %d" prompt-title (length prompts)))
                   (ekg-llm-send-and-use
-                   (ekg-llm-interaction-func interaction-type)
-                   (car prompts) temperature)))))
+                   (ekg-llm-interaction-func (or interaction-type 'append))
+                   (substring-no-properties (ekg-display-note-text (car prompts)))
+                   temperature)))))
 
 (provide 'ekg-llm)
 
