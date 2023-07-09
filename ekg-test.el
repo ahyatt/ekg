@@ -298,6 +298,40 @@
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
       (should (= (point) (overlay-end o))))))
 
+(ekg-deftest ekg-test-draft ()
+  (ekg-capture :tags '("test"))
+  (insert "foo")
+  (ekg-save-draft)
+  (let ((target-content (substring-no-properties (buffer-string))))
+    (kill-buffer)
+    ;; This note shouldn't show up in ordinary list of notes.
+    (should-not (ekg-get-notes-with-tag "test"))
+    (ekg-edit (car (ekg-get-notes-with-tag ekg-draft-tag)))
+    (should (equal target-content (substring-no-properties (buffer-string))))
+    ;; Now let's finalize the original
+    (ekg-capture-finalize))
+  ;; Now that we've finished, let's make sure it is no longer a draft.
+  (let ((note (car (ekg-get-notes-with-tag "test"))))
+    (should (equal "foo" (ekg-note-text note)))
+    (should-not (member ekg-draft-tag (ekg-note-tags note))))
+  (should (ekg-get-notes-with-tag "test")))
+
+(ekg-deftest ekg-test-draftless ()
+  (let ((ekg-draft-tag))
+    (ekg-capture :tags '("test"))
+    (insert "foo")
+    (ekg-save-draft)
+    ;; This time, we should save, but it shouldn't have a draft tag.
+    (let ((note (car (ekg-get-notes-with-tag "test"))))
+      (should (equal "foo" (ekg-note-text note)))
+      (should-not (member ekg-draft-tag (ekg-note-tags note))))
+    (ekg-capture-finalize)
+    ;; And it should be the same after saving too.
+    (let ((note (car (ekg-get-notes-with-tag "test"))))
+      (should (equal "foo" (ekg-note-text note)))
+      (should-not (member ekg-draft-tag (ekg-note-tags note))))))
+  
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here
