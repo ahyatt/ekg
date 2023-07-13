@@ -1706,18 +1706,51 @@ database is bigger than it should be.
 
 Specifically, this does a few things:
 
-1) Calls `ekg-remove-unused-tags' to remove all tags that no note is using.
-2) Remove any notes that have no content or almost no content."
+1) Calls `ekg-remove-unused-tags' to remove all tags that no note
+is using.
+
+2) Delete any notes that have no content or almost no content, as
+long as those notes aren't on resources that are interesting.
+
+3) Delete all trashed notes.
+"
   (interactive)
   (ekg-connect)
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (ekg-remove-unused-tags)
   (cl-loop for id in (triples-subjects-of-type ekg-db 'text) do
-           (let ((note (ekg-get-note-with-id id)))
-             (when (or (not (ekg-has-live-tags-p id))
-                       (string= (string-trim (ekg-note-text note))
-                                   "*"))
-               (ekg-note-delete note)))))
+           (let ((note (ekg-get-note-with-id id))
+                 (deleted))
+             (unless (ekg-note-text note)
+               ;; As a heuristic, if this note is sufficiently weird that
+               ;; there's no creation date, delete it, otherwise try to fix it.
+               (if (null (ekg-note-creation-time note))
+                   (progn
+                     (message "ekg-clean-db: Deleting note %s, reason: no text or creation date" id)
+                     (ekg-note-delete id)
+                     (setq deleted t))
+                 (message "ekg-clean-db: Fixed nil text for note %s" id)
+                 (setf (ekg-note-text note) "")
+                 (condition-case nil
+                     (ekg-save-note note)
+                   (error
+                    (message "ekg-clean-db: Deleting note %s, reason: error saving note, too corrupted" id)
+                    (ekg-note-delete id)
+                    (setq deleted t)))))
+             (unless deleted
+               (let ((trashed-note (and (ekg-note-tags note)
+                                      (not (ekg-has-live-tags-p id))))
+                   (almost-empty-note (string= (string-trim (ekg-note-text note)) "*"))
+                   (empty-note (string= (string-trim (ekg-note-text note)) "")))
+               (when (and
+                      (not (ekg-should-show-id-p id))
+                      (or trashed-note almost-empty-note empty-note))
+                 (message "ekg-clean-db: Deleting note %s, reason: %s" id
+                          (mapconcat #'identity
+                           (seq-filter #'identity (list (when trashed-note "trashed")
+                                                        (when almost-empty-note "almost empty")
+                                                        (when empty-note "empty"))) ", "))
+                 (ekg-note-delete note)))))))
 
 ;; Links for org-mode
 (require 'ol)
