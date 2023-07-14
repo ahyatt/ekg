@@ -183,6 +183,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 Added "magic tags", tags that cause elisp to be executed.  See the @ref{Magic tags, , magic tags} section for more detail.
 @item
 Added ability to save in-progress notes.
+@item
+Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
 @end itemize
 
 @node Version 032
@@ -280,7 +282,7 @@ Added the documentation you are reading right now.
 @item
 Fixed bug interfering with completion at the beginning of the tag property line.
 @item
-Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
+Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}. 
 @end itemize
 
 @node Database

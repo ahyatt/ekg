@@ -60,6 +60,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 ** Version 0.4
 - Added "magic tags", tags that cause elisp to be executed.  See the [[#magic-tags][magic tags]] section for more detail.
 - Added ability to save in-progress notes.
+- Improved =ekg-clean-db= to fix bugs and change empty-note deletion logic.
 ** Version 0.3.2
 - Upgrade to triples version 0.3.2, which contains important bug fixes.
 ** Version 0.3.1
@@ -99,7 +100,7 @@ Thanks especially to users and contributors: [[https://github.com/jayrajput][Jay
 - Standardized buffer names for =ekg-notes-mode= buffers, which all are prepended with "ekg" and surrounded by asterisks, to denote that they are non-file-based.
 - Added the documentation you are reading right now.
 - Fixed bug interfering with completion at the beginning of the tag property line.
-- Fix for ~ekg-notes-refresh~ incorrectly calling ~ekg--show-notes~.
+- Fix for ~ekg-notes-refresh~ incorrectly calling ~ekg--show-notes~. 
 * Database
 By default, ekg uses the default triple database, which is set in the variable ~triples-default-database-filename~. The default value of this is =~/.emacs.d/triples.db=.  You can specify a different name if you want the ekg database to be not shared with any other user of the triple package, by customizing the variable ~ekg-db-file~. When this is ~nil~, it uses the filename up to the triples package.
 * Concepts and data model in ekg
