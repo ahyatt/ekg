@@ -1477,7 +1477,7 @@ are created with additional tags TAGS."
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."
-  (< (ekg-note-creation-time a)
+  (> (ekg-note-creation-time a)
      (ekg-note-creation-time b)))
 
 (defun ekg-show-notes-with-any-tags (tags)
