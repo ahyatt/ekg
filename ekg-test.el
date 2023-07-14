@@ -227,7 +227,7 @@
       (should (= 2 (length (triples-with-predicate ekg-db 'inline/command)))))
     (let ((note (ekg-get-note-with-id id)))
       (should (equal new-inlines (ekg-note-inlines note)))
-      (ekg-note-delete (ekg-note-id note))
+      (ekg-note-delete note)
       (should (= 0 (length (triples-with-predicate ekg-db 'inline/command)))))))
 
 (ekg-deftest ekg-test-double-transclude-note ()
@@ -326,7 +326,12 @@
     (let ((note (car (ekg-get-notes-with-tag "test"))))
       (should (equal "foo" (ekg-note-text note)))
       (should-not (member ekg-draft-tag (ekg-note-tags note))))))
-  
+
+(ert-deftest ekg-test-should-show-id-p ()
+  (should-not (ekg-should-show-id-p (ekg--generate-id)))
+  (should (ekg-should-show-id-p "foo"))
+  (should (ekg-should-show-id-p "http://gnu.org"))
+  (should (ekg-should-show-id-p "/usr/bin/emacs")))
 
 (provide 'ekg-test)
 

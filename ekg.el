@@ -408,7 +408,11 @@ If the ID does not exist, create a new note with that ID."
   (ekg-connect)
   (mapcar #'ekg-get-note-with-id (triples-subjects-with-predicate-object ekg-db 'titled/title title)))
 
-(defun ekg-note-delete (id)
+(defun ekg-note-delete (note)
+  "Delete NOTE from the database."
+  (ekg-note-delete-by-id (ekg-note-id note)))
+
+(defun ekg-note-delete-by-id (id)
   "Delete all note data associated with ID."
   (ekg-connect)
   (run-hook-with-args 'ekg-note-pre-delete-hook id)
@@ -435,7 +439,7 @@ note is really deleted."
   (triples-with-transaction
     ekg-db
     (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
-        (ekg-note-delete (ekg-note-id note))
+        (ekg-note-delete note)
       (setf (ekg-note-tags note)
             (mapcar (lambda (tag) (unless (ekg-tag-trash-p tag)
                                     (ekg-mark-trashed tag)))
@@ -838,8 +842,8 @@ This will be displayed at the top of the note buffer."
 
 (defun ekg-should-show-id-p (id)
   "Return non-nil if the note ID should be shown to the user.
-The ID can represent a browseable resource, which is meaningful to the user."
-  (ffap-url-p id))
+The ID represents meaningful resource to the user, other than auto-generated id."
+  (not (numberp id)))
 
 (defun ekg--replace-metadata ()
   "Replace the metadata in a buffer."
@@ -1355,7 +1359,7 @@ view is refreshed."
     (ekg--note-highlight)))
 
 (defun ekg-notes-delete (arg)
-  "Delete the current note.
+  "Trash the current note.
 With a `C-u' prefix or when ARG is non-nil, silently delete the
 current note without a prompt."
   (interactive "P" ekg-notes-mode)
@@ -1509,9 +1513,11 @@ are created with additional tags TAGS."
   (ekg-connect)
   (ekg-setup-notes-buffer
    "Trash"
-   (lambda () (mapcar #'ekg-get-note-with-id
-                      (seq-filter (lambda (id) (not (ekg-has-live-tags-p id)))
-                                  (triples-subjects-of-type ekg-db 'text))))
+   (lambda () (sort
+               (mapcar #'ekg-get-note-with-id
+                       (seq-filter (lambda (id) (not (ekg-has-live-tags-p id)))
+                                   (triples-subjects-of-type ekg-db 'text)))
+               #'ekg-sort-by-creation-time))
    nil))
 
 (defun ekg-show-notes-in-drafts ()
@@ -1727,7 +1733,7 @@ long as those notes aren't on resources that are interesting.
                (if (null (ekg-note-creation-time note))
                    (progn
                      (message "ekg-clean-db: Deleting note %s, reason: no text or creation date" id)
-                     (ekg-note-delete id)
+                     (ekg-note-delete note)
                      (setq deleted t))
                  (message "ekg-clean-db: Fixed nil text for note %s" id)
                  (setf (ekg-note-text note) "")
@@ -1735,16 +1741,18 @@ long as those notes aren't on resources that are interesting.
                      (ekg-save-note note)
                    (error
                     (message "ekg-clean-db: Deleting note %s, reason: error saving note, too corrupted" id)
-                    (ekg-note-delete id)
+                    (ekg-note-delete note)
                     (setq deleted t)))))
              (unless deleted
                (let ((trashed-note (and (ekg-note-tags note)
                                       (not (ekg-has-live-tags-p id))))
-                   (almost-empty-note (string= (string-trim (ekg-note-text note)) "*"))
-                   (empty-note (string= (string-trim (ekg-note-text note)) "")))
+                     (almost-empty-note (string= (string-trim (ekg-note-text note)) "*"))
+                     (empty-note (string= (string-trim (ekg-note-text note)) ""))
+                     (note-without-properties (null (ekg-note-properties note))))
                (when (and
                       (not (ekg-should-show-id-p id))
-                      (or trashed-note almost-empty-note empty-note))
+                      (or trashed-note (and note-without-properties
+                                            (or almost-empty-note empty-note))))
                  (message "ekg-clean-db: Deleting note %s, reason: %s" id
                           (mapconcat #'identity
                            (seq-filter #'identity (list (when trashed-note "trashed")
