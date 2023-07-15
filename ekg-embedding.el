@@ -249,13 +249,13 @@ The results are in order of most similar to least similar."
 The results are in order of most similar to least similar."
   (let* ((embeddings (ekg-embedding-get-all-notes)))
     (setq embeddings
-          (cdr (sort
+          (sort
                 (mapcar (lambda (id-embedding)
                           (cons (car id-embedding)
                                 (ekg-embedding-cosine-similarity e (cdr id-embedding))))
                         embeddings)
-                (lambda (a b) (> (cdr a) (cdr b))))))
-    (mapcar #'car (cl-subseq embeddings 0 n))))
+                (lambda (a b) (> (cdr a) (cdr b)))))
+    (mapcar #'car (cl-subseq embeddings 0 (min n (length embeddings))))))
 
 (defun ekg-embedding-show-similar ()
   "Show similar notes to the current note in a new buffer."
@@ -264,7 +264,10 @@ The results are in order of most similar to least similar."
   (let ((note (ekg-current-note-or-error)))
     (ekg-setup-notes-buffer
      (format "similar to note \"%s\"" (ekg-note-snippet note))
-     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size)))
+     (lambda () (mapcar #'ekg-get-note-with-id
+                        ;; remove the first match, since the current note will
+                        ;; always be the most similar.
+                        (cdr (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size))))
      (ekg-note-tags note))))
 
 (defun ekg-embedding-search (&optional text)
