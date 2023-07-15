@@ -196,6 +196,8 @@ Added ekg-llm, a separate module, so LLMs can append to or rewrite notes, using 
 Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
 @item
 Improved @samp{ekg-embedding} package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
+@item
+Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
 @end itemize
 
 @node Version 032
