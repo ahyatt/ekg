@@ -49,10 +49,21 @@
   :type '(alist :key-type symbol :value-type function)
   :group 'ekg-llm)
 
+(defcustom ekg-llm-query-num-notes 5
+  "Number of notes to retrieve and send in a query prompt."
+  :type 'integer
+  :group 'ekg-llm)
+
+(defcustom ekg-llm-query-prompt-intro
+  "Given the following notes taken by the user, and your own knowledge, create a final answer that may, if needed, quote from the notes.  If you don't know the answer, tell the user that.  Never try to make up an answer."
+  "Introductory text to use for the query prompt."
+  :type 'string
+  :group 'ekg-llm)
+
 (defconst ekg-llm-trace-buffer "*ekg llm trace*"
   "Buffer to use for tracing the LLM interactions.")
 
-(defvar ekg-llm-default-prompt "You are an all-around expert, and are providing helpful addendums to notes the user is writing.  The addendums could be insights from other fields, advice, quotations, or pointing out any issues you may find. The text of the note follows."
+(defconst ekg-llm-default-prompt "You are an all-around expert, and are providing helpful addendums to notes the user is writing.  The addendums could be insights from other fields, advice, quotations, or pointing out any issues you may find. The text of the note follows."
   "Default prompt to use for LLMs, if no other is found.")
 
 (defun ekg-llm-prompt-prelude ()
@@ -288,6 +299,58 @@ It should be a floating point number between 0 and 1."
                    (ekg-llm-interaction-func (or interaction-type 'append))
                    (substring-no-properties (ekg-display-note-text (car prompts)))
                    temperature)))))
+
+(defun ekg-llm-note-metadata-for-input (note)
+  "Return a brief description of the metdata of NOTE.
+The description is appropriate for input to a LLM. This is
+designed to be on a line of its own. It does not return a
+newline."
+  (let ((title (plist-get (ekg-note-properties note) :titled/title))
+        (tags (ekg-note-tags note))
+        (created (ekg-note-creation-time note))
+        (modified (ekg-note-modified-time note)))
+    (format "Note: %s"
+            (string-join
+             (remove
+              "" (list
+                  (if title (format "Title: %s" title) "")
+                  (if tags (format "Tags: %s" (mapconcat 'identity tags ", ")) "")
+                  (if created (format "Created: %s" (format-time-string "%Y-%m-%d" created)) "")
+                  (if modified (format "Modified: %s" (format-time-string "%Y-%m-%d" modified)) "")))
+             ", "))))
+
+(defun ekg-llm-query-with-notes (query)
+  "Query the LLM with QUERY, including relevant notes in the prompt.
+The answer will appear in a new buffer"
+  (interactive "sQuery: ")
+  (let ((notes (mapcar #'ekg-get-note-with-id
+                       (ekg-embedding-n-most-similar-notes (ekg-embedding query)
+                                                           ekg-llm-query-num-notes)))
+        (buf (get-buffer-create
+              (format "*ekg llm query '%s'*" (ekg-truncate-at query 5)))))
+    (with-current-buffer buf
+      (erase-buffer)
+      (funcall
+       (ekg-llm-interaction-func 'append)
+       (ekg-llm-send-prompt
+        (make-ekg-llm-prompt
+         :interactions
+         (append
+          (list (make-ekg-llm-prompt-interaction
+           :role 'system
+           :content ekg-llm-query-prompt-intro))
+          (mapcar
+           (lambda (note)
+             (make-ekg-llm-prompt-interaction
+              :role 'user
+              :content
+              (format "%s\n%s" (ekg-llm-note-metadata-for-input note)
+                      (substring-no-properties (ekg-display-note-text note)))))
+           notes)
+          (list (make-ekg-llm-prompt-interaction
+                 :role 'user
+                 :content (format "Query: %s" query))))))))
+    (pop-to-buffer buf)))
 
 (provide 'ekg-llm)
 

@@ -106,6 +106,7 @@ LLM
 
 * Augmenting notes with LLM output::
 * Using ekg notes as prompts::
+* Querying your ekg database::
 
 Design
 
@@ -811,6 +812,7 @@ The ekg-llm module provides a way to use large language models (LLMs) in the con
 @menu
 * Augmenting notes with LLM output::
 * Using ekg notes as prompts::
+* Querying your ekg database::
 @end menu
 
 @node Augmenting notes with LLM output
@@ -878,6 +880,15 @@ different prompts that focus on different things, but the persona of aristotle
 is common. Having a single prompt establishing the Artistotle identity would be useful.  For example, a note titled "Aristotle prompt" could have the prelude "You are Aristotle."  There can be other prompts using this via transclusion @ref{Inline commands, , inlines}, such as "%(transclude-note 33134561605).  Advise me on the ethical implications of the following text." (where that's the note titled "Aristotle prompt").  Another prompt could be "%(transclude-note 33134561605).  Write your thoughts on justice comes into play in the following text".  Because the note is transcluded, you can iterate on just the common beginning. Perhaps "Pretend you are Aristotle." is more effective?
 
 Additionally, transclusion or other inline commands could help in other ways in forming the prompt, by sharing your schedule, or your current org agenda items as context to the LLM when it is necessary.  These advanced uses will require inline commands that are not part of the base ekg package, but once written, they can be seamless used in prompts.
+
+@node Querying your ekg database
+@subsection Querying your ekg database
+
+You can use the interactive function @samp{ekg-llm-query-with-notes} to send a query with the results of your notes.  This essentially will let your notes act as a natural language queryable knowledge base.  It will work for queries in which you have the relevant information.  The answer to the query will appear in a new buffer.
+
+The prompt instructing the user is defined in @samp{ekg-llm-query-prompt-intro}.  This can be changed to tune how the LLM responds to the query.
+
+Note that anything in your database could potentially be retrieved and sent to the LLM, so if you have notes that you consider too private to send for processing, you may not want to use this.
 
 @node Design
 @chapter Design
