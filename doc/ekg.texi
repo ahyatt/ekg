@@ -182,6 +182,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 Added ability to save in-progress notes.
 @item
 Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
+@item
+Improved @samp{ekg-embedding} package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
 @end itemize
 
 @node Version 032
