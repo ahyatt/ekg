@@ -63,9 +63,7 @@ pass to the embedding API."
   "Compute the average of all of EMBEDDINGS, a list.
 Return the vector embedding. This assumes all embeddings are the
 same size.  There must be at least one embedding passed in."
-  ;; Remove all nil embeddings
-  (let* ((embeddings (seq-filter #'identity embeddings))
-         (v (make-vector (length (car embeddings)) 0)))
+(let* ((v (make-vector (length (car embeddings)) 0)))
     (cl-loop for e in (seq-filter (lambda (e) (= (length e) (length v))) embeddings) do
              (cl-loop for i below (length e) do
                       (aset v i (+ (aref v i) (aref e i)))))
@@ -77,15 +75,20 @@ same size.  There must be at least one embedding passed in."
   "Calculate and set the embedding for NOTE.
 The caller is responsible for storing the embedding, this just
 updates NOTE."
-  (ekg-embedding-connect)
-  (when (ekg-note-active-p note)
-    (setf (ekg-note-properties note)
-          (plist-put (ekg-note-properties note)
-                     :embedding/embedding
-                     (ekg-embedding (substring-no-properties
-                                     (ekg-display-note-text note)))))
-    (cl-loop for tag in (ekg-note-tags note) do
-             (ekg-embedding-refresh-tag-embedding tag))))
+  (setf (ekg-note-properties note)
+        (plist-put (ekg-note-properties note)
+                   :embedding/embedding
+                   (ekg-embedding (substring-no-properties
+                                   (ekg-display-note-text note))))))
+
+(defun ekg-embedding-generate-for-note-tags (note)
+  "Calculate and set the embedding for all the tags of NOTE."
+  (cl-loop for tag in (ekg-note-tags note) do
+           (ekg-embedding-refresh-tag-embedding tag)))
+
+(defun ekg-embedding-note-get (note)
+  "Get the already store embedding for NOTE."
+  (plist-get (ekg-note-properties note) :embedding/embedding))
 
 (defun ekg-embedding-valid-p (embedding)
   "Return non-nil if the embedding is valid."
@@ -93,22 +96,39 @@ updates NOTE."
   ;; non-zero value on every dimension of the embedding. This is likely true,
   ;; but more likely 0s tend to indicate issues with how the embedding was
   ;; obtained.
-  (and (vectorp embedding) (not (seq-contains-p (lambda (e) (= 0 e)) embedding))))
+  (and (vectorp embedding) (> (length embedding) 0)
+       (not (seq-contains-p (lambda (e) (= 0 e)) embedding))))
 
 (defun ekg-embedding-refresh-tag-embedding (tag)
   "Refresh the embedding for TAG.
 The embedding for TAG is recomputed by averaging all the
 embeddings of notes with the given tag."
-  (let ((embeddings (cl-loop for tagged in
-                             (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
-                             collect (plist-get (triples-get-type ekg-db tagged 'embedding)
-                                                :embedding))))
-    (triples-set-type ekg-db tag 'embedding
-                      :embedding (ekg-embedding-average
-                                  (seq-filter #'ekg-embedding-valid-p embeddings)))))
+  (condition-case err
+      (let ((embeddings
+             (cl-loop for tagged in
+                  (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
+                  collect
+                  (let ((embedding (plist-get (triples-get-type ekg-db tagged 'embedding)
+                                              :embedding)))
+                    (unless (ekg-embedding-valid-p embedding)
+                      (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
+                      (let ((note (ekg-get-note-with-id tagged)))
+                        (ekg-embedding-generate-for-note note)
+                        (if (ekg-embedding-valid-p note)
+                            (progn
+                              (ekg-save-note note)
+                              (setf embedding (ekg-embedding-note-get note)))
+                          (error "ekg-embedding: could not fix invalid embedding for note %s, can't refresh tag %s" tagged tag))))
+                    embedding))))
+    (let ((avg (ekg-embedding-average
+                (seq-filter #'ekg-embedding-valid-p embeddings))))
+      (if (ekg-embedding-valid-p avg)
+          (triples-set-type ekg-db tag 'embedding :embedding avg)
+        (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
+    (error (message "ekg-embedding: error when trying not refresh tag %s: %S" tag err))))
 
 (defun ekg-embedding-generate-all (arg)
-  "Generate and store embeddings for every entity.
+  "Generate and store embeddings for every entity that needs one.
 It is not necessary for the entity to contain a note. Tags will
 be calculated from the average of all tagged entities. Embeddings
 will not be calculated for objects with no text, except for tags.
@@ -268,6 +288,9 @@ The results are in order of most similar to least similar."
      nil))
 
 (add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note)
+;; Generating embeddings from a note's tags has to be post-save, since it works
+;; by loading saved embeddings.
+(add-hook 'ekg-note-save-hook #'ekg-embedding-generate-for-note-tags)
 (add-hook 'ekg-note-delete-hook #'ekg-embedding-delete)
 
 (provide 'ekg-embedding)

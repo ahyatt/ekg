@@ -194,6 +194,8 @@ Added "magic tags", tags that cause elisp to be executed.  See the @ref{Magic ta
 Added ekg-llm, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
 @item
 Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
+@item
+Improved @samp{ekg-embedding} package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
 @end itemize
 
 @node Version 032
