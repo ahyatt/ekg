@@ -86,6 +86,9 @@ with that JSON spec, meaning the return value will be a JSON
 struct represented in elisp."
   (unless ekg-embedding-api-key
     (error "To call Open AI API, provide the ekg-embedding-api-key"))
+  (with-current-buffer (get-buffer-create ekg-llm-trace-buffer)
+        (goto-char (point-max))
+        (insert (format "PROMPT: %s\n" (ekg-llm-prompt-to-text prompt))))
   (let* ((resp (request "https://api.openai.com/v1/chat/completions"
                 :type "POST"
                 :headers `(("Authorization" . ,(format "Bearer %s" ekg-embedding-api-key))
@@ -119,7 +122,6 @@ struct represented in elisp."
           (func-result (cdr (assoc 'arguments (cdr (assoc 'function_call (cdr (assoc 'message (aref (cdr (assoc 'choices (request-response-data resp))) 0)))))))))
       (with-current-buffer (get-buffer-create ekg-llm-trace-buffer)
         (goto-char (point-max))
-        (insert (format "PROMPT: %s\n" (ekg-llm-prompt-to-text prompt)))
         (insert (format "RESULT: %s\n" (or func-result result))))
       (or func-result result))))
 
