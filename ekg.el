@@ -1285,7 +1285,7 @@ This assumes that ALTERNATE-TAG is a real alternate tag."
 The alternative tag must not be in use as a tag or an alternative
 tag for something else."
   (interactive (list (completing-read "Original tag: " (ekg-tags) nil t)
-                     "MAlternative tag name: "))
+                     (read-from-minibuffer "Alternative tag name: ")))
   (ekg-connect)
   (unless (triples-get-type ekg-db original-tag 'tag)
     (error "Cannot add an alternate tag for %s, which is not a tag" original-tag))
@@ -1301,6 +1301,8 @@ tag for something else."
       (let ((tag-plist (map-delete
                         (triples-get-type ekg-db original-tag 'tag) :tagged)))
         (push alternate-tag (plist-get tag-plist :alternate))
+        ;; In case things have gone wrong, make sure we don't add the same tag twice.
+        (setq tag-plist (plist-put tag-plist :alternate (seq-uniq (plist-get tag-plist :alternate))))
         (apply #'triples-set-type ekg-db original-tag 'tag tag-plist)
         (triples-set-type ekg-db alternate-tag 'alternate-tag)))))
 
@@ -1543,9 +1545,32 @@ are created with additional tags TAGS."
   (> (ekg-note-creation-time a)
      (ekg-note-creation-time b)))
 
+(defun ekg-resolve-tag (tag-or-alternate)
+  "Return the actual tag for TAG.
+TAG can be a real tag or alternate."
+  (ekg-connect)
+  (if (triples-get-type ekg-db tag-or-alternate 'tag)
+      tag-or-alternate
+    (ekg-actual-tag tag-or-alternate)))
+
+(defun ekg-tag-and-alternate-completion (prompt)
+  "With PROMPT, ask the user to select a tag or alternate.
+Return the true tag."
+  (ekg-connect)
+  (ekg-resolve-tag (completing-read prompt (append (ekg-tags) (ekg-alternate-tags))
+                                    nil t)))
+
+(defun ekg-tag-and-alternate-completion-multiple (prompt)
+  "With PROMPT, ask the user to select a tag or alternate.
+Return the true tag."
+  (ekg-connect)
+  (mapcar #'ekg-resolve-tag
+          (completing-read-multiple prompt (append (ekg-tags) (ekg-alternate-tags))
+                                    nil t)))
+
 (defun ekg-show-notes-with-any-tags (tags)
   "Show notes with any of TAGS."
-  (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
+  (interactive (list (ekg-tag-and-alternate-completion-multiple "Tags: ")))
   (ekg-setup-notes-buffer
      (format "tags (any): %s" (ekg-tags-display tags))
      (lambda () (sort
@@ -1555,7 +1580,7 @@ are created with additional tags TAGS."
 
 (defun ekg-show-notes-with-all-tags (tags)
   "Show notes that contain all TAGS."
-  (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
+  (interactive (list (ekg-tag-and-alternate-completion-multiple "Tags: ")))
   (ekg-setup-notes-buffer
    (format "tags (all): %s" (ekg-tags-display tags))
    (lambda () (sort (ekg-get-notes-with-tags tags)
@@ -1564,7 +1589,7 @@ are created with additional tags TAGS."
 
 (defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
-  (interactive (list (completing-read "Tag: " (ekg-tags))))
+  (interactive (list (ekg-tag-and-alternate-completion "Tag: ")))
   (ekg-setup-notes-buffer
    (format "tag: %s" (ekg-tags-display (list tag)))
    (lambda () (sort (ekg-get-notes-with-tag tag) #'ekg-sort-by-creation-time))

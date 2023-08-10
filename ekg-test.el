@@ -344,6 +344,8 @@
   (ekg-add-alternate-tag "tag1" "alt1")
   (should (equal "tag1" (ekg-actual-tag "alt")))
   (should (equal "tag1" (ekg-actual-tag "alt1")))
+  (should (equal "tag1" (ekg-resolve-tag "alt")))
+  (should (equal "tag1" (ekg-resolve-tag "tag1")))
   (ekg-add-alternate-tag "tag2" "alt2")
   (should (equal "tag2" (ekg-actual-tag "alt2")))
   (should (equal '("alt" "alt1" "alt2") (sort (ekg-alternate-tags) #'string<)))
