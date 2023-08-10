@@ -65,6 +65,7 @@ Installation
 
 Changelog
 
+* Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
@@ -164,12 +165,21 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
+* Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 033
+@section Version 0.3.3
+
+@itemize
+@item
+Fix native compilation errors.  Upgrade to triples version 0.3.5, which contains more important bug fixes.
+@end itemize
 
 @node Version 032
 @section Version 0.3.2
