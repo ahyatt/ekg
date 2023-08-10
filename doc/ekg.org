@@ -59,6 +59,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 * Changelog
 ** Version 0.4
 - Added ability to save in-progress notes.
+- Added alternate tags.
 - Improved =ekg-clean-db= to fix bugs and change empty-note deletion logic.
 - Improved =ekg-embedding= package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
 - Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
@@ -308,6 +309,8 @@ Many of these commands use the notion that notes lists have associated lists of 
 The main way to customize displays is via the variable ~ekg-display-note-template~, which is a string that has inline commands in it (normally inline note commands).  See the [[#inlines][inlines]] section for more details on these commands.  Through changing this, the ordering or inclusion of various type-related information can be configured, or extra text added, or anything, really.
 
 The variable ~ekg-format-funcs~ has functions to run to format what ekg displays to the user. They are each run on a temporary buffer with the note text in it, and can make whatever changes necessary before they are displayed in a note list.
+* Alternative tags
+In some cases, you may want to refer to a tag with another name when selecting tags for viewing notes.  You can use alternate tags to do this, creating an alterate tag by calling =ekg-add-alternate-tag=.  Similarly, if you want to remove an alternate tag, you can call =ekg-remove-alternate-tag=.  There may be multiple alternate tags from a given tag.  These are only used when asking the user to choose tags.  If used as a tag when creating or editing notes, the actual tag will be substituted.  For that reason, you may want the actual tag to be a shorter tag to take up less room in the tag list display in notes, and alternate tags should be longer.
 * The trash
 :PROPERTIES:
 :CUSTOM_ID: trash
