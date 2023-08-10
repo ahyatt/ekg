@@ -333,6 +333,33 @@
   (should (ekg-should-show-id-p "http://gnu.org"))
   (should (ekg-should-show-id-p "/usr/bin/emacs")))
 
+(ekg-deftest ekg-test-alternate-tags ()
+  (let ((note (ekg-note-create :text "unimportant text" :mode 'text-mode :tags '("tag1" "tag2"))))
+    (ekg-save-note note))
+  (should-not (ekg-alternate-tags))
+  (should-error (ekg-remove-alternate-tag "alt"))
+  (should-error (ekg-add-alternate-tag "unknown" "alt"))
+  (should-error (ekg-add-alternate-tag "tag1" "tag2"))
+  (ekg-add-alternate-tag "tag1" "alt")
+  (ekg-add-alternate-tag "tag1" "alt1")
+  (should (equal "tag1" (ekg-actual-tag "alt")))
+  (should (equal "tag1" (ekg-actual-tag "alt1")))
+  (ekg-add-alternate-tag "tag2" "alt2")
+  (should (equal "tag2" (ekg-actual-tag "alt2")))
+  (should (equal '("alt" "alt1" "alt2") (sort (ekg-alternate-tags) #'string<)))
+  (ekg-remove-alternate-tag "alt1")
+  (should (equal '("alt" "alt2") (sort (ekg-alternate-tags) #'string<)))
+  (ekg-global-rename-tag "tag2" "new-tag2")
+  (should (equal "new-tag2" (ekg-actual-tag "alt2")))
+  ;; Now we can add tag2 as an alterate for tag1
+  (ekg-add-alternate-tag "tag1" "tag2")
+  (should (equal "tag1" (ekg-actual-tag "tag2")))
+  (should (equal '("alt" "alt2" "tag2") (sort (ekg-alternate-tags) #'string<)))
+  (ekg-global-rename-tag "new-tag2" "tag1")
+  ;; This should result in alternates for new-tag2 and tag1 being combined.
+  (should (equal "tag1" (ekg-actual-tag "alt2")))
+  (should (equal "tag1" (ekg-actual-tag "alt"))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here

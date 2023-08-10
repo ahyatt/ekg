@@ -270,7 +270,10 @@ callers have already called this function")
                       '(type :base/unique t :base/type symbol)
                       '(for-text :base/unique t))
   (triples-add-schema ekg-db 'tag
-                      '(tagged :base/virtual-reversed tagged/tag))
+                      '(tagged :base/virtual-reversed tagged/tag)
+                      '(alternate :base/type string))
+  (triples-add-schema ekg-db 'alternate-tag
+                      '(for-tag :base/virtual-reversed tag/alternate))
   (triples-add-schema ekg-db 'named 'name)
   (triples-add-schema ekg-db 'email 'address)
   ;; Person is just a marker
@@ -1249,21 +1252,77 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
 This can be done whether or not TO-TAG exists or not. This
 renames all instances of the tag globally, and all notes with
 FROM-TAG will use TO-TAG."
-  (interactive (list (completing-read "From tag: " (ekg-tags))
+  (interactive (list (completing-read "From tag: " (ekg-tags) nil t)
                      (completing-read "To tag: " (ekg-tags))))
   (ekg-connect)
-  (triples-with-transaction
-    ekg-db
-    (pcase triples-sqlite-interface
-      ('builtin (sqlite-execute
-                 ekg-db
-                 "UPDATE triples SET object = ? WHERE object = ? AND predicate = 'tagged/tag'"
-                 (list (triples-standardize-val to-tag) (triples-standardize-val from-tag))))
-      ('emacsql (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
-                         to-tag from-tag)))
-    (triples-remove-type ekg-db from-tag 'tag)
-    (triples-set-type ekg-db to-tag 'tag))
+  (let ((tag-plist (map-delete (triples-get-type ekg-db from-tag 'tag) :tagged))
+        (to-tag-plist (map-delete (triples-get-type ekg-db to-tag 'tag) :tagged)))
+    (triples-with-transaction
+      ekg-db
+      (pcase triples-sqlite-interface
+        ('builtin (sqlite-execute
+                   ekg-db
+                   "UPDATE triples SET object = ? WHERE object = ? AND predicate = 'tagged/tag'"
+                   (list (triples-standardize-val to-tag) (triples-standardize-val from-tag))))
+        ('emacsql (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
+                           to-tag from-tag)))
+      (triples-remove-type ekg-db from-tag 'tag)
+      ;; We need to update the tag-plist to include the alternate tags from both entities.
+      (setq tag-plist (plist-put tag-plist
+                                 :alternate (append (plist-get to-tag-plist :alternate)
+                                                    (plist-get tag-plist :alternate))))
+      (apply #'triples-set-type ekg-db to-tag 'tag tag-plist)))
   (triples-backups-maybe-backup ekg-db (ekg-db-file)))
+
+(defun ekg-actual-tag (alternate-tag)
+  "Return the tag that ALTERNATE-TAG is an alternate for.
+This assumes that ALTERNATE-TAG is a real alternate tag."
+  (ekg-connect)
+  (car (plist-get (triples-get-type ekg-db alternate-tag 'alternate-tag) :for-tag)))
+
+(defun ekg-add-alternate-tag (original-tag alternate-tag)
+  "Add an ALTERNATIVE-TAG for ORIGINAL-TAG.
+The alternative tag must not be in use as a tag or an alternative
+tag for something else."
+  (interactive (list (completing-read "Original tag: " (ekg-tags) nil t)
+                     "MAlternative tag name: "))
+  (ekg-connect)
+  (unless (triples-get-type ekg-db original-tag 'tag)
+    (error "Cannot add an alternate tag for %s, which is not a tag" original-tag))
+  (when (triples-get-type ekg-db alternate-tag 'tag)
+    (error "Cannot add %s as an alternative, since it is in use as a normal tag. You may want to use `ekg-global-rename-tag' to rename the tag to %s and then call this function again." alternate-tag original-tag))
+  (let ((alternates (triples-get-type ekg-db alternate-tag 'alternate-tag)))
+    (when (and alternates (plist-get alternates :for-tag))
+      (error "%s already exists as an alternative tag for %s. You may want to use `ekg-remove-alternate-name' if you want to remove that alternative, then call this function again."
+             alternate-tag
+             (car (plist-get alternates :for-tag))))
+    (triples-with-transaction
+      ekg-db
+      (let ((tag-plist (map-delete
+                        (triples-get-type ekg-db original-tag 'tag) :tagged)))
+        (push alternate-tag (plist-get tag-plist :alternate))
+        (apply #'triples-set-type ekg-db original-tag 'tag tag-plist)
+        (triples-set-type ekg-db alternate-tag 'alternate-tag)))))
+
+(defun ekg-alternate-tags ()
+  "Return a list of all alternate tags."
+  (ekg-connect)
+  (triples-subjects-of-type ekg-db 'alternate-tag))
+
+(defun ekg-remove-alternate-tag (alternate-tag)
+  "Remove ALTERNATE-TAG as an alternative for another tag."
+  (interactive (list (completing-read "Alternate tag: " (ekg-alternate-tags) nil t)))
+  (ekg-connect)
+  (let ((alternate-plist (triples-get-type ekg-db alternate-tag 'alternate-tag)))
+    (unless alternate-plist
+      (error "%s is not an alternate tag" alternate-tag))
+    (triples-with-transaction
+      ekg-db
+      (let* ((tag (car (plist-get alternate-plist :for-tag)))
+             (tag-plist (map-delete (triples-get-type ekg-db tag 'tag) :tagged)))
+        (plist-put tag-plist :alternate (cl-remove alternate-tag (plist-get tag-plist :alternate)))
+        (apply #'triples-set-type ekg-db tag 'tag tag-plist)
+        (triples-remove-type ekg-db alternate-tag 'alternate-tag)))))
 
 (defun ekg-tags ()
   "Return a list of all tags.
