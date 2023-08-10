@@ -346,6 +346,8 @@
   (should (equal "tag1" (ekg-actual-tag "alt1")))
   (should (equal "tag1" (ekg-resolve-tag "alt")))
   (should (equal "tag1" (ekg-resolve-tag "tag1")))
+  ;; Also random tags that aren't stored should just resolve to themselves.
+  (should (equal "foo" (ekg-resolve-tag "foo")))
   (ekg-add-alternate-tag "tag2" "alt2")
   (should (equal "tag2" (ekg-actual-tag "alt2")))
   (should (equal '("alt" "alt1" "alt2") (sort (ekg-alternate-tags) #'string<)))
@@ -361,6 +363,14 @@
   ;; This should result in alternates for new-tag2 and tag1 being combined.
   (should (equal "tag1" (ekg-actual-tag "alt2")))
   (should (equal "tag1" (ekg-actual-tag "alt"))))
+
+(ekg-deftest ekg-test-alternate-tags-saving-notes ()
+  (let ((note (ekg-note-create :text "unimportant text" :mode 'text-mode :tags '("tag1" "tag2"))))
+    (ekg-save-note note))
+  (ekg-add-alternate-tag "tag1" "alt")
+  (let ((note (ekg-note-create :text "unimportant text" :mode 'text-mode :tags '("alt"))))
+    (ekg-save-note note)
+    (should (equal '("tag1") (ekg-note-tags (ekg-get-note-with-id (ekg-note-id note)))))))
 
 (provide 'ekg-test)
 

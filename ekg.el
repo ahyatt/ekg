@@ -313,6 +313,7 @@ the text and may be after trailing whitespace."
   "Save NOTE in database, replacing note information there."
   (ekg-connect)
   (ekg--normalize-note note)
+  (setf (ekg-note-tags note) (seq-uniq (mapcar #'ekg-resolve-tag (ekg-note-tags note))))
   (run-hook-with-args 'ekg-note-pre-save-hook note)
   (triples-with-transaction
     ekg-db
@@ -1547,11 +1548,13 @@ are created with additional tags TAGS."
 
 (defun ekg-resolve-tag (tag-or-alternate)
   "Return the actual tag for TAG.
-TAG can be a real tag or alternate."
+TAG can be a real tag or alternate. If tag is not in existence,
+that's fine, the tag will be returned."
   (ekg-connect)
-  (if (triples-get-type ekg-db tag-or-alternate 'tag)
-      tag-or-alternate
-    (ekg-actual-tag tag-or-alternate)))
+  (cond
+   ((triples-get-type ekg-db tag-or-alternate 'tag) tag-or-alternate)
+   ((triples-get-type ekg-db tag-or-alternate 'alternate-tag) (ekg-actual-tag tag-or-alternate))
+   (t tag-or-alternate)))
 
 (defun ekg-tag-and-alternate-completion (prompt)
   "With PROMPT, ask the user to select a tag or alternate.
