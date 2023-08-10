@@ -941,14 +941,18 @@ However, if URL already exists, we edit the existing note on it."
   "Change the mode to MODE of the current note."
   (interactive (list (completing-read "Mode: " ekg-acceptable-modes))
                ekg-capture-mode ekg-edit-mode)
-  (let ((minor-mode (if ekg-capture-mode "capture" "edit"))
-        (note ekg-note))
+  (let* ((minor-mode (if ekg-capture-mode "capture" "edit"))
+         ;; Using the `capitalize' function causes a strange error with native
+         ;; compilation. See
+         ;; https://github.com/ahyatt/ekg/issues/87#issuecomment-1671054877.
+         (capitalized-minor-mode (if ekg-capture-mode "Capture" "Edit"))
+         (note ekg-note))
     (funcall (intern mode))
     (funcall (intern (format "ekg-%s-mode" minor-mode)))
     (setq header-line-format
           (substitute-command-keys
            (format "\\<ekg-%s-mode-map>%s buffer.  Finish \
-`\\[ekg-%s-finalize]'." minor-mode (capitalize minor-mode) minor-mode)))
+`\\[ekg-%s-finalize]'." minor-mode capitalized-minor-mode minor-mode)))
     (setq ekg-note note)))
 
 (defun ekg-edit (note)
