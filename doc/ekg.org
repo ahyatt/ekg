@@ -62,6 +62,8 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 - Improved =ekg-clean-db= to fix bugs and change empty-note deletion logic.
 - Improved =ekg-embedding= package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
 - Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
+** Version 0.3.3
+- Fix native compilation errors.  Upgrade to triples version 0.3.5, which contains more important bug fixes.
 ** Version 0.3.2
 - Upgrade to triples version 0.3.2, which contains important bug fixes.
 ** Version 0.3.1
