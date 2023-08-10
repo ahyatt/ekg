@@ -4,9 +4,9 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.3.2") (emacs "28.1"))
+;; Package-Requires: ((triples "0.3.5") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.3.2
+;; Version: 0.3.3
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -191,7 +191,7 @@ functions are passed in the ID of the note that is being deleted.")
 This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
-(defconst ekg-version "0.3.2"
+(defconst ekg-version "0.3.3"
   "The version of ekg, used to understand when the database needs
 upgrading.")
 
