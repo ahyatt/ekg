@@ -29,15 +29,9 @@
 ;; native-compile this, due to the amount of calculations that happen.
 
 (require 'ekg)
-(require 'request)
+(require 'llm)
 
 ;;; Code:
-
-(defcustom ekg-embedding-provider 'openapi
-  "The provider of the embedding.
-Needs to be recognized by `ekg-embedding'."
-  :type '(symbol)
-  :group 'ekg-embedding)
 
 (defcustom ekg-embedding-text-selector #'ekg-embedding-text-selector-initial
   "Function to select the text of the embedding, which is necessary
@@ -47,8 +41,9 @@ pass to the embedding API."
   :type '(function)
   :group 'ekg-embedding)
 
-(defconst ekg-embedding-api-key nil
-  "Key used to access whatever embedding API used.")
+(defconst ekg-embedding-provider nil
+  "The provider of the embedding.
+This is a struct representing a provider in the `llm' package.")
 
 (defun ekg-embedding-connect ()
   "Ensure the database is connected and ekg-embedding schema exists."
@@ -73,13 +68,19 @@ same size.  There must be at least one embedding passed in."
 
 (defun ekg-embedding-generate-for-note (note)
   "Calculate and set the embedding for NOTE.
-The caller is responsible for storing the embedding, this just
-updates NOTE."
-  (setf (ekg-note-properties note)
-        (plist-put (ekg-note-properties note)
-                   :embedding/embedding
-                   (ekg-embedding (substring-no-properties
-                                   (ekg-display-note-text note))))))
+The embedding is calculated asynchronously and the data is
+updated afterwards."
+  (llm-embedding-async
+   ekg-embedding-provider
+   (funcall ekg-embedding-text-selector
+            (substring-no-properties
+             (ekg-display-note-text note)))
+   (lambda (embedding)
+     (ekg-connect)
+     (triples-set-type ekg-db (ekg-note-id note) 'embedding
+                       :embedding embedding))
+   (lambda (error-type msg)
+     (message "ekg-embedding: error %s: %s" error-type msg))))
 
 (defun ekg-embedding-generate-for-note-tags (note)
   "Calculate and set the embedding for all the tags of NOTE."
@@ -177,24 +178,6 @@ closer it is to 1, the more similar it is."
       (setq sum (+ sum (* (aref v i) (aref v i)))))
     (sqrt sum)))
 
-(defun ekg-embedding-openai (text)
-  "Get an embedding of TEXT from Open AI API."
-  (unless ekg-embedding-api-key
-    (error "To call Open AI API, provide the ekg-embedding-api-key"))
-  (let ((resp (request "https://api.openai.com/v1/embeddings"
-                :type "POST"
-                :headers `(("Authorization" . ,(format "Bearer %s" ekg-embedding-api-key))
-                           ("Content-Type" . "application/json"))
-                :data (json-encode `(("input" . ,text) ("model" . "text-embedding-ada-002")))
-                :parser 'json-read
-                :error (cl-function (lambda (&key error-thrown data &allow-other-keys)
-                                      (error (format "Problem calling Open AI: %s, type: %s message: %s"
-                                                     (cdr error-thrown)
-                                                     (assoc-default 'type (cdar data))
-                                                     (assoc-default 'message (cdar data))))))
-                :sync t)))
-    (cdr (assoc 'embedding (aref (cdr (assoc 'data (request-response-data resp))) 0)))))
-
 (defun ekg-embedding-text-selector-initial (text)
   "Return the TEXT to use for generating embeddings.
 This is shortened to abide by token limits, using a conservative
@@ -213,13 +196,6 @@ exactly."
         (forward-word)
         (cl-incf num-words))
       (buffer-substring-no-properties (point-min) (point)))))
-
-(defun ekg-embedding (text)
-  "Get an embedding of TEXT.
-Returns the vector representing the embedding."
-  (let ((selected-text (funcall ekg-embedding-text-selector text)))
-    (pcase ekg-embedding-provider
-      ('openapi (ekg-embedding-openai selected-text)))))
 
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."
@@ -277,7 +253,8 @@ The results are in order of most similar to least similar."
   (ekg-setup-notes-buffer
      (format "similar to \"%s\"" text)
      (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
-                                                (ekg-embedding text) ekg-notes-size)))
+                                                (llm-embedding ekg-embedding-provider text)
+                                                ekg-notes-size)))
      nil))
 
 (defun ekg-embedding-show-similar-to-current-buffer ()
