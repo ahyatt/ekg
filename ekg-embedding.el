@@ -135,7 +135,10 @@ be calculated from the average of all tagged entities. Embeddings
 will not be calculated for objects with no text, except for tags.
 If called with a prefix arg, embeddings will be generated even if
 embeddings already exist. This is a fairly slow function, and may
-take minutes or hours depending on how much data there is.."
+take minutes or hours depending on how much data there is.
+
+Everything here is done asynchronously. A message will be printed
+when everything is finished."
   (interactive "P")
   (ekg-embedding-connect)
   (let ((count 0))
@@ -146,12 +149,15 @@ take minutes or hours depending on how much data there is.."
                   (when (and (or arg (not (ekg-embedding-valid-p embedding)))
                              (> (length (ekg-note-text note)) 0))
                     (cl-incf count)
-                    (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
-                                                                      (substring-no-properties (ekg-note-text note)))))))
-       (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
-                (ekg-embedding-refresh-tag-embedding s))
-       (triples-backups-maybe-backup ekg-db (ekg-db-file))
-       (message "Generated %s embeddings" count)))
+                    (ekg-embedding-generate-for-note note))))
+       ;; At this point, a lot of async things are happening, so we need to wait
+       ;; on all of them. We don't want to bother with a ton of mutexes, so
+       ;; we'll just wait for a bit, until everything is idle again.
+       (run-with-idle-timer (* 60 5) nil
+                            (lambda ()
+                              (cl-loop for s in (ekg-tags) do
+                                       (ekg-embedding-refresh-tag-embedding s))
+                              (message "Generated %s embeddings" count)))))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
