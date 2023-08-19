@@ -269,8 +269,12 @@ The results are in order of most similar to least similar."
   (ekg-embedding-connect)
   (ekg-setup-notes-buffer
      (format "similar to buffer \"%s\"" (buffer-name (current-buffer)))
-     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
-                                                (ekg-embedding (buffer-string)) ekg-notes-size)))
+     (lambda () (mapcar #'ekg-get-note-with-id
+                        (ekg-embedding-n-most-similar-notes
+                         (llm-embedding ekg-embedding-provider
+                                        (funcall ekg-embedding-text-selector
+                                                 (substring-no-properties (buffer-string))))
+                         ekg-notes-size)))
      nil))
 
 (add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note)
