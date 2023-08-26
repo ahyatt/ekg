@@ -31,16 +31,12 @@
 
 (require 'ekg)
 (require 'ekg-embedding)
+(require 'llm)
+(require 'llm-fake)
 (require 'json)
 (require 'org nil t)
 
 ;;; Code:
-
-(cl-defstruct ekg-llm-prompt
-  interactions temperature)
-
-(cl-defstruct ekg-llm-prompt-interaction
-  role content)
 
 (defcustom ekg-llm-format-output '((org-mode . ekg-llm-format-output-org)
                                    (markdown-mode . ekg-llm-format-output-markdown)
@@ -60,6 +56,11 @@
   :type 'string
   :group 'ekg-llm)
 
+(defconst ekg-llm-provider nil
+  "The provider of the embedding.
+This is a struct representing a provider in the `llm' package.
+The type and contents of the struct vary by provider.")
+
 (defconst ekg-llm-trace-buffer "*ekg llm trace*"
   "Buffer to use for tracing the LLM interactions.")
 
@@ -77,64 +78,6 @@
               ('markdown-mode "markdown")
               (_ (format "emacs %s" (symbol-name major-mode))))))
    "Anything inside an LLM_OUTPUT block is previous output you have given."))
-
-(defun ekg-llm-prompt-to-text (prompt)
-  "Convert PROMPT struct to a simple text structure."
-  (mapconcat (lambda (i)
-               (format "%s: %s"
-                       (pcase (ekg-llm-prompt-interaction-role i)
-                         ('user "User")
-                         ('system "System")
-                         ('assistant "Assistant"))
-                       (ekg-llm-prompt-interaction-content i)))
-             (ekg-llm-prompt-interactions prompt)
-             "\n"))
-
-(defun ekg-llm-send-prompt (prompt &optional return-json-spec)
-  "Send PROMPT to the Open AI, and return the result.
-If RETURN-JSON-SPEC is passed in, force the return to compliant
-with that JSON spec, meaning the return value will be a JSON
-struct represented in elisp."
-  (unless ekg-embedding-api-key
-    (error "To call Open AI API, provide the ekg-embedding-api-key"))
-  (with-current-buffer (get-buffer-create ekg-llm-trace-buffer)
-        (goto-char (point-max))
-        (insert (format "PROMPT: %s\n" (ekg-llm-prompt-to-text prompt))))
-  (let* ((resp (request "https://api.openai.com/v1/chat/completions"
-                :type "POST"
-                :headers `(("Authorization" . ,(format "Bearer %s" ekg-embedding-api-key))
-                           ("Content-Type" . "application/json"))
-                :data (json-encode `(("messages" . ,(mapcar (lambda (p) `(("role" . ,(pcase (ekg-llm-prompt-interaction-role p)
-                                                                                       ('user "user")
-                                                                                       ('system "system")
-                                                                                       ('assistant "assistant")))
-                                                                          ("content" . ,(ekg-llm-prompt-interaction-content p))))
-                                                            (ekg-llm-prompt-interactions prompt)))
-                                     ("model" . "gpt-3.5-turbo-0613")
-                                     ;; Removed ability to set the temperature -
-                                     ;; Open AI's model seems to go crazy when I
-                                     ;; set it, and their documentation is
-                                     ;; pretty inconsistent about temperature
-                                     ;; values.
-                                     ,@(when return-json-spec
-                                         `(("functions" . ((("name" . "output")
-                                                           ("parameters" .
-                                                            ,return-json-spec))))
-                                           ("function_call" . (("name" . "output")))))
-                                     ))
-                :parser 'json-read
-                :error (cl-function (lambda (&key error-thrown data &allow-other-keys)
-                                      (error (format "Problem calling Open AI: %s, type: %s message: %s"
-                                                     (cdr error-thrown)
-                                                     (assoc-default 'type (cdar data))
-                                                     (assoc-default 'message (cdar data))))))
-                :sync t)))
-    (let ((result (cdr (assoc 'content (cdr (assoc 'message (aref (cdr (assoc 'choices (request-response-data resp))) 0))))))
-          (func-result (cdr (assoc 'arguments (cdr (assoc 'function_call (cdr (assoc 'message (aref (cdr (assoc 'choices (request-response-data resp))) 0)))))))))
-      (with-current-buffer (get-buffer-create ekg-llm-trace-buffer)
-        (goto-char (point-max))
-        (insert (format "RESULT: %s\n" (or func-result result))))
-      (or func-result result))))
 
 (defvar-local ekg-llm-interaction-func
     (lambda ()
@@ -155,75 +98,6 @@ If nil, then the LLM will not be used.")
               (when ekg-llm-interaction-func
                 (funcall ekg-llm-interaction-func))))
 
-(defun ekg-llm-structured-call (prompt arglist)
-  "Produces programmatic output with PROMPT producing ARGLIST.
-ARGLIST is in the form of the arglist of `cl-defmethod, but where
-all arguments have to be a tuple of argname and one of `string',
-`integer', `float', `boolean', or a list of the element `list'
-and the type of list. All arguments are required at the moment.
-
-The return value is a alist where each element is a key with the
-respective argname and the value of the returned value, if any."
-  (ekg-llm-structured-output-to-plist
-   (json-read-from-string (ekg-llm-send-prompt
-                           prompt
-                           (ekg-llm-structured-call-arglist-to-schema arglist)))))
-
-(defun ekg-llm-type-to-json-type (type)
-  "Convert TYPE to a JSON type."
-  (pcase type
-    ('string "string")
-    ('integer "integer")
-    ('float "float")
-    ('list "array")
-    ('boolean "boolean")))
-
-(defun ekg-llm-structured-call-arglist-to-schema (arglist)
-  "Convert ARGLIST to a function schema for the OpenAI API.
-ARGLIST is mostly in the form a `cl-defmethod' arglist, but where
-lists also need to be tuples of the form `(list element-type)'."
-  (let ((required)
-        (properties))
-    (cl-loop for req-or-opt in '(required optional) do
-             (mapc (lambda (arg)
-                     (when (eq req-or-opt 'required) (push (symbol-name (car arg)) required))
-                     (push (cons (symbol-name (car arg))
-                                 (cons
-                                  (cons "type"
-                                        (if (eq 'cons (type-of (nth 1 arg)))
-                                            (ekg-llm-type-to-json-type (car (nth 1 arg)))
-                                          (ekg-llm-type-to-json-type (nth 1 arg))))
-                                  (when (eq (type-of (nth 1 arg)) 'cons)
-                                    (list (cons
-                                           "items"
-                                           (list
-                                            (cons "type"
-                                                  (ekg-llm-type-to-json-type (nth 1 (nth 1 arg))))))))))
-                           properties))
-                   (let ((optional-marker (seq-position arglist '&optional)))
-                     (if optional-marker
-                         (if (eq req-or-opt 'required)
-                             (seq-subseq arglist 0 optional-marker)
-                           (seq-subseq arglist (1+ optional-marker)))
-                       (when (eq req-or-opt 'required)
-                         arglist)))))
-    (list
-     (cons "type" "object")
-     (cons "required" (nreverse required))
-     (cons "properties" (nreverse properties)))))
-
-(defun ekg-llm-structured-output-to-plist (output)
-  "Convert structured OUTPUT given by the OpenAI API to a plist."
-  (let ((plist))
-    (cl-loop for (key . value) in output do
-             (setq plist
-                   (plist-put plist (intern (format ":%s" key))
-                              ;; Transform vectors into lists if encountered.
-                              (if (eq (type-of value) 'vector)
-                                  (append value nil)
-                                value))))
-    plist))
-
 (defun ekg-llm-format-output-org (s)
   "Format S in org mode to denote it as LLM created."
   (format "#+BEGIN_LLM_OUTPUT\n%s\n#+END_LLM_OUTPUT\n" s))
@@ -236,20 +110,15 @@ lists also need to be tuples of the form `(list element-type)'."
   "Format S in text mode to denote it as LLM created."
   (format "BEGIN_LLM_OUTPUT\n%s\nEND_LLM_OUTPUT\n" s))
 
-(defun ekg-llm-note-interactions (&optional prompt-prefix)
+(defun ekg-llm-note-interactions ()
   "From an ekg note buffer, create the prompt for the LLM.
 The return value is a list of `ekg-llm-prompt-interaction'
-structs. PROMPT-PREFIX, when exists, will be used as a prefix to
-the note text. If it is nil, use `ekg-llm-default-prompt'. This
-will also add a standard "
+structs."
   (list
-   (make-ekg-llm-prompt-interaction
+   (make-llm-chat-prompt-interaction
     :role 'system
     :content (ekg-llm-prompt-prelude))
-   (make-ekg-llm-prompt-interaction
-    :role 'system
-    :content (or prompt-prefix ekg-llm-default-prompt))
-   (make-ekg-llm-prompt-interaction
+   (make-llm-chat-prompt-interaction
     :role 'user
     :content (substring-no-properties (ekg-edit-note-display-text)))))
 
@@ -258,11 +127,15 @@ will also add a standard "
 If PROMPT is nil, use `ekg-llm-default-prompt'. TEMPERATURE is a
 float between 0 and 1, controlling the randomness and creativity
 of the response."
-  (let ((output (ekg-llm-send-prompt
-                   (make-ekg-llm-prompt
-                    :temperature temperature
-                    :interactions (ekg-llm-note-interactions prompt)))))
-    (funcall consume-func output)))
+  (llm-chat-response-async
+   ekg-llm-provider
+   (make-llm-chat-prompt
+    :temperature temperature
+    :context (or prompt ekg-llm-default-prompt)
+    :interactions (ekg-llm-note-interactions prompt))
+   consume-func
+   (lambda (signal msg)
+     (error "Error calling the LLM: %s" msg))))
 
 (defun ekg-llm-interaction-func (interaction-type)
   "Return a function for each valid INTERACTION-TYPE.
@@ -280,6 +153,12 @@ The valid interaction types are `'append' and `'replace'."
                                  (delete-region (point) (point-max))
                                  (insert output))))
     (_ (error "Invalid interaction type %s" interaction-type))))
+
+(defun ekg-llm-debug-query ()
+  "Instead of sending the query to the LLM, just display it."
+  (interactive)
+  (let ((ekg-llm-provider (make-llm-fake :output-to-buffer "*ekg llm trace*")))
+    (funcall ekg-llm-interaction-func)))
 
 (defun ekg-llm-set-interaction (prompt-title &optional interaction-type temperature)
   "Set prompt to the text of the note with PROMPT-TITLE.
@@ -333,21 +212,19 @@ The answer will appear in a new buffer"
       (funcall
        (ekg-llm-interaction-func 'append)
        (ekg-llm-send-prompt
-        (make-ekg-llm-prompt
+        (make-llm-chat-prompt
+         :context ekg-llm-query-prompt-intro
          :interactions
          (append
-          (list (make-ekg-llm-prompt-interaction
-           :role 'system
-           :content ekg-llm-query-prompt-intro))
           (mapcar
            (lambda (note)
-             (make-ekg-llm-prompt-interaction
+             (make-llm-chat-prompt-interaction
               :role 'user
               :content
               (format "%s\n%s" (ekg-llm-note-metadata-for-input note)
                       (substring-no-properties (ekg-display-note-text note)))))
            notes)
-          (list (make-ekg-llm-prompt-interaction
+          (list (make-llm-chat-prompt-interaction
                  :role 'user
                  :content (format "Query: %s" query))))))))
     (pop-to-buffer buf)))
