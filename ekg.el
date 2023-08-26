@@ -583,13 +583,14 @@ inlines."
                  (search-backward ">t" (line-beginning-position) t)
                  (+ 1 (point))))
         (end (point)))
-    (list begin end
-          (completion-table-dynamic (lambda (_)
-                                      (mapcar (lambda (title-cons)
-                                                (cons (cdr title-cons)
-                                                      (car title-cons)))
-                                              (ekg-document-titles))))
-          :exclusive t :exit-function #'ekg--transclude-cap-exit)))
+    (when (< begin end)
+      (list begin end
+            (completion-table-dynamic (lambda (_)
+                                        (mapcar (lambda (title-cons)
+                                                  (cons (cdr title-cons)
+                                                        (car title-cons)))
+                                                (ekg-document-titles))))
+            :exclusive t :exit-function #'ekg--transclude-cap-exit))))
 
 (defun ekg--transclude-cap-exit (completion finished)
   "Clean up CAP after completion."
