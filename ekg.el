@@ -116,6 +116,11 @@ not in the template."
   :type 'string
   :group 'ekg)
 
+(defcustom ekg-metadata-separator-text "--text follows this line--"
+  "Separator between the metadata of the note and the note text"
+  :type 'string
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -941,7 +946,7 @@ delete from the end of the metadata, we need to fix it back up."
     (goto-char (overlay-end o))
     (insert "\n")
     (move-overlay o (point-min) (- (overlay-end o) 1))
-    (overlay-put o 'after-string (propertize "--text follows this line--\n"
+    (overlay-put o 'after-string (propertize (concat ekg-metadata-separator-text "\n")
                                              'read-only t 'rear-nonsticky t))
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
