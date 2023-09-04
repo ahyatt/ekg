@@ -127,15 +127,13 @@ structs."
 If PROMPT is nil, use `ekg-llm-default-prompt'. TEMPERATURE is a
 float between 0 and 1, controlling the randomness and creativity
 of the response."
-  (llm-chat-response-async
-   ekg-llm-provider
-   (make-llm-chat-prompt
-    :temperature temperature
-    :context (or prompt ekg-llm-default-prompt)
-    :interactions (ekg-llm-note-interactions prompt))
-   consume-func
-   (lambda (signal msg)
-     (error "Error calling the LLM: %s" msg))))
+  (funcall consume-func
+           (llm-chat
+            ekg-llm-provider
+            (make-llm-chat-prompt
+             :temperature temperature
+             :context (or prompt ekg-llm-default-prompt)
+             :interactions (ekg-llm-note-interactions)))))
 
 (defun ekg-llm-interaction-func (interaction-type)
   "Return a function for each valid INTERACTION-TYPE.
@@ -145,7 +143,8 @@ The valid interaction types are `'append' and `'replace'."
                (let ((formatter (cdr (assoc major-mode ekg-llm-format-output))))
                  (save-excursion
                    (goto-char (point-max))
-                   (insert (if formatter
+                   (insert "\n"
+                           (if formatter
                                (funcall formatter output)
                              (format "\n%s\n" output)))))))
     ('replace (lambda (output) (save-excursion
