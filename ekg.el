@@ -462,7 +462,7 @@ This is opposed to tags that are used for internal purposes."
   "Return non-nil if NOTE is active.
 This is similar to `ekg-active-id-p', but takes a note, which may
 be unsaved."
-  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag)) 
+  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag))
                          (ekg-note-tags note)))
        (not (member ekg-draft-tag (ekg-note-tags note)))))
 
@@ -997,6 +997,22 @@ However, if URL already exists, we edit the existing note on it."
                    :properties `(:titled/title ,cleaned-title)
                    :id url))))
 
+(defun ekg-capture-file ()
+  "Capture a new note about the file the user is visiting.
+This can only be called when in a buffer that has an associated
+file. If not, an error will be thrown."
+  (interactive)
+  (ekg-connect)
+  (let ((file (buffer-file-name)))
+    (unless file (error "Cannot capture: no file associated with this buffer"))
+    (let* ((file (format "file:%s" (file-truename file)))
+           (existing (triples-get-subject ekg-db file)))
+      (if existing
+          (ekg-edit (ekg-get-note-with-id file))
+        (ekg-capture :tags (list (concat "doc/" (downcase (file-name-nondirectory file))))
+                     :properties `(:titled/title ,(file-name-nondirectory file))
+                     :id file)))))
+
 (defun ekg-change-mode (mode)
   "Change the mode to MODE of the current note."
   (interactive (list (completing-read "Mode: " ekg-acceptable-modes))
@@ -1389,13 +1405,13 @@ Otherwise, open in Emacs with `find-file'."
   (let ((note (ekg-current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
            (let* ((url (ekg-note-id note))
-		  (struct (url-generic-parse-url url))
-		  (full (url-fullness struct))
-		  (file (car (url-path-and-query struct))))
-	     (if full
-		 (browse-url url)
-	       (when (and file (> (length file) 0))
-		 (find-file file))))))))
+          (struct (url-generic-parse-url url))
+          (full (url-fullness struct))
+          (file (car (url-path-and-query struct))))
+         (if full
+         (browse-url url)
+           (when (and file (> (length file) 0))
+             (find-file file))))))))
 
 (defun ekg-notes-select-and-browse-url (title)
   "Browse one of all the resources in the current buffer.

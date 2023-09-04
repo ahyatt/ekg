@@ -183,6 +183,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @item
 Added ability to save in-progress notes.
 @item
+Added @samp{ekg-capture-file} to save notes associated with a file, or go that same note.
+@item
 Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
 @item
 Improved @samp{ekg-embedding} package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
@@ -295,7 +297,7 @@ Added the documentation you are reading right now.
 @item
 Fixed bug interfering with completion at the beginning of the tag property line.
 @item
-Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}. 
+Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
 @end itemize
 
 @node Database
@@ -429,15 +431,7 @@ Title: Emacs Config
 
 @end quotation
 
-When capturing file URL make sure to prefix it with @samp{file} scheme. You can wrap it in a function to supply the name and url of the file to have a much easier experience. The following is an example.
-
-@lisp
-(defun my/ekg-capture-file (file title)
-  (interactive "fFile: \nsTitle: ")
-  (let* ((file (format "file:%s" (string-trim file)))
-     (title (if (string-empty-p title) file (string-trim title))))
-    (ekg-capture-url file title)))
-@end lisp
+You can use the function @samp{ekg-capture-file} to either capture a note associated with a file from a buffer visiting that file.  If there already is a buffer associated with the file, the note will be opened instead.  You can use this to store TODOs and other notes about a file.
 
 Ekg opens web addresses in browser using @samp{browse-url} and everything else in Emacs using @samp{find-file}.
 
