@@ -202,7 +202,7 @@ newline."
 The answer will appear in a new buffer"
   (interactive "sQuery: ")
   (let ((notes (mapcar #'ekg-get-note-with-id
-                       (ekg-embedding-n-most-similar-notes (ekg-embedding query)
+                       (ekg-embedding-n-most-similar-notes (llm-embedding ekg-embedding-provider query)
                                                            ekg-llm-query-num-notes)))
         (buf (get-buffer-create
               (format "*ekg llm query '%s'*" (ekg-truncate-at query 5)))))
@@ -210,7 +210,7 @@ The answer will appear in a new buffer"
       (erase-buffer)
       (funcall
        (ekg-llm-interaction-func 'append)
-       (ekg-llm-send-prompt
+       (llm-chat ekg-llm-provider
         (make-llm-chat-prompt
          :context ekg-llm-query-prompt-intro
          :interactions
