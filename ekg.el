@@ -465,7 +465,7 @@ This is opposed to tags that are used for internal purposes."
   "Return non-nil if NOTE is active.
 This is similar to `ekg-active-id-p', but takes a note, which may
 be unsaved."
-  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag)) 
+  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag))
                          (ekg-note-tags note)))
        (not (member ekg-draft-tag (ekg-note-tags note)))))
 
