@@ -458,7 +458,7 @@ To save any note that is being captured, press @samp{C-c C-c} or call @samp{ekg-
 
 Ekg comes with a built-in way to have templates. When a note adds a tag, ekg searches for notes with both the tag added, and the tag "template". Any note with those two tags will be added by default to the text of the buffer.
 
-For example, if there is a note with tags, "daily reflection" and "template", with the text "What did you learn today?", adding the tag "daily reflection" to a note will cause the text "What did you learn today?" to appear.
+For example, if there is a note with tags, "daily reflection" and "template", with the text "What did you learn today?", adding the tag "daily reflection" to a note will cause the text "What did you learn today?" to appear.  The parents of tags are also searched, so the same thing will happen if for notes tags are "daily reflection/morning" - it will get the template for "daily reflection" as long as it exists.
 
 The adding of templates happens whether intially when setting up the capture buffer, or later when the users completes a tag. Tags added without completion won't trigger this behavior, since at the moment ekg will not be able to understand that a tag has changed.
 

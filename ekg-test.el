@@ -257,7 +257,17 @@
                           (ekg-display-note-text
                            (car (ekg-get-notes-with-tag "test2"))))))
 
-(ert-deftest ekg-test-display-note-template ()
+(ekg-deftest ekg-get-notes-cotagged-with-tags ()
+  (ekg-save-note (ekg-note-create :text "Foo" :tags '("magic" "a")))
+  (ekg-save-note (ekg-note-create :text "Bar" :tags '("magic" "a/b")))
+  (ekg-save-note (ekg-note-create :text "Baz" :tags '("magic" "c")))
+  (ekg-save-note (ekg-note-create :text "Other" :tags '("a/b/child" "c")))
+  (should (equal (mapc (lambda (note)
+                         (string-trim (substring-no-properties (ekg-display-note-text note))))
+                       (ekg-get-notes-cotagged-with-tags '("a/b/child" "c") "magic"))
+                 '("Foo" "Bar" "Baz"))))
+
+(ekg-deftest ekg-test-display-note-template ()
   (let ((ekg-display-note-template
          "%n(id)%n(tagged)%n(text 100)%n(other)%n(time-tracked)")
         (note (ekg-note-create :text "text" :mode 'text-mode :tags '("tag1" "tag2"))))
