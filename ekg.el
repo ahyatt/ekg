@@ -1392,13 +1392,13 @@ Otherwise, open in Emacs with `find-file'."
   (let ((note (ekg-current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
            (let* ((url (ekg-note-id note))
-		  (struct (url-generic-parse-url url))
-		  (full (url-fullness struct))
-		  (file (car (url-path-and-query struct))))
-	     (if full
-		 (browse-url url)
-	       (when (and file (> (length file) 0))
-		 (find-file file))))))))
+                  (struct (url-generic-parse-url url))
+                  (full (url-fullness struct))
+                  (file (car (url-path-and-query struct))))
+             (if full
+                 (browse-url url)
+               (when (and file (> (length file) 0))
+                 (find-file file))))))))
 
 (defun ekg-notes-select-and-browse-url (title)
   "Browse one of all the resources in the current buffer.
