@@ -56,6 +56,12 @@
   :type 'string
   :group 'ekg-llm)
 
+(defcustom ekg-llm-prompt-tag "prompt"
+  "The tag to use to denote a prompt. Notes tagged with this and
+other tags will be used as prompts for those other tags."
+  :type 'string
+  :group 'ekg-llm)
+
 (defconst ekg-llm-provider nil
   "The provider of the embedding.
 This is a struct representing a provider in the `llm' package.
@@ -66,6 +72,9 @@ The type and contents of the struct vary by provider.")
 
 (defconst ekg-llm-default-prompt "You are an all-around expert, and are providing helpful addendums to notes the user is writing.  The addendums could be insights from other fields, advice, quotations, or pointing out any issues you may find. The text of the note follows."
   "Default prompt to use for LLMs, if no other is found.")
+
+(defvar ekg-llm-prompt-history nil
+  "History of prompts used in the LLM.")
 
 (defun ekg-llm-prompt-prelude ()
   "Output a prelude to the prompt that mentions the mode."
@@ -79,24 +88,70 @@ The type and contents of the struct vary by provider.")
               (_ (format "emacs %s" (symbol-name major-mode))))))
    "Anything inside an LLM_OUTPUT block is previous output you have given."))
 
-(defvar-local ekg-llm-interaction-func
-    (lambda ()
-      (interactive)
-      (ekg-llm-send-and-use (ekg-llm-interaction-func 'append)
-                            ekg-llm-default-prompt nil))
-  "Function to call for an LLM to interact with the note.
-If nil, then the LLM will not be used.")
+(defun ekg-llm-prompt-for-note (note)
+  "Return the prompt for NOTE, using the tags on the note.
+Return value is a string. This is calculated by looking at the
+tags on the note, and finding the ones that are co-occuring with
+the ekg-llm-prompt-tag. The prompt will be built up from
+appending the prompts together, in the order of the tags in the
+note.
 
-(keymap-set ekg-capture-mode-map "C-c ."
-            (lambda ()
-              (interactive)
-              (when ekg-llm-interaction-func
-                (funcall ekg-llm-interaction-func))))
-(keymap-set ekg-edit-mode-map "C-c ."
-            (lambda ()
-              (interactive)
-              (when ekg-llm-interaction-func
-                (funcall ekg-llm-interaction-func))))
+If there are no prompts on any of the note tags, use
+`ekg-llm-default-prompt'."
+  (ekg--update-from-metadata)  ;; so we can get the latest tags
+  (let ((prompt-notes (ekg-get-notes-cotagged-with-tags
+                       (ekg-note-tags note) ekg-llm-prompt-tag)))
+    (if prompt-notes
+        (mapconcat (lambda (prompt-note)
+                     (string-trim
+                      (substring-no-properties (ekg-display-note-text prompt-note))))
+                   prompt-notes "\n")
+      ekg-llm-default-prompt)))
+
+(defun ekg-llm--send-and-process-note (arg interaction-type)
+  "Resolve the note prompt and send to LLM with the INTERACTION-TYPE.
+ARG comes from the calling function's prefix arg."
+  (interactive)
+  (let* ((prompt-initial (ekg-llm-prompt-for-note ekg-note))
+         (prompt-for-use (if arg
+                             ;; The documentation is clear this isn't correct -
+                             ;; the INITIAL-CONTENTS variable is deprecated.
+                             ;; However, it's the only way I know to prepopulate
+                             ;; the minibuffer, which is important because the
+                             ;; whole idea is that the user can edit the prompt
+                             ;; this way.
+                             (read-string "Prompt: " prompt-initial 'ekg-llm-prompt-history prompt-initial t)
+                           prompt-initial)))
+    (ekg-llm-send-and-use (ekg-llm-interaction-func interaction-type) prompt-for-use)))
+
+(defun ekg-llm-send-and-append-note (&optional arg)
+  "Send the note text to the LLM, appending the result.
+The prompt text is defined by the set of tags and their
+co-occurence with a prompt tag.
+
+ARG, if nonzero and nonnil, will let the user edit the prompt
+sent before it goes to the LLM.
+
+The text will be appended to the end of the note."
+  (interactive "P")
+  (ekg-llm--send-and-process-note arg 'append))
+
+(defun ekg-llm-send-and-replace-note (&optional arg)
+  "Replace note text with the result of sending the text to an LLM.
+The prompt text is defined by the set of tags and their
+co-occurence with a prompt tag.
+
+ARG, if nonzero and nonnil, will let the user edit the prompt
+sent before it goes to the LLM.
+
+The note text will be replaced by the result of the LLM."
+  (interactive "P")
+  (ekg-llm--send-and-process-note arg 'replace))
+
+(keymap-set ekg-capture-mode-map "C-c ." #'ekg-llm-send-and-append-note)
+(keymap-set ekg-edit-mode-map "C-c ." #'ekg-llm-send-and-append-note)
+(keymap-set ekg-capture-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
+(keymap-set ekg-edit-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
 
 (defun ekg-llm-format-output-org (s)
   "Format S in org mode to denote it as LLM created."
@@ -152,31 +207,6 @@ The valid interaction types are `'append' and `'replace'."
                                  (delete-region (point) (point-max))
                                  (insert output))))
     (_ (error "Invalid interaction type %s" interaction-type))))
-
-(defun ekg-llm-debug-query ()
-  "Instead of sending the query to the LLM, just display it."
-  (interactive)
-  (let ((ekg-llm-provider (make-llm-fake :output-to-buffer "*ekg llm trace*")))
-    (funcall ekg-llm-interaction-func)))
-
-(defun ekg-llm-set-interaction (prompt-title &optional interaction-type temperature)
-  "Set prompt to the text of the note with PROMPT-TITLE.
-
-INTERACTION-TYPE is one of `'append' or `'replace', to either append
-to the text or replace it entirely.
-
-If TEMPERATURE is non-nil, use it as the temperature for the LLM.
-It should be a floating point number between 0 and 1."
-  (setq-local ekg-llm-interaction-func
-              (lambda ()
-                (interactive)
-                (let ((prompts (ekg-get-notes-with-title prompt-title)))
-                  (unless (= 1 (length prompts))
-                    (error "Should have exactly one note with title %s, instead there are %d" prompt-title (length prompts)))
-                  (ekg-llm-send-and-use
-                   (ekg-llm-interaction-func (or interaction-type 'append))
-                   (substring-no-properties (ekg-display-note-text (car prompts)))
-                   temperature)))))
 
 (defun ekg-llm-note-metadata-for-input (note)
   "Return a brief description of the metdata of NOTE.

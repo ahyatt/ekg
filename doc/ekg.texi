@@ -295,7 +295,7 @@ Added the documentation you are reading right now.
 @item
 Fixed bug interfering with completion at the beginning of the tag property line.
 @item
-Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}. 
+Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
 @end itemize
 
 @node Database
@@ -720,11 +720,17 @@ This module contains functionality to explore similar notes and search using tec
 
 The idea behind an embedding is that it is an abstract representation of text, represented as a multi-dimensional vector. Because it is just a vector, you can compare the distance between different embeddings, and embedding vectors that are similar should represent similar concepts. This can be used to find similar notes, but also to search, where the search string is transformed into an embedding.
 
-Using embeddings in ekg are dependent on an API to transform text into embeddings. This is not something that can be done locally. Right now such APIs are rare, but Open AI does offer this, so this is what we support out of the box.
+The embedding interfaces with your preferred LLM provider via the @samp{llm} package.  This package allows the user to define their preferred llm backends, which will be stored in @code{ekg-llm-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for a complete description on how to do this, but an example would be the following:
 
-To get started, @uref{https://openai.com/join/, sign up for Open AI} and get an API key, which you should store in @code{ekg-embedding-api-key}. I highly recommend you set limits to how much you can be charged per month. Fortunately, calculating embeddings is cheap, and should cost much less than 1 USD for all but the largest databases.  The embeddings module will send the contents of the your notes, your searches, or sometimes buffer (for @samp{ekg-embedding-show-similar-to-current-buffer}) so please be aware of the privacy implications, and make sure you are comfortable with the embedding provider receiving your data.
+@lisp
+(use-package ekg
+  :init
+  (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
+    (setq ekg-llm-provider my-provider
+          ekg-embedding-provider my-provider)))
+@end lisp
 
-Important: @strong{your API key is a secret key, so do not store it anywhere it can be seen, such as a public git repository}.
+The embedding provider should be kept the same as you continue using ekg, however if you do change it, you will need to call @samp{ekg-embedding-generate-all} with a prefix argument (@samp{C-u M-x ekg-embedding-generate-all}), which will regenerate all embeddings asynchronously.  The embedding provider does not have to be the same as the LLM provider (if you also use the @ref{LLM} add-on.)  Also note that the provider will get the text of all your notes, so if that bothers you, do not use any provider on a server.
 
 Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the text is in the curent buffer.
@@ -811,7 +817,17 @@ Logseq embeds are imported as note transclusions.
 @section LLM
 
 @noindent
-The ekg-llm module provides a way to use large language models (LLMs) in the context of ekg notes, and using ekg notes.  It defines an interface to LLMs and provides an interactive function to call with notes that will add an LLM's response to your note.  This module needs to be configured with an API key, with it shares with the ekg-embedding module.  So, it is necessary to set @samp{ekg-embedding-api-key} to use this.  Currently this works only with Open AI's API, so it will require a paid API account.
+The ekg-llm module provides a way to use large language models (LLMs) in the context of ekg notes, and using ekg notes.  This is based on the @samp{llm} package, which allows the user to define their preferred llm backends, which will be stored in @code{ekg-llm-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for a complete description on how to do this, but an example would be the following:
+
+@lisp
+(use-package ekg
+  :init
+  (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
+    (setq ekg-llm-provider my-provider
+          ekg-embedding-provider my-provider)))
+@end lisp
+
+The embedding and LLM providers can be different.  The LLM provider can change at will.
 
 @menu
 * Augmenting notes with LLM output::
@@ -822,7 +838,11 @@ The ekg-llm module provides a way to use large language models (LLMs) in the con
 @node Augmenting notes with LLM output
 @subsection Augmenting notes with LLM output
 
-The variable @code{ekg-llm-interaction-func} holds a function that will perform some LLM interaction.  By default, this is bound to @samp{C-c .} in both @samp{ekg-capture-mode} and @samp{ekg-edit-mode}.  The default interaction is to append to the note with the LLM output, demarcated by being in a block labeled @samp{LLM_OUTPUT}.  The interaction works by default by way of a default prompt, which instructs the LLM to add helpful text in general.  When you execute the @samp{ekg-llm-interaction-func} (by pressing @samp{C-c .}), it will call the LLM, which often takes a few seconds.  The following is an example of what this looks like in practice, with the initial text just notes on cooking monkfish, and the LLM responding with tips.
+A note can be sent to an LLM and receive a response.  The response is dependent on the input to the LLM given, which consists of a prompt for the note, and the note text itself.  The default prompt is configured in @code{ekg-llm-default-prompt}.  It works in the same way that @ref{Templates, , templates} do, by looking at each tag of the note and looking for all notes co-tagged with those tags (or the parents of those tags) and the tag "prompt" (which can be configured with @code{ekg-llm-promp-tag}).  The text from those notes are appended in order.
+
+To send a note to an LLM, and have it send a response, call @samp{ekg-llm-send-and-append-note}, which is by default bound to @samp{[C-c .]}.  A prefix argument (@samp{[C-u C-c .]}) will let you edit the prompt before it is sent.  The output from the LLM is appended at the end of the note, in a special section.
+
+To take an example, imagine that we have a note tagged with @samp{prompt} and @samp{recipe}, that gives a prompt saying the LLM should imagine itself an authority on cooking and provide helpful tips to the user to improve their recipes.  The user then can edit a note with a child tag of @samp{recipe}, in this case with a tag of @samp{recipe/monkfish}.  Because @samp{recipe} is a parent of @samp{recipe/monkfish}, it will use this prompt instead of the default one, and the note will be appended to, looking like the following:
 
 @example
 Making monkfish again.  It is thick but tends to be wet and hard to get a good sear on.  Maybe I should sous vide it and then blast it with the searzall torch?
@@ -832,45 +852,7 @@ Monkfish can indeed be challenging to sear properly due to its high water conten
 #+END_LLM_OUTPUT
 @end example
 
-The prompt or interaction method can be changed by using @ref{Magic tags, , magic tags} to set @samp{ekg-llm-interaction-func}.  The function @samp{ekg-llm-set-interaction} makes this as trivial as possible.  It takes an argument of a note title containing the prompt, and an optional interaction method.  This means you typically need to create two notes to set up a tag with a custom prompt: the note with the prompt, and the note with magic-tag code that uses it to call @samp{ekg-llm-set-interaction}.
-
-For example, if you want to have the LLM respond to all your diary-style notes as if they were Aristotle commenting on the ethical questions in your notes, you can have a tag called "aristotle".  First, take care of the prompt by making a note with a title you can refer to later, in this case "Aristotle ethical response".  That's all that is technically needed, but it's a good idea to make it findable via tags as well, so in this case the tags "aristotle" and "prompt" would be good.  An example of that note would be:
-
-@example
-You are Aristotle.  Consider the ethical implications of anything contained in the notes, using your ethical principles and writings as a guide, and write a response in your particular style, which should read like a passage from your books.  If there is nothing particularly ethically interesting, note that and do not say more.
-@end example
-
-Next, you can make a note that has the tag "aristotle" and the default magic tag indicator, "tag-defun".  In this case, the default interaction of appending the response is desired, so no need set that variable.  However, for this particular interaction, a temperature of 0.5 seems appropriate - neither too creative or too restrictive.  We can create a  new note with the tags "aristotle" and "tag-defun":
-
-@example
-(ekg-llm-set-interaction "Aristotle ethical response" nil 0.5)
-@end example
-
-@noindent
-Check the docstring to @samp{ekg-llm-set-interaction} to see the full set of options.  If the title is not found, or there is more than one in ekg (which is possible), an error will be thrown.
-
-@noindent
-Finally, to use the new tag that sets the prompt, simply create a note with the "aristotle" tag.  As always, it's important to select the note via completion, so the code associated with the tag "aristotle" gets run.  Write your note and then press @samp{C-c .}.
-
-@example
-Sometimes I see people in the park having a picnic with a Citi Bike lying on the ground.  I always am a bit concerned, because sometimes tourists don't know that the bikes have to be returned in half an hour (or 45 minutes for members).  Should I say something, or mind my own business?  Saying something to people having a picnic seems unusually obtrusive in a way that I'm not very comfortable with.
-
-#+BEGIN_LLM_OUTPUT
-Aristotle believes in virtue ethics and considering the context of actions. So, in this case, he would provide an analysis based on these principles.
-
-The first step is to analyze the situation and identify the relevant virtues and vices involved.
-
-The virtues that seem relevant in this situation are prudence, justice, and temperance. Prudence is related to making sound judgments and understanding the consequences of our actions. Justice, on the other hand, is concerned with treating others fairly and respecting their rights. Finally, temperance involves acting in moderation and avoiding excessive behavior.
-
-It is evident that leaving a Citi Bike lying on the ground is not in accordance with the principles of justice and temperance. One could argue that it is a form of negligence since it deprives others of the opportunity to use the bike within the designated time limit. However, we also need to consider the context and practicality of intervening in this situation.
-
-In this specific case, approaching people who are having a picnic and bringing up the issue of the Citi Bike may be intrusive and disruptive to their enjoyment. It is important to consider the potential consequences of our actions. Will it genuinely benefit others, or will it create unnecessary conflict or discomfort? In this situation, it seems that the potential harm caused by intervening outweighs the possible good.
-
-Instead, it might be more prudent to address the broader issue at hand by informing the relevant authorities, such as the Citi Bike management or local officials, about the potential misuse of the bikes and the necessity of enforcing their return policy. By doing so, you are taking a more indirect and civic-minded approach that aligns with the principles of justice and temperance.
-
-In conclusion, while it is important to uphold principles of justice and temperance, the specific context of a situation must also be considered. In this instance, approaching people enjoying a picnic may not be the most appropriate course of action. Engaging with the appropriate authorities to address the broader issue would be a more prudent approach.
-#+END_LLM_OUTPUT
-@end example
+Instead of appending, the note can be replaced with the output of the LLM by using @samp{ekg-llm-send-and-replace-note} which is bound to @samp{[C-c ,]}.  As with the append command, using a prefix argument will let the user edit the prompt before sending it.
 
 All prompts in org or markdown modes have a prelude that notes that the format of the input and expected output.
 
@@ -879,16 +861,16 @@ All prompts in org or markdown modes have a prelude that notes that the format o
 
 In the previous section, using the @samp{ekg-llm-set-interaction} function was explained, which takes a note title that contains a prompt.  ekg notes are especially suited for prompting, because of the transclusion properties.  Often, in prompting, the prompt is composed of several parts, and some parts are common.  While experimenting with prompts, it's important to be able to iterate on meaningful part of the prompt that may be part of other prompts.
 
-Taking the above example of the "aristotle" prompt, perhaps we want several
-different prompts that focus on different things, but the persona of aristotle
-is common. Having a single prompt establishing the Artistotle identity would be useful.  For example, a note titled "Aristotle prompt" could have the prelude "You are Aristotle."  There can be other prompts using this via transclusion @ref{Inline commands, , inlines}, such as "%(transclude-note 33134561605).  Advise me on the ethical implications of the following text." (where that's the note titled "Aristotle prompt").  Another prompt could be "%(transclude-note 33134561605).  Write your thoughts on justice comes into play in the following text".  Because the note is transcluded, you can iterate on just the common beginning. Perhaps "Pretend you are Aristotle." is more effective?
+For example, imagine a prompt that is designed to give an Aristotelian response
+to a note. A note with tags "aristotle" and "prompt" could have the basics, "You
+are Aristotle.  Give a response to the note using Aristotle's writing style and ideas, referencing existing works when possible."  But perhaps you also want some standard behaviors found in other prompts, such as prompt to encourage the LLM response to ask you questions when appropriate.  There may be many prompts in which that sub-prompt may be applicable.  You can use transclusion @ref{Inline commands, , inlines} for this, adding the transclusion to the appropriate part of the prompt.  You can then iterate on each sub-part, trying to get the best behavior.
 
 Additionally, transclusion or other inline commands could help in other ways in forming the prompt, by sharing your schedule, or your current org agenda items as context to the LLM when it is necessary.  These advanced uses will require inline commands that are not part of the base ekg package, but once written, they can be seamless used in prompts.
 
 @node Querying your ekg database
 @subsection Querying your ekg database
 
-You can use the interactive function @samp{ekg-llm-query-with-notes} to send a query with the results of your notes.  This essentially will let your notes act as a natural language queryable knowledge base.  It will work for queries in which you have the relevant information.  The answer to the query will appear in a new buffer.
+If you also use embeddings, you can use the interactive function @samp{ekg-llm-query-with-notes} to send a query with the results of your notes.  This essentially will let your notes act as a natural language queryable knowledge base.  It will work for queries in which you have the relevant information.  The answer to the query will appear in a new buffer.
 
 The prompt instructing the user is defined in @samp{ekg-llm-query-prompt-intro}.  This can be changed to tune how the LLM responds to the query.
 
