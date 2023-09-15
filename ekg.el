@@ -121,6 +121,11 @@ not in the template."
   :type 'string
   :group 'ekg)
 
+(defcustom ekg-notes-display-images t
+  "Configuration to determine if images are displayed by default."
+  :type 'boolean
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -799,7 +804,11 @@ This is needed to identify references to refresh when the subject is changed." )
   "Major mode for showing a list of notes that can be interacted with."
   (setq buffer-read-only t)
   (setq truncate-lines t)
-  (visual-line-mode 1))
+  (visual-line-mode 1)
+  (if (eq ekg-capture-default-mode 'org-mode)
+        (progn
+          (require 'org)
+          (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.
@@ -980,6 +989,9 @@ If ID is given, force the triple subject to be that value."
     (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag))
           (ekg-note-tags ekg-note))
     (insert text)
+    (if (and (eq mode 'org-mode)
+             ekg-notes-display-images)
+        (org-redisplay-inline-images))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -1055,6 +1067,9 @@ file. If not, an error will be thrown."
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay)))))
+    (if (and (eq (ekg-note-mode note) 'org-mode)
+             ekg-notes-display-images)
+        (org-redisplay-inline-images))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -1445,8 +1460,22 @@ NAME is displayed at the top of the buffer."
     (overlay-put ekg-notes-hl 'face hl-line-face)
     ;; Move past the title
     (forward-line 1)
-    (ekg--note-highlight))
+    (ekg--note-highlight)
+    (when (eq ekg-capture-default-mode 'org-mode)
+        (ekg--notes-activate-links)
+        (if ekg-notes-display-images (org-redisplay-inline-images))))
   (set-buffer-modified-p nil))
+
+(defun ekg--notes-activate-links()
+  "Make the links in org properly formatted and enable follow."
+  (let ((inhibit-read-only t))
+      (save-excursion
+        (goto-char (point-min))
+        (while (org-activate-links (point-max))
+          (goto-char (match-end 0)))
+        ;; Go back and activate the first link again as it gets missed in the iteration
+        (goto-char (point-min))
+        (org-activate-links (point-max)))))
 
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
