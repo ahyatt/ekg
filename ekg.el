@@ -122,7 +122,7 @@ not in the template."
   :group 'ekg)
 
 (defcustom ekg-notes-display-images t
-  "Configuration to determine if images are displayed in the notes buffer by default."
+  "Configuration to determine if images are displayed by default."
   :type 'boolean
   :group 'ekg)
 
@@ -1467,7 +1467,7 @@ NAME is displayed at the top of the buffer."
   (set-buffer-modified-p nil))
 
 (defun ekg--notes-activate-links()
-  "Make the links in org properly formatted and enables follow."
+  "Make the links in org properly formatted and enable follow."
   (let ((inhibit-read-only t))
       (save-excursion
         (goto-char (point-min))
