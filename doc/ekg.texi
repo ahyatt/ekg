@@ -189,6 +189,8 @@ Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
 @item
 Improved @samp{ekg-embedding} package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
 @item
+Added commas to the tag header.
+@item
 Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
 @item
 Fixed bug in title transclusion for company users.

@@ -1319,10 +1319,9 @@ tags)."
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-display (tags)
-  "Return a propertized representation of TAGS, a list.
-The tags are separated by spaces."
-  (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
-             (sort (seq-copy tags) #'string<) " "))
+  "Return string representing a group of TAGS."
+  (mapconcat #'identity
+             (sort (seq-copy tags) #'string<) ", "))
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
