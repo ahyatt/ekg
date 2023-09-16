@@ -192,9 +192,17 @@ Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
 @item
 Improved @samp{ekg-embedding} package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
 @item
+Added commas to the tag header.
+@item
+Made separator in @samp{ekg-capture-mode} and @samp{ekg-edit-mode} customizable.
+@item
+Fixed display of org notes to have properly formatted links and images.  Links can be opened with @samp{[C-c o]}.
+@item
 Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
 @item
 Fixed bug in title transclusion for company users.
+
+Thanks to contributors @uref{https://github.com/Gleek, Gleek} and @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
 @end itemize
 
 @node Version 033
@@ -263,7 +271,7 @@ Added arg prefix behavior to @samp{ekg-notes-delete} to allow deleting notes wit
 Made @samp{ekg-capture} have unique buffer names, so the user can capture multiple notes at the same time.
 @end itemize
 
-Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}, @uref{https://github.com/qingshuizheng, Qingshui Zheng}, and @uref{https://github.com/cuprum, cuprum}.
+Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}, @uref{https://github.com/qingshuizheng, Qingshui Zheng}, And @uref{https://github.com/cuprum, cuprum}.
 
 @node Version 021
 @section Version 0.2.1
@@ -436,7 +444,7 @@ Title: Emacs Config
 
 You can use the function @samp{ekg-capture-file} to either capture a note associated with a file from a buffer visiting that file.  If there already is a buffer associated with the file, the note will be opened instead.  You can use this to store TODOs and other notes about a file.
 
-Ekg opens web addresses in browser using @samp{browse-url} and everything else in Emacs using @samp{find-file}.
+ekg opens web addresses in browser using @samp{browse-url} and everything else in Emacs using @samp{find-file}.
 
 @noindent
 A final way to capture notes comes from a buffer that is viewing a list of notes, in @samp{ekg-notes-mode}. You can call @samp{ekg-notes-create}, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
