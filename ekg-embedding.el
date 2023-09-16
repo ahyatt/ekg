@@ -66,7 +66,7 @@ same size.  There must be at least one embedding passed in."
              (aset v i (/ (aref v i) (length embeddings))))
     v))
 
-(defun ekg-embedding-generate-for-note (note)
+(defun ekg-embedding-generate-for-note-async (note)
   "Calculate and set the embedding for NOTE.
 The embedding is calculated asynchronously and the data is
 updated afterwards."
@@ -81,6 +81,22 @@ updated afterwards."
                        :embedding embedding))
    (lambda (error-type msg)
      (message "ekg-embedding: error %s: %s" error-type msg))))
+
+(defun ekg-embedding-generate-for-note-sync (note)
+  "Calculate and set the embedding for NOTE.
+The embedding is calculated synchronously, and the caller will
+wait for the embedding to return and be set."
+  (ekg-embedding-connect)
+  (let ((embedding (llm-embedding
+                    ekg-embedding-provider
+                    (funcall ekg-embedding-text-selector
+                             (substring-no-properties
+                              (ekg-display-note-text note))))))
+    (if (ekg-embedding-valid-p embedding)
+        (triples-set-type ekg-db (ekg-note-id note) 'embedding
+                          :embedding embedding)
+      (lwarn 'ekg :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
+             (ekg-note-id note) embedding))))
 
 (defun ekg-embedding-generate-for-note-tags (note)
   "Calculate and set the embedding for all the tags of NOTE."
@@ -114,7 +130,7 @@ embeddings of notes with the given tag."
                     (unless (ekg-embedding-valid-p embedding)
                       (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
                       (let ((note (ekg-get-note-with-id tagged)))
-                        (ekg-embedding-generate-for-note note)
+                        (ekg-embedding-generate-for-note-sync note)
                         (if (ekg-embedding-valid-p note)
                             (progn
                               (ekg-save-note note)
@@ -149,7 +165,7 @@ when everything is finished."
                   (when (and (or arg (not (ekg-embedding-valid-p embedding)))
                              (> (length (ekg-note-text note)) 0))
                     (cl-incf count)
-                    (ekg-embedding-generate-for-note note))))
+                    (ekg-embedding-generate-for-note-async note))))
        ;; At this point, a lot of async things are happening, so we need to wait
        ;; on all of them. We don't want to bother with a ton of mutexes, so
        ;; we'll just wait for a bit, until everything is idle again.
@@ -277,7 +293,7 @@ The results are in order of most similar to least similar."
                          ekg-notes-size)))
      nil))
 
-(add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note)
+(add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note-async)
 ;; Generating embeddings from a note's tags has to be post-save, since it works
 ;; by loading saved embeddings.
 (add-hook 'ekg-note-save-hook #'ekg-embedding-generate-for-note-tags)
