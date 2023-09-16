@@ -150,7 +150,7 @@ embeddings of notes with the given tag."
       (if (ekg-embedding-valid-p avg)
           (triples-set-type ekg-db tag 'embedding :embedding avg)
         (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
-    (error (message "ekg-embedding: error when trying not refresh tag %s: %S" tag err))))
+    (error (message "ekg-embedding: error when trying to refresh tag %s: %S" tag err))))
 
 (defun ekg-embedding-generate-all (arg)
   "Generate and store embeddings for every entity that needs one.
