@@ -60,10 +60,19 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 ** Version 0.4
 - Added ability to save in-progress notes.
 - Added "magic tags", tags that cause elisp to be executed.  See the [[#magic-tags][magic tags]] section for more detail.
-- Added ekg-llm, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
+- Added =ekg-llm=, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
+- Added =ekg-capture-file= to save notes associated with a file, or go that same note.
 - Improved =ekg-clean-db= to fix bugs and change empty-note deletion logic.
 - Improved =ekg-embedding= package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
+- Added commas to the tag header.
+- Made separator in =ekg-capture-mode= and =ekg-edit-mode= customizable.
+- Fixed display of org notes to have properly formatted links and images.  Links can be opened with =[C-c o]=.
 - Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
+- Fixed bug in title transclusion for company users.
+
+  Thanks to contributors [[https://github.com/Gleek][Gleek]] and [[https://github.com/qingshuizheng][Qingshui Zheng]].
+** Version 0.3.3
+- Fix native compilation errors.  Upgrade to triples version 0.3.5, which contains more important bug fixes.
 ** Version 0.3.2
 - Upgrade to triples version 0.3.2, which contains important bug fixes.
 ** Version 0.3.1
@@ -88,7 +97,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 - Added arg prefix behavior to =ekg-notes-delete= to allow deleting notes without a warning.
 - Made =ekg-capture= have unique buffer names, so the user can capture multiple notes at the same time.
 
-Thanks especially to users and contributors: [[https://github.com/jayrajput][Jay Rajput]], [[https://github.com/qingshuizheng][Qingshui Zheng]], and [[https://github.com/cuprum][cuprum]].
+Thanks especially to users and contributors: [[https://github.com/jayrajput][Jay Rajput]], [[https://github.com/qingshuizheng][Qingshui Zheng]], And [[https://github.com/cuprum][cuprum]].
 ** Version 0.2.1
 - Removed =ekg-notes-remove=, which removed one or more tags from a note from a note list buffer.
 - New keybinding, "q" in the notes buffer, which kills the buffer (thanks to Jay Rajput for the idea).
@@ -195,17 +204,9 @@ Tags: doc/emacs config, date/2023-05-13, emacs/init
 Title: Emacs Config
 #+end_quote
 
-When capturing file URL make sure to prefix it with =file= scheme. You can wrap it in a function to supply the name and url of the file to have a much easier experience. The following is an example.
+You can use the function =ekg-capture-file= to either capture a note associated with a file from a buffer visiting that file.  If there already is a buffer associated with the file, the note will be opened instead.  You can use this to store TODOs and other notes about a file.
 
-#+begin_src emacs-lisp
-  (defun my/ekg-capture-file (file title)
-    (interactive "fFile: \nsTitle: ")
-    (let* ((file (format "file:%s" (string-trim file)))
-       (title (if (string-empty-p title) file (string-trim title))))
-      (ekg-capture-url file title)))
-#+end_src
-
-Ekg opens web addresses in browser using =browse-url= and everything else in Emacs using =find-file=.
+ekg opens web addresses in browser using =browse-url= and everything else in Emacs using =find-file=.
 
 #+texinfo: @noindent
 A final way to capture notes comes from a buffer that is viewing a list of notes, in =ekg-notes-mode=. You can call =ekg-notes-create=, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
