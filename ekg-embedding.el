@@ -98,6 +98,14 @@ wait for the embedding to return and be set."
       (lwarn 'ekg :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
              (ekg-note-id note) embedding))))
 
+(defun ekg-embedding-generate-for-note-tags-delayed (note)
+  "Run `ekg-embedding-generate-for-note-tags' after a delay.
+The delay is necessary when notes have just been saved, because
+they may not have an embedding yet."
+  (run-with-idle-timer (* 60 5) nil
+                       (lambda ()
+                         (ekg-embedding-generate-for-note-tags note))))
+
 (defun ekg-embedding-generate-for-note-tags (note)
   "Calculate and set the embedding for all the tags of NOTE."
   (cl-loop for tag in (ekg-note-tags note) do
@@ -296,7 +304,7 @@ The results are in order of most similar to least similar."
 (add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note-async)
 ;; Generating embeddings from a note's tags has to be post-save, since it works
 ;; by loading saved embeddings.
-(add-hook 'ekg-note-save-hook #'ekg-embedding-generate-for-note-tags)
+(add-hook 'ekg-note-save-hook #'ekg-embedding-generate-for-note-tags-delayed)
 (add-hook 'ekg-note-delete-hook #'ekg-embedding-delete)
 
 (provide 'ekg-embedding)
