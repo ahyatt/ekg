@@ -309,4 +309,4 @@ The results are in order of most similar to least similar."
 
 (provide 'ekg-embedding)
 
-;;; ekg-embedding.el ends 
+;;; ekg-embedding.el ends
