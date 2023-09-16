@@ -127,7 +127,7 @@ embeddings of notes with the given tag."
         (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
     (error (message "ekg-embedding: error when trying not refresh tag %s: %S" tag err))))
 
-(defun ekg-embedding-generate-all (arg)
+(defun ekg-embedding-generate-all (&optional arg)
   "Generate and store embeddings for every entity that needs one.
 It is not necessary for the entity to contain a note. Tags will
 be calculated from the average of all tagged entities. Embeddings
@@ -139,14 +139,14 @@ take minutes or hours depending on how much data there is.."
   (ekg-embedding-connect)
   (let ((count 0))
        (cl-loop for s in (ekg-active-note-ids) do
-                (thread-yield)
                 (let ((note (ekg-get-note-with-id s))
-                      (embedding (triples-get-type ekg-db s 'embedding)))
+                      (embedding (plist-get (triples-get-type ekg-db s 'embedding) :embedding)))
                   (when (and (or arg (not (ekg-embedding-valid-p embedding)))
                              (> (length (ekg-note-text note)) 0))
                     (cl-incf count)
                     (triples-set-type ekg-db s 'embedding :embedding (ekg-embedding
-                                                                      (substring-no-properties (ekg-note-text note)))))))
+                                                                      (substring-no-properties (ekg-note-text note))))
+                    (thread-yield))))
        (cl-loop for s in (triples-subjects-of-type ekg-db 'tag) do
                 (ekg-embedding-refresh-tag-embedding s))
        (triples-backups-maybe-backup ekg-db (ekg-db-file))

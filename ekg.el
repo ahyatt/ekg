@@ -4,9 +4,9 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.3.2") (emacs "28.1"))
+;; Package-Requires: ((triples "0.3.5") (emacs "28.1"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.3.2
+;; Version: 0.3.3
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -124,6 +124,16 @@ not in the template."
   :type 'string
   :group 'ekg)
 
+(defcustom ekg-metadata-separator-text "--text follows this line--"
+  "Separator between the metadata of the note and the note text"
+  :type 'string
+  :group 'ekg)
+
+(defcustom ekg-notes-display-images t
+  "Configuration to determine if images are displayed by default."
+  :type 'boolean
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -208,7 +218,7 @@ functions are passed in the ID of the note that is being deleted.")
 This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
-(defconst ekg-version "0.3.2"
+(defconst ekg-version "0.3.3"
   "The version of ekg, used to understand when the database needs
 upgrading.")
 
@@ -465,7 +475,7 @@ This is opposed to tags that are used for internal purposes."
   "Return non-nil if NOTE is active.
 This is similar to `ekg-active-id-p', but takes a note, which may
 be unsaved."
-  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag)) 
+  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag))
                          (ekg-note-tags note)))
        (not (member ekg-draft-tag (ekg-note-tags note)))))
 
@@ -591,13 +601,14 @@ inlines."
                  (search-backward ">t" (line-beginning-position) t)
                  (+ 1 (point))))
         (end (point)))
-    (list begin end
-          (completion-table-dynamic (lambda (_)
-                                      (mapcar (lambda (title-cons)
-                                                (cons (cdr title-cons)
-                                                      (car title-cons)))
-                                              (ekg-document-titles))))
-          :exclusive t :exit-function #'ekg--transclude-cap-exit)))
+    (when (< begin end)
+      (list begin end
+            (completion-table-dynamic (lambda (_)
+                                        (mapcar (lambda (title-cons)
+                                                  (cons (cdr title-cons)
+                                                        (car title-cons)))
+                                                (ekg-document-titles))))
+            :exclusive t :exit-function #'ekg--transclude-cap-exit))))
 
 (defun ekg--transclude-cap-exit (completion finished)
   "Clean up CAP after completion."
@@ -801,7 +812,11 @@ This is needed to identify references to refresh when the subject is changed." )
   "Major mode for showing a list of notes that can be interacted with."
   (setq buffer-read-only t)
   (setq truncate-lines t)
-  (visual-line-mode 1))
+  (visual-line-mode 1)
+  (if (eq ekg-capture-default-mode 'org-mode)
+        (progn
+          (require 'org)
+          (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.
@@ -948,7 +963,7 @@ delete from the end of the metadata, we need to fix it back up."
     (goto-char (overlay-end o))
     (insert "\n")
     (move-overlay o (point-min) (- (overlay-end o) 1))
-    (overlay-put o 'after-string (propertize "--text follows this line--\n"
+    (overlay-put o 'after-string (propertize (concat ekg-metadata-separator-text "\n")
                                              'read-only t 'rear-nonsticky t))
     (overlay-put o 'category 'ekg-metadata)
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
@@ -983,6 +998,9 @@ If ID is given, force the triple subject to be that value."
           (ekg-note-tags ekg-note))
     (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
     (insert text)
+    (if (and (eq mode 'org-mode)
+             ekg-notes-display-images)
+        (org-redisplay-inline-images))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -1000,18 +1018,38 @@ However, if URL already exists, we edit the existing note on it."
                    :properties `(:titled/title ,cleaned-title)
                    :id url))))
 
+(defun ekg-capture-file ()
+  "Capture a new note about the file the user is visiting.
+This can only be called when in a buffer that has an associated
+file. If not, an error will be thrown."
+  (interactive)
+  (ekg-connect)
+  (let ((file (buffer-file-name)))
+    (unless file (error "Cannot capture: no file associated with this buffer"))
+    (let* ((file (format "file:%s" (file-truename file)))
+           (existing (triples-get-subject ekg-db file)))
+      (if existing
+          (ekg-edit (ekg-get-note-with-id file))
+        (ekg-capture :tags (list (concat "doc/" (downcase (file-name-nondirectory file))))
+                     :properties `(:titled/title ,(file-name-nondirectory file))
+                     :id file)))))
+
 (defun ekg-change-mode (mode)
   "Change the mode to MODE of the current note."
   (interactive (list (completing-read "Mode: " ekg-acceptable-modes))
                ekg-capture-mode ekg-edit-mode)
-  (let ((minor-mode (if ekg-capture-mode "capture" "edit"))
-        (note ekg-note))
+  (let* ((minor-mode (if ekg-capture-mode "capture" "edit"))
+         ;; Using the `capitalize' function causes a strange error with native
+         ;; compilation. See
+         ;; https://github.com/ahyatt/ekg/issues/87#issuecomment-1671054877.
+         (capitalized-minor-mode (if ekg-capture-mode "Capture" "Edit"))
+         (note ekg-note))
     (funcall (intern mode))
     (funcall (intern (format "ekg-%s-mode" minor-mode)))
     (setq header-line-format
           (substitute-command-keys
            (format "\\<ekg-%s-mode-map>%s buffer.  Finish \
-`\\[ekg-%s-finalize]'." minor-mode (capitalize minor-mode) minor-mode)))
+`\\[ekg-%s-finalize]'." minor-mode capitalized-minor-mode minor-mode)))
     (setq ekg-note note)))
 
 (defun ekg-edit (note)
@@ -1040,7 +1078,10 @@ However, if URL already exists, we edit the existing note on it."
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
-      (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note)))
+      (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
+      (if (and (eq (ekg-note-mode note) 'org-mode)
+             ekg-notes-display-images)
+        (org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -1291,10 +1332,9 @@ tags)."
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-display (tags)
-  "Return a propertized representation of TAGS, a list.
-The tags are separated by spaces."
-  (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
-             (sort (seq-copy tags) #'string<) " "))
+  "Return string representing a group of TAGS."
+  (mapconcat #'identity
+             (sort (seq-copy tags) #'string<) ", "))
 
 (defun ekg-display-note (note)
   "Display NOTE in buffer."
@@ -1392,13 +1432,13 @@ Otherwise, open in Emacs with `find-file'."
   (let ((note (ekg-current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
            (let* ((url (ekg-note-id note))
-		  (struct (url-generic-parse-url url))
-		  (full (url-fullness struct))
-		  (file (car (url-path-and-query struct))))
-	     (if full
-		 (browse-url url)
-	       (when (and file (> (length file) 0))
-		 (find-file file))))))))
+          (struct (url-generic-parse-url url))
+          (full (url-fullness struct))
+          (file (car (url-path-and-query struct))))
+         (if full
+         (browse-url url)
+           (when (and file (> (length file) 0))
+             (find-file file))))))))
 
 (defun ekg-notes-select-and-browse-url (title)
   "Browse one of all the resources in the current buffer.
@@ -1432,8 +1472,22 @@ NAME is displayed at the top of the buffer."
     (overlay-put ekg-notes-hl 'face hl-line-face)
     ;; Move past the title
     (forward-line 1)
-    (ekg--note-highlight))
+    (ekg--note-highlight)
+    (when (eq ekg-capture-default-mode 'org-mode)
+        (ekg--notes-activate-links)
+        (if ekg-notes-display-images (org-redisplay-inline-images))))
   (set-buffer-modified-p nil))
+
+(defun ekg--notes-activate-links()
+  "Make the links in org properly formatted and enable follow."
+  (let ((inhibit-read-only t))
+      (save-excursion
+        (goto-char (point-min))
+        (while (org-activate-links (point-max))
+          (goto-char (match-end 0)))
+        ;; Go back and activate the first link again as it gets missed in the iteration
+        (goto-char (point-min))
+        (org-activate-links (point-max)))))
 
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."

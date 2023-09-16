@@ -67,6 +67,7 @@ Installation
 Changelog
 
 * Version 0.4: Version 04. 
+* Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
@@ -175,6 +176,7 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 
 @menu
 * Version 0.4: Version 04. 
+* Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
 * Version 0.3.1: Version 031. 
 * Version 0.3: Version 03. 
@@ -191,13 +193,33 @@ Added ability to save in-progress notes.
 @item
 Added "magic tags", tags that cause elisp to be executed.  See the @ref{Magic tags, , magic tags} section for more detail.
 @item
-Added ekg-llm, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
+Added @samp{ekg-llm}, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
+@item
+Added @samp{ekg-capture-file} to save notes associated with a file, or go that same note.
 @item
 Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
 @item
 Improved @samp{ekg-embedding} package to make it more robust to missing embeddings (like what can happen if you save notes without loading the package first).
 @item
+Added commas to the tag header.
+@item
+Made separator in @samp{ekg-capture-mode} and @samp{ekg-edit-mode} customizable.
+@item
+Fixed display of org notes to have properly formatted links and images.  Links can be opened with @samp{[C-c o]}.
+@item
 Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
+@item
+Fixed bug in title transclusion for company users.
+
+Thanks to contributors @uref{https://github.com/Gleek, Gleek} and @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
+@end itemize
+
+@node Version 033
+@section Version 0.3.3
+
+@itemize
+@item
+Fix native compilation errors.  Upgrade to triples version 0.3.5, which contains more important bug fixes.
 @end itemize
 
 @node Version 032
@@ -258,7 +280,7 @@ Added arg prefix behavior to @samp{ekg-notes-delete} to allow deleting notes wit
 Made @samp{ekg-capture} have unique buffer names, so the user can capture multiple notes at the same time.
 @end itemize
 
-Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}, @uref{https://github.com/qingshuizheng, Qingshui Zheng}, and @uref{https://github.com/cuprum, cuprum}.
+Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}, @uref{https://github.com/qingshuizheng, Qingshui Zheng}, And @uref{https://github.com/cuprum, cuprum}.
 
 @node Version 021
 @section Version 0.2.1
@@ -295,7 +317,7 @@ Added the documentation you are reading right now.
 @item
 Fixed bug interfering with completion at the beginning of the tag property line.
 @item
-Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}. 
+Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
 @end itemize
 
 @node Database
@@ -429,17 +451,9 @@ Title: Emacs Config
 
 @end quotation
 
-When capturing file URL make sure to prefix it with @samp{file} scheme. You can wrap it in a function to supply the name and url of the file to have a much easier experience. The following is an example.
+You can use the function @samp{ekg-capture-file} to either capture a note associated with a file from a buffer visiting that file.  If there already is a buffer associated with the file, the note will be opened instead.  You can use this to store TODOs and other notes about a file.
 
-@lisp
-(defun my/ekg-capture-file (file title)
-  (interactive "fFile: \nsTitle: ")
-  (let* ((file (format "file:%s" (string-trim file)))
-     (title (if (string-empty-p title) file (string-trim title))))
-    (ekg-capture-url file title)))
-@end lisp
-
-Ekg opens web addresses in browser using @samp{browse-url} and everything else in Emacs using @samp{find-file}.
+ekg opens web addresses in browser using @samp{browse-url} and everything else in Emacs using @samp{find-file}.
 
 @noindent
 A final way to capture notes comes from a buffer that is viewing a list of notes, in @samp{ekg-notes-mode}. You can call @samp{ekg-notes-create}, which will capture a new note with whatever tags (if any) are associated with the notes buffer.
