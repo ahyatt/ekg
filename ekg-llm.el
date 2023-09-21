@@ -182,6 +182,7 @@ structs."
 If PROMPT is nil, use `ekg-llm-default-prompt'. TEMPERATURE is a
 float between 0 and 1, controlling the randomness and creativity
 of the response."
+  (message "Calling the LLM, which could take around ten seconds.")
   (funcall consume-func
            (llm-chat
             ekg-llm-provider
