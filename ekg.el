@@ -1684,6 +1684,17 @@ Active in this context means non-trashed."
   (ekg-connect)
   (seq-filter #'ekg-active-id-p (triples-subjects-of-type ekg-db 'text)))
 
+(defun ekg-get-notes-cotagged-with-tags (tags cotag)
+  "Return a list of all notes with one of TAGS and COTAG.
+Parents of the tags in TAGS are also considered. Specifically,
+look at each tag in order, from ancestor to child (so if a tag
+was a/b/c, we'd check a, then a/b, then a/b/c.), and for each of
+those look at all notes cotagged with COTAG. We return a list of
+the text of all these notes for all tagas and tag parents, etc."
+  (flatten-list (mapcar (lambda (tag)
+                          (ekg-get-notes-with-tags (list tag cotag)))
+                        (seq-mapcat #'ekg-tag-to-hierarchy tags))))
+
 (defun ekg-on-add-tag-insert-template (tag)
   "Look for templates for TAG, and insert into current buffer.
 This looks for notes with tags TAG and `template', and for any

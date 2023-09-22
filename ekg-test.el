@@ -49,7 +49,7 @@
   (ekg-save-note (ekg-note-create :text "" :mode 'text-mode :tags '(" a" " B ")))
   (should (equal (sort (ekg-tags) #'string<) '("a" "b")))
   (should (equal (ekg-tags-including "b") '("b")))
-  (should (string= (ekg-tags-display '("a" "b")) "a b")))
+  (should (string= (ekg-tags-display '("a" "b")) "a, b")))
 
 (ekg-deftest ekg-test-org-link-to-id ()
   (require 'ol)
@@ -76,7 +76,7 @@
   (require 'ol)
   (ekg-save-note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
   (ekg-show-notes-with-any-tags '("a" "b"))
-  (let* ((tag-buf (get-buffer "*ekg tags (any): a b*")))
+  (let* ((tag-buf (get-buffer "*ekg tags (any): a, b*")))
     (unwind-protect
         (progn
           ;; Can we store a link?
@@ -113,7 +113,7 @@
       (list (ekg-note-create :text "a" :mode ekg-capture-default-mode :tags '("tag/a"))
             (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
   (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
-  (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a tag/b")))
+  (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a, tag/b")))
 
 (ekg-deftest ekg-test-note-roundtrip ()
   (let ((text "foo\n\tbar \"baz\" ☃"))
@@ -249,7 +249,17 @@
                           (ekg-display-note-text
                            (car (ekg-get-notes-with-tag "test2"))))))
 
-(ert-deftest ekg-test-display-note-template ()
+(ekg-deftest ekg-get-notes-cotagged-with-tags ()
+  (ekg-save-note (ekg-note-create :text "Foo" :tags '("magic" "a")))
+  (ekg-save-note (ekg-note-create :text "Bar" :tags '("magic" "a/b")))
+  (ekg-save-note (ekg-note-create :text "Baz" :tags '("magic" "c")))
+  (ekg-save-note (ekg-note-create :text "Other" :tags '("a/b/child" "c")))
+  (should (equal (mapcar (lambda (note)
+                           (string-trim (substring-no-properties (ekg-display-note-text note))))
+                       (ekg-get-notes-cotagged-with-tags '("a/b/child" "c") "magic"))
+                 '("Foo" "Bar" "Baz"))))
+
+(ekg-deftest ekg-test-display-note-template ()
   (let ((ekg-display-note-template
          "%n(id)%n(tagged)%n(text 100)%n(other)%n(time-tracked)")
         (note (ekg-note-create :text "text" :mode 'text-mode :tags '("tag1" "tag2"))))
