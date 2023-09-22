@@ -162,6 +162,14 @@
                             (ekg-insert-inlines-representation
                              (car ex-cons) (cdr ex-cons)))))))
 
+(ekg-deftest ekg-test-edit-note-display-text ()
+  (let ((note (ekg-note-create :text "transcluded text" :mode 'org-mode :tags nil)))
+    (ekg-save-note note)
+    (ekg-capture :mode 'text-mode)
+    (insert (format "Foo %%(transclude-note %S) bar" (ekg-note-id note)))
+    (should (string-equal "Foo transcluded text bar"
+                          (ekg-edit-note-display-text)))))
+
 (ekg-deftest ekg-test-transclude ()
   (let ((note1 (ekg-note-create :text "text1 text2" :mode 'org-mode :tags nil))
         (note2 (ekg-note-create :text "text3 text4" :mode 'text-mode :tags nil)))
@@ -256,7 +264,7 @@
   (ekg-save-note (ekg-note-create :text "Other" :tags '("a/b/child" "c")))
   (should (equal (mapcar (lambda (note)
                            (string-trim (substring-no-properties (ekg-display-note-text note))))
-                       (ekg-get-notes-cotagged-with-tags '("a/b/child" "c") "magic"))
+                         (ekg-get-notes-cotagged-with-tags '("a/b/child" "c") "magic"))
                  '("Foo" "Bar" "Baz"))))
 
 (ekg-deftest ekg-test-display-note-template ()

@@ -984,7 +984,7 @@ If ID is given, force the triple subject to be that value."
          (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
          (tags (seq-uniq (append tags auto-tags))))
     (set-buffer buf)
-    (funcall ekg-capture-default-mode)
+    (funcall (or mode ekg-capture-default-mode))
     (ekg-capture-mode 1)
     (setq ekg-note
           (ekg-note-create :id id
@@ -1432,13 +1432,13 @@ Otherwise, open in Emacs with `find-file'."
   (let ((note (ekg-current-note-or-error)))
     (cond ((ffap-url-p (ekg-note-id note))
            (let* ((url (ekg-note-id note))
-          (struct (url-generic-parse-url url))
-          (full (url-fullness struct))
-          (file (car (url-path-and-query struct))))
-         (if full
-         (browse-url url)
-           (when (and file (> (length file) 0))
-             (find-file file))))))))
+                  (struct (url-generic-parse-url url))
+                  (full (url-fullness struct))
+                  (file (car (url-path-and-query struct))))
+             (if full
+                 (browse-url url)
+               (when (and file (> (length file) 0))
+                 (find-file file))))))))
 
 (defun ekg-notes-select-and-browse-url (title)
   "Browse one of all the resources in the current buffer.
@@ -1711,7 +1711,7 @@ found, insert, one by one, into the current note."
                               (unless (looking-at (rx (seq line-start line-end)))
                                 (insert "\n"))
                               (insert (ekg-note-text template)))))
-          (ekg-get-notes-with-tags (list tag ekg-template-tag)))))
+          (ekg-get-notes-cotagged-with-tags (list tag) ekg-template-tag))))
 
 ;; Auto-tag functions
 
@@ -1871,6 +1871,15 @@ long as those notes aren't on resources that are interesting.
     (org-link-store-props :type "ekg-tags-any" :link (concat "ekg-tags-any:" (format "%S" ekg-notes-tags))
                           :description (format "EKG page for any of the tags: %s"
                                                (mapconcat #'identity ekg-notes-tags ", ")))))
+
+(defun ekg-edit-note-display-text ()
+  "From an edit / capture mode buffer, return display text.
+The display text is the text with all inlines executed, without
+any metadata text."
+  (let* ((text (buffer-substring (+ 1 (overlay-end (ekg--metadata-overlay)))
+                                 (point-max)))
+         (ticons (ekg-extract-inlines text)))
+    (ekg-insert-inlines-results (car ticons) (cdr ticons) nil)))
 
 (defun ekg--open-any-tags-link (stags)
   "Open a link to an ekg page given by STAGS.
