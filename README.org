@@ -20,9 +20,21 @@ both the note's data and the text of the note itself in a buffer.
 #+CAPTION: An eample of editing a note
 [[./screenshots/ekg-edit.jpg]]
 
+ekg has functionality to have notes created with templates that vary based on
+the tags you are using.  It also supports saving unfinished notes as drafts.
+
+Notes can have be on file resources and web resources. You can use notes on file
+resources to have a stored annotation for files.
+
 ekg supports import from org-roam, and import and export to logseq. It also
 supports inline commands, which can be used for transclusion and any other
 functionality you may need.
+
+There is support for embedding creation for notes, for use in search and
+similarity search, via the llm package. This allows you to search based on
+semantics, as opposed to text matching. You can also use LLM chat in your notes,
+getting an LLM to respond to your notes based on a default prompt, or new
+prompts that you add.
 
 Additionally, [[https://youtu.be/qxa2VrseFUA][a video demonstration and explanation of ekg]] is on YouTube. This
 README has only the most basic information, but the full information can be
@@ -85,23 +97,38 @@ certain type if necessary.
 There are a few other types of prefixes commonly used for tags. One is that
 titled resources have default tags that are prefixed with "doc/", followed by
 the name of the document.
-* Warning
-ekg is a fairly new package, and as such, there may be significant bugs. Testing
-is done, but this package has not yet had the wide use that will surface many
-kinds of bugs.
 
+Functionality such as templates, and llm prompting can work with prefixed tags,
+so when looking for templates or prompts for a tag with some hierarchy, will
+look at the tag hierarchy from the top to the bottom to add any relevant
+information.
 * Installation
-ekg is currently hosted on MELPA. It requires Emacs 28.1 or higher and the
-[[https://github.com/ahyatt/triples][triples]] package, which is a way to express a graph in sqlite in emacs, alongside
-basic querying functionality. Emacs versions prior to version 29 are dependent
-on =emacsql= to provide sqlite functionality, which itself has a dependency on
-having a =sqlite= binary available on your system.
+ekg is currently hosted on MELPA. It requires Emacs 28.1 or higher and the the following packages:
+ - [[https://github.com/ahyatt/triples][triples]], which is a way to express a graph in sqlite in emacs, alongside basic querying functionality.
+ - [[https://github.com/ahyatt/llm][llm]], a way to depend on LLMs via a interface, so the user can choose which provider they want to use.
+
+Emacs versions prior to version 29 are dependent on =emacsql= to provide sqlite
+functionality, which itself has a dependency on having a =sqlite= binary available
+on your system.
 
 An example installation using =use-package= is below:
 #+begin_src emacs-lisp
 (use-package ekg
   :bind (([f11] . ekg-capture)))
 #+end_src
+
+If you are using embedding and llm functionality, an example in which you use Open AI's API is the following:
+
+#+begin_src emacs-lisp
+(use-package ekg
+  :bind (([f11] . ekg-capture))
+  :init
+  (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
+    (setq ekg-llm-provider my-provider
+          ekg-embedding-provider my-provider)))
+#+end_src
+
+Note: make sure to never check in an API key, so if you check in your configuration, set up your API key in a loaded elisp file you do not check in.
 * Usage
 To create a note, run =ekg-capture= to capture a text note, or =ekg-capture-url= to
 capture a website. The note will, by default, be tagged with the current date.
@@ -121,18 +148,21 @@ a complete list of commands and keybindings.
 * Command summary
 Global commands, can be run everywhere, and most should be bound to useful keybindings:
 
-| Command                        | Description                                                         |
-|--------------------------------+---------------------------------------------------------------------|
-| =ekg-capture=                    | Capture a new note                                                  |
-| =ekg-capture-url=                | Capture a new note about a URL                                      |
-| =ekg-show-notes-with-tag=        | Open a tag buffer for notes matching the single tag given           |
-| =ekg-show-notes-with-any-tags=   | Open a tag buffer for notes matching any of the given tags          |
-| =ekg-show-notes-with-all-tags= | Open a tag buffer for notes matching all of the given tags          |
-| =ekg-show-notes-in-trash=        | Open a tag buffer that shows all notes with only trashed tags       |
-| =ekg-show-notes-for-today=       | Open a tag buffer that shows notes with today's tag                 |
-| =ekg-show-notes-latest-captured= | Open a buffer that shows the latest notes that have been captured |
-| =ekg-show-notes-latest-modified= | Open a buffer that shows the latest notes that have been modified |
-| =ekg-browse-url=                 | Open a URL stored as a resource to a note, completing by note title |
+| Command                        | Description                                                            |
+|--------------------------------+------------------------------------------------------------------------|
+| =ekg-capture=                    | Capture a new note                                                     |
+| =ekg-capture-url=                | Capture a new note (or open an existing note) about a URL              |
+| =ekg-capture-file=               | Capture a new note (or open an existing note) about a file             |
+| =ekg-show-notes-with-tag=        | Open a tag buffer for notes matching the single tag given              |
+| =ekg-show-notes-with-any-tags=   | Open a tag buffer for notes matching any of the given tags             |
+| =ekg-show-notes-with-all-tags=   | Open a tag buffer for notes matching all of the given tags             |
+| =ekg-show-notes-in-trash=        | Open a tag buffer that shows all notes with only trashed tags          |
+| =ekg-show-notes-in-drafts=       | Open a tag buffer that shows all draft notes (saved but not finalized) |
+| =ekg-show-notes-for-today=       | Open a tag buffer that shows notes with today's tag                    |
+| =ekg-show-notes-latest-captured= | Open a buffer that shows the latest notes that have been captured      |
+| =ekg-show-notes-latest-modified= | Open a buffer that shows the latest notes that have been modified      |
+| =ekg-browse-url=                 | Open a URL stored as a resource to a note, completing by note title    |
+
 
 These are also global commands, but for more occasional or specialized uses:
 
