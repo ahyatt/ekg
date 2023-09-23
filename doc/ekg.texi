@@ -210,6 +210,8 @@ Fixed display of org notes to have properly formatted links and images.  Links c
 Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
 @item
 Fixed bug in title transclusion for company users.
+@item
+Changed template behavior to also use parent tags (so templates on "foo" tag, will work if the note tag is "foo/bar").
 
 Thanks to contributors @uref{https://github.com/Gleek, Gleek} and @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
 @end itemize

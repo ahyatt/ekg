@@ -69,6 +69,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 - Fixed display of org notes to have properly formatted links and images.  Links can be opened with =[C-c o]=.
 - Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
 - Fixed bug in title transclusion for company users.
+- Changed template behavior to also use parent tags (so templates on "foo" tag, will work if the note tag is "foo/bar").
 
   Thanks to contributors [[https://github.com/Gleek][Gleek]] and [[https://github.com/qingshuizheng][Qingshui Zheng]].
 ** Version 0.3.3
