@@ -123,6 +123,8 @@ If you are using embedding and llm functionality, an example in which you use Op
 (use-package ekg
   :bind (([f11] . ekg-capture))
   :init
+  (require 'ekg-embedding)
+  (require 'ekg-llm)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
