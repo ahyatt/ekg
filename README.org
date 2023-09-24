@@ -125,6 +125,7 @@ If you are using embedding and llm functionality, an example in which you use Op
   :init
   (require 'ekg-embedding)
   (require 'ekg-llm)
+  (require 'llm-openai)  ;; The specific provider you are using must be loaded.
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
