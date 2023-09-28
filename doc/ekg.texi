@@ -66,6 +66,7 @@ Installation
 
 Changelog
 
+* Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
 * Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
@@ -175,6 +176,7 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
+* Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
 * Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
@@ -183,6 +185,14 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 041
+@section Version 0.4.1
+
+@itemize
+@item
+Fix issues using default emacs in-buffer completion, and allowing completion in places we shouldn't.
+@end itemize
 
 @node Version 04
 @section Version 0.4
@@ -449,7 +459,7 @@ Capturing URLs is a bit clunky as is, if you can wrap it in a function to  suppl
 URL can also point to local files which will be browsed using @samp{find-file} by default. The idea is that you can tag files and folders to make them easier to find. Here is an example note similar to web address URL:
 
 @quotation
-Resource: @uref{file:///Users/andrewhyatt/notes/20230510T162600__emacs_init-file.org}
+Resource: @uref{file:///Users/ahyatt/notes/20230510T162600__emacs_init-file.org}
 Tags: doc/emacs config, date/2023-05-13, emacs/init
 Title: Emacs Config
 
