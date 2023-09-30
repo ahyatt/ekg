@@ -192,6 +192,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @itemize
 @item
 Fix issues using default emacs in-buffer completion, and allowing completion in places we shouldn't.
+@item
+Add @samp{ekg-embedding-generate-on-save} and @samp{ekg-embedding-disable-generate-on-save} to turn off generating embeddings for notes.
 @end itemize
 
 @node Version 04
@@ -459,7 +461,7 @@ Capturing URLs is a bit clunky as is, if you can wrap it in a function to  suppl
 URL can also point to local files which will be browsed using @samp{find-file} by default. The idea is that you can tag files and folders to make them easier to find. Here is an example note similar to web address URL:
 
 @quotation
-Resource: @uref{file:///Users/ahyatt/notes/20230510T162600__emacs_init-file.org}
+Resource: @uref{file:///Users/andrewhyatt/notes/20230510T162600__emacs_init-file.org}
 Tags: doc/emacs config, date/2023-05-13, emacs/init
 Title: Emacs Config
 
@@ -738,10 +740,11 @@ The ekg module can have any number of functionality additions. These may appear 
 @node Embeddings
 @section Embeddings
 
-The embeddings functionality can be turned on by requiring the embeddings file, such as:
+The embeddings functionality can be turned on by requiring the embeddings file and enabling it, such as:
 
 @lisp
 (require 'ekg-embedding)
+(ekg-embedding-generate-on-save)
 @end lisp
 
 This module contains functionality to explore similar notes and search using techniques associated with large language models.  Embeddings let you do searches at a semantic level, based on an understood meaning that is separate from the words used.  For example, if I have a note with a recipe for linguini, embeddings will let me see that it is similar to notes about spaghetti, and not similar to notes about cold fusion.  Because the search is not based on words, but meaning derived from those words, notes that describe the same thing in two different languages should be very similar.  In ekg these let you find notes similar to a current note, or in fact any buffer.  You can also do a query via embeddings.
@@ -753,6 +756,8 @@ The embedding interfaces with your preferred LLM provider via the @samp{llm} pac
 @lisp
 (use-package ekg
   :init
+  (require ekg-embedding)
+  (ekg-embedding-generate-on-save)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
@@ -760,10 +765,12 @@ The embedding interfaces with your preferred LLM provider via the @samp{llm} pac
 
 The embedding provider should be kept the same as you continue using ekg, however if you do change it, you will need to call @samp{ekg-embedding-generate-all} with a prefix argument (@samp{C-u M-x ekg-embedding-generate-all}), which will regenerate all embeddings asynchronously.  The embedding provider does not have to be the same as the LLM provider (if you also use the @ref{LLM} add-on.)  Also note that the provider will get the text of all your notes, so if that bothers you, do not use any provider on a server.
 
-Once you have this set up, and you have already called @code{(require 'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
+Once you have this set up, and you have already called @code{(require 'ekg-embedding)} and @code{(ekg-embedding-generate-on-save)} you can call @samp{M-x ekg-embedding-generate-all}. This may take a long time as each
 embedding has to be generated separately with its own API call. Once you've done this, you can call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar notes. You can also call @samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the text is in the curent buffer.
 
 The variable @samp{ekg-embedding-text-selector} has a value that is a function that will pre-process all text that is sent for embeddings.  The default value is @samp{ekg-embedding-text-selector-initial}, which will estimate the size of the tokens sent and limit the text to the first 8k tokens.  Right now the function is tuned to the limits of Open AI's embedding framework, and a different function may be needed for other embedding APIs.
+
+If you would like to stop generating embeddings for notes in a session, you can call @code{(ekg-embedding-disable-generate-on-save)}.
 
 @node Logseq
 @section Logseq
