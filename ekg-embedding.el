@@ -300,10 +300,23 @@ The results are in order of most similar to least similar."
                          ekg-notes-size)))
      nil))
 
-(add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note-async)
-;; Generating embeddings from a note's tags has to be post-save, since it works
-;; by loading saved embeddings.
-(add-hook 'ekg-note-save-hook #'ekg-embedding-generate-for-note-tags-delayed)
+(defun ekg-embedding-generate-on-save ()
+  "Enable embedding generation for new notes.
+If you have created notes without embeddings enabled, you should
+run `ekg-embedding-generate-all' to generate embeddings for all
+notes."
+  (add-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note-async)
+  ;; Generating embeddings from a note's tags has to be post-save, since it works
+  ;; by loading saved embeddings.
+  (add-hook 'ekg-note-save-hook #'ekg-embedding-generate-for-note-tags-delayed))
+
+(defun ekg-embedding-disable-generate-on-save ()
+  "Disable the embedding module for the Emacs session."
+  (remove-hook 'ekg-note-pre-save-hook #'ekg-embedding-generate-for-note-async)
+  (remove-hook 'ekg-note-save-hook #'ekg-embedding-generate-for-note-tags-delayed))
+
+;; Regardless of whether notes are generated on save, when notes are deleted we
+;; need to clean up the embeddings.
 (add-hook 'ekg-note-delete-hook #'ekg-embedding-delete)
 
 (provide 'ekg-embedding)

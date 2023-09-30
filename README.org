@@ -124,6 +124,7 @@ If you are using embedding and llm functionality, an example in which you use Op
   :bind (([f11] . ekg-capture))
   :init
   (require 'ekg-embedding)
+  (ekg-embedding-generate-on-save)
   (require 'ekg-llm)
   (require 'llm-openai)  ;; The specific provider you are using must be loaded.
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
