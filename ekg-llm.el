@@ -38,11 +38,11 @@
 
 ;;; Code:
 
-(defcustom ekg-llm-format-output '((org-mode . ekg-llm-format-output-org)
-                                   (markdown-mode . ekg-llm-format-output-markdown)
-                                   (text-mode . ekg-llm-format-output-text))
+(defcustom ekg-llm-format-output '((org-mode . ("#+BEGIN_LLM_OUTPUT" . "#+END_LLM_OUTPUT"))
+                                   (markdown-mode . ("<!-- BEGIN_LLM_OUTPUT -->" . "<!-- END_LLM_OUTPUT -->"))
+                                   (text-mode . ("BEGIN_LLM_OUTPUT" . "END_LLM_OUTPUT")))
   "Alist of functions to format LLM output for different modes."
-  :type '(alist :key-type symbol :value-type function)
+  :type '(alist :key-type symbol :value-type (cons string string))
   :group 'ekg-llm)
 
 (defcustom ekg-llm-query-num-notes 5
@@ -153,17 +153,21 @@ The note text will be replaced by the result of the LLM."
 (keymap-set ekg-capture-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
 (keymap-set ekg-edit-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
 
-(defun ekg-llm-format-output-org (s)
-  "Format S in org mode to denote it as LLM created."
-  (format "#+BEGIN_LLM_OUTPUT\n%s\n#+END_LLM_OUTPUT\n" s))
-
-(defun ekg-llm-format-output-markdown (s)
-  "Format S in markdown mode to denote it as LLM created."
-  (format "<!-- BEGIN_LLM_OUTPUT -->\n%s\n<!-- END_LLM_OUTPUT -->\n" s))
-
-(defun ekg-llm-format-output-text (s)
-  "Format S in text mode to denote it as LLM created."
-  (format "BEGIN_LLM_OUTPUT\n%s\nEND_LLM_OUTPUT\n" s))
+(defun ekg-llm-create-output-holder (prefix suffix)
+  "Create a marker pair for the output of the LLM.
+PREFIX and SUFFIX surround the marker, which are inserted into
+the current buffer."
+  (save-excursion
+   (insert prefix "\n")
+   (let ((start (make-marker))
+         (end (make-marker)))
+     (set-marker start (point))
+     (set-marker end (point))
+     (set-marker-insertion-type start nil)
+     (insert "\n")
+     (set-marker-insertion-type end t)
+     (insert suffix "\n")
+     (cons start end))))
 
 (defun ekg-llm-note-interactions ()
   "From an ekg note buffer, create the prompt for the LLM.
@@ -177,36 +181,58 @@ structs."
     :role 'user
     :content (substring-no-properties (ekg-edit-note-display-text)))))
 
-(defun ekg-llm-send-and-use (consume-func &optional prompt temperature)
-  "Run the LLM and pass response to CONSUME-FUNC.
+(defun ekg-llm-send-and-use (marker-func &optional prompt temperature)
+  "Run the LLM and replace markers supplied by MARKER-FUNC.
 If PROMPT is nil, use `ekg-llm-default-prompt'. TEMPERATURE is a
 float between 0 and 1, controlling the randomness and creativity
 of the response."
-  (message "Calling the LLM, which could take around ten seconds.")
-  (funcall consume-func
-           (llm-chat
-            ekg-llm-provider
-            (make-llm-chat-prompt
-             :temperature temperature
-             :context (or prompt ekg-llm-default-prompt)
-             :interactions (ekg-llm-note-interactions)))))
+  (let ((markers (funcall marker-func))
+        (prompt (make-llm-chat-prompt
+                 :temperature temperature
+                 :context (or prompt ekg-llm-default-prompt)
+                 :interactions (ekg-llm-note-interactions))))
+    (cl-flet ((insert-text (text)
+                ;; Erase and insert the new text between the marker cons.
+                (let ((start-marker (car markers))
+                      (end-marker (cdr markers)))
+                  (with-current-buffer (marker-buffer start-marker)
+                    (save-excursion
+                      (goto-char start-marker)
+                      (delete-region start-marker end-marker)
+                      (insert text))))))
+      (condition-case nil
+          (llm-chat-streaming ekg-llm-provider
+                              prompt
+                              (lambda (partial-response)
+                                (insert-text partial-response))
+                              (lambda (final-response)
+                                (insert-text final-response))
+                              (lambda (_ msg)
+                                (error "LLM error: %s" msg)))
+        (not-implemented
+         ;; Fallback to synchronous chat if streaming isn't supported.
+         (message "Streaming not supported, falling back to synchronous chat, which may take around 10 seconds.")
+         (insert-text (llm-chat ekg-llm-provider prompt)))))))
 
 (defun ekg-llm-interaction-func (interaction-type)
   "Return a function for each valid INTERACTION-TYPE.
 The valid interaction types are `'append' and `'replace'."
   (pcase interaction-type
-    ('append (lambda (output)
-               (let ((formatter (cdr (assoc major-mode ekg-llm-format-output))))
+    ('append (lambda ()
+               (let ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_"))))
                  (save-excursion
                    (goto-char (point-max))
-                   (insert "\n"
-                           (if formatter
-                               (funcall formatter output)
-                             (format "\n%s\n" output)))))))
-    ('replace (lambda (output) (save-excursion
-                                 (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
-                                 (delete-region (point) (point-max))
-                                 (insert output))))
+                   (insert "\n")
+                   (ekg-llm-create-output-holder (car enclosure) (cdr enclosure))))))
+    ('replace (lambda ()
+                (save-excursion
+                  (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
+                  (let ((start (make-marker))
+                        (end (make-marker)))
+                    (set-marker start (point))
+                    (set-marker end (point-max))
+                    (set-marker-insertion-type end t)
+                    (cons start end)))))
     (_ (error "Invalid interaction type %s" interaction-type))))
 
 (defun ekg-llm-note-metadata-for-input (note)
