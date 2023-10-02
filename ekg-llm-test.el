@@ -23,19 +23,26 @@
 ;;; Code:
 (require 'ekg)
 (require 'ekg-llm)
-(require 'ekg-test-utils)
 
-(ekg-deftest ekg-llm-test-interaction-func-append ()
-  (ekg-capture :text "Initial text\n" :mode 'text-mode)
-  (funcall (ekg-llm-interaction-func 'append) "Appended text")
-  (should (equal "Initial text\n\nBEGIN_LLM_OUTPUT\nAppended text\nEND_LLM_OUTPUT\n"
-                 (substring-no-properties (ekg-edit-note-display-text)))))
+(defun ekg-llm-test-replace-text (markers text)
+  "Replace text between MARKERS."
+  (let ((beg (car markers))
+        (end (cdr markers)))
+    (goto-char beg)
+    (delete-region beg end)
+    (insert text)))
 
-(ekg-deftest ekg-llm-test-interaction-func-replace ()
-  (ekg-capture :text "Initial text\n" :mode 'text-mode)
-  (funcall (ekg-llm-interaction-func 'replace) "Replaced text")
-  (should (equal "Replaced text"
-                 (substring-no-properties (ekg-edit-note-display-text)))))
+(ert-deftest ekg-llm-test-create-output-holder ()
+  (with-temp-buffer
+    (let ((markers (ekg-llm-create-output-holder "BEGIN" "END")))
+      (should (equal "BEGIN\n\nEND\n"
+                     (substring-no-properties (buffer-string))))
+      (ekg-llm-test-replace-text markers "text 1")
+      (should (equal "BEGIN\ntext 1\nEND\n"
+                     (substring-no-properties (buffer-string))))
+      (ekg-llm-test-replace-text markers "very different text")
+      (should (equal "BEGIN\nvery different text\nEND\n"
+                     (substring-no-properties (buffer-string)))))))
 
 (provide 'ekg-llm-test)
 
