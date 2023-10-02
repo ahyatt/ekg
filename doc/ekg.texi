@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
 * Version 0.3.3: Version 033. 
@@ -192,6 +193,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
 * Version 0.3.3: Version 033. 
@@ -201,6 +203,14 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 042
+@section Version 0.4.2
+
+@itemize
+@item
+Switch LLM chat output to streaming when available.
+@end itemize
 
 @node Version 041
 @section Version 0.4.1
