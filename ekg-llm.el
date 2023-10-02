@@ -265,24 +265,35 @@ The answer will appear in a new buffer"
               (format "*ekg llm query '%s'*" (ekg-truncate-at query 5)))))
     (with-current-buffer buf
       (erase-buffer)
-      (funcall
-       (ekg-llm-interaction-func 'append)
-       (llm-chat ekg-llm-provider
-        (make-llm-chat-prompt
-         :context ekg-llm-query-prompt-intro
-         :interactions
-         (append
-          (mapcar
-           (lambda (note)
-             (make-llm-chat-prompt-interaction
-              :role 'user
-              :content
-              (format "%s\n%s" (ekg-llm-note-metadata-for-input note)
-                      (substring-no-properties (ekg-display-note-text note)))))
-           notes)
-          (list (make-llm-chat-prompt-interaction
-                 :role 'user
-                 :content (format "Query: %s" query))))))))
+      (let ((prompt (make-llm-chat-prompt
+                     :context ekg-llm-query-prompt-intro
+                     :interactions
+                     (append
+                      (mapcar
+                       (lambda (note)
+                         (make-llm-chat-prompt-interaction
+                          :role 'user
+                          :content
+                          (format "%s\n%s" (ekg-llm-note-metadata-for-input note)
+                                  (substring-no-properties (ekg-display-note-text note)))))
+                       notes)
+                      (list (make-llm-chat-prompt-interaction
+                             :role 'user
+                             :content (format "Query: %s" query)))))))
+        (condition-case nil
+            (llm-chat-streaming ekg-llm-provider
+                                prompt
+                                (lambda (text)
+                                  (with-current-buffer buf
+                                    (erase-buffer)
+                                    (insert text)))
+                                (lambda (text)
+                                  (with-current-buffer buf
+                                    (erase-buffer)
+                                    (insert text)))
+                                (lambda (_ msg)
+                                  (error "Could not call LLM: %s" msg)))
+          (not-implemented (llm-chat ekg-llm-provider prompt)))))
     (pop-to-buffer buf)))
 
 (provide 'ekg-llm)
