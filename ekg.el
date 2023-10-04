@@ -38,6 +38,10 @@
 (require 'iso8601)
 (require 'url-parse)
 
+(declare-function org-open-at-point "org")
+(declare-function org-redisplay-inline-images "org")
+(declare-function org-activate-links "org")
+
 ;;; Code:
 
 (defgroup ekg nil
