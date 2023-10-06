@@ -38,6 +38,10 @@
 (require 'iso8601)
 (require 'url-parse)
 
+(declare-function org-open-at-point "org")
+(declare-function org-redisplay-inline-images "org")
+(declare-function org-activate-links "org")
+
 ;;; Code:
 
 (defgroup ekg nil
@@ -1146,14 +1150,19 @@ The function is expected to behave as normal for a function in
   "Completion function for all metadata at `completion-at-point-functions'.
 If no completion function is found for the field type, don't
 attempt the completion."
-  (if-let (field (ekg--metadata-current-field))
+  ;; Only do something when we aren't in a read-only space.
+  (when
+      (or (null (ekg--metadata-current-field))
+      ;; + 2 for the colon and space
+      (>= (current-column) (+ 2 (length (car (ekg--metadata-current-field))))))
+    (if-let (field (ekg--metadata-current-field))
     (when-let (completion-func (assoc (car field) ekg-capf-field-complete-funcs
-                                      #'equal))
+                      #'equal))
       (funcall (cdr completion-func)))
-    ;; There's no current field, but we're in the metadata, so let's complete
-    ;; the possible fields.
-    (when (ekg--in-metadata-p)
-      (ekg--field-name-complete))))
+      ;; There's no current field, but we're in the metadata, so let's complete
+      ;; the possible fields.
+      (when (ekg--in-metadata-p)
+    (ekg--field-name-complete)))))
 
 (defun ekg--field-name-complete ()
   "Completion function for metadata field names."
@@ -1185,6 +1194,8 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                (point)))
         (start (save-excursion
                  (skip-chars-backward "^,\t\n:")
+                 ;; We are at the right boundary, but now ignore whitespace.
+                 (skip-chars-forward "[ \t]")
                  (point))))
     (list start end (completion-table-dynamic
                      (lambda (_) (ekg-tags)))

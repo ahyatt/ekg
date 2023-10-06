@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
 * Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
@@ -191,6 +192,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
 * Version 0.3.3: Version 033. 
 * Version 0.3.2: Version 032. 
@@ -199,6 +201,16 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 041
+@section Version 0.4.1
+
+@itemize
+@item
+Fix issues using default emacs in-buffer completion, and allowing completion in places we shouldn't.
+@item
+Add @samp{ekg-embedding-generate-on-save} and @samp{ekg-embedding-disable-generate-on-save} to turn off generating embeddings for notes.
+@end itemize
 
 @node Version 04
 @section Version 0.4
@@ -1007,10 +1019,11 @@ package.
 @section Embeddings
 
 The embeddings functionality, for integration with an LLM, can be turned on by
-requiring the ekg-embeddings file, such as:
+requiring the ekg-embeddings file and enabling it, such as:
 
 @lisp
 (require 'ekg-embedding)
+(ekg-embedding-generate-on-save)
 @end lisp
 
 This module contains functionality to explore similar notes and search using
@@ -1040,6 +1053,8 @@ complete description on how to do this, but an example would be the following:
 (use-package ekg
   :init
   (require 'llm-openai)  ;; the specific LLM provider must be required
+  (require 'ekg-embedding)
+  (ekg-embedding-generate-on-save)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
@@ -1054,13 +1069,14 @@ provider will get the text of all your notes, so if that bothers you, do not use
 any provider on a server.
 
 Once you have this set up, and you have already called @code{(require
-'ekg-embedding)} you can call @samp{M-x ekg-embedding-generate-all}.  This may take a
-long time as each embedding has to be generated separately with its own API
-call.  Once you've done this, you can call, in @samp{ekg-notes-mode},
-@samp{ekg-embedding-show-similar} to get a list of similar notes.  You can also call
-@samp{ekg-embedding-search} to perform a search over your notes using embeddings.  In
-any buffer, you can call @samp{ekg-embedding-show-similar-to-current-buffer} to show
-notes similar to whatever the text is in the current buffer.
+'ekg-embedding)} and @code{(ekg-embedding-generate-on-save)} you can call @samp{M-x
+ekg-embedding-generate-all}.  This may take a long time as each embedding has to
+be generated separately with its own API call.  Once you've done this, you can
+call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar
+notes.  You can also call @samp{ekg-embedding-search} to perform a search over your
+notes using embeddings.  In any buffer, you can call
+@samp{ekg-embedding-show-similar-to-current-buffer} to show notes similar to whatever
+the text is in the current buffer.
 
 The variable @samp{ekg-embedding-text-selector} has a function that will pre-process
 all text that is sent for embeddings.  The default value is
@@ -1068,6 +1084,9 @@ all text that is sent for embeddings.  The default value is
 tokens sent and limit the text to the first 8k tokens.  Right now the function
 is tuned to the limits of Open AI's embedding framework, and a different
 function may be needed for other embedding APIs.
+
+If you would like to stop generating embeddings for notes in a session, you can
+call @code{(ekg-embedding-disable-generate-on-save)}.
 
 @node Logseq
 @section Logseq
