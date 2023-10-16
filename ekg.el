@@ -755,7 +755,8 @@ This is used when capturing new notes.")
   :interactive nil
   (when ekg-capture-mode
     (setq-local completion-at-point-functions
-                (append (list #'ekg--capf #'ekg--transclude-titled-note-completion)
+                (append (list #'ekg--capf #'ekg--transclude-titled-note-completion
+                              #'ekg--inline-tag-completion)
                         completion-at-point-functions)
                 header-line-format
                 (substitute-command-keys
@@ -817,6 +818,39 @@ This is needed to identify references to refresh when the subject is changed." )
         (progn
           (require 'org)
           (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
+
+(defun ekg--inline-tag-completion ()
+  "Completion function for tags in notes.
+This will tags that are prefixed by a hash symbol. The tag will
+complete, and upon completion, it will be added to the note tags."
+  (let ((begin (save-excursion
+                 (search-backward "#" (line-beginning-position) t)
+                 (+ 1 (point))))
+        (end (point)))
+    (when (<= begin end)
+      (list begin end
+            (completion-table-dynamic (lambda (_) (ekg-tags)))
+            :exclusive t :exit-function #'ekg--inline-tag-exit))))
+
+(defun ekg--inline-tag-exit (completion finished)
+  "When a tag is completed, add it to the note tags."
+  (when finished
+    (let ((o (ekg--metadata-overlay))
+          (inhibit-read-only t)
+          (tag (substring-no-properties completion)))
+      (setf (ekg-note-tags ekg-note)
+          (seq-uniq (append (ekg-note-tags ekg-note) (list tag))))
+      (replace-region-contents (overlay-start o) (overlay-end o)
+                               #'ekg--replace-metadata)
+      ;; For some reason the overlay can add linefeeds that affect the text
+      ;; after the overlay. Remove stray newlines so that there is only one
+      ;; newline after the overlay.
+      (save-excursion
+        (goto-char (+ 1 (overlay-end o)))
+        (when (looking-at "\n")
+          (delete-char 1)))
+      (run-hook-with-args 'ekg-note-add-tag-hook tag)
+      (ekg-maybe-function-tag tag))))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.

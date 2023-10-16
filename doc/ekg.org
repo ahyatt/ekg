@@ -57,6 +57,8 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.5
+- Add tags while writing the body of notes by completing with "#".  See [[#note-text][Note text]] section for details.
 ** Version 0.4.2
 - Switch LLM chat output to streaming when available.
 - Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
@@ -169,11 +171,16 @@ Tag properties have completion to tags built-in, so adding tags you should be ab
 #+texinfo: @noindent
 Ekg makes some effort to make sure that the user doesn't accidentally extend the property section without adding actual properties, since this will likely result in a confusing experience for the user.
 ** Note text
+:PROPERTIES:
+:CUSTOM_ID: note-text
+:END:
 Below is the property section is the note section. The text could be anything (or nothing). This is the body text of the note, where you write down whatever
 you want to note about, that is relevant to the tags for the note.
 
 There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=. More can be added by customizing the variable ~ekg-acceptable-modes~, just
 make sure its a mode that makes sense for notes. The default mode is configured in ~ekg-capture-default-mode~, but can be changed when capturing with the command =ekg-change-mode=.
+
+The note text offers various completions.  The most common completion is to type tags inline when writing notes, which will be automatically added to the note tags.  There is no effort to clean up inline tags that are deleted, and tags that appear in notes are just text; the real tags are in the note properties section above.  The tag completion is triggered by a "#" symbol.  Another type of completion is for inline commands, the ">t" completion, mentioned in the [[#inlines][Inline commands]].
 ** Drafts
 Notes can be saved midway through editing, both for capturing and editing notes.  The normal buffer save keybinding will save a draft.  A draft is like a normal note, but has a special tag, by default "draft".  This can be customized in =ekg-draft-tag=.  Having this tag means it doesn't show up in most views, much like the notes in "trash".  Once a note is saved normally, it loses the draft tag.
 ** A warning about org-mode

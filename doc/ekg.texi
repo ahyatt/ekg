@@ -66,6 +66,7 @@ Installation
 
 Changelog
 
+* Version 0.5: Version 05. 
 * Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
@@ -177,6 +178,7 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 @chapter Changelog
 
 @menu
+* Version 0.5: Version 05. 
 * Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
 * Version 0.4: Version 04. 
@@ -187,6 +189,14 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 05
+@section Version 0.5
+
+@itemize
+@item
+Add tags while writing the body of notes by completing with "#".  See @ref{Note text} section for details.
+@end itemize
 
 @node Version 042
 @section Version 0.4.2
@@ -430,6 +440,8 @@ you want to note about, that is relevant to the tags for the note.
 
 There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}. More can be added by customizing the variable @code{ekg-acceptable-modes}, just
 make sure its a mode that makes sense for notes. The default mode is configured in @code{ekg-capture-default-mode}, but can be changed when capturing with the command @samp{ekg-change-mode}.
+
+The note text offers various completions.  The most common completion is to type tags inline when writing notes, which will be automatically added to the note tags.  There is no effort to clean up inline tags that are deleted, and tags that appear in notes are just text; the real tags are in the note properties section above.  The tag completion is triggered by a "#" symbol.  Another type of completion is for inline commands, the ">t" completion, mentioned in the @ref{Inline commands}.
 
 @node Drafts
 @section Drafts
