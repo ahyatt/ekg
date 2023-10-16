@@ -210,6 +210,8 @@ triples library is already installed.
 @itemize
 @item
 Switch LLM chat output to streaming when available.
+@item
+Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
 @end itemize
 
 @node Version 041

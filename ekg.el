@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.3.0"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.4.0
+;; Version: 0.4.2
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -603,9 +603,9 @@ inlines."
   "Completion function for file transclusion."
   (let ((begin (save-excursion
                  (search-backward ">t" (line-beginning-position) t)
-                 (+ 1 (point))))
+                 (+ 2 (point))))
         (end (point)))
-    (when (< begin end)
+    (when (<= begin end)
       (list begin end
             (completion-table-dynamic (lambda (_)
                                         (mapcar (lambda (title-cons)
