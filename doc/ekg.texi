@@ -196,6 +196,8 @@ Clone the ekg library, from whatever branch you would like to use (@samp{main} c
 Switch LLM chat output to streaming when available.
 @item
 Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
+@item
+Fix tag renaming possibly causing duplication.
 @end itemize
 
 @node Version 041

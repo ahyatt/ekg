@@ -60,6 +60,7 @@ Clone the ekg library, from whatever branch you would like to use (=main= corres
 ** Version 0.4.2
 - Switch LLM chat output to streaming when available.
 - Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
+- Fix tag renaming possibly causing duplication.
 ** Version 0.4.1
 - Fix issues using default emacs in-buffer completion, and allowing completion in places we shouldn't.
 - Add =ekg-embedding-generate-on-save= and =ekg-embedding-disable-generate-on-save= to turn off generating embeddings for notes.
