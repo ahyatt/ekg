@@ -434,7 +434,8 @@ The embedding interfaces with your preferred LLM provider via the =llm= package.
 #+begin_src emacs-lisp
 (use-package ekg
   :init
-  (require ekg-embedding)
+  (require 'llm-openai)  ;; the specific LLM provider must be required
+  (require 'ekg-embedding)
   (ekg-embedding-generate-on-save)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
@@ -525,6 +526,7 @@ The ekg-llm module provides a way to use large language models (LLMs) in the con
 #+begin_src emacs-lisp
 (use-package ekg
   :init
+  (require 'llm-openai)  ;; the specific LLM provider must be required
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
