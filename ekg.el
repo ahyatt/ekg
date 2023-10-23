@@ -307,6 +307,14 @@ callers have already called this function")
   (triples-add-schema ekg-db 'ekg '(version :base/type cons :base/unique t))
   (run-hooks 'ekg-add-schema-hook))
 
+(defvar ekg-schema-text-cotypes '(text tagged time-tracked titled)
+  "All the types that are used in the ekg schema on text entities.
+Extensions can add to this list, but should not remove from it.
+Any type here in considered owned by ekg and will be removed
+during note deletion.
+
+These are not guaranteed to be only on text entities, however.")
+
 (defun ekg--generate-id ()
   "Return a unique ID for a note.
 This is not suitable for generating a large number of IDs in a
@@ -444,7 +452,7 @@ If the ID does not exist, create a new note with that ID."
   (run-hook-with-args 'ekg-note-pre-delete-hook id)
   (triples-with-transaction
     ekg-db
-    (cl-loop for type in '(tagged text time-tracked) do
+    (cl-loop for type in ekg-schema-text-cotypes do
              (triples-remove-type ekg-db id type))
     (cl-loop for inline-id in (triples-subjects-with-predicate-object
                                ekg-db 'inline/for-text id)
@@ -1326,6 +1334,19 @@ a write if there is a problem."
     (when cleaned
         (message "%d cleaned tags that were duplicated: %s" (length cleaned)
                  (mapconcat #'identity cleaned ", ")))))
+
+(defun ekg-clean-leftover-types ()
+  "Clean up any ekg types that are left over without ekg notes."
+  (ekg-connect)
+  (let ((cleaned)
+        (notes (triples-subjects-of-type ekg-db 'text)))
+    (cl-loop for type in ekg-schema-text-cotypes do
+             (cl-loop for s in (seq-difference (triples-subjects-of-type ekg-db type) notes) do
+                      (push s cleaned)
+                      (triples-remove-type ekg-db s type)))
+    (when cleaned
+      (message "%d notes cleaned of leftover information: %s" (length cleaned)
+               (mapconcat (lambda (id) (format "%s" id)) cleaned ", ")))))
 
 ;; In order for emacsql / sqlite to not give build warnings we need to declare
 ;; them. Because we only require one to be installed, following the
