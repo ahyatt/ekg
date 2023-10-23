@@ -1314,6 +1314,7 @@ a write if there is a problem."
 
 (defun ekg-clean-dup-tags ()
   "Fix all duplicate tags in the database."
+  (ekg-connect)
   (let ((cleaned))
     (cl-loop for tag in (ekg-tags) do
                           (let ((tagged (plist-get (triples-get-type ekg-db tag 'tag) :tagged)))
