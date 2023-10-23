@@ -1924,7 +1924,8 @@ as long as those notes aren't on resources that are interesting.
                                                         (when almost-empty-note "almost empty")
                                                         (when empty-note "empty"))) ", "))
                  (ekg-note-delete note))))))
-  (ekg-clean-dup-tags))
+  (ekg-clean-dup-tags)
+  (ekg-clean-leftover-types))
 
 ;; Links for org-mode
 (require 'ol)
