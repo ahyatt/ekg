@@ -313,6 +313,12 @@ This is not suitable for generating a large number of IDs in a
 small time frame. About one ID per second is reasonable."
   (sxhash (cons (time-convert (current-time) 'integer)  (random 100))))
 
+(defun ekg--normalize-tag (tag)
+  "Return a normalized version of TAG.
+No tag should be input from the user without being normalized
+before storage."
+  (string-trim (downcase (string-replace "," "" tag))))
+
 (defun ekg--normalize-note (note)
   "Make sure NOTE adheres to ekg-wide constraints before saving.
 This
@@ -325,8 +331,7 @@ Note: we used to also trim text, but with inline commands, that
 is not a great idea, because an inline command sits outside of
 the text and may be after trailing whitespace."
   (setf (ekg-note-tags note)
-        (mapcar (lambda (tag)
-                  (string-trim (downcase (string-replace "," "" tag)))) (ekg-note-tags note)))
+        (mapcar #'ekg--normalize-tag (ekg-note-tags note)))
   (setf (ekg-note-text note)
         (substring-no-properties (ekg-note-text note)))
   (when (or (equal (ekg-note-id note) "") (not (ekg-note-id note)))
@@ -1353,8 +1358,8 @@ a write if there is a problem."
 This can be done whether or not TO-TAG exists or not. This
 renames all instances of the tag globally, and all notes with
 FROM-TAG will use TO-TAG."
-  (interactive (list (completing-read "From tag: " (ekg-tags))
-                     (completing-read "To tag: " (ekg-tags))))
+  (interactive (list (completing-read "From tag: " (ekg-tags) nil t)
+                     (ekg--normalize-tag (completing-read "To tag: " (ekg-tags)))))
   (ekg-connect)
   (triples-with-transaction
     ekg-db
