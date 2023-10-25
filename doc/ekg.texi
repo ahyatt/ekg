@@ -214,6 +214,8 @@ Switch LLM chat output to streaming when available.
 Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
 @item
 Fix tag renaming possibly causing duplication.
+@item
+Ensure renamed tags are normalized.
 @end itemize
 
 @node Version 041

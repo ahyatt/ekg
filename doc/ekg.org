@@ -77,6 +77,7 @@ triples library is already installed.
 - Switch LLM chat output to streaming when available.
 - Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
 - Fix tag renaming possibly causing duplication.
+- Ensure renamed tags are normalized.
 ** Version 0.4.1
 - Fix issues using default emacs in-buffer completion, and allowing completion in places we shouldn't.
 - Add =ekg-embedding-generate-on-save= and =ekg-embedding-disable-generate-on-save= to turn off generating embeddings for notes.
