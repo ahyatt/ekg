@@ -191,28 +191,17 @@ of the response."
                  :temperature temperature
                  :context (or prompt ekg-llm-default-prompt)
                  :interactions (ekg-llm-note-interactions))))
-    (cl-flet ((insert-text (text)
-                ;; Erase and insert the new text between the marker cons.
-                (let ((start-marker (car markers))
-                      (end-marker (cdr markers)))
-                  (with-current-buffer (marker-buffer start-marker)
-                    (save-excursion
-                      (goto-char start-marker)
-                      (delete-region start-marker end-marker)
-                      (insert text))))))
-      (condition-case nil
-          (llm-chat-streaming ekg-llm-provider
-                              prompt
-                              (lambda (partial-response)
-                                (insert-text partial-response))
-                              (lambda (final-response)
-                                (insert-text final-response))
-                              (lambda (_ msg)
-                                (error "LLM error: %s" msg)))
+    (delete-region (car markers) (cdr markers))
+    (condition-case nil
+          (llm-chat-streaming-to-point
+           ekg-llm-provider
+           prompt
+           (marker-buffer (car markers))
+           (marker-position (car markers))
+           (lambda ()))
         (not-implemented
          ;; Fallback to synchronous chat if streaming isn't supported.
-         (message "Streaming not supported, falling back to synchronous chat, which may take around 10 seconds.")
-         (insert-text (llm-chat ekg-llm-provider prompt)))))))
+         (message "Streaming not supported, falling back to synchronous chat, which may take around 10 seconds.")))))
 
 (defun ekg-llm-interaction-func (interaction-type)
   "Return a function for each valid INTERACTION-TYPE.
