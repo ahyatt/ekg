@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.4.0"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.4.2
+;; Version: 0.5.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 (require 'triples)
 (require 'triples-backups)
 (require 'triples-upgrade)
+(require 'triples-fts)
 (require 'seq)
 (require 'ewoc)
 (require 'cl-lib)
@@ -218,7 +219,7 @@ functions are passed in the ID of the note that is being deleted.")
 This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
-(defconst ekg-version "0.4.0"
+(defconst ekg-version "0.5.0"
   "The version of ekg, used to understand when the database needs
 upgrading.")
 
@@ -1635,6 +1636,14 @@ are created with additional tags TAGS."
    (lambda () (sort (ekg-get-notes-with-tag tag) #'ekg-sort-by-creation-time))
    (list tag)))
 
+(defun ekg-show-notes-for-query (query)
+  "Show notes matching TEXT."
+  (interactive "sQuery: ")
+  (ekg-connect)
+  (ekg-setup-notes-buffer
+   (format "query: %s" query)
+   (lambda () (seq-filter #'ekg-note-active-p (mapcar #'ekg-get-note-with-id (triples-fts-query ekg-db query)))) nil))
+
 (defun ekg-show-notes-in-trash ()
   "Show notes that have only tags that are trashed."
   (interactive)
@@ -1829,7 +1838,8 @@ the database after the upgrade, in list form."
              ;; We have done upgrades to 0.3.1, but we want to re-do them for
              ;; additional bugfixes. There should be no downside to doing the
              ;; upgrade many times.
-             (version-list-< from-version '(0 3 2)))))
+             (version-list-< from-version '(0 3 2))))
+        (need-fts-upgrade (or (null from-version) (version-list-< from-version '(0 5 0)))))
     (ekg-connect)
     ;; In the future, we can separate out the backup from the upgrades.
     (when need-triple-0.3-upgrade
@@ -1848,7 +1858,9 @@ the database after the upgrade, in list form."
       (when (eq 'builtin triples-sqlite-interface)
         (sqlite-execute
          ekg-db
-         "UPDATE OR IGNORE triples SET object = '\"' || CAST(object AS TEXT) || '\"' WHERE predicate = 'text/text' AND typeof(object) = 'integer'")))))
+         "UPDATE OR IGNORE triples SET object = '\"' || CAST(object AS TEXT) || '\"' WHERE predicate = 'text/text' AND typeof(object) = 'integer'")))
+    (when need-fts-upgrade
+      (triples-fts-setup ekg-db))))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
