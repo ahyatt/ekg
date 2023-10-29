@@ -200,6 +200,8 @@ Fix inclusion of title-based transclusion ">t", which included the "t" as part o
 Fix tag renaming possibly causing duplication.
 @item
 Ensure renamed tags are normalized.
+@item
+Support metadata where fields are specified via multiple property lines and make "title" such a field, so now titles can have commas.
 @end itemize
 
 @node Version 041
