@@ -1293,7 +1293,7 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
           (when expect-valid
             (warn "EKG: No field could be parsed from metadata line at point %s" (point))))
         (forward-line))
-      fields)))
+      (nreverse fields))))
 
 (defun ekg--update-from-metadata ()
   "Update the `ekg-note' object from the metadata."
