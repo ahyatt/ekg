@@ -1295,7 +1295,8 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
            do
            (pcase (assoc-default field ekg-property-multivalue-type)
              ('line (push value (gethash field values)))
-             ('comma (push (ekg--split-metadata-string value) (gethash field values)))
+             ('comma (mapc (lambda (elt) (push elt (gethash field values)))
+                           (ekg--split-metadata-string value)))
              (_ (setf (gethash field values) value)))
            finally return
            (maphash (lambda (key val)
