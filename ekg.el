@@ -695,7 +695,7 @@ FORMAT-STR controls how the time is formatted."
   (if-let (title (plist-get (ekg-note-properties note) :titled/title))
       (propertize (concat
                (mapconcat #'identity (plist-get (ekg-note-properties note) :titled/title)
-                          " / ") "\n")
+                          "\n") "\n")
               'face 'ekg-title)
     ""))
 
