@@ -1048,8 +1048,7 @@ However, if URL already exists, we edit the existing note on it."
     (if existing
         (ekg-edit (ekg-get-note-with-id url))
       (ekg-capture :tags (list (concat "doc/" (downcase cleaned-title)))
-                   ;; Remove commas from the value.
-                   :properties `(:titled/title ,cleaned-title)
+                   :properties `(:titled/title ,(list title))
                    :id url))))
 
 (defun ekg-capture-file ()
@@ -1065,7 +1064,7 @@ file. If not, an error will be thrown."
       (if existing
           (ekg-edit (ekg-get-note-with-id file))
         (ekg-capture :tags (list (concat "doc/" (downcase (file-name-nondirectory file))))
-                     :properties `(:titled/title ,(file-name-nondirectory file))
+                     :properties `(:titled/title ,(list (file-name-nondirectory file)))
                      :id file)))))
 
 (defun ekg-change-mode (mode)
