@@ -695,7 +695,7 @@ FORMAT-STR controls how the time is formatted."
   (if-let (title (plist-get (ekg-note-properties note) :titled/title))
       (propertize (concat
                (mapconcat #'identity (plist-get (ekg-note-properties note) :titled/title)
-                          " / ") "\n")
+                          "\n") "\n")
               'face 'ekg-title)
     ""))
 
@@ -1041,8 +1041,7 @@ However, if URL already exists, we edit the existing note on it."
     (if existing
         (ekg-edit (ekg-get-note-with-id url))
       (ekg-capture :tags (list (concat "doc/" (downcase cleaned-title)))
-                   ;; Remove commas from the value.
-                   :properties `(:titled/title ,cleaned-title)
+                   :properties `(:titled/title ,(list title))
                    :id url))))
 
 (defun ekg-capture-file ()
@@ -1058,7 +1057,7 @@ file. If not, an error will be thrown."
       (if existing
           (ekg-edit (ekg-get-note-with-id file))
         (ekg-capture :tags (list (concat "doc/" (downcase (file-name-nondirectory file))))
-                     :properties `(:titled/title ,(file-name-nondirectory file))
+                     :properties `(:titled/title ,(list (file-name-nondirectory file)))
                      :id file)))))
 
 (defun ekg-change-mode (mode)
@@ -1295,7 +1294,8 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
            do
            (pcase (assoc-default field ekg-property-multivalue-type)
              ('line (push value (gethash field values)))
-             ('comma (push (ekg--split-metadata-string value) (gethash field values)))
+             ('comma (mapc (lambda (elt) (push elt (gethash field values)))
+                           (ekg--split-metadata-string value)))
              (_ (setf (gethash field values) value)))
            finally return
            (maphash (lambda (key val)
