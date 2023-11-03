@@ -1536,12 +1536,10 @@ TITLE is the title of the URL to browse to."
                 (completing-read
                  "Doc: "
                  (mapcan (lambda (note)
-                           (let ((title
-                                  (plist-get (ekg-note-properties note)
-                                             :titled/title)))
-                             (when title (list title))))
+                           (plist-get (ekg-note-properties note)
+                                      :titled/title))
                          (ewoc-collect ekg-notes-ewoc #'identity)))) ekg-notes-mode)
-  (ekg-browse-url title))
+  (when title (ekg-browse-url title)))
 
 (defun ekg--show-notes (name notes-func tags)
   "Display notes from NOTES-FUNC in buffer.
