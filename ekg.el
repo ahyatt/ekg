@@ -1896,6 +1896,16 @@ the database after the upgrade, in list form."
            do
            (ekg-tag-delete tag)))
 
+(defun ekg-clean-propertized-text ()
+  "Find text with propertized text and remove the properties."
+  (cl-loop for s in (triples-fts-query ekg-db "face") do
+           (let* ((text-plist (triples-get-type ekg-db s 'text))
+                  (text (plist-get text-plist :text))
+                  (cleaned (substring-no-properties text)))
+             (unless (equal-including-properties text cleaned)
+               (message "Found propertized text in %s, cleaning" s)
+               (apply #'triples-set-type ekg-db s 'text (plist-put text-plist :text cleaned))))))
+
 (defun ekg-clean-db ()
   "Clean all useless or malformed data from the database.
 Some of this is tags which have no uses, which we consider
@@ -1959,7 +1969,8 @@ as long as those notes aren't on resources that are interesting.
                                                         (when empty-note "empty"))) ", "))
                  (ekg-note-delete note))))))
   (ekg-clean-dup-tags)
-  (ekg-clean-leftover-types))
+  (ekg-clean-leftover-types)
+  (ekg-clean-propertized-text))
 
 ;; Links for org-mode
 (require 'ol)
