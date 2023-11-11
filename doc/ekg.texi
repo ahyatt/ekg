@@ -200,6 +200,8 @@ Fix inclusion of title-based transclusion ">t", which included the "t" as part o
 Fix tag renaming possibly causing duplication.
 @item
 Ensure renamed tags are normalized.
+@item
+Add new cleanup: @samp{ekg-clean-propertized-text}, run on @samp{ekg-clean-db}.
 @end itemize
 
 @node Version 041
