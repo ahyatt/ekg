@@ -1301,6 +1301,31 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
   "Return TAG transformed to mark it as trash."
   (format "trash/%s" tag))
 
+(defun ekg-fix-renamed-dup-tags (id)
+  "Fix duplicate tags in note with ID.
+After a tag is renamed, it could become a duplicate of another
+tag. This defun will fix the problem for one note, only executing
+a write if there is a problem."
+  (let* ((tagged-plist (triples-get-type ekg-db id 'tagged))
+         (tags (plist-get tagged-plist :tag))
+         (uniq-tags (seq-uniq tags)))
+    (when (> (length tags) (length uniq-tags))
+      (apply #'triples-set-type ekg-db id 'tagged (plist-put tagged-plist :tag uniq-tags)))))
+
+(defun ekg-clean-dup-tags ()
+  "Fix all duplicate tags in the database."
+  (let ((cleaned))
+    (cl-loop for tag in (ekg-tags) do
+                          (let ((tagged (plist-get (triples-get-type ekg-db tag 'tag) :tagged)))
+                            (when (> (length tagged) (length (seq-uniq tagged)))
+                              ;; if there is duplication in the tag list then
+                              ;; something must have duplicate tags.
+                              (mapc #'ekg-fix-renamed-dup-tags tagged)
+                              (push tag cleaned))))
+    (when cleaned
+        (message "%d cleaned tags that were duplicated: %s" (length cleaned)
+                 (mapconcat #'identity cleaned ", ")))))
+
 ;; In order for emacsql / sqlite to not give build warnings we need to declare
 ;; them. Because we only require one to be installed, following the
 ;; implementation in the triples library, we can't just require them.
@@ -1317,15 +1342,17 @@ FROM-TAG will use TO-TAG."
   (ekg-connect)
   (triples-with-transaction
     ekg-db
-    (pcase triples-sqlite-interface
-      ('builtin (sqlite-execute
-                 ekg-db
-                 "UPDATE triples SET object = ? WHERE object = ? AND predicate = 'tagged/tag'"
-                 (list (triples-standardize-val to-tag) (triples-standardize-val from-tag))))
-      ('emacsql (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
-                         to-tag from-tag)))
-    (triples-remove-type ekg-db from-tag 'tag)
-    (triples-set-type ekg-db to-tag 'tag))
+    (let ((old-tag-ids (plist-get (triples-get-type ekg-db from-tag 'tag) :tagged)))
+      (pcase triples-sqlite-interface
+        ('builtin (sqlite-execute
+                   ekg-db
+                   "UPDATE triples SET object = ? WHERE object = ? AND predicate = 'tagged/tag'"
+                   (list (triples-standardize-val to-tag) (triples-standardize-val from-tag))))
+        ('emacsql (emacsql ekg-db [:update triples :set (= object $s1) :where (= object $s2) :and (= predicate 'tagged/tag)]
+                           to-tag from-tag)))
+      (triples-remove-type ekg-db from-tag 'tag)
+      (triples-set-type ekg-db to-tag 'tag)
+      (mapc #'ekg-fix-renamed-dup-tags old-tag-ids)))
   (triples-backups-maybe-backup ekg-db (ekg-db-file)))
 
 (defun ekg-tags ()
@@ -1833,6 +1860,8 @@ is using.
 as long as those notes aren't on resources that are interesting.
 
 3) Deletes all trashed notes.
+
+4) Fixes any duplicate tags.
 "
   (interactive)
   (ekg-connect)
@@ -1872,7 +1901,8 @@ as long as those notes aren't on resources that are interesting.
                            (seq-filter #'identity (list (when trashed-note "trashed")
                                                         (when almost-empty-note "almost empty")
                                                         (when empty-note "empty"))) ", "))
-                 (ekg-note-delete note)))))))
+                 (ekg-note-delete note))))))
+  (ekg-clean-dup-tags))
 
 ;; Links for org-mode
 (require 'ol)

@@ -355,6 +355,12 @@
   (should (ekg-should-show-id-p "http://gnu.org"))
   (should (ekg-should-show-id-p "/usr/bin/emacs")))
 
+(ekg-deftest ekg-test-rename ()
+  (let ((note (ekg-note-create :text "foo" :mode 'text-mode :tags '("a" "b"))))
+    (ekg-save-note note)
+    (ekg-global-rename-tag "a" "b")
+    (should (equal '("b") (ekg-note-tags (ekg-get-note-with-id (ekg-note-id note)))))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here
