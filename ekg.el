@@ -227,7 +227,7 @@ functions are passed in the ID of the note that is being deleted.")
 This includes new notes that start with tags. All functions are
 passed the tag, and run in the buffer editing the note.")
 
-(defconst ekg-version "0.4.0"
+(defconst ekg-version "0.4.2"
   "The version of ekg, used to understand when the database needs
 upgrading.")
 
