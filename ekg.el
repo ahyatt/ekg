@@ -185,7 +185,17 @@ backups in your database after it has been created, run
                                ("Title" . ekg--metadata-update-title))
   "Functions that update a note from the buffer's metadata text.
 Each function takes its field's property value and updates the
-buffer's `ekg-note' with the results of parsing that value.")
+buffer's `ekg-note' with the results of parsing that value. The
+function takes one argument, a list of the field metadata
+property values for multivalue types, or a single one for single
+value types. If `ekg-property-multivalue-type' has an entry, it
+is a multivalue type.")
+
+(defconst ekg-property-multivalue-type '(("Tags" . comma)
+                                         ("Title" . line))
+  "Defines per type how multiple values are separated.
+The values are symbols, COMMA means a comma-separated value. LINE
+means each value gets its own property line.")
 
 (defvar ekg-metadata-labels '((:titled/title . "Title"))
   "Alist of properties that can be on the note and their labels.
@@ -897,13 +907,18 @@ rather than an auto-generated number."
                              (mapconcat (lambda (tag) (format "%s" tag))
                                         (ekg-note-tags note) ", ")))
       (map-apply (lambda (k v)
-                   (when-let (label (cdr (assoc k ekg-metadata-labels)))
-                     (insert (ekg--metadata-string
-                              label
-                              (if (listp v)
-                                  (mapconcat (lambda (v) (format "%s" v))
-                                             v ", ")
-                                (format "%s" v))))))
+                   (when-let ((label (assoc-default k ekg-metadata-labels)))
+                     (if (listp v)
+                         (pcase (assoc-default label ekg-property-multivalue-type)
+                           ('line (cl-loop for val in v do
+                                           (insert (ekg--metadata-string label val))))
+                           ('comma (insert (ekg--metadata-string
+                                            label
+                                            (if (listp v)
+                                                
+                                                (mapconcat (lambda (v) (format "%s" v))
+                                                           v ", ")
+                                              (format "%s" v)))))))))
                  (ekg-note-properties note))
       (buffer-string))))
 
@@ -1183,8 +1198,13 @@ attempt the completion."
         (save-excursion (skip-chars-forward "^:\s\t\n") (point))
         (completion-table-dynamic
          (lambda (_)
+           ;; Complete all fields, except single-value fields (which have no
+           ;; entry in ekg-property-multivalue-type) with an existing field
+           ;; already in existence.
            (seq-difference (mapcar #'car ekg-metadata-parsers)
-                           (mapcar #'car (ekg--metadata-fields nil)))))))
+                           (seq-difference
+                            (mapcar #'car (ekg--metadata-fields nil))
+                            (mapcar #'car ekg-property-multivalue-type)))))))
 
 (defun ekg--tags-cap-exit (completion finished)
   "Cleanup after completion at point happened in a tag.
@@ -1249,13 +1269,12 @@ The metadata fields are comma separated."
 
 (defun ekg--metadata-update-tag (val)
   "Update the tag field from the metadata VAL."
-  (setf (ekg-note-tags ekg-note) (ekg--split-metadata-string val)))
+  (setf (ekg-note-tags ekg-note) val))
 
 (defun ekg--metadata-update-title (val)
   "Update the title field from the metadata VAL."
   (setf (ekg-note-properties ekg-note)
-        (plist-put (ekg-note-properties ekg-note) :titled/title
-                   (ekg--split-metadata-string val))))
+        (plist-put (ekg-note-properties ekg-note) :titled/title val)))
 
 (defun ekg--metadata-update-resource (val)
   "Update the resource to the metadata VAL."
@@ -1278,11 +1297,21 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
 
 (defun ekg--update-from-metadata ()
   "Update the `ekg-note' object from the metadata."
-  (cl-loop for field in (ekg--metadata-fields t)
+  (cl-loop with values = (make-hash-table :test 'equal)
+           for (field . value) in (ekg--metadata-fields t)
            do
-           (if-let (func (assoc (car field) ekg-metadata-parsers))
-                (funcall (cdr func) (cdr field))
-              (warn "EKG: No function found for field %s" (car field)))))
+           (pcase (assoc-default field ekg-property-multivalue-type)
+             ('line (push value (gethash field values)))
+             ('comma (push (ekg--split-metadata-string value) (gethash field values)))
+             (_ (setf (gethash field values) value)))
+           finally return
+           (maphash (lambda (key val)
+                      (if-let (func (assoc key ekg-metadata-parsers))
+                          (funcall (cdr func) (if (listp val)
+                                                  (nreverse (flatten-list val))
+                                                val))
+                        (warn "EKG: No function found for field %s" key)))
+                    values)))
 
 (defun ekg-capture-finalize ()
   "Save the current note."

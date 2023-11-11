@@ -78,6 +78,7 @@ triples library is already installed.
 - Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
 - Fix tag renaming possibly causing duplication.
 - Ensure renamed tags are normalized.
+- Support metadata where fields are specified via multiple property lines and make "title" such a field, so now titles can have commas.
 ** Version 0.4.1
 - Fix issues using default emacs in-buffer completion, and allowing completion in places we shouldn't.
 - Add =ekg-embedding-generate-on-save= and =ekg-embedding-disable-generate-on-save= to turn off generating embeddings for notes.
