@@ -142,7 +142,7 @@ of the note."
     (goto-char (point-min))
     (insert (org-element-interpret-data
              (org-element-create 'headline
-                                 `(:level 1 :title ,(or (plist-get (ekg-note-properties note) :titled/title)
+                                 `(:level 1 :title ,(or (car (plist-get (ekg-note-properties note) :titled/title))
                                                         "Untitled Note")))))
     ;; Can't figure out how to get org-element to do this for me based off of
     ;; properties in the headline, so let's put the properties on here manually.
@@ -163,7 +163,7 @@ This will store the note text as markdown, regardless of the mode
 of the note."
   (with-temp-buffer
     (insert "- "
-            (or (plist-get (ekg-note-properties note) :titled/title)
+            (or (car (plist-get (ekg-note-properties note) :titled/title))
                 "Untitled Note")
             "\n  "
             (format "id:: %s\n  ekg_hash:: %s\n  "
