@@ -38,6 +38,10 @@
 (require 'iso8601)
 (require 'url-parse)
 
+(declare-function org-open-at-point "org")
+(declare-function org-redisplay-inline-images "org")
+(declare-function org-activate-links "org")
+
 ;;; Code:
 
 (defgroup ekg nil
@@ -56,7 +60,7 @@
 
 (defcustom ekg-capture-auto-tag-funcs '(ekg-date-tag)
   "Functions to run to create tags automatically.
-The functions are run in the note buffer before saving it.
+The functions are run in the note buffer while creating it.
 Return a list of tags to add."
   :type '(set function)
   :group 'ekg)
@@ -73,13 +77,12 @@ check for the mode of the buffer."
   :group 'ekg)
 
 (defcustom ekg-notes-size 20
-  "Number of notes when those notes buffers where any amount might
-be appropriate."
+  "How many recently created or updated notes to show."
   :type 'integer
   :group 'ekg)
 
 (defcustom ekg-db-file nil
-  "A filename specifying what the ekg database.
+  "The filename for the ekg database.
 Initially set as nil, which will mean that we use
 `triples-default-database-filename'. If you don't want to do that
 use this, set to the filename you want to use. If the file named
@@ -88,14 +91,14 @@ by `ekg-db-file-obsolete' exists, that is used instead."
   :group 'ekg)
 
 (defcustom ekg-template-tag "template"
-  "Special tag that will hold templates for other tags.
+  "Special tag marking notes acting as templates for other tags.
 See `ekg-on-add-tag-insert-template' for details on how this works."
   :type '(string :tag "tag")
   :group 'ekg)
 
 (defcustom ekg-function-tag "tag-defun"
-  "Special tag that holds code run in note buffers with cotags.
-This takes affect on the note buffer when editing or capturing,
+  "Special tag marking notes with elisp code run for other tags.
+This takes effect on the note buffer when editing or capturing,
 and will take effect for all other tags on the same note that
 holds this tag."
   :type '(string :tag "tag")
@@ -125,12 +128,12 @@ not in the template."
   :group 'ekg)
 
 (defcustom ekg-metadata-separator-text "--text follows this line--"
-  "Separator between the metadata of the note and the note text"
+  "Separator between the metadata of the note and the note text."
   :type 'string
   :group 'ekg)
 
 (defcustom ekg-notes-display-images t
-  "Configuration to determine if images are displayed by default."
+  "Whether images are displayed by default."
   :type 'boolean
   :group 'ekg)
 
@@ -180,16 +183,17 @@ backups in your database after it has been created, run
 (defvar ekg-metadata-parsers '(("Tags" . ekg--metadata-update-tag)
                                ("Resource" . ekg--metadata-update-resource)
                                ("Title" . ekg--metadata-update-title))
-  "Metadata fields to functions for updating data based on buffer text.
-Each function updates the buffer's `ekg-note' with the results of
-the field. The function takes one argument, a list of the field
-metadata property values for multivalue types, or a single one
-for single value types. If `ekg-property-multivalue-type' has an
-entry, it is a multivalue type.")
+  "Functions that update a note from the buffer's metadata text.
+Each function takes its field's property value and updates the
+buffer's `ekg-note' with the results of parsing that value. The
+function takes one argument, a list of the field metadata
+property values for multivalue types, or a single one for single
+value types. If `ekg-property-multivalue-type' has an entry, it
+is a multivalue type.")
 
 (defconst ekg-property-multivalue-type '(("Tags" . comma)
                                          ("Title" . line))
-  "Defines per typehow multiple values are separated.
+  "Defines per type how multiple values are separated.
 The values are symbols, COMMA means a comma-separated value. LINE
 means each value gets its own property line.")
 
@@ -205,27 +209,32 @@ the schema already exists.")
 
 (defvar ekg-note-pre-save-hook nil
   "Hook run before saving a note.
-This is not run in the same database transaction as the save. All
-functions are passed in the note.")
+This is not run in the same database transaction as the save.
+All functions are called with the `ekg-note' as the single
+argument.")
 
 (defvar ekg-note-save-hook nil
-  "Hook run after saving a note, in the save transaction.
-At this point the note itself has been saved. All functions are
-passed in the note that is being saved.")
+  "Hook run after saving a note, within the save transaction.
+At this point the note itself has been saved.  All functions are
+called with the `ekg-note' as the single argument.")
 
 (defvar ekg-note-pre-delete-hook nil
   "Hook run before deleting a note.
-All functions are passed in the ID of the note that is being deleted.")
+This is not run in the same database transaction as the delete.
+All functions are called with the ID of the note that is being
+deleted as the single argument.")
 
 (defvar ekg-note-delete-hook nil
   "Hook run after deleting a note.
-This is run in the same transaction as the deletion. All
-functions are passed in the ID of the note that is being deleted.")
+This is run in the same transaction as the deletion.  All
+functions are called with the ID of the note that is being
+deleted as the single argument.")
 
 (defvar ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)
-  "Hook is run after a new tag is added to note.
-This includes new notes that start with tags. All functions are
-passed the tag, and run in the buffer editing the note.")
+  "Hook run after a new tag is added to a note.
+This includes new notes that start with tags.  All functions are
+called with the tag as the single argument, and run in the buffer
+editing the note.")
 
 (defconst ekg-version "0.4.2"
   "The version of ekg, used to understand when the database needs
@@ -334,7 +343,7 @@ This
   1) makes sure all tags are lowercase and trimmed.
   2) removes commas in tags, since those are used to separate tags.
   3) removes any properties from the text.
-  4) makes sure the note has an reasonable ID, otherwise generates one.
+  4) makes sure the note has a reasonable ID, otherwise generates one.
 
 Note: we used to also trim text, but with inline commands, that
 is not a great idea, because an inline command sits outside of
@@ -473,8 +482,8 @@ If the ID does not exist, create a new note with that ID."
 (defun ekg-note-trash (note)
   "Move NOTE to the trash.
 This prepends all tags with `trash/'. This can be garbage
-collected at a later time. If all tags are trash tags, then the
-note is really deleted."
+collected at a later time. If all tags are already trash tags,
+then the note is really deleted."
   (ekg-connect)
   (triples-with-transaction
     ekg-db
@@ -502,12 +511,9 @@ be unsaved."
        (not (member ekg-draft-tag (ekg-note-tags note)))))
 
 (defun ekg-active-id-p (id)
-  "Return non-nil if note with ID is active.
-An active note is a normal view of notes, where nothing
-unusual is being asked for.
-
-This will return true if NOTE is not a draft, and has at least
-one non-trash tag."
+  "Return non-nil if the note with ID is active.
+This will return true if the note is not a draft, and has at
+least one non-trash tag."
   (ekg-connect)
   (ekg-note-active-p (ekg-get-note-with-id id)))
 
@@ -556,11 +562,10 @@ unchanged."
 
 
 (defun ekg-insert-inlines-and-process (text inlines func)
-  "Returns the result of inserting INLINES into TEXT.
-FUNC will be executed with the cdr of each inline command and
+  "Return the result of inserting INLINES into TEXT.
+FUNC is executed with the cdr of each inline command and its
 return value is inserted into the buffer at the appropriate
-point.
-NUMTOK is the number of tokens available to be used."
+point.  NUMTOK is the number of tokens available to be used."
   (with-temp-buffer
     (insert text)
     (let ((mils (cl-loop for il in inlines do
@@ -586,8 +591,8 @@ NUMTOK is the number of tokens available to be used."
               "n" "") (ekg-inline-command inline)))
 
 (defun ekg-insert-inlines-representation (text inlines)
-  "Returns the result of inserting INLINES into TEXT.
-INLINES are inserted "
+  "Return the result of inserting INLINES into TEXT.
+INLINES are inserted in their unevaluated text forms."
   (ekg-insert-inlines-and-process
    text inlines #'ekg-inline-to-text))
 
@@ -842,7 +847,7 @@ This is needed to identify references to refresh when the subject is changed." )
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.
-The order the notes are returned are the order that they are
+The order the notes are returned in is the order that they are
 displayed.")
 
 (defvar-local ekg-notes-name ""
@@ -887,7 +892,8 @@ This will be displayed at the top of the note buffer."
 
 (defun ekg-should-show-id-p (id)
   "Return non-nil if the note ID should be shown to the user.
-The ID represents meaningful resource to the user, other than auto-generated id."
+True when the ID represents a meaningful resource to the user,
+rather than an auto-generated number."
   (not (numberp id)))
 
 (defun ekg--replace-metadata ()
@@ -932,7 +938,7 @@ Also make sure we always have a line with which the user can add text."
       (insert "\n"))))
 
 (defun ekg--metadata-modification (overlay after _ _ &optional _)
-  "Make sure that metadata region doesn't interfere with editing.
+  "Make sure the metadata region doesn't interfere with editing.
 This function is called on modification within the metadata.
 
 BEGIN-MOD and END-MOD are the beginning and end points of the
@@ -942,8 +948,9 @@ We want to make sure of a few things:
   1) The user isn't adding more than one empty line.
 
   2) There is at least one non-metadata line in the buffer.
-Argument OVERLAY is overlay whose modification triggers this method.
-Argument AFTER is non-nil if method is being called after the modification.
+Argument OVERLAY is the overlay whose modification triggers this
+method.  Argument AFTER is non-nil if method is being called
+after the modification.
 
   3) The user can't delete the metadata - if the user tries to
 delete from the end of the metadata, we need to fix it back up."
@@ -1061,7 +1068,7 @@ file. If not, an error will be thrown."
                      :id file)))))
 
 (defun ekg-change-mode (mode)
-  "Change the mode to MODE of the current note."
+  "Change the mode of the current note to MODE."
   (interactive (list (completing-read "Mode: " ekg-acceptable-modes))
                ekg-capture-mode ekg-edit-mode)
   (let* ((minor-mode (if ekg-capture-mode "capture" "edit"))
@@ -1145,7 +1152,7 @@ Return the latest `ekg-note' object."
   ekg-note)
 
 (defun ekg--in-metadata-p ()
-  "If the point is in the metadata section."
+  "Whether the point is in the metadata section."
   (< (point) (overlay-end (ekg--metadata-overlay))))
 
 (defun ekg--metadata-current-field ()
@@ -1383,7 +1390,7 @@ a write if there is a problem."
 
 (defun ekg-global-rename-tag (from-tag to-tag)
   "Rename FROM-TAG to TO-TAG.
-This can be done whether or not TO-TAG exists or not. This
+This can be done whether TO-TAG already exists or not. This
 renames all instances of the tag globally, and all notes with
 FROM-TAG will use TO-TAG."
   (interactive (list (completing-read "From tag: " (ekg-tags) nil t)
@@ -1426,7 +1433,7 @@ tags)."
              (sort (seq-copy tags) #'string<) ", "))
 
 (defun ekg-display-note (note)
-  "Display NOTE in buffer."
+  "Return string form of NOTE for display in a buffer."
   (ekg-connect)
   (let* ((ic (ekg-extract-inlines ekg-display-note-template))
          (template-types (mapcan (lambda (i)
@@ -1492,8 +1499,8 @@ tags."
   (ekg-edit (ekg-current-note-or-error)))
 
 (defun ekg-notes-kill ()
-  "Kill/hide the current note from the view.
-Note is not deleted from the database and will re-appear when the
+  "Kill (hide) the current note from the view.
+Note is not deleted from the database and will reappear when the
 view is refreshed."
   (interactive nil ekg-notes-mode)
   (let ((inhibit-read-only t))
@@ -1530,7 +1537,7 @@ Otherwise, open in Emacs with `find-file'."
                  (find-file file))))))))
 
 (defun ekg-notes-select-and-browse-url (title)
-  "Browse one of all the resources in the current buffer.
+  "Browse one of the resources in the current buffer's notes.
 TITLE is the title of the URL to browse to."
   (interactive (list
                 (completing-read
@@ -1568,7 +1575,7 @@ NAME is displayed at the top of the buffer."
   (set-buffer-modified-p nil))
 
 (defun ekg--notes-activate-links()
-  "Make the links in org properly formatted and enable follow."
+  "Activate the org-mode links so they can be seen and followed."
   (let ((inhibit-read-only t))
       (save-excursion
         (goto-char (point-min))
@@ -1678,7 +1685,7 @@ are created with additional tags TAGS."
 
 (defun ekg-show-notes-in-drafts ()
   "Show all notes in the draft state.
-These notes have not yet be saved, and don't show up in most
+These notes have not yet been saved, and don't show up in most
 other views."
   (interactive)
   (unless ekg-draft-tag
@@ -1696,8 +1703,8 @@ other views."
 
 (defun ekg-show-notes-latest-captured (&optional num)
   "Show the last several notes taken.
-NUM is by default, `ekg-notes-size', which determines how many
-notes to show. But with an prefix ARG, ask the user."
+NUM is by default `ekg-notes-size', which determines how many
+notes to show.  But with a prefix ARG, ask the user."
   (interactive (list (if current-prefix-arg
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
@@ -1718,8 +1725,8 @@ notes to show. But with an prefix ARG, ask the user."
 
 (defun ekg-show-notes-latest-modified (&optional num)
   "Show the last several notes modified.
-NUM is by default, `ekg-notes-size', which determines how many
-notes to show. But with an prefix ARG, ask the user."
+NUM is by default `ekg-notes-size', which determines how many
+notes to show. But with a prefix ARG, ask the user."
   (interactive (list (if current-prefix-arg
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
@@ -1763,7 +1770,7 @@ If no corresponding URL is found, an error is thrown."
     (browse-url (car subjects))))
 
 (defun ekg-date-tag-p (tag)
-  "Returns non-nil if TAG is a date tag."
+  "Return non-nil if TAG is a date tag."
   (let ((prefix "date/"))
     (string= prefix (substring-no-properties tag 0 (min (length prefix) (length tag))))))
 
@@ -1775,11 +1782,11 @@ Active in this context means non-trashed."
 
 (defun ekg-get-notes-cotagged-with-tags (tags cotag)
   "Return a list of all notes with one of TAGS and COTAG.
-Parents of the tags in TAGS are also considered. Specifically,
+Parents of the tags in TAGS are also considered.  Specifically,
 look at each tag in order, from ancestor to child (so if a tag
-was a/b/c, we'd check a, then a/b, then a/b/c.), and for each of
-those look at all notes cotagged with COTAG. We return a list of
-the text of all these notes for all tagas and tag parents, etc."
+was a/b/c, we'd check a, then a/b, then a/b/c), and for each of
+those look at all notes also tagged with COTAG. We return a list
+of the text of all these notes for all tags and tag parents, etc."
   (flatten-list (mapcar (lambda (tag)
                           (ekg-get-notes-with-tags (list tag cotag)))
                         (seq-mapcat #'ekg-tag-to-hierarchy tags))))
@@ -1846,11 +1853,11 @@ necessary upgrades."
 (defun ekg-upgrade-db (from-version)
   "After updating, do any necessary upgrades.
 This is designed so that it can be run an arbitrary number of
-times, if there's nothing to do, it won't have any affect. If an
-upgrade is needed, it will always make a backup, regardless of
+times.  If there's nothing to do, it won't have any effect.  If
+an upgrade is needed, it will always make a backup, regardless of
 backup settings, and will not delete any backups, regardless of
-other settings. FROM-VERSION is the version of the database
-before the upgrade, in list form. TO-VERSION is the version of
+other settings.  FROM-VERSION is the version of the database
+before the upgrade, in list form.  TO-VERSION is the version of
 the database after the upgrade, in list form."
   (let ((need-triple-0.3-upgrade
          (or (null from-version)
@@ -1901,8 +1908,8 @@ the database after the upgrade, in list form."
 
 (defun ekg-clean-db ()
   "Clean all useless or malformed data from the database.
-Some of this are tags which have no uses, which we consider
-useless. This will always make a backup, regardless of backup
+Some of this is tags which have no uses, which we consider
+useless.  This will always make a backup, regardless of backup
 settings, and will not delete any backups, regardless of other
 settings.
 
@@ -1915,10 +1922,10 @@ Specifically, this does a few things:
 1) Calls `ekg-remove-unused-tags' to remove all tags that no note
 is using.
 
-2) Delete any notes that have no content or almost no content, as
-long as those notes aren't on resources that are interesting.
+2) Deletes any notes that have no content or almost no content,
+as long as those notes aren't on resources that are interesting.
 
-3) Delete all trashed notes.
+3) Deletes all trashed notes.
 
 4) Fixes any duplicate tags.
 "
@@ -1977,7 +1984,7 @@ long as those notes aren't on resources that are interesting.
                                                (mapconcat #'identity ekg-notes-tags ", ")))))
 
 (defun ekg-edit-note-display-text ()
-  "From an edit / capture mode buffer, return display text.
+  "From an edit or capture mode buffer, return display text.
 The display text is the text with all inlines executed, without
 any metadata text."
   (let* ((text (buffer-substring (+ 1 (overlay-end (ekg--metadata-overlay)))
