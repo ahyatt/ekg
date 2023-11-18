@@ -1043,7 +1043,10 @@ If ID is given, force the triple subject to be that value."
     (insert text)
     (if (and (eq mode 'org-mode)
              ekg-notes-display-images)
-        (org-redisplay-inline-images))
+        (condition-case nil
+            (org-redisplay-inline-images)
+          (wrong-type-argument (message "Problem showing image for note ID %s (content: \"%s\")"
+                          id (ekg-truncate-at text 10)))))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
