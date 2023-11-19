@@ -180,7 +180,9 @@ you want to note about, that is relevant to the tags for the note.
 There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=. More can be added by customizing the variable ~ekg-acceptable-modes~, just
 make sure its a mode that makes sense for notes. The default mode is configured in ~ekg-capture-default-mode~, but can be changed when capturing with the command =ekg-change-mode=.
 
-The note text offers various completions.  The most common completion is to type tags inline when writing notes, which will be automatically added to the note tags.  There is no effort to clean up inline tags that are deleted, and tags that appear in notes are just text; the real tags are in the note properties section above.  The tag completion is triggered by a "#" symbol.  Another type of completion is for inline commands, the ">t" completion, mentioned in the [[#inlines][Inline commands]].
+The note text offers various completions.  The most common completion is to type tags inline when writing notes, which will be added to the note upon save (this will happen whether completion is used or not).  There is no effort to clean up inline tags that are deleted in the tag section, and if an inline tag is not deleted in the note text, the tag contained will be re-added .  The tag completion is triggered by a "#" symbol.  If the tag has a space, it will be enclosed in brackets to delineate the entire tag.
+
+Another type of completion is for inline commands, the ">t" completion, mentioned in the [[#inlines][Inline commands]].
 ** Drafts
 Notes can be saved midway through editing, both for capturing and editing notes.  The normal buffer save keybinding will save a draft.  A draft is like a normal note, but has a special tag, by default "draft".  This can be customized in =ekg-draft-tag=.  Having this tag means it doesn't show up in most views, much like the notes in "trash".  Once a note is saved normally, it loses the draft tag.
 ** A warning about org-mode

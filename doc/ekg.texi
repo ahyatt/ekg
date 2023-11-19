@@ -441,7 +441,9 @@ you want to note about, that is relevant to the tags for the note.
 There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}. More can be added by customizing the variable @code{ekg-acceptable-modes}, just
 make sure its a mode that makes sense for notes. The default mode is configured in @code{ekg-capture-default-mode}, but can be changed when capturing with the command @samp{ekg-change-mode}.
 
-The note text offers various completions.  The most common completion is to type tags inline when writing notes, which will be automatically added to the note tags.  There is no effort to clean up inline tags that are deleted, and tags that appear in notes are just text; the real tags are in the note properties section above.  The tag completion is triggered by a "#" symbol.  Another type of completion is for inline commands, the ">t" completion, mentioned in the @ref{Inline commands}.
+The note text offers various completions.  The most common completion is to type tags inline when writing notes, which will be added to the note upon save (this will happen whether completion is used or not).  There is no effort to clean up inline tags that are deleted in the tag section, and if an inline tag is not deleted in the note text, the tag contained will be re-added .  The tag completion is triggered by a "#" symbol.  If the tag has a space, it will be enclosed in brackets to delineate the entire tag.
+
+Another type of completion is for inline commands, the ">t" completion, mentioned in the @ref{Inline commands}.
 
 @node Drafts
 @section Drafts

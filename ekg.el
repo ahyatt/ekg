@@ -328,6 +328,7 @@ the text and may be after trailing whitespace."
   "Save NOTE in database, replacing note information there."
   (ekg-connect)
   (ekg--normalize-note note)
+  (ekg--populate-inline-tags note)
   (run-hook-with-args 'ekg-note-pre-save-hook note)
   (triples-with-transaction
     ekg-db
@@ -819,38 +820,49 @@ This is needed to identify references to refresh when the subject is changed." )
           (require 'org)
           (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
 
+(defun ekg--populate-inline-tags (note)
+  "Populate tags found in text of NOTE.
+Tags are prefixed by a hash symbol, and are enclosed in brackets
+if they have more than one word.
+The tags are added to the end of the tag list."
+  (with-temp-buffer
+    (insert (ekg-note-text note))
+    (goto-char (point-min))
+    (let ((tags))
+      (while (re-search-forward
+              ;; If the tag has a space or punctuation, it needs to be enclosed
+              ;; in brackets.
+              (rx (or (seq ?# (group-n 1 (one-or-more (any word ?_ ?/ ?-))))
+                      (seq ?# ?\[ (group-n 1 (one-or-more (not ?\]))) ?\])))              
+              nil t)
+        (let ((tag (match-string 1)))
+          (push tag tags)))
+      (setf (ekg-note-tags note) (seq-uniq (append (ekg-note-tags note) (nreverse tags)))))))
+
 (defun ekg--inline-tag-completion ()
   "Completion function for tags in notes.
 This will tags that are prefixed by a hash symbol. The tag will
-complete, and upon completion, it will be added to the note tags."
+complete, and if the tag has a space, it will be enclosed in
+brackets."
   (let ((begin (save-excursion
-                 (search-backward "#" (line-beginning-position) t)
+                 (search-backward
+                  "#" (save-excursion
+                        (search-backward " " (line-beginning-position) t)) t)
                  (+ 1 (point))))
         (end (point)))
     (when (<= begin end)
       (list begin end
             (completion-table-dynamic (lambda (_) (ekg-tags)))
-            :exclusive t :exit-function #'ekg--inline-tag-exit))))
+            :exclusive nil :exit-function #'ekg--inline-tag-exit))))
 
 (defun ekg--inline-tag-exit (completion finished)
-  "When a tag is completed, add it to the note tags."
+  "When a tag is completed, add brackets if there is a space."
   (when finished
-    (let ((o (ekg--metadata-overlay))
-          (inhibit-read-only t)
-          (tag (substring-no-properties completion)))
-      (setf (ekg-note-tags ekg-note)
-          (seq-uniq (append (ekg-note-tags ekg-note) (list tag))))
-      (replace-region-contents (overlay-start o) (overlay-end o)
-                               #'ekg--replace-metadata)
-      ;; For some reason the overlay can add linefeeds that affect the text
-      ;; after the overlay. Remove stray newlines so that there is only one
-      ;; newline after the overlay.
-      (save-excursion
-        (goto-char (+ 1 (overlay-end o)))
-        (when (looking-at "\n")
-          (delete-char 1)))
-      (run-hook-with-args 'ekg-note-add-tag-hook tag)
-      (ekg-maybe-function-tag tag))))
+    (save-excursion
+      (when (and
+             (search-backward completion (line-beginning-position) t)
+             (string-match-p " " completion))
+        (replace-match (format "[%s]" completion))))))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.
