@@ -183,7 +183,6 @@ backups in your database after it has been created, run
 (defvar ekg-metadata-parsers '(("Tags" . ekg--metadata-update-tag)
                                ("Resource" . ekg--metadata-update-resource)
                                ("Title" . ekg--metadata-update-title))
-<<<<<<< HEAD
   "Metadata fields to functions for updating data based on buffer text.
 Each function updates the buffer's `ekg-note' with the results of
 the field. The function takes one argument, a list of the field
@@ -196,11 +195,12 @@ entry, it is a multivalue type.")
   "Defines per typehow multiple values are separated.
 The values are symbols, COMMA means a comma-separated value. LINE
 means each value gets its own property line.")
-=======
-  "Functions that update a note from the buffer's metadata text.
-Each function takes its field's property value and updates the
-buffer's `ekg-note' with the results of parsing that value.")
->>>>>>> 20d008a (Copy edits for ekg's documentation.)
+
+(defconst ekg-property-multivalue-type '(("Tags" . comma)
+                                         ("Title" . line))
+  "Defines per type how multiple values are separated.
+The values are symbols, COMMA means a comma-separated value. LINE
+means each value gets its own property line.")
 
 (defvar ekg-metadata-labels '((:titled/title . "Title"))
   "Alist of properties that can be on the note and their labels.
