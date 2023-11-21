@@ -8,48 +8,49 @@ The ekg module is a simple but opinionated note taking application, for emacs.
 It is a substitute for such other emacs applications such as org-roam or denote.
 ekg stands for /emacs knowledge graph/.
 
-Data is completely stored in a sqlite database. Notes are organized around tags,
-and you can view many notes by looking at one or more tags.
+All of ekg's data is stored in a sqlite database.  Notes are organized around
+tags, and you can view many notes by looking at one or more tags.
 
 #+CAPTION: An example of viewing a tag in ekg
 [[./screenshots/ekg-tag-view.jpg]]
 
 Editing a note from one of these buffers, or capturing a new note, lets you edit
-both the note's data and the text of the note itself in a buffer.
+both the note's text content and its metadata (mostly tags you add to it) in a
+separate buffer.
 
-#+CAPTION: An eample of editing a note
+#+CAPTION: An example of editing a note
 [[./screenshots/ekg-edit.jpg]]
 
 ekg has functionality to have notes created with templates that vary based on
 the tags you are using.  It also supports saving unfinished notes as drafts.
 
-Notes can have be on file resources and web resources. You can use notes on file
+Notes can be on file resources and web resources. You can use notes on file
 resources to have a stored annotation for files.
 
 ekg supports import from org-roam, and import and export to logseq. It also
 supports inline commands, which can be used for transclusion and any other
 functionality you may need.
 
-There is support for embedding creation for notes, for use in search and
-similarity search, via the llm package. This allows you to search based on
-semantics, as opposed to text matching. You can also use LLM chat in your notes,
-getting an LLM to respond to your notes based on a default prompt, or new
-prompts that you add.
+There is support for attaching Large Language Model (LLM) "embeddings" to notes,
+for use in search and similarity search, via the llm package. This allows you to
+search based on semantics, as opposed to text matching. You can also use LLM
+chat in your notes, getting an LLM to respond to your notes based on a default
+prompt, or new prompts that you add.
 
 Additionally, [[https://youtu.be/qxa2VrseFUA][a video demonstration and explanation of ekg]] is on YouTube. This
 README has only the most basic information, but the full information can be
-found on the [[https://github.com/ahyatt/ekg/blob/develop/doc/ekg.org][manual]], which can be viewed in the Emacs info after installing.
+found in the [[https://github.com/ahyatt/ekg/blob/develop/doc/ekg.org][manual]], which can be viewed in the Emacs info after installing.
 
 * Design of ekg
 There are a few core ideas driving the design of ekg. The first is that a title
-and a tag are the same thing. This isn't unique to ekg, other tools such as
+and a tag are the same thing. This isn't unique to ekg: other tools such as
 Logseq also consider tags to be equivalent to pages of the same name, although
-this functionality is limited since tags can only be just one word. In org-roam,
-a tag is just a tag, so you can have a note called "emacs" and a tag called
-"emacs", but these are not related. ekg takes the idea a step further: there are
-(mostly) no titles, only tags. So, instead of writing text in a note called
-"emacs", just write a note and tag it with "emacs". There is no "title", only
-tags. If you write another note about emacs, also tag it "emacs", and maybe
+in Logseq this functionality is limited since tags can only be single words. In
+org-roam, a tag is just a tag, so you can have a note called "emacs" and a tag
+called "emacs", but these are not related. ekg takes the idea a step further:
+there are (mostly) no titles, only tags. So, instead of writing text in a note
+called "emacs", just write a note and tag it with "emacs". There is no "title",
+only tags. If you write another note about emacs, also tag it "emacs", and maybe
 something else too. Or tag it something more involved, like an idea: "emacs's
 power derives from putting all data in buffers, and making all commands deal
 with buffers." That's a perfectly fine tag, and if you notice a connecting idea,
@@ -67,8 +68,7 @@ the issue. Even if it could, I want a system in which it doesn't matter where
 you enter the data, it shows up in the original place the same as everywhere
 else it is linked to, not as a backlink, but just as part of the content. Having
 notes with no title, only tags, makes this possible, because there is no longer
-a difference between linking and writing in the context in, both are denoted by
-tags.
+a difference between linking and writing the context, both are denoted by tags.
 
 As a consequence of this design, notes can be small, because to add another note
 to a subject, you don't need to append to an existing note, you can create
@@ -84,7 +84,7 @@ the database and not the text as well. In general, text and data are separated
 as much as possible here, so there's no need or desire for the text to have to
 store data as well, we leave that completely to the database.
 * Prefixed tags
-Another concept, loosely applied in ekg is that of tags with standard prefixes.
+Another concept, loosely applied in ekg, is that of tags with standard prefixes.
 By default, date tags are prefixed with "date/". This is a way to distinguish
 date tags from other kinds of tags. Most tags shouldn't need it, but it often is
 useful to have prefixes to group tags in some way. For instance, perhaps all
@@ -98,18 +98,21 @@ There are a few other types of prefixes commonly used for tags. One is that
 titled resources have default tags that are prefixed with "doc/", followed by
 the name of the document.
 
-Functionality such as templates, and llm prompting can work with prefixed tags,
-so when looking for templates or prompts for a tag with some hierarchy, will
+Functionality such as templates and LLM prompting can work with prefixed tags,
+so when looking for templates or prompts for a tag with some hierarchy, ekg will
 look at the tag hierarchy from the top to the bottom to add any relevant
 information.
 * Installation
-ekg is currently hosted on MELPA. It requires Emacs 28.1 or higher and the the following packages:
- - [[https://github.com/ahyatt/triples][triples]], which is a way to express a graph in sqlite in emacs, alongside basic querying functionality.
- - [[https://github.com/ahyatt/llm][llm]], a way to depend on LLMs via a interface, so the user can choose which provider they want to use.
+ekg is currently hosted on MELPA. It requires Emacs 28.1 or higher and the the
+following packages:
+ - [[https://github.com/ahyatt/triples][triples]], which is a way to express a graph in sqlite in emacs, alongside
+   basic querying functionality.
+ - [[https://github.com/ahyatt/llm][llm]], a way to depend on LLMs via an interface, so the user can choose which
+   provider they want to use.
 
 Emacs versions prior to version 29 are dependent on =emacsql= to provide sqlite
-functionality, which itself has a dependency on having a =sqlite= binary available
-on your system.
+functionality, which itself has a dependency on having a =sqlite= binary
+available on your system.
 
 An example installation using =use-package= is below:
 #+begin_src emacs-lisp
@@ -117,7 +120,8 @@ An example installation using =use-package= is below:
   :bind (([f11] . ekg-capture)))
 #+end_src
 
-If you are using embedding and llm functionality, an example in which you use Open AI's API is the following:
+If you are using embedding and llm functionality, an example in which you use
+Open AI's API is the following:
 
 #+begin_src emacs-lisp
 (use-package ekg
@@ -132,7 +136,8 @@ If you are using embedding and llm functionality, an example in which you use Op
           ekg-embedding-provider my-provider)))
 #+end_src
 
-Note: make sure to never check in an API key, so if you check in your configuration, set up your API key in a loaded elisp file you do not check in.
+Note: make sure to never check in an API key, so if you check in your
+configuration, set up your API key in a loaded elisp file you do not check in.
 * Usage
 To create a note, run =ekg-capture= to capture a text note, or =ekg-capture-url= to
 capture a website. The note will, by default, be tagged with the current date.
@@ -142,8 +147,8 @@ is a series of functions that are called and can add tags.
 At the top of the note is a special section, which will be unfamiliar. This is
 the metadata section, where it stores and displays editable metadata, notably
 tags, but possibly other data such as URLs. If you want to change tags, just
-edit them in the metadata section. Tags should autocomplete based on the
-tags available to use.
+edit them in the metadata section. Tags will autocomplete based on the tags
+you've already created.
 
 The basic read operation in ekg is to show a list of notes according to some
 rule. An example is =ekg-show-notes-with-tag=. The notes displayed can be
@@ -152,8 +157,8 @@ a complete list of commands and keybindings.
 * Command summary
 Global commands, can be run everywhere, and most should be bound to useful keybindings:
 
-| Command                        | Description                                                            |
-|--------------------------------+------------------------------------------------------------------------|
+| Command                          | Description                                                            |
+|----------------------------------+------------------------------------------------------------------------|
 | =ekg-capture=                    | Capture a new note                                                     |
 | =ekg-capture-url=                | Capture a new note (or open an existing note) about a URL              |
 | =ekg-capture-file=               | Capture a new note (or open an existing note) about a file             |
@@ -197,7 +202,6 @@ Commands relevant to note view buffers:
 | =ekg-notes-tag=                   | Open another tag buffer selecting from tags of current note               | =t=     |
 | =ekg-notes-open=                  | Edit the currently selected note                                          | =o=     |
 | =ekg-notes-delete=                | Delete the currently selected note                                        | =d=     |
-| =ekg-notes-remove=                | Remove the tag buffer's tags from the currently selected note             | =r=     |
 | =ekg-notes-browse=                | Open the resource, if one exists                                          | =b=     |
 | =ekg-notes-select-and-browse-url= | Select from the URLs in the current note buffer, and browse.              | =B=     |
 | =ekg-notes-refresh=               | Refresh the tag, refetching all the data displayed                        | =g=     |
