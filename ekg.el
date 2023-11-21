@@ -1255,7 +1255,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
     (kill-buffer)
     (cl-loop for b being the buffers do
            (with-current-buffer b
-               (when (and (eq major-mode 'ekg-notes-mode))
+               (when (and (eq major-mode 'ekg-notes-mode) ekg-notes-ewoc)
                  (let ((n (ewoc-nth ekg-notes-ewoc 0)))
                    (while n
                      (when (or (equal (ekg-note-id (ewoc-data n))
