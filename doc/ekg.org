@@ -75,6 +75,7 @@ triples library is already installed.
 * Changelog
 ** Version 0.4.3
 - Added autoloads
+- Fixed issue that could occur when saving with malformed buffers.
 ** Version 0.4.2
 - Switch LLM chat output to streaming when available.
 - Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.

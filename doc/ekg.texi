@@ -212,6 +212,8 @@ triples library is already installed.
 @itemize
 @item
 Added autoloads
+@item
+Fixed issue that could occur when saving with malformed buffers.
 @end itemize
 
 @node Version 042
