@@ -1013,6 +1013,7 @@ delete from the end of the metadata, we need to fix it back up."
     (when (eq major-mode 'org-mode)
       (setq-local org-element-use-cache nil))))
 
+;;;###autoload
 (cl-defun ekg-capture (&key text mode tags properties id)
   "Capture a new note, with TEXT, MODE, TAGS and other PROPERTIES.
 If ID is given, force the triple subject to be that value."
@@ -1043,6 +1044,7 @@ If ID is given, force the triple subject to be that value."
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
+;;;###autoload
 (defun ekg-capture-url (&optional url title)
   "Capture a new note given a URL and its TITLE.
 However, if URL already exists, we edit the existing note on it."
@@ -1056,6 +1058,7 @@ However, if URL already exists, we edit the existing note on it."
                    :properties `(:titled/title ,(list title))
                    :id url))))
 
+;;;###autoload
 (defun ekg-capture-file ()
   "Capture a new note about the file the user is visiting.
 This can only be called when in a buffer that has an associated
@@ -1646,6 +1649,7 @@ are created with additional tags TAGS."
   (> (ekg-note-creation-time a)
      (ekg-note-creation-time b)))
 
+;;;###autoload
 (defun ekg-show-notes-with-any-tags (tags)
   "Show notes with any of TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
@@ -1656,6 +1660,7 @@ are created with additional tags TAGS."
                  #'ekg-sort-by-creation-time))
      tags))
 
+;;;###autoload
 (defun ekg-show-notes-with-all-tags (tags)
   "Show notes that contain all TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
@@ -1665,6 +1670,7 @@ are created with additional tags TAGS."
                     #'ekg-sort-by-creation-time))
    tags))
 
+;;;###autoload
 (defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
   (interactive (list (completing-read "Tag: " (ekg-tags))))
@@ -1673,6 +1679,7 @@ are created with additional tags TAGS."
    (lambda () (sort (ekg-get-notes-with-tag tag) #'ekg-sort-by-creation-time))
    (list tag)))
 
+;;;###autoload
 (defun ekg-show-notes-in-trash ()
   "Show notes that have only tags that are trashed."
   (interactive)
@@ -1686,6 +1693,7 @@ are created with additional tags TAGS."
                #'ekg-sort-by-creation-time))
    nil))
 
+;;;###autoload
 (defun ekg-show-notes-in-drafts ()
   "Show all notes in the draft state.
 These notes have not yet been saved, and don't show up in most
@@ -1699,11 +1707,13 @@ other views."
    (lambda () (ekg-get-notes-with-tag ekg-draft-tag))
    nil))
 
+;;;###autoload
 (defun ekg-show-notes-for-today ()
   "Show all notes with today's date as a tag."
   (interactive)
   (ekg-show-notes-with-tag (car (ekg-date-tag))))
 
+;;;###autoload
 (defun ekg-show-notes-latest-captured (&optional num)
   "Show the last several notes taken.
 NUM is by default `ekg-notes-size', which determines how many
@@ -1726,6 +1736,7 @@ notes to show.  But with a prefix ARG, ask the user."
               finally return selected))
    nil))
 
+;;;###autoload
 (defun ekg-show-notes-latest-modified (&optional num)
   "Show the last several notes modified.
 NUM is by default `ekg-notes-size', which determines how many
