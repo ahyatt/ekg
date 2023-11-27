@@ -7,6 +7,7 @@
 ;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.4.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.5.0
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -191,6 +192,12 @@ function takes one argument, a list of the field metadata
 property values for multivalue types, or a single one for single
 value types. If `ekg-property-multivalue-type' has an entry, it
 is a multivalue type.")
+
+(defconst ekg-property-multivalue-type '(("Tags" . comma)
+                                         ("Title" . line))
+  "Defines per type how multiple values are separated.
+The values are symbols, COMMA means a comma-separated value. LINE
+means each value gets its own property line.")
 
 (defconst ekg-property-multivalue-type '(("Tags" . comma)
                                          ("Title" . line))
@@ -930,11 +937,11 @@ rather than an auto-generated number."
             (overlays-in (point-min) (point-max))))
       (make-overlay (point-min) (point-max) nil nil t)))
 
-(defun ekg--metadata-on-insert-behind (_ after begin-mod eng-mod &optional _)
+(defun ekg--metadata-on-insert-behind (_ after begin-mod end-mod &optional _)
   "Make sure nothing is inserted behind the metadata overlay.
 Also make sure we always have a line with which the user can add text."
   (when after
-    (delete-region begin-mod eng-mod)
+    (delete-region begin-mod end-mod)
     (when (= (point) (point-max))
       (insert "\n"))))
 
@@ -1009,6 +1016,7 @@ delete from the end of the metadata, we need to fix it back up."
     (when (eq major-mode 'org-mode)
       (setq-local org-element-use-cache nil))))
 
+;;;###autoload
 (cl-defun ekg-capture (&key text mode tags properties id)
   "Capture a new note, with TEXT, MODE, TAGS and other PROPERTIES.
 If ID is given, force the triple subject to be that value."
@@ -1039,6 +1047,7 @@ If ID is given, force the triple subject to be that value."
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
+;;;###autoload
 (defun ekg-capture-url (&optional url title)
   "Capture a new note given a URL and its TITLE.
 However, if URL already exists, we edit the existing note on it."
@@ -1052,6 +1061,7 @@ However, if URL already exists, we edit the existing note on it."
                    :properties `(:titled/title ,(list title))
                    :id url))))
 
+;;;###autoload
 (defun ekg-capture-file ()
   "Capture a new note about the file the user is visiting.
 This can only be called when in a buffer that has an associated
@@ -1251,7 +1261,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
     (kill-buffer)
     (cl-loop for b being the buffers do
            (with-current-buffer b
-               (when (and (eq major-mode 'ekg-notes-mode))
+               (when (and (eq major-mode 'ekg-notes-mode) ekg-notes-ewoc)
                  (let ((n (ewoc-nth ekg-notes-ewoc 0)))
                    (while n
                      (when (or (equal (ekg-note-id (ewoc-data n))
@@ -1544,12 +1554,10 @@ TITLE is the title of the URL to browse to."
                 (completing-read
                  "Doc: "
                  (mapcan (lambda (note)
-                           (let ((title
-                                  (plist-get (ekg-note-properties note)
-                                             :titled/title)))
-                             (when title (list title))))
+                           (plist-get (ekg-note-properties note)
+                                      :titled/title))
                          (ewoc-collect ekg-notes-ewoc #'identity)))) ekg-notes-mode)
-  (ekg-browse-url title))
+  (when title (ekg-browse-url title)))
 
 (defun ekg--show-notes (name notes-func tags)
   "Display notes from NOTES-FUNC in buffer.
@@ -1644,6 +1652,7 @@ are created with additional tags TAGS."
   (> (ekg-note-creation-time a)
      (ekg-note-creation-time b)))
 
+;;;###autoload
 (defun ekg-show-notes-with-any-tags (tags)
   "Show notes with any of TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
@@ -1654,6 +1663,7 @@ are created with additional tags TAGS."
                  #'ekg-sort-by-creation-time))
      tags))
 
+;;;###autoload
 (defun ekg-show-notes-with-all-tags (tags)
   "Show notes that contain all TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
@@ -1663,6 +1673,7 @@ are created with additional tags TAGS."
                     #'ekg-sort-by-creation-time))
    tags))
 
+;;;###autoload
 (defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
   (interactive (list (completing-read "Tag: " (ekg-tags))))
@@ -1671,6 +1682,7 @@ are created with additional tags TAGS."
    (lambda () (sort (ekg-get-notes-with-tag tag) #'ekg-sort-by-creation-time))
    (list tag)))
 
+;;;###autoload
 (defun ekg-show-notes-for-query (query)
   "Show notes matching TEXT."
   (interactive "sQuery: ")
@@ -1679,6 +1691,7 @@ are created with additional tags TAGS."
    (format "query: %s" query)
    (lambda () (seq-filter #'ekg-note-active-p (mapcar #'ekg-get-note-with-id (triples-fts-query ekg-db query)))) nil))
 
+;;;###autoload
 (defun ekg-show-notes-in-trash ()
   "Show notes that have only tags that are trashed."
   (interactive)
@@ -1692,6 +1705,7 @@ are created with additional tags TAGS."
                #'ekg-sort-by-creation-time))
    nil))
 
+;;;###autoload
 (defun ekg-show-notes-in-drafts ()
   "Show all notes in the draft state.
 These notes have not yet been saved, and don't show up in most
@@ -1705,11 +1719,13 @@ other views."
    (lambda () (ekg-get-notes-with-tag ekg-draft-tag))
    nil))
 
+;;;###autoload
 (defun ekg-show-notes-for-today ()
   "Show all notes with today's date as a tag."
   (interactive)
   (ekg-show-notes-with-tag (car (ekg-date-tag))))
 
+;;;###autoload
 (defun ekg-show-notes-latest-captured (&optional num)
   "Show the last several notes taken.
 NUM is by default `ekg-notes-size', which determines how many
@@ -1732,6 +1748,7 @@ notes to show.  But with a prefix ARG, ask the user."
               finally return selected))
    nil))
 
+;;;###autoload
 (defun ekg-show-notes-latest-modified (&optional num)
   "Show the last several notes modified.
 NUM is by default `ekg-notes-size', which determines how many
@@ -1908,16 +1925,6 @@ the database after the upgrade, in list form."
            do
            (ekg-tag-delete tag)))
 
-(defun ekg-clean-propertized-text ()
-  "Find text with propertized text and remove the properties."
-  (cl-loop for s in (triples-fts-query ekg-db "face") do
-           (let* ((text-plist (triples-get-type ekg-db s 'text))
-                  (text (plist-get text-plist :text))
-                  (cleaned (substring-no-properties text)))
-             (unless (equal-including-properties text cleaned)
-               (message "Found propertized text in %s, cleaning" s)
-               (apply #'triples-set-type ekg-db s 'text (plist-put text-plist :text cleaned))))))
-
 (defun ekg-clean-db ()
   "Clean all useless or malformed data from the database.
 Some of this is tags which have no uses, which we consider
@@ -1981,8 +1988,7 @@ as long as those notes aren't on resources that are interesting.
                                                         (when empty-note "empty"))) ", "))
                  (ekg-note-delete note))))))
   (ekg-clean-dup-tags)
-  (ekg-clean-leftover-types)
-  (ekg-clean-propertized-text))
+  (ekg-clean-leftover-types))
 
 ;; Links for org-mode
 (require 'ol)
