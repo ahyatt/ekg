@@ -134,6 +134,16 @@ not in the template."
   :type 'boolean
   :group 'ekg)
 
+(defcustom ekg-inline-custom-tag-completion-symbols '((?@ . "person")
+                                                      (?! . "idea"))
+  "A map of custom symbols to tag prefixes.
+The character in the car of the aliast will be used to trigger
+completion, and complete tags with the prefix of the cdr. The
+character `#' will always be used to complete arbitrary tags,
+and should not appear here."
+  :type '(alist :key-type character :value-type string)
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -844,15 +854,22 @@ The tags are added to the end of the tag list."
 This will tags that are prefixed by a hash symbol. The tag will
 complete, and if the tag has a space, it will be enclosed in
 brackets."
-  (let ((begin (save-excursion
-                 (search-backward
-                  "#" (save-excursion
-                        (search-backward " " (line-beginning-position) t)) t)
-                 (+ 1 (point))))
+  (let* ((symbols (cons ?# (mapcar #'car ekg-inline-custom-tag-completion-symbols)))
+         (begin (save-excursion
+                 (search-backward-regexp
+                  (rx (seq space (group-n 1 (regexp (mapconcat (lambda (c) (format "%c" c)) symbols "|")))))
+                  (save-excursion
+                    (search-backward " " (line-beginning-position) t)) t)
+                 (+ 2 (point))))
         (end (point)))
     (when (<= begin end)
       (list begin end
-            (completion-table-dynamic (lambda (_) (ekg-tags)))
+            (completion-table-dynamic (lambda (_) (if (eq (match-string-no-properties 1) "#")
+                                                      (ekg-tags)
+                                                    (ekg-tags-with-prefix
+                                                     (concat (assoc-default (match-string-no-properties 1)
+                                                                            ekg-inline-custom-tag-completion-symbols)
+                                                             "/")))))
             :exclusive nil :exit-function #'ekg--inline-tag-exit))))
 
 (defun ekg--inline-tag-exit (completion finished)
@@ -1382,6 +1399,13 @@ tags)."
   (ekg-connect)
   (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
                                  (string-match-p (rx (literal substring)) tag)))
+              (triples-subjects-of-type ekg-db 'tag)))
+
+(defun ekg-tags-with-prefix (prefix)
+  "Return all tags with PREFIX."
+  (ekg-connect)
+  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
+                                 (string-match-p (rx (seq line-start (literal prefix))) tag)))
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-display (tags)
