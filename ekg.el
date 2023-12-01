@@ -830,11 +830,25 @@ This is needed to identify references to refresh when the subject is changed." )
           (require 'org)
           (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
 
+(defun ekg--possible-inline-tags-prefix-regexp ()
+  "Return a regexp of the possible inline tag prefixes."
+  (format "[%s]" (mapconcat (lambda (c) (format "%c" c)) (cons ?# (mapcar #'car ekg-inline-custom-tag-completion-symbols)))))
+
+(defun ekg--add-prefix-to-inline-tag (tag tag-symbol)
+  "Return TAG with the prefix denoted by TAG-SYMBOL.
+TAG-SYMBOL is a string. If TAG-SYMBOL is `#', then there is no
+prefix."
+  (if (equal tag-symbol "#")
+      tag
+    (concat (assoc-default (string-to-char tag-symbol)
+                           ekg-inline-custom-tag-completion-symbols) "/" tag)))
+
 (defun ekg--populate-inline-tags (note)
   "Populate tags found in text of NOTE.
-Tags are prefixed by a hash symbol, and are enclosed in brackets
-if they have more than one word.
-The tags are added to the end of the tag list."
+Tags are prefixed by a hash symbol or a symbol in
+`ekg-inline-custom-tag-completion-symbols', and are enclosed in
+brackets if they have more than one word. The tags are added to
+the end of the tag list."
   (with-temp-buffer
     (insert (ekg-note-text note))
     (goto-char (point-min))
@@ -842,11 +856,14 @@ The tags are added to the end of the tag list."
       (while (re-search-forward
               ;; If the tag has a space or punctuation, it needs to be enclosed
               ;; in brackets.
-              (rx (or (seq ?# (group-n 1 (one-or-more (any word ?_ ?/ ?-))))
-                      (seq ?# ?\[ (group-n 1 (one-or-more (not ?\]))) ?\])))              
+              (rx (or (seq (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+                           (group-n 2 (one-or-more (any word ?_ ?/ ?-))))
+                      (seq (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+                           ?\[ (group-n 2 (one-or-more (not ?\]))) ?\])))
               nil t)
-        (let ((tag (match-string 1)))
-          (push tag tags)))
+        (let ((symbol (match-string 1))
+              (tag (match-string 2)))
+          (push (ekg--add-prefix-to-inline-tag tag symbol) tags)))
       (setf (ekg-note-tags note) (seq-uniq (append (ekg-note-tags note) (nreverse tags)))))))
 
 (defun ekg--inline-tag-completion ()
@@ -854,11 +871,11 @@ The tags are added to the end of the tag list."
 This will tags that are prefixed by a hash symbol. The tag will
 complete, and if the tag has a space, it will be enclosed in
 brackets."
-  (let* ((symbols (cons ?# (mapcar #'car ekg-inline-custom-tag-completion-symbols)))
-         (begin (progn
+  (let* ((begin (progn
                   (save-excursion
                     (+ (search-backward-regexp
-                        (rx (seq (group-n 1 (or space line-start)) (group-n 2 (regexp (format "[%s]" (mapconcat (lambda (c) (format "%c" c)) symbols))))))
+                        (rx (seq (group-n 1 (or space line-start))
+                                 (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))))
                         (save-excursion
                           (or (search-backward " " (line-beginning-position) t) (line-beginning-position))) t)
                        (1+ (length (match-string 1)))))))

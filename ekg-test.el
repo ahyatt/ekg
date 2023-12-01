@@ -355,6 +355,16 @@
   (should (ekg-should-show-id-p "http://gnu.org"))
   (should (ekg-should-show-id-p "/usr/bin/emacs")))
 
+(ert-deftest ekg--populate-inline-tags ()
+  (cl-flet ((assert-tag-population (text target-tags)
+              (let ((note (make-ekg-note :text text)))
+                (ekg--populate-inline-tags note)
+                (should (equal (ekg-note-tags note) target-tags)))))
+    (assert-tag-population "foo bar" nil)
+    (assert-tag-population "foo #bar" '("bar"))
+    (assert-tag-population "foo #bar @baz" '("bar" "person/baz"))
+    (assert-tag-population "foo #bar\n@baz\n#quux" '("bar" "person/baz" "quux"))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here
