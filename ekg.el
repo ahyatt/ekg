@@ -855,21 +855,24 @@ This will tags that are prefixed by a hash symbol. The tag will
 complete, and if the tag has a space, it will be enclosed in
 brackets."
   (let* ((symbols (cons ?# (mapcar #'car ekg-inline-custom-tag-completion-symbols)))
-         (begin (save-excursion
-                 (search-backward-regexp
-                  (rx (seq space (group-n 1 (regexp (mapconcat (lambda (c) (format "%c" c)) symbols "|")))))
+         (begin (progn
                   (save-excursion
-                    (search-backward " " (line-beginning-position) t)) t)
-                 (+ 2 (point))))
-        (end (point)))
+                    (+ (search-backward-regexp
+                        (rx (seq (group-n 1 (or space line-start)) (group-n 2 (regexp (format "[%s]" (mapconcat (lambda (c) (format "%c" c)) symbols))))))
+                        (save-excursion
+                          (or (search-backward " " (line-beginning-position) t) (line-beginning-position))) t)
+                       (1+ (length (match-string 1)))))))
+         (end (point))
+         (type (match-string-no-properties 2)))
+    (message "ekg--inline-tag-completion: begin: %d end: %d" begin end)
     (when (<= begin end)
       (list begin end
-            (completion-table-dynamic (lambda (_) (if (eq (match-string-no-properties 1) "#")
-                                                      (ekg-tags)
-                                                    (ekg-tags-with-prefix
-                                                     (concat (assoc-default (match-string-no-properties 1)
-                                                                            ekg-inline-custom-tag-completion-symbols)
-                                                             "/")))))
+            (completion-table-dynamic (lambda (_)
+                                        (if (equal type "#")
+                                            (ekg-tags)
+                                          (let ((prefix (concat (assoc-default (string-to-char type) ekg-inline-custom-tag-completion-symbols) "/")))
+                                            (mapcar (lambda (tag) (substring-no-properties tag (length prefix)))
+                                                    (ekg-tags-with-prefix prefix))))))
             :exclusive nil :exit-function #'ekg--inline-tag-exit))))
 
 (defun ekg--inline-tag-exit (completion finished)
