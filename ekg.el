@@ -495,7 +495,8 @@ then the note is really deleted."
     (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
         (ekg-note-delete note)
       (setf (ekg-note-tags note)
-            (mapcar (lambda (tag) (unless (ekg-tag-trash-p tag)
+            (mapcar (lambda (tag) (if (ekg-tag-trash-p tag)
+                                      tag
                                     (ekg-mark-trashed tag)))
                     (ekg-note-tags note)))
       (ekg-save-note note)))

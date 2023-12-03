@@ -73,6 +73,8 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.4.4
+- Fix issue with trashing notes with tags that are partially trashed.
 ** Version 0.4.3
 - Added autoloads
 - Fixed issue that could occur when saving with malformed buffers.

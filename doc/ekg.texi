@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.4.4: Version 044. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
@@ -194,6 +195,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.4.4: Version 044. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
@@ -205,6 +207,14 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 044
+@section Version 0.4.4
+
+@itemize
+@item
+Fix issue with trashing notes with tags that are partially trashed.
+@end itemize
 
 @node Version 043
 @section Version 0.4.3
