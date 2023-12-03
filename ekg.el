@@ -802,10 +802,10 @@ This is used when capturing new notes.")
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
     (define-key map "\C-c#" #'ekg-edit-add-inline)
-    (substitute-key-definition #'save-buffer #'ekg-save-draft map global-map)
+    (substitute-key-definition #'save-buffer #'ekg-edit-save map global-map)
     map)
   "Key map for `ekg-edit-mode', a minor mode.
-This is used when editing existing blocks.")
+This is used when editing existing notes.")
 
 (define-minor-mode ekg-edit-mode
   "Minor mode for simple finish/cancel keybindings."
@@ -1250,13 +1250,12 @@ Argument FINISHED is non-nil if the user has chosen a completion."
         (push ekg-draft-tag (ekg-note-tags ekg-note)))
   (ekg--save-note-in-buffer))
 
-(defun ekg-edit-finalize ()
+(defun ekg-edit-save ()
   "Save the edited note and refresh where it appears."
   (interactive nil ekg-edit-mode)
   (ekg--update-from-metadata)
   (let ((note (ekg--save-note-in-buffer))
         (orig-id ekg-note-orig-id))
-    (kill-buffer)
     (cl-loop for b being the buffers do
            (with-current-buffer b
                (when (and (eq major-mode 'ekg-notes-mode) ekg-notes-ewoc)
@@ -1269,6 +1268,12 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                        (ewoc-set-data n note))
                      (setq n (ewoc-next ekg-notes-ewoc n))))
                  (ewoc-refresh ekg-notes-ewoc))))))
+
+(defun ekg-edit-finalize ()
+  "Save the edited note and refresh where it appears."
+  (interactive nil ekg-edit-mode)
+  (ekg-edit-save)
+  (kill-buffer))
 
 (defun ekg--split-metadata-string (val)
   "Split multi-valued metadata field VAL into the component values.

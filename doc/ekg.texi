@@ -214,6 +214,8 @@ triples library is already installed.
 @itemize
 @item
 Fix issue with trashing notes with tags that are partially trashed.
+@item
+Saving while editing a note will no longer add the draft tag.  This means that if you are editing a draft, it will not keep it as a draft, so it will become a normal note.
 @end itemize
 
 @node Version 043
