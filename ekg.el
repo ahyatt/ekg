@@ -775,6 +775,7 @@ not supplied, we use a default of 10."
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
+    (define-key map "\C-c\C-k" #'ekg-capture-abort)
     (define-key map "\C-c#" #'ekg-edit-add-inline)
     (substitute-key-definition #'save-buffer #'ekg-save-draft map global-map)
     map)
@@ -790,10 +791,7 @@ This is used when capturing new notes.")
     (setq-local completion-at-point-functions
                 (append (list #'ekg--capf #'ekg--transclude-titled-note-completion)
                         completion-at-point-functions)
-                header-line-format
-                (substitute-command-keys
-                 "\\<ekg-capture-mode-map>Capture buffer.  Finish \
-`\\[ekg-capture-finalize]'."))))
+                header-line-format (ekg-header-line-format))))
 
 (defvar ekg-capture-mode-hook nil
   "Hook for `ekg-capture-mode'.")
@@ -801,6 +799,7 @@ This is used when capturing new notes.")
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
+    (define-key map "\C-c\C-k" #'ekg-edit-abort)
     (define-key map "\C-c#" #'ekg-edit-add-inline)
     (substitute-key-definition #'save-buffer #'ekg-edit-save map global-map)
     map)
@@ -819,9 +818,12 @@ This is used when editing existing notes.")
 (defvar-local ekg-note nil
   "Holds the note information for buffers adding or changing notes.")
 
+(defvar-local ekg-note-orig-note nil
+  "Holds the original note before edit.")
+
 (defvar-local ekg-note-orig-id nil
   "Holds the original ID (subject) for this note.
-This is needed to identify references to refresh when the subject is changed." )
+This is needed to identify references to refresh when the subject is changed.")
 
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))
@@ -921,7 +923,6 @@ rather than an auto-generated number."
                            ('comma (insert (ekg--metadata-string
                                             label
                                             (if (listp v)
-                                                
                                                 (mapconcat (lambda (v) (format "%s" v))
                                                            v ", ")
                                               (format "%s" v)))))))))
@@ -1076,22 +1077,29 @@ file. If not, an error will be thrown."
                      :properties `(:titled/title ,(list (file-name-nondirectory file)))
                      :id file)))))
 
+(defun ekg-header-line-format ()
+  "Header line format for the ekg capture or edit buffer."
+  (if ekg-capture-mode
+      (substitute-command-keys
+       "\\<ekg-capture-mode-map>Capture buffer. \
+Finish `\\[ekg-capture-finalize]'  \
+Save as draft `\\[ekg-save-draft]'  \
+Abort `\\[ekg-capture-abort]'.")
+    (substitute-command-keys
+     "\\<ekg-edit-mode-map>Edit buffer. \
+Finish `\\[ekg-edit-finalize]'  \
+Save `\\[ekg-edit-save]'  \
+Abort `\\[ekg-edit-abort]'.")))
+
 (defun ekg-change-mode (mode)
   "Change the mode of the current note to MODE."
-  (interactive (list (completing-read "Mode: " ekg-acceptable-modes))
+  (interactive (list (intern (completing-read "Mode: " ekg-acceptable-modes)))
                ekg-capture-mode ekg-edit-mode)
-  (let* ((minor-mode (if ekg-capture-mode "capture" "edit"))
-         ;; Using the `capitalize' function causes a strange error with native
-         ;; compilation. See
-         ;; https://github.com/ahyatt/ekg/issues/87#issuecomment-1671054877.
-         (capitalized-minor-mode (if ekg-capture-mode "Capture" "Edit"))
-         (note ekg-note))
-    (funcall (intern mode))
-    (funcall (intern (format "ekg-%s-mode" minor-mode)))
-    (setq header-line-format
-          (substitute-command-keys
-           (format "\\<ekg-%s-mode-map>%s buffer.  Finish \
-`\\[ekg-%s-finalize]'." minor-mode capitalized-minor-mode minor-mode)))
+  (let ((note ekg-note)
+        (minor-mode (if ekg-capture-mode 'ekg-capture-mode 'ekg-edit-mode)))
+    (funcall mode)
+    (funcall minor-mode)
+    (setq-local header-line-format (ekg-header-line-format))
     (setq ekg-note note)))
 
 (defun ekg-edit (note)
@@ -1106,11 +1114,9 @@ file. If not, an error will be thrown."
                   (append (list #'ekg--capf
                                 #'ekg--transclude-titled-note-completion)
                           completion-at-point-functions)
-                  header-line-format
-                  (substitute-command-keys
-                   "\\<ekg-edit-mode-map>Edit buffer.  Finish \
-`\\[ekg-edit-finalize]'.")
-                  ekg-note (copy-ekg-note note)
+                  header-line-format (ekg-header-line-format)
+                  ekg-note (copy-ekg-note note)       ; shallow copy
+                  ekg-note-orig-note (copy-tree note) ; deep copy to avoid later change
                   ekg-note-orig-id (ekg-note-id note))
       ;; When re-editing a note that's a draft, we need to remove the draft tag
       ;; so that when we save it, it's not a draft anymore.
@@ -1122,8 +1128,8 @@ file. If not, an error will be thrown."
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
       (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
       (if (and (eq (ekg-note-mode note) 'org-mode)
-             ekg-notes-display-images)
-        (org-redisplay-inline-images)))
+               ekg-notes-display-images)
+          (org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -1275,6 +1281,13 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (ekg-edit-save)
   (kill-buffer))
 
+(defun ekg-edit-abort ()
+  "Abort the current edit, restore to its orignial state."
+  (interactive nil ekg-edit-mode)
+  (when (y-or-n-p "Are you sure to abort all the edits?")
+    (ekg-save-note ekg-note-orig-note)
+    (kill-buffer)))
+
 (defun ekg--split-metadata-string (val)
   "Split multi-valued metadata field VAL into the component values.
 The metadata fields are comma separated."
@@ -1340,6 +1353,15 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
                           (seq-intersection (ekg-note-tags note)
                                             ekg-notes-tags))
                  (ewoc-enter-last ekg-notes-ewoc note))))))
+
+(defun ekg-capture-abort ()
+  "Abort the current capture.
+Discarded notes will be moved to trash."
+  (interactive nil ekg-capture-mode)
+  (ekg-connect)
+  (when (y-or-n-p "Are you sure to abort this capture?")
+    (ekg-note-trash ekg-note)
+    (kill-buffer)))
 
 (defun ekg-tag-trash-p (tag)
   "Return non-nil if TAG is part of the trash."
@@ -1528,7 +1550,7 @@ current note without a prompt."
   (interactive "P" ekg-notes-mode)
   (let ((note (ekg-current-note-or-error))
         (inhibit-read-only t))
-    (when (or arg (y-or-n-p "Are you sure you want to delete this note?"))
+    (when (or arg (y-or-n-p "Are you sure to delete this note?"))
       (ekg-note-trash note)
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))

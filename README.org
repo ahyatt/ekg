@@ -187,12 +187,14 @@ Commands relevant to capture buffers:
 |------------------------+--------------------------------------|
 | =ekg-change-mode=      | Change note major-mode               |
 | =ekg-capture-finalize= | Finish and save (bound to =C-c C-c=) |
+| =ekg-capture-abort=    | Trash the note  (bound to =C-c C-k=) |
 
 Commands relevant to edit buffers:
 
 | Command             | Description                          |
 |---------------------+--------------------------------------|
 | =ekg-change-mode=   | Change note major-mode               |
+| =ekg-edit-abort=    | Abort all edits (bound to =C-c C-k=) |
 | =ekg-edit-finalize= | Finish and save (bound to =C-c C-c=) |
 
 Commands relevant to note view buffers:
