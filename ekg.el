@@ -400,7 +400,8 @@ the text and may be after trailing whitespace."
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
     (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
     (run-hook-with-args 'ekg-note-save-hook note))
-  (triples-backups-maybe-backup ekg-db (ekg-db-file)))
+  (triples-backups-maybe-backup ekg-db (ekg-db-file))
+  (set-buffer-modified-p nil))
 
 (defun ekg-get-notes-with-tags (tags)
   "Get all notes with TAGS, returning a list of `ekg-note' structs.
