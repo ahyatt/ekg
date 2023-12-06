@@ -122,7 +122,7 @@ they may not have an embedding yet."
   ;; but more likely 0s tend to indicate issues with how the embedding was
   ;; obtained.
   (and (vectorp embedding) (> (length embedding) 0)
-       (not (seq-contains-p (lambda (e) (= 0 e)) embedding))))
+       (not (seq-contains-p embedding 0))))
 
 (defun ekg-embedding-refresh-tag-embedding (tag)
   "Refresh the embedding for TAG.
