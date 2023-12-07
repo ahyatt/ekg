@@ -1370,7 +1370,9 @@ Discarded notes will be moved to trash."
   (interactive nil ekg-capture-mode)
   (ekg-connect)
   (when (y-or-n-p "Are you sure to abort this capture?")
-    (ekg-note-trash ekg-note)
+    (let ((id (ekg-note-id ekg-note)))
+      (when (ekg-note-with-id-exists-p id)
+        (ekg-note-delete-by-id id)))
     (kill-buffer)))
 
 (defun ekg-tag-trash-p (tag)
