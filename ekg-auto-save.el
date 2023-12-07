@@ -178,17 +178,10 @@ After save, reset idle timer and keystroke counter."
     (ekg-auto-save-initialize-idle-timer)
     (setq ekg-auto-save-keystroke-counter 0)))
 
-(defun ekg-auto-save-on-buffer-kill ()
-  "Save everything unconditionally on buffer kill.
-Additionally, do some cleanup, limiting their effect to
-`ekg-capture-mode' and `ekg-edit-mode' only."
-  (when (and (or ekg-edit-mode ekg-capture-mode)
-             (buffer-modified-p))
-    (if ekg-capture-mode
-        (ekg-save-draft)
-      (ekg-edit-save)))
-  ;; Cleanup: cancel idle timer, keystroke counter, remove advices on
-  ;; commands when there's no editable ekg buffer
+(defun ekg-auto-save-cleanup-on-buffer-kill ()
+  "Do some cleanup on buffer kill.
+Cancel buffer related idle timer, keystroke counter; remove
+advices on commands when there's no editable ekg buffer."
   (ekg-auto-save-stop-idle-timer)
   (remove-hook 'post-self-insert-hook #'ekg-auto-save-after-some-keystrokes t)
   (unless (seq-some
@@ -213,7 +206,7 @@ Additionally, do some cleanup, limiting their effect to
   (dolist (hook ekg-auto-save-hook-triggers)
     (add-hook hook #'ekg-auto-save-func nil t))
   (ekg-auto-save-advice-trigger-commands)
-  (add-hook 'kill-buffer-hook #'ekg-auto-save-on-buffer-kill nil t))
+  (add-hook 'kill-buffer-hook #'ekg-auto-save-cleanup-on-buffer-kill nil t))
 
 (defun ekg-auto-save-stop ()
   "Cleanup advices, hooks, timers and keystroke counter."
@@ -222,7 +215,7 @@ Additionally, do some cleanup, limiting their effect to
   (dolist (hook ekg-auto-save-hook-triggers)
     (remove-hook hook #'ekg-auto-save-func t))
   (ekg-auto-save-remove-advice-from-trigger-commands)
-  (remove-hook 'kill-buffer-hook #'ekg-auto-save-on-buffer-kill t))
+  (remove-hook 'kill-buffer-hook #'ekg-auto-save-cleanup-on-buffer-kill t))
 
 ;;;###autoload
 (define-minor-mode ekg-auto-save-mode

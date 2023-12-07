@@ -778,6 +778,34 @@ not supplied, we use a default of 10."
     (format "%s%s" (substring-no-properties (ekg-note-text note) 0 display-length)
             (if (> (length (ekg-note-text note)) display-length) "…" ""))))
 
+(defun ekg-kill-buffer--possibly-save (buf)
+  "Ask the user to confirm killing of a modified BUF.
+Adapted from `kill-buffer--possibly-save'."
+  (let ((response
+         (cadr
+          (read-multiple-choice
+           (format "Buffer %s modified; kill anyway?" (buffer-name))
+           '((?y "yes" "kill buffer without saving")
+             (?n "no" "exit without doing anything")
+             (?s "save and then kill" "save the buffer and then kill it"))
+           nil nil (and (not use-short-answers)
+                        (not (use-dialog-box-p)))))))
+    (if (equal response "no")
+        nil
+      (unless (equal response "yes")
+        (with-current-buffer buf
+          (if ekg-capture-mode
+              (ekg-save-draft)
+            (ekg-edit-save))))
+      t)))
+
+(defun ekg-kill-buffer-query-function ()
+  "Ask before killing an unsaved ekg editable buffer."
+  (if (and (or ekg-capture-mode ekg-edit-mode)
+           (buffer-modified-p))
+      (ekg-kill-buffer--possibly-save (current-buffer))
+    t))
+
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
@@ -797,6 +825,9 @@ This is used when capturing new notes.")
     (setq-local completion-at-point-functions
                 (append (list #'ekg--capf #'ekg--transclude-titled-note-completion)
                         completion-at-point-functions)
+                kill-buffer-query-functions
+                (append (list #'ekg-kill-buffer-query-function)
+                        kill-buffer-query-functions)
                 header-line-format (ekg-header-line-format))))
 
 (defvar ekg-capture-mode-hook nil
@@ -1105,7 +1136,10 @@ Abort `\\[ekg-edit-abort]'.")))
         (minor-mode (if ekg-capture-mode 'ekg-capture-mode 'ekg-edit-mode)))
     (funcall mode)
     (funcall minor-mode)
-    (setq-local header-line-format (ekg-header-line-format))
+    (setq-local header-line-format (ekg-header-line-format)
+                kill-buffer-query-functions
+                (append (list #'ekg-kill-buffer-query-function)
+                        kill-buffer-query-functions))
     (setq ekg-note note)))
 
 (defun ekg-edit (note)
@@ -1120,6 +1154,9 @@ Abort `\\[ekg-edit-abort]'.")))
                   (append (list #'ekg--capf
                                 #'ekg--transclude-titled-note-completion)
                           completion-at-point-functions)
+                  kill-buffer-query-functions
+                  (append (list #'ekg-kill-buffer-query-function)
+                          kill-buffer-query-functions)
                   header-line-format (ekg-header-line-format)
                   ekg-note (copy-ekg-note note)       ; shallow copy
                   ekg-note-orig-note (copy-tree note) ; deep copy to avoid later change
@@ -1296,6 +1333,9 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (interactive nil ekg-edit-mode)
   (when (y-or-n-p "Are you sure to abort all the edits?")
     (ekg-save-note ekg-note-orig-note)
+    (setq-local kill-buffer-query-functions
+                (delq 'ekg-kill-buffer-query-function
+                      kill-buffer-query-functions))
     (kill-buffer)))
 
 (defun ekg--split-metadata-string (val)
@@ -1373,6 +1413,9 @@ Discarded notes will be moved to trash."
     (let ((id (ekg-note-id ekg-note)))
       (when (ekg-note-with-id-exists-p id)
         (ekg-note-delete-by-id id)))
+    (setq-local kill-buffer-query-functions
+                (delq 'ekg-kill-buffer-query-function
+                      kill-buffer-query-functions))
     (kill-buffer)))
 
 (defun ekg-tag-trash-p (tag)
