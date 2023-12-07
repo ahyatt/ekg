@@ -138,6 +138,17 @@ Open AI's API is the following:
 
 Note: make sure to never check in an API key, so if you check in your
 configuration, set up your API key in a loaded elisp file you do not check in.
+
+If you'd like to enable auto-saving while editing:
+
+#+begin_src emacs-lisp
+(use-package ekg
+  :config
+  (require 'ekg-auto-save)
+  (add-hook 'ekg-capture-mode-hook #'ekg-auto-save-mode)
+  (add-hook 'ekg-edit-mode-hook #'ekg-auto-save-mode))
+#+end_src
+
 * Usage
 To create a note, run =ekg-capture= to capture a text note, or =ekg-capture-url= to
 capture a website. The note will, by default, be tagged with the current date.
