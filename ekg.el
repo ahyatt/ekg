@@ -137,6 +137,11 @@ not in the template."
   :type 'boolean
   :group 'ekg)
 
+(defcustom ekg-save-no-message nil
+  "Non-nil means do not print any message when saving."
+  :type 'boolean
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -395,7 +400,8 @@ the text and may be after trailing whitespace."
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
     (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
     (run-hook-with-args 'ekg-note-save-hook note))
-  (triples-backups-maybe-backup ekg-db (ekg-db-file)))
+  (triples-backups-maybe-backup ekg-db (ekg-db-file))
+  (set-buffer-modified-p nil))
 
 (defun ekg-get-notes-with-tags (tags)
   "Get all notes with TAGS, returning a list of `ekg-note' structs.
@@ -1247,8 +1253,10 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (interactive nil ekg-edit-mode ekg-capture-mode)
   (ekg--update-from-metadata)
   (when ekg-draft-tag
-        (push ekg-draft-tag (ekg-note-tags ekg-note)))
-  (ekg--save-note-in-buffer))
+    (push ekg-draft-tag (ekg-note-tags ekg-note)))
+  (ekg--save-note-in-buffer)
+  (unless ekg-save-no-message
+    (message "Note saved to drafts.")))
 
 (defun ekg-edit-save ()
   "Save the edited note and refresh where it appears."
@@ -1256,8 +1264,10 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (ekg--update-from-metadata)
   (let ((note (ekg--save-note-in-buffer))
         (orig-id ekg-note-orig-id))
+    (unless ekg-save-no-message
+      (message "Note saved."))
     (cl-loop for b being the buffers do
-           (with-current-buffer b
+             (with-current-buffer b
                (when (and (eq major-mode 'ekg-notes-mode) ekg-notes-ewoc)
                  (let ((n (ewoc-nth ekg-notes-ewoc 0)))
                    (while n
