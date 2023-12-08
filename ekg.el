@@ -848,9 +848,6 @@ This is used when capturing new notes.")
   :interactive nil
   (when ekg-capture-mode (ekg-set-local-variables)))
 
-(defvar ekg-capture-mode-hook nil
-  "Hook for `ekg-capture-mode'.")
-
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
@@ -866,9 +863,6 @@ This is used when editing existing notes.")
   :init-value nil
   :lighter " EKG-ED"
   :interactive nil)
-
-(defvar ekg-edit-mode-hook nil
-  "Hook for `ekg-edit-mode'.")
 
 (defvar-local ekg-note nil
   "Holds the note information for buffers adding or changing notes.")
