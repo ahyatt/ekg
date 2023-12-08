@@ -806,6 +806,20 @@ Adapted from `kill-buffer--possibly-save'."
       (ekg-kill-buffer--possibly-save (current-buffer))
     t))
 
+(defun ekg-header-line-format ()
+  "Header line format for the ekg capture or edit buffer."
+  (if ekg-capture-mode
+      (substitute-command-keys
+       "\\<ekg-capture-mode-map>Capture buffer. \
+Finish `\\[ekg-capture-finalize]'  \
+Save as draft `\\[ekg-save-draft]'  \
+Abort `\\[ekg-capture-abort]'.")
+    (substitute-command-keys
+     "\\<ekg-edit-mode-map>Edit buffer. \
+Finish `\\[ekg-edit-finalize]'  \
+Save `\\[ekg-edit-save]'  \
+Abort `\\[ekg-edit-abort]'.")))
+
 (defun ekg-set-local-variables ()
   "Set some common local variables."
   (setq-local
@@ -1117,20 +1131,6 @@ file. If not, an error will be thrown."
         (ekg-capture :tags (list (concat "doc/" (downcase (file-name-nondirectory file))))
                      :properties `(:titled/title ,(list (file-name-nondirectory file)))
                      :id file)))))
-
-(defun ekg-header-line-format ()
-  "Header line format for the ekg capture or edit buffer."
-  (if ekg-capture-mode
-      (substitute-command-keys
-       "\\<ekg-capture-mode-map>Capture buffer. \
-Finish `\\[ekg-capture-finalize]'  \
-Save as draft `\\[ekg-save-draft]'  \
-Abort `\\[ekg-capture-abort]'.")
-    (substitute-command-keys
-     "\\<ekg-edit-mode-map>Edit buffer. \
-Finish `\\[ekg-edit-finalize]'  \
-Save `\\[ekg-edit-save]'  \
-Abort `\\[ekg-edit-abort]'.")))
 
 (defun ekg-change-mode (mode)
   "Change the mode of the current note to MODE."
