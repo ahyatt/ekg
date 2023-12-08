@@ -806,6 +806,17 @@ Adapted from `kill-buffer--possibly-save'."
       (ekg-kill-buffer--possibly-save (current-buffer))
     t))
 
+(defun ekg-set-local-variables ()
+  "Set some common local variables."
+  (setq-local
+   completion-at-point-functions
+   (append (list #'ekg--capf #'ekg--transclude-titled-note-completion)
+           completion-at-point-functions)
+   kill-buffer-query-functions
+   (append (list #'ekg-kill-buffer-query-function)
+           kill-buffer-query-functions)
+   header-line-format (ekg-header-line-format)))
+
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
@@ -821,14 +832,7 @@ This is used when capturing new notes.")
   :init-value nil
   :lighter " EKG-CAP"
   :interactive nil
-  (when ekg-capture-mode
-    (setq-local completion-at-point-functions
-                (append (list #'ekg--capf #'ekg--transclude-titled-note-completion)
-                        completion-at-point-functions)
-                kill-buffer-query-functions
-                (append (list #'ekg-kill-buffer-query-function)
-                        kill-buffer-query-functions)
-                header-line-format (ekg-header-line-format))))
+  (when ekg-capture-mode (ekg-set-local-variables)))
 
 (defvar ekg-capture-mode-hook nil
   "Hook for `ekg-capture-mode'.")
@@ -1136,10 +1140,7 @@ Abort `\\[ekg-edit-abort]'.")))
         (minor-mode (if ekg-capture-mode 'ekg-capture-mode 'ekg-edit-mode)))
     (funcall mode)
     (funcall minor-mode)
-    (setq-local header-line-format (ekg-header-line-format)
-                kill-buffer-query-functions
-                (append (list #'ekg-kill-buffer-query-function)
-                        kill-buffer-query-functions))
+    (ekg-set-local-variables)
     (setq ekg-note note)))
 
 (defun ekg-edit (note)
@@ -1150,15 +1151,8 @@ Abort `\\[ekg-edit-abort]'.")))
       (when (ekg-note-mode note)
         (funcall (ekg-note-mode note)))
       (ekg-edit-mode 1)
-      (setq-local completion-at-point-functions
-                  (append (list #'ekg--capf
-                                #'ekg--transclude-titled-note-completion)
-                          completion-at-point-functions)
-                  kill-buffer-query-functions
-                  (append (list #'ekg-kill-buffer-query-function)
-                          kill-buffer-query-functions)
-                  header-line-format (ekg-header-line-format)
-                  ekg-note (copy-ekg-note note)       ; shallow copy
+      (ekg-set-local-variables)
+      (setq-local ekg-note (copy-ekg-note note)       ; shallow copy
                   ekg-note-orig-note (copy-tree note) ; deep copy to avoid later change
                   ekg-note-orig-id (ekg-note-id note))
       ;; When re-editing a note that's a draft, we need to remove the draft tag
