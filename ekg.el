@@ -1319,7 +1319,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
 (defun ekg-edit-abort ()
   "Abort the current edit, restore to its orignial state."
   (interactive nil ekg-edit-mode)
-  (when (y-or-n-p "Are you sure to abort all the edits?")
+  (when (y-or-n-p "Are you sure you want to abort all the edits?")
     (ekg-save-note ekg-note-orig-note)
     (setq-local kill-buffer-query-functions
                 (delq 'ekg-kill-buffer-query-function
@@ -1397,7 +1397,7 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
 Discarded notes will be moved to trash."
   (interactive nil ekg-capture-mode)
   (ekg-connect)
-  (when (y-or-n-p "Are you sure to abort this capture?")
+  (when (y-or-n-p "Are you sure you want to abort this capture?")
     (let ((id (ekg-note-id ekg-note)))
       (when (ekg-note-with-id-exists-p id)
         (ekg-note-delete-by-id id)))
@@ -1593,7 +1593,7 @@ current note without a prompt."
   (interactive "P" ekg-notes-mode)
   (let ((note (ekg-current-note-or-error))
         (inhibit-read-only t))
-    (when (or arg (y-or-n-p "Are you sure to delete this note?"))
+    (when (or arg (y-or-n-p "Are you sure you want to delete this note?"))
       (ekg-note-trash note)
       (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
       (ekg--note-highlight))))
