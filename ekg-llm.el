@@ -175,9 +175,6 @@ The return value is a list of `ekg-llm-prompt-interaction'
 structs."
   (list
    (make-llm-chat-prompt-interaction
-    :role 'system
-    :content (ekg-llm-prompt-prelude))
-   (make-llm-chat-prompt-interaction
     :role 'user
     :content (substring-no-properties (ekg-edit-note-display-text)))))
 
@@ -189,7 +186,7 @@ of the response."
   (let ((markers (funcall marker-func))
         (prompt (make-llm-chat-prompt
                  :temperature temperature
-                 :context (or prompt ekg-llm-default-prompt)
+                 :context (concat (ekg-llm-prompt-prelude) "\n" (or prompt ekg-llm-default-prompt))
                  :interactions (ekg-llm-note-interactions))))
     (delete-region (car markers) (cdr markers))
     (condition-case nil
