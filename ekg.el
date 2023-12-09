@@ -820,7 +820,7 @@ Finish `\\[ekg-edit-finalize]'  \
 Save `\\[ekg-edit-save]'  \
 Abort `\\[ekg-edit-abort]'.")))
 
-(defun ekg-set-local-variables ()
+(defun ekg--set-local-variables ()
   "Set some common local variables."
   (setq-local
    completion-at-point-functions
@@ -846,7 +846,7 @@ This is used when capturing new notes.")
   :init-value nil
   :lighter " EKG-CAP"
   :interactive nil
-  (when ekg-capture-mode (ekg-set-local-variables)))
+  (when ekg-capture-mode (ekg--set-local-variables)))
 
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
@@ -1134,7 +1134,7 @@ file. If not, an error will be thrown."
         (minor-mode (if ekg-capture-mode 'ekg-capture-mode 'ekg-edit-mode)))
     (funcall mode)
     (funcall minor-mode)
-    (ekg-set-local-variables)
+    (ekg--set-local-variables)
     (setq ekg-note note)))
 
 (defun ekg-edit (note)
@@ -1145,7 +1145,7 @@ file. If not, an error will be thrown."
       (when (ekg-note-mode note)
         (funcall (ekg-note-mode note)))
       (ekg-edit-mode 1)
-      (ekg-set-local-variables)
+      (ekg--set-local-variables)
       (setq-local ekg-note (copy-ekg-note note)       ; shallow copy
                   ekg-note-orig-note (copy-tree note) ; deep copy to avoid later change
                   ekg-note-orig-id (ekg-note-id note))
