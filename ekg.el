@@ -179,7 +179,7 @@ backups in your database after it has been created, run
   "Face shown for EKG resource.")
 
 (defface ekg-metadata
-  '((default :background "grey"))
+  '((default :inherit default :weight bold))
   "Face shown for the metadata section of notes.")
 
 (defvar ekg-db nil
