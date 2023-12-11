@@ -164,7 +164,7 @@ After save, reset idle timer and keystroke counter."
              (buffer-modified-p)
              ;; avoid creating immature tags from unfinished tags
              (not (ekg--in-metadata-p))
-             (not (minibufferp))
+             (not cursor-in-echo-area)
              (not (or (use-region-p) (secondary-selection-exist-p)))
              (not (or defining-kbd-macro executing-kbd-macro))
              (or (not (functionp ekg-auto-save-predicate))
