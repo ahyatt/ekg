@@ -143,11 +143,19 @@ not in the template."
   :group 'ekg)
 
 (defcustom ekg-save-action-on-buffer-kill 'query
-  "Action to take for unsaved ekg editable buffer on buffer kill."
-  :type '(choice (const :tag "Ask before killing" query)
-                 (const :tag "Abort unsaved changes" abort-unsaved)
-                 (const :tag "Abort this capture or all edits" abort-all)
-                 (const :tag "Save note" save))
+  "Action to take on unsaved ekg editable buffer on buffer kill.
+If value is \\='abort-unsaved, discard the unsaved changes, the
+already saved part will be kept. If value is \\='abort-all, for
+`ekg-capture-mode', the whole capture will be aborted; for
+`ekg-edit-mode', all edits (saved or not) will be discarded, the
+note will be restored to its original state at open. If value is
+\\='save, save the note to db. If value is \\='query, ask the
+user which action to take."
+  :type '(choice
+          (const :tag "Ask before killing" query)
+          (const :tag "Abort unsaved changes (the saved part will be kept)" abort-unsaved)
+          (const :tag "Abort capture in ekg-capture-mode, or abort all edits in ekg-edit-mode" abort-all)
+          (const :tag "Save note" save))
   :group 'ekg)
 
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
