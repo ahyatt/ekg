@@ -795,17 +795,19 @@ not supplied, we use a default of 10."
             (if (> (length (ekg-note-text note)) display-length) "…" ""))))
 
 (defun ekg-kill-buffer-query-function ()
-  "Action to take for unsaved ekg editable buffer on buffer kill."
+  "Action to take for unsaved ekg editable buffer on buffer kill.
+If final result returns t, the buffer will be killed. If it
+returns nil, the buffer will leave open."
   (cl-flet ((save-fn ()
               (if ekg-capture-mode
                   (ekg-save-draft)
-                (ekg-edit-save) t))
+                (ekg-edit-save)) t)
             (abort-all-fn ()
               (if ekg-capture-mode
                   (let ((id (ekg-note-id ekg-note)))
                     (when (ekg-note-with-id-exists-p id)
                       (ekg-note-delete-by-id id)))
-                (ekg-save-note ekg-note-orig-note) t))
+                (ekg-save-note ekg-note-orig-note)) t)
             (response-fn ()
               (cadr (read-multiple-choice
                      "Buffer modified; kill anyway?"
