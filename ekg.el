@@ -873,16 +873,15 @@ complete, and if the tag has a space, it will be enclosed in
 brackets."
   (let* ((begin (progn
                   (save-excursion
-                    (+ (search-backward-regexp
+                    (let ((pos (search-backward-regexp
                         (rx (seq (group-n 1 (or space line-start))
                                  (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))))
                         (save-excursion
-                          (or (search-backward " " (line-beginning-position) t) (line-beginning-position))) t)
-                       (1+ (length (match-string 1)))))))
+                          (or (search-backward " " (line-beginning-position) t) (line-beginning-position))) t)))
+                      (when pos (+ pos (1+ (length (match-string 1)))))))))
          (end (point))
          (type (match-string-no-properties 2)))
-    (message "ekg--inline-tag-completion: begin: %d end: %d" begin end)
-    (when (<= begin end)
+    (when (and begin (<= begin end))
       (list begin end
             (completion-table-dynamic (lambda (_)
                                         (if (equal type "#")
