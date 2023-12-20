@@ -220,7 +220,8 @@ when everything is finished."
                                (let ((tags (ekg-tags)))
                                  (cl-loop for s in (ekg-tags) do
                                           (ekg-embedding-refresh-tag-embedding s))
-                                 (insert (format "Refreshed %d tags\n" (length tags))))))))))
+                                 (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
+                                     (insert (format "Refreshed %d tags\n" (length tags)))))))))))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
