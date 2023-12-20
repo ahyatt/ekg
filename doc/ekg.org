@@ -78,6 +78,7 @@ triples library is already installed.
 - Saving while editing a note will no longer add the draft tag.  This means that if you are editing a draft, it will not keep it as a draft, so it will become a normal note.
 - Fix issue with using ekg-llm with vertex, which doesn't understand system prompts.
 - Fix metadata face which didn't work well with all themes - now the metadata section is just bolded.
+- Improve display regenerating embeddings via =ekg-embedding-generate-all=.
 ** Version 0.4.3
 - Added autoloads
 - Fixed issue that could occur when saving with malformed buffers.

@@ -33,6 +33,15 @@
 
 ;;; Code:
 
+(defgroup ekg-embedding nil
+  "Embedding-based functionality for ekg."
+  :group 'ekg)
+
+(defcustom ekg-generate-all-buffer "*ekg embedding generation*"
+  "Buffer name used for messages related to generating embeddings."
+  :type 'string
+  :group 'ekg-embedding)
+
 (defcustom ekg-embedding-text-selector #'ekg-embedding-text-selector-initial
   "Function to select the text of the embedding, which is necessary
 because there are usually token limits in the API calls. The
@@ -66,10 +75,15 @@ same size.  There must be at least one embedding passed in."
              (aset v i (/ (aref v i) (length embeddings))))
     v))
 
-(defun ekg-embedding-generate-for-note-async (note)
+(defun ekg-embedding-generate-for-note-async (note &optional success-callback error-callback)
   "Calculate and set the embedding for NOTE.
 The embedding is calculated asynchronously and the data is
-updated afterwards."
+updated afterwards.
+
+If SUCCESS-CALLBACK is non-nil, call it after setting the value,
+with NOTE as the argument.
+
+If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
   (llm-embedding-async
    ekg-embedding-provider
    (funcall ekg-embedding-text-selector
@@ -78,9 +92,11 @@ updated afterwards."
    (lambda (embedding)
      (ekg-connect)
      (triples-set-type ekg-db (ekg-note-id note) 'embedding
-                       :embedding embedding))
-   (lambda (error-type msg)
-     (message "ekg-embedding: error %s: %s" error-type msg))))
+                       :embedding embedding)
+     (when success-callback (funcall success-callback note)))
+   (or error-callback
+       (lambda (error-type msg)
+         (message "ekg-embedding: error %s: %s" error-type msg)))))
 
 (defun ekg-embedding-generate-for-note-sync (note)
   "Calculate and set the embedding for NOTE.
@@ -165,22 +181,46 @@ Everything here is done asynchronously. A message will be printed
 when everything is finished."
   (interactive "P")
   (ekg-embedding-connect)
-  (let ((count 0))
-       (cl-loop for s in (ekg-active-note-ids) do
-                (let ((note (ekg-get-note-with-id s))
-                      (embedding (plist-get (triples-get-type ekg-db s 'embedding) :embedding)))
-                  (when (and (or arg (not (ekg-embedding-valid-p embedding)))
-                             (> (length (ekg-note-text note)) 0))
-                    (cl-incf count)
-                    (ekg-embedding-generate-for-note-async note))))
-       ;; At this point, a lot of async things are happening, so we need to wait
-       ;; on all of them. We don't want to bother with a ton of mutexes, so
-       ;; we'll just wait for a bit, until everything is idle again.
-       (run-with-idle-timer (* 60 5) nil
-                            (lambda ()
-                              (cl-loop for s in (ekg-tags) do
-                                       (ekg-embedding-refresh-tag-embedding s))
-                              (message "Generated %s embeddings" count)))))
+  (let ((count 0)
+        (to-generate
+         (seq-filter (if arg #'identity (lambda (id)
+                                          (not (ekg-embedding-valid-p
+                                                (plist-get
+                                                 (triples-get-type ekg-db id 'embedding) :embedding)))))
+                     (ekg-active-note-ids))))
+    (cl-labels ((complete-id (_)
+                  (cl-incf count)
+                  (when (= 0 (mod count (max 10 (/ (length to-generate) 20))))
+                    (insert (format "Generated %d/%d (%.0f%% done)\n" count (length to-generate)
+                                    (/ (* count 100.0) (length to-generate)))))))
+      (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
+        (goto-char (point-max))
+        (insert (format "\nGenerating %d embeddings\n" (length to-generate)))
+        (display-buffer (current-buffer))
+        (cl-loop for id in to-generate do
+                 (let ((note (ekg-get-note-with-id id)))
+                   (if (> (length (ekg-note-text note)) 0)
+                       (ekg-embedding-generate-for-note-async
+                        note
+                        #'complete-id
+                        (lambda (_ msg) (insert "Could not generate embedding for %s: %s"
+                                                (ekg-note-id note) msg)))
+                     (complete-id note)))
+                 ;; Let's not just send all embeddings off at once, instead we'll
+                 ;; pace it out so we don't run into threading issues.
+                 (sit-for 1)
+                 finally
+                 (insert (format "Generated %d/%d (100%% done)\n" count count)))
+
+        ;; At this point, a lot of async things are happening, so we need to wait
+        ;; on all of them. We don't want to bother with a ton of mutexes, so
+        ;; we'll just wait for a bit, until everything is idle again.
+        (run-with-idle-timer (* 60 5) nil
+                             (lambda ()
+                               (let ((tags (ekg-tags)))
+                                 (cl-loop for s in (ekg-tags) do
+                                          (ekg-embedding-refresh-tag-embedding s))
+                                 (insert (format "Refreshed %d tags\n" (length tags))))))))))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
