@@ -224,6 +224,8 @@ Fix metadata face which didn't work well with all themes - now the metadata sect
 Improve display regenerating embeddings via @samp{ekg-embedding-generate-all}.
 @item
 Change multi-title note display from using newlines to commas
+@item
+Made deleting titles and resources possible.
 @end itemize
 
 @node Version 043

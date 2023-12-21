@@ -399,6 +399,15 @@ the text and may be after trailing whitespace."
       (setf (ekg-note-modified-time note) modified-time))
     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
     (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
+    ;; For any properties that no longer have a value, delete the type.  Iterate
+    ;; over the plist, and for each key, if the value is nil, delete the type.
+    (let ((empty-types)
+          (nonempty-types))
+      (cl-loop for (key value) on (ekg-note-properties note) by #'cddr do
+               (push (car (triples-combined-to-type-and-prop key))
+                     (if value nonempty-types empty-types)))
+      (mapc (lambda (type) (triples-remove-type ekg-db (ekg-note-id note) type))
+            (seq-difference empty-types nonempty-types)))
     (run-hook-with-args 'ekg-note-save-hook note))
   (triples-backups-maybe-backup ekg-db (ekg-db-file))
   (set-buffer-modified-p nil))
@@ -828,6 +837,9 @@ This is used when editing existing notes.")
   "Holds the original ID (subject) for this note.
 This is needed to identify references to refresh when the subject is changed." )
 
+(defvar-local ekg-note-orig-fields nil
+  "Holds the fields that were populated when the note was loaded.")
+
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))
     (suppress-keymap map t)
@@ -894,12 +906,13 @@ displayed.")
 (defun ekg--metadata-string (property value)
   "Return a representation of PROPERTY with VALUE for the metadata.
 This will be displayed at the top of the note buffer."
-  (format "%s%s%s"
+  (let ((read-only (string= property "Tags")))
+   (format "%s%s%s"
           (concat
-           (propertize (concat property ":") 'face 'bold 'read-only t)
-           (propertize " " 'read-only t 'rear-nonsticky t))
+           (propertize (concat property ":") 'face 'bold 'read-only read-only)
+           (propertize " " 'read-only read-only 'rear-nonsticky t))
           value
-          (propertize "\n" 'read-only t 'rear-nonsticky t)))
+          (propertize "\n" 'read-only read-only 'rear-nonsticky t))))
 
 (defun ekg-should-show-id-p (id)
   "Return non-nil if the note ID should be shown to the user.
@@ -1122,6 +1135,9 @@ file. If not, an error will be thrown."
       (setf (ekg-note-tags ekg-note)
             (seq-difference (ekg-note-tags ekg-note) (list ekg-draft-tag)))
       (ekg-edit-display-metadata)
+      (setq-local ekg-note-orig-fields (seq-uniq
+                                        (mapcar #'car (ekg--metadata-fields note))
+                                        #'string=))
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
       (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
@@ -1300,7 +1316,7 @@ The metadata fields are comma separated."
 
 (defun ekg--metadata-update-resource (val)
   "Update the resource to the metadata VAL."
-  (setf (ekg-note-id ekg-note) val))
+  (setf (ekg-note-id ekg-note) (or val (ekg--generate-id))))
 
 (defun ekg--metadata-fields (expect-valid)
   "Return all metadata fields as a cons of labels and values.
@@ -1315,7 +1331,10 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
           (when expect-valid
             (warn "EKG: No field could be parsed from metadata line at point %s" (point))))
         (forward-line))
-      (nreverse fields))))
+      (append (reverse fields)
+              ;; Add any original field that is no longer here, with an empty value.
+              (mapcar #'list (seq-difference ekg-note-orig-fields
+                                             (mapcar #'car fields)))))))
 
 (defun ekg--update-from-metadata ()
   "Update the `ekg-note' object from the metadata."
