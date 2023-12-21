@@ -222,6 +222,8 @@ Fix issue with using ekg-llm with vertex, which doesn't understand system prompt
 Fix metadata face which didn't work well with all themes - now the metadata section is just bolded.
 @item
 Improve display regenerating embeddings via @samp{ekg-embedding-generate-all}.
+@item
+Change multi-title note display from using newlines to commas
 @end itemize
 
 @node Version 043
@@ -585,7 +587,7 @@ default.  The idea is that you can tag files and folders to make them easier to
 find.  Here is an example note similar to web address URL:
 
 @quotation
-Resource: @uref{file:///Users/ahyatt/notes/20230510T162600__emacs_init-file.org}
+Resource: @uref{file:///Users/andrewhyatt/notes/20230510T162600__emacs_init-file.org}
 Tags: doc/emacs config, date/2023-05-13, emacs/init
 Title: Emacs Config
 
