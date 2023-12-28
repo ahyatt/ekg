@@ -142,7 +142,7 @@ of the note."
     (goto-char (point-min))
     (insert (org-element-interpret-data
              (org-element-create 'headline
-                                 `(:level 1 :title ,(or (plist-get (ekg-note-properties note) :titled/title)
+                                 `(:level 1 :title ,(or (car (plist-get (ekg-note-properties note) :titled/title))
                                                         "Untitled Note")))))
     ;; Can't figure out how to get org-element to do this for me based off of
     ;; properties in the headline, so let's put the properties on here manually.
@@ -163,7 +163,7 @@ This will store the note text as markdown, regardless of the mode
 of the note."
   (with-temp-buffer
     (insert "- "
-            (or (plist-get (ekg-note-properties note) :titled/title)
+            (or (car (plist-get (ekg-note-properties note) :titled/title))
                 "Untitled Note")
             "\n  "
             (format "id:: %s\n  ekg_hash:: %s\n  "
@@ -339,10 +339,10 @@ TAG is the current tag being imported in logseq."
                     (rx (seq "{{embed" (* space) "(("
                              (group-n 1 (1+ (not ")"))) "))}}"))
                     "%(transclude-note \"\\1\")" text)))
-         (note (ekg-note-create (car in-cons)
-                                (when (eq major-mode 'org-mode)
-                                  'org-mode 'markdown-mode)
-                                (cons tag (ekg-logseq--to-import-tags text)))))
+         (note (ekg-note-create :text (car in-cons)
+                                :mode (when (eq major-mode 'org-mode)
+                                        'org-mode 'markdown-mode)
+                                :tags (cons tag (ekg-logseq--to-import-tags text)))))
     (setf (ekg-note-inlines note)
           ;; These must all be transclusion commands, check each id (the first
           ;; argument) against the database to understand whether it should be
@@ -411,10 +411,11 @@ which will import and re-export back to logseq."
   "Return a list of tags with notes modified since TIME."
   (if (= time 0)
       (ekg-tags)
-    (seq-uniq
-     (cl-loop for triples in
-              (triples-db-select-pred-op ekg-db :time-tracked/modified-time '> time)
-              nconc (ekg-note-tags (ekg-get-note-with-id (car triples)))))))
+    (seq-filter #'ekg-content-tag-p
+     (seq-uniq
+      (cl-loop for triples in
+               (triples-db-select-pred-op ekg-db :time-tracked/modified-time '> time)
+               nconc (ekg-note-tags (ekg-get-note-with-id (car triples))))))))
 
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.

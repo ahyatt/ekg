@@ -114,16 +114,16 @@ However, we do pay attention to
             (setq tags-from-links (ekg-org-roam-import--tags-from-links))
             (triples-with-transaction ekg-db
               (let* ((note (ekg-note-create
-                           text
-                           'org-mode
-                           (seq-difference (seq-uniq
-                                            (cons
-                                             (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node))
-                                             tags-from-links))
-                                           (seq-union ekg-org-roam-import-tag-to-ignore
-                                                      ekg-org-roam-import-tag-to-prefix
-                                                      #'equal)
-                                           #'equal))))
+                            :text text
+                            :mode 'org-mode
+                            :tags (seq-difference (seq-uniq
+                                                   (cons
+                                                    (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node))
+                                                    tags-from-links))
+                                                  (seq-union ekg-org-roam-import-tag-to-ignore
+                                                             ekg-org-roam-import-tag-to-prefix
+                                                             #'equal)
+                                                  #'equal))))
                 (setf (ekg-note-id note) (org-roam-node-id node))
                 (when (org-roam-node-refs node)
                   (setf (ekg-note-properties note) `(:reference/url ,(org-roam-node-refs node))))

@@ -28,7 +28,7 @@
 (require 'ekg-test-utils)
 
 (ekg-deftest ekg-test-note-lifecycle ()
-  (let ((note (ekg-note-create "Test text" 'text-mode '("tag1" "tag2"))))
+  (let ((note (ekg-note-create :text "Test text" :mode 'text-mode :tags '("tag1" "tag2"))))
     (ekg-save-note note)
     ;; We should have an ID now.
     (should (ekg-note-id note))
@@ -46,14 +46,14 @@
 (ekg-deftest ekg-test-tags ()
   (should-not (ekg-tags))
   ;; Make sure we trim and lowercase all tags.
-  (ekg-save-note (ekg-note-create "" 'text-mode '(" a" " B ")))
+  (ekg-save-note (ekg-note-create :text "" :mode 'text-mode :tags '(" a" " B ")))
   (should (equal (sort (ekg-tags) #'string<) '("a" "b")))
   (should (equal (ekg-tags-including "b") '("b")))
-  (should (string= (ekg-tags-display '("a" "b")) "a b")))
+  (should (string= (ekg-tags-display '("a" "b")) "a, b")))
 
 (ekg-deftest ekg-test-org-link-to-id ()
   (require 'ol)
-  (let* ((note (ekg-note-create "" 'text-mode '("a" "b")))
+  (let* ((note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
          (note-buf (ekg-edit note)))
     (unwind-protect
      (progn
@@ -74,9 +74,9 @@
 
 (ekg-deftest ekg-test-org-link-to-tags ()
   (require 'ol)
-  (ekg-save-note (ekg-note-create "" 'text-mode '("a" "b")))
+  (ekg-save-note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
   (ekg-show-notes-with-any-tags '("a" "b"))
-  (let* ((tag-buf (get-buffer "*ekg tags (any): a b*")))
+  (let* ((tag-buf (get-buffer "*ekg tags (any): a, b*")))
     (unwind-protect
         (progn
           ;; Can we store a link?
@@ -110,33 +110,37 @@
 
 (ekg-deftest ekg-test-sort-nondestructive ()
   (mapc #'ekg-save-note
-      (list (ekg-note-create "a" ekg-capture-default-mode '("tag/a"))
-            (ekg-note-create "b" ekg-capture-default-mode '("tag/b"))))
+      (list (ekg-note-create :text "a" :mode ekg-capture-default-mode :tags '("tag/a"))
+            (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
   (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
-  (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a tag/b")))
+  (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a, tag/b")))
 
 (ekg-deftest ekg-test-note-roundtrip ()
   (let ((text "foo\n\tbar \"baz\" ☃"))
-    (ekg-save-note (ekg-note-create text #'text-mode '("test")))
+    (ekg-save-note (ekg-note-create :text text :mode #'text-mode :tags '("test")))
     (let ((note (car (ekg-get-notes-with-tag "test"))))
       (should (ekg-note-id note))
       (should (equal text (ekg-note-text note)))
       (should (equal 'text-mode (ekg-note-mode note))))))
 
 (ekg-deftest ekg-test-templating ()
-  (ekg-save-note (ekg-note-create "ABC" #'text-mode '("test" "template")))
-  (ekg-save-note (ekg-note-create "DEF" #'text-mode '("test" "template")))
+  (ekg-save-note (ekg-note-create :text "ABC" :mode #'text-mode :tags '("test" "template")))
+  (ekg-save-note (ekg-note-create :text "DEF" :mode #'text-mode :tags '("test" "template")))
   (let ((ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)))
-    (ekg-capture '("test"))
+    (ekg-capture :tags '("test"))
     (let ((text (substring-no-properties (buffer-string))))
       (should (string-match (rx (literal "ABC")) text))
       (should (string-match (rx (literal "DEF")) text)))))
 
 (ekg-deftest ekg-test-get-notes-with-tags ()
-  (ekg-save-note (ekg-note-create "ABC" #'text-mode '("foo" "bar")))
+  (ekg-save-note (ekg-note-create :text "ABC" :mode #'text-mode :tags '("foo" "bar")))
   (should-not (ekg-get-notes-with-tags '("foo" "none")))
   (should-not (ekg-get-notes-with-tags '("none" "foo")))
   (should (= (length (ekg-get-notes-with-tags '("bar" "foo"))) 1)))
+
+(ert-deftest ekg-test-tag-to-hierarchy ()
+  (should (equal (ekg-tag-to-hierarchy "foo/bar") '("foo" "foo/bar")))
+  (should (equal (ekg-tag-to-hierarchy "foo") '("foo"))))
 
 (ekg-deftest ekg-test-extract-inlines ()
   (pcase (ekg-extract-inlines "Foo %(transclude 1) %n(transclude \"abc\") Bar")
@@ -158,9 +162,17 @@
                             (ekg-insert-inlines-representation
                              (car ex-cons) (cdr ex-cons)))))))
 
+(ekg-deftest ekg-test-edit-note-display-text ()
+  (let ((note (ekg-note-create :text "transcluded text" :mode 'org-mode :tags nil)))
+    (ekg-save-note note)
+    (ekg-capture :mode 'text-mode)
+    (insert (format "Foo %%(transclude-note %S) bar" (ekg-note-id note)))
+    (should (string-equal "Foo transcluded text bar"
+                          (ekg-edit-note-display-text)))))
+
 (ekg-deftest ekg-test-transclude ()
-  (let ((note1 (ekg-note-create "text1 text2" 'org-mode nil))
-        (note2 (ekg-note-create "text3 text4" 'text-mode nil)))
+  (let ((note1 (ekg-note-create :text "text1 text2" :mode 'org-mode :tags nil))
+        (note2 (ekg-note-create :text "text3 text4" :mode 'text-mode :tags nil)))
     (ekg-save-note note1)
     (ekg-save-note note2)
     (let ((ex-cons (ekg-extract-inlines
@@ -171,9 +183,9 @@
                              (car ex-cons) (cdr ex-cons) nil))))))
 
 (ekg-deftest ekg-test-transclude-stability ()
-  (let ((note (ekg-note-create "transcluded" 'org-mode nil)))
+  (let ((note (ekg-note-create :text "transcluded" :mode 'org-mode :tags nil)))
     (ekg-save-note note)
-    (ekg-capture '("tag"))
+    (ekg-capture :tags '("tag"))
     (let ((transclude-txt (format "12%%(transclude-note %S)34 %%(transclude-note %S)"
                                   (ekg-note-id note)
                                   (ekg-note-id note)) ))
@@ -216,7 +228,7 @@
                       (make-ekg-inline :pos 1
                                        :command '(calc "2 ^ 10")
                                        :type 'command))))
-    (let ((note (ekg-note-create "foo bar" 'text-mode nil)))
+    (let ((note (ekg-note-create :text "foo bar" :mode 'text-mode :tags nil)))
       (setf (ekg-note-inlines note) inlines)
       (ekg-save-note note)
       (setq id (ekg-note-id note)))
@@ -227,16 +239,16 @@
       (should (= 2 (length (triples-with-predicate ekg-db 'inline/command)))))
     (let ((note (ekg-get-note-with-id id)))
       (should (equal new-inlines (ekg-note-inlines note)))
-      (ekg-note-delete (ekg-note-id note))
+      (ekg-note-delete note)
       (should (= 0 (length (triples-with-predicate ekg-db 'inline/command)))))))
 
 (ekg-deftest ekg-test-double-transclude-note ()
-  (let ((note (ekg-note-create "transclusion1" 'text-mode nil)))
+  (let ((note (ekg-note-create :text "transclusion1" :mode 'text-mode :tags nil)))
     (ekg-save-note note)
-    (ekg-capture '("test1"))
+    (ekg-capture :tags '("test1"))
     (insert (format "%%(transclude-note %S)" (ekg-note-id note)))
     (ekg-capture-finalize))
-  (ekg-capture '("test2"))
+  (ekg-capture :tags '("test2"))
   (insert (format "%%(transclude-note %S)"
                   (ekg-note-id
                    (car (ekg-get-notes-with-tag "test1")))))
@@ -245,10 +257,20 @@
                           (ekg-display-note-text
                            (car (ekg-get-notes-with-tag "test2"))))))
 
-(ert-deftest ekg-test-display-note-template ()
+(ekg-deftest ekg-get-notes-cotagged-with-tags ()
+  (ekg-save-note (ekg-note-create :text "Foo" :tags '("magic" "a")))
+  (ekg-save-note (ekg-note-create :text "Bar" :tags '("magic" "a/b")))
+  (ekg-save-note (ekg-note-create :text "Baz" :tags '("magic" "c")))
+  (ekg-save-note (ekg-note-create :text "Other" :tags '("a/b/child" "c")))
+  (should (equal (mapcar (lambda (note)
+                           (string-trim (substring-no-properties (ekg-display-note-text note))))
+                         (ekg-get-notes-cotagged-with-tags '("a/b/child" "c") "magic"))
+                 '("Foo" "Bar" "Baz"))))
+
+(ekg-deftest ekg-test-display-note-template ()
   (let ((ekg-display-note-template
          "%n(id)%n(tagged)%n(text 100)%n(other)%n(time-tracked)")
-        (note (ekg-note-create "text" 'text-mode '("tag1" "tag2"))))
+        (note (ekg-note-create :text "text" :mode 'text-mode :tags '("tag1" "tag2"))))
     (setf (ekg-note-properties note) '(:titled/title ("Title")
                                                      :unknown/ignored "unknown"
                                                      :rendered/text "rendered"))
@@ -259,13 +281,13 @@
                           (ekg-display-note note)))))
 
 (ert-deftest ekg-test-note-snippet ()
-  (should (equal "" (ekg-note-snippet (ekg-note-create "" 'text-mode nil))))
-  (should (equal "foo" (ekg-note-snippet (ekg-note-create "foo" 'text-mode nil))))
-  (should (equal "foo…" (ekg-note-snippet (ekg-note-create "foo bar" 'text-mode nil) 3))))
+  (should (equal "" (ekg-note-snippet (ekg-note-create :text "" :mode 'text-mode :tags nil))))
+  (should (equal "foo" (ekg-note-snippet (ekg-note-create :text "foo" :mode 'text-mode :tags nil))))
+  (should (equal "foo…" (ekg-note-snippet (ekg-note-create :text "foo bar" :mode 'text-mode :tags nil) 3))))
 
 (ekg-deftest ekg-test-overlay-interaction-growth ()
   (let ((ekg-capture-auto-tag-funcs nil))
-    (ekg-capture '("test"))
+    (ekg-capture :tags '("test"))
     (let ((o (ekg--metadata-overlay)))
       (should (= (overlay-start o) 1))
       ;; The overlay end is the character just past the end of the visible
@@ -281,7 +303,7 @@
 
 (ekg-deftest ekg-test-overlay-interaction-resist-shrinking ()
   (let ((ekg-capture-auto-tag-funcs nil))
-    (ekg-capture '("test"))
+    (ekg-capture :tags '("test"))
     (let ((o (ekg--metadata-overlay)))
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
       ;; Go to the end of the overlay, delete the newline, it should be that you
@@ -293,6 +315,51 @@
       (ignore-errors (delete-char -1))
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
       (should (= (point) (overlay-end o))))))
+
+(ekg-deftest ekg-test-draft ()
+  (ekg-capture :tags '("test"))
+  (insert "foo")
+  (ekg-save-draft)
+  (let ((target-content (substring-no-properties (buffer-string))))
+    (kill-buffer)
+    ;; This note shouldn't show up in ordinary list of notes.
+    (should-not (ekg-get-notes-with-tag "test"))
+    (ekg-edit (car (ekg-get-notes-with-tag ekg-draft-tag)))
+    (should (equal target-content (substring-no-properties (buffer-string))))
+    ;; Now let's finalize the original
+    (ekg-capture-finalize))
+  ;; Now that we've finished, let's make sure it is no longer a draft.
+  (let ((note (car (ekg-get-notes-with-tag "test"))))
+    (should (equal "foo" (ekg-note-text note)))
+    (should-not (member ekg-draft-tag (ekg-note-tags note))))
+  (should (ekg-get-notes-with-tag "test")))
+
+(ekg-deftest ekg-test-draftless ()
+  (let ((ekg-draft-tag))
+    (ekg-capture :tags '("test"))
+    (insert "foo")
+    (ekg-save-draft)
+    ;; This time, we should save, but it shouldn't have a draft tag.
+    (let ((note (car (ekg-get-notes-with-tag "test"))))
+      (should (equal "foo" (ekg-note-text note)))
+      (should-not (member ekg-draft-tag (ekg-note-tags note))))
+    (ekg-capture-finalize)
+    ;; And it should be the same after saving too.
+    (let ((note (car (ekg-get-notes-with-tag "test"))))
+      (should (equal "foo" (ekg-note-text note)))
+      (should-not (member ekg-draft-tag (ekg-note-tags note))))))
+
+(ert-deftest ekg-test-should-show-id-p ()
+  (should-not (ekg-should-show-id-p (ekg--generate-id)))
+  (should (ekg-should-show-id-p "foo"))
+  (should (ekg-should-show-id-p "http://gnu.org"))
+  (should (ekg-should-show-id-p "/usr/bin/emacs")))
+
+(ekg-deftest ekg-test-rename ()
+  (let ((note (ekg-note-create :text "foo" :mode 'text-mode :tags '("a" "b"))))
+    (ekg-save-note note)
+    (ekg-global-rename-tag "a" "b")
+    (should (equal '("b") (ekg-note-tags (ekg-get-note-with-id (ekg-note-id note)))))))
 
 (provide 'ekg-test)
 
