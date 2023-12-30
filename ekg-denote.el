@@ -36,6 +36,11 @@
 ;; Deleted denote files do not remove the corresponding ekg note. Such
 ;; ekg notes has to be manually deleted.
 
+;; Eval to remove duplicates
+;;
+;; (ekg-denote-export-fix-duplicate-notes
+;;  (ekg-denote-export--get-duplicate-notes       
+;;   (ekg-denote-export-notes-modified-since 0))) ;; 0 means all notes
 
 (require 'ekg)
 (require 'denote)
