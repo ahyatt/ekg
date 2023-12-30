@@ -19,20 +19,23 @@
 ;; This package provides integration between ekg and denote.
 ;;
 ;; During export, for each ekg note, a denote file is created. Denote
-;; does not allow duplicate creation times for two notes, so it is
-;; necessary to ensure that each ekg note has a unique creation time
-;; for export. A helper function is provided to update the ekg notes
-;; and give them unique creation times. Additionally, denote embeds
+;; does not allow creation time for two notes within a second whereas
+;; ekg has no such restriction, so it is necessary to ensure that each
+;; ekg note has a unique creation time for export. A helper function
+;; is provided to update the ekg notes and give them unique creation
+;; times which differ atleast by a second. Additionally, denote embeds
 ;; the title and tags in the filename, which is limited based on the
 ;; underlying operating system. The titles and tags of ekg notes are
-;; trimmed before export. The maximum allowed length of titles and tags
-;; is configurable.
+;; trimmed to a configurable length before export. Ekg notes can have
+;; creation time within a second when trying to bulk import org-roam
+;; files to ekg.
 ;;
 ;; During import, for each denote file, an ekg note is created. Note
 ;; updated both in ekg and denote after last import cannot be
 ;; imported. Such notes has to be manually fixed for import to run.
 ;; Deleted denote files do not remove the corresponding ekg note. Such
 ;; ekg notes has to be manually deleted.
+
 
 (require 'ekg)
 (require 'denote)
