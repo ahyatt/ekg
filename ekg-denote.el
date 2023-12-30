@@ -124,9 +124,9 @@
 
 (defun ekg-denote-export--sublist-kws (kws combined-length)
   "Return the sublist for the given KWS list such that the
-length of combined KWS is not more than the given COMBINED-LENGTH"
-  (if (length> (denote--keywords-combine kws) limit)
-      (ekg-denote-export--sublist-kws (butlast kws) limit)
+length of combined KWS is not more than the given COMBINED-LENGTH."
+  (if (length> (denote--keywords-combine kws) combined-length)
+      (ekg-denote-export--sublist-kws (butlast kws) combined-length)
     kws))
 
 (defun ekg-denote-export ()
