@@ -205,8 +205,13 @@ notes, no deletions. Deletions has to be manually done."
 		      (ekg-get-note-with-id (car (car triples)))
 		    (ekg-note-create content mode kws))))
 
-       (if (time-less-p modified-time (ekg-note-modified-time note))
-	   (error "ekg-denote-import: Both ekg note and denote file found modified. Ekg note:%s, denote file:%s" (ekg-note-id note) file))
+       ;; for modification, make sure that ekg note does not have a latest update.
+       (if (and triples
+		(time-less-p modified-time (ekg-note-modified-time note)))
+	   (error "ekg-denote-import: Ekg note is latest than denote file. \
+Update denote file to the latest to continue with import. \
+Ekg note ID:%s, denote file:%s, Creation-time:%s, Note-modified-time:%s, File-modified-time:%s"
+		  (ekg-note-id note) file creation-time (ekg-note-modified-time note) modified-time))
        
        (setf (ekg-note-tags note) kws
 	     (ekg-note-text note) content
