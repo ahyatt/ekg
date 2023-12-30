@@ -166,7 +166,7 @@ have already have information in denote, you should run
 	       (denote-add-front-matter filename title kws)))))
 
 (defun ekg-denote-import ()
-  "Import denote files to Ekg database by creating/modifying Ekg notes."
+  "Import denote files to ekg database by creating/modifying ekg notes."
   (interactive)
   ;; Force a backup pre-import.
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
@@ -176,38 +176,40 @@ have already have information in denote, you should run
 		 (lambda (file)
 		   (time-less-p last-import-time (nth 5 (file-attributes file))))
 		 (denote-directory-text-only-files))))
-    (cl-loop for file in files do
-	     (let* ((creation-time (floor (float-time (apply #'encode-time (parse-time-string (denote-retrieve-filename-identifier file))))))
-		    (modified-time (floor (float-time (nth 5 (file-attributes file)))))
-		    (title (when (string-match denote-title-regexp file) (match-string 1 file)))
-		    (file-type (denote-filetype-heuristics file))
-		    (kws (denote-retrieve-keywords-value file file-type))
-		    (mode (if (equal 'org file-type) 'org-mode 'md-mode))
-		    (content (with-temp-buffer
-			       (insert-file-contents file)
-			       (goto-char (point-min))
-			       (when (re-search-forward "^$" nil 'noerror)
-				 (delete-region (point-min) (1+ (point))))
-			       (string-trim-left (buffer-string))))
-		    (triples (triples-db-select-pred-op ekg-db :time-tracked/creation-time '=
-							creation-time))
-		    (note (if (and triples (= (length triples) 1))
-			      (ekg-get-note-with-id (car (car triples)))
-			    (ekg-note-create content mode kws))))
+    (cl-loop
+     for file in files do
+     (let* ((creation-time (floor (float-time (apply #'encode-time (parse-time-string (denote-retrieve-filename-identifier file))))))
+	    (modified-time (floor (float-time (nth 5 (file-attributes file)))))
+	    (title (when (string-match denote-title-regexp file) (match-string 1 file)))
+	    (file-type (denote-filetype-heuristics file))
+	    (kws (denote-retrieve-keywords-value file file-type))
+	    (mode (if (equal 'org file-type) 'org-mode 'md-mode))
+	    (content
+	     (with-temp-buffer
+	       (insert-file-contents file)
+	       (goto-char (point-min))
+	       (when (re-search-forward "^$" nil 'noerror)
+		 (delete-region (point-min) (1+ (point))))
+	       (string-trim-left (buffer-string))))
+	    (triples (triples-db-select-pred-op ekg-db :time-tracked/creation-time '=
+						creation-time))
+	    (note (if (and triples (= (length triples) 1))
+		      (ekg-get-note-with-id (car (car triples)))
+		    (ekg-note-create content mode kws))))
 
-	       (if (time-less-p modified-time (ekg-note-modified-time note))
-		   (error "ekg-denote-import: Note:%s modified after file:%s" (ekg-note-id note) file))
-	       
-	       (setf (ekg-note-tags note) kws
-		     (ekg-note-text note) content
-		     (ekg-note-modified-time note) modified-time
-		     (ekg-note-creation-time note) creation-time)
-	       (when title
-		 (setf (ekg-note-properties note)
-		       (plist-put (ekg-note-properties note) :titled/title title)))
-	       (message "ekg-denote-import: Importing File:%s to Note:%s with title:%s tags:%s modified-time:%s creation-time:%s"
-			file (ekg-note-id note) title kws modified-time creation-time)
-	       (ekg-save-note note)))))
+       (if (time-less-p modified-time (ekg-note-modified-time note))
+	   (error "ekg-denote-import: Both ekg note and denote file found modified. Ekg note:%s, denote file:%s" (ekg-note-id note) file))
+       
+       (setf (ekg-note-tags note) kws
+	     (ekg-note-text note) content
+	     (ekg-note-modified-time note) modified-time
+	     (ekg-note-creation-time note) creation-time)
+       (when title
+	 (setf (ekg-note-properties note)
+	       (plist-put (ekg-note-properties note) :titled/title title)))
+       (message "ekg-denote-import: Importing File:%s to Note:%s with title:%s tags:%s modified-time:%s creation-time:%s"
+		file (ekg-note-id note) title kws modified-time creation-time)
+       (ekg-save-note note)))))
 
 (defun ekg-denote-sync ()
   "Sync ekg and denote.
