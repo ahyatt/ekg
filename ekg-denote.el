@@ -99,7 +99,7 @@
        modified-notes))))
 
 (defun ekg-denote-export-fix-duplicate-notes (notes)
-  "Fix duplicate notes out of the given NOTES."
+  "Fix duplicate notes out of the given NOTES list of list containing note-id and creation-time."
   (dolist (note (ekg-denote-export--get-duplicate-notes notes))
     (let ((note-id (car note))
 	  (updated-creation-time (cdr note)))
@@ -108,7 +108,7 @@
 			:creation-time updated-creation-time))))
 
 (defun ekg-denote-export--get-duplicate-notes (notes)
-  "Return duplicate notes out of the given NOTES."
+  "Return list of duplicate notes' id and creation-time out of the given ekg NOTES."
   (let* ((creation-times '())
 	 (duplicates '()))
     (dolist (note notes)
@@ -168,7 +168,8 @@ have already have information in denote, you should run
        (denote-add-front-matter filename title kws)))))
 
 (defun ekg-denote-import ()
-  "Import denote files to ekg database by creating/modifying ekg notes."
+  "Import denote files to ekg database by creating/modifying ekg
+notes, no deletions. Deletions has to be manually done."
   (interactive)
   ;; Force a backup pre-import.
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
