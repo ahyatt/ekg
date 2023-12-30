@@ -47,8 +47,8 @@
   :type 'integer
   :group 'ekg-denote)
 
-(defcustom ekg-denote-tags-max-len 150
-  "Maximum length of the combined tags to trim during export."
+(defcustom ekg-denote-combined-kws-len 150
+  "Maximum length of the combined kws used for trimming kws when converting tags to kws during export."
   :type 'integer
   :group 'ekg-denote)
 
@@ -149,7 +149,7 @@ have already have information in denote, you should run
 	     (let* ((note-id (ekg-note-id note))
 		    (id (format-time-string denote-id-format (ekg-note-creation-time note)))
 		    (tags (ekg-note-tags note))
-		    (kws (ekg-denote-export--sublist-kws (denote-sluggify-keywords tags) ekg-denote-tag-max-len))
+		    (kws (ekg-denote-export--sublist-kws (denote-sluggify-keywords tags) ekg-denote-combined-kws-len))
 		    (title (string-limit (denote-sluggify
 					  (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
 					 ekg-denote-title-max-len))
