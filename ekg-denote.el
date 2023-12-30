@@ -144,7 +144,7 @@ have already have information in denote, you should run
 	 (duplicates (ekg-denote-export--get-duplicate-notes notes))
 	 (start-time (current-time)))
     (if duplicates
-	(error "ekg-denote-export: Duplicate notes found."))
+	(error "ekg-denote-export: Duplicate notes found. Fix duplicates to continue."))
     (cl-loop for note in notes do
 	     (let* ((note-id (ekg-note-id note))
 		    (id (format-time-string denote-id-format (ekg-note-creation-time note)))
