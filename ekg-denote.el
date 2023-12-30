@@ -98,20 +98,6 @@
 	 (ekg-get-note-with-id (car item)))
        modified-notes))))
 
-(defun ekg-denote-export-kws (tags)
-  "Return the denote kws for the ekg TAGS taking care the total
-  length of concatenated tags is not more than the max limit."
-  (let ((result-list '())
-	(current-string ""))
-    (dolist (tag (denote-sluggify-keywords tags))
-      (let ((concatenated (concat current-string tag)))
-	(if (<= (length concatenated) ekg-denote-tags-max-len)
-	    (progn
-	      (push tag result-list)
-	      (setq current-string concatenated))
-	  (setq current-string concatenated))))
-    (reverse result-list)))
-
 (defun ekg-denote-export-fix-duplicate-notes (notes)
   "Fix duplicate notes out of the given NOTES."
   (dolist (note (ekg-denote-export--get-duplicate-notes notes))
@@ -136,6 +122,13 @@
 	(push updated-creation-time creation-times)))
     duplicates))
 
+(defun ekg-denote-export--sublist-kws (kws combined-length)
+  "Return the sublist for the given KWS list such that the
+length of combined KWS is not more than the given COMBINED-LENGTH"
+  (if (length> (denote--keywords-combine kws) limit)
+      (ekg-denote-export--sublist-kws (butlast kws) limit)
+    kws))
+
 (defun ekg-denote-export ()
   "Export the current ekg database to denote.
 
@@ -156,7 +149,7 @@ have already have information in denote, you should run
 	     (let* ((note-id (ekg-note-id note))
 		    (id (format-time-string denote-id-format (ekg-note-creation-time note)))
 		    (tags (ekg-note-tags note))
-		    (kws (ekg-denote-export-kws tags))
+		    (kws (ekg-denote-export--sublist-kws (denote-sluggify-keywords tags) ekg-denote-tag-max-len))
 		    (title (string-limit (denote-sluggify
 					  (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
 					 ekg-denote-title-max-len))
