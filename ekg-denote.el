@@ -145,25 +145,27 @@ have already have information in denote, you should run
 	 (start-time (current-time)))
     (if duplicates
 	(error "ekg-denote-export: Duplicate notes found. Fix duplicates to continue."))
-    (cl-loop for note in notes do
-	     (let* ((note-id (ekg-note-id note))
-		    (id (format-time-string denote-id-format (ekg-note-creation-time note)))
-		    (tags (ekg-note-tags note))
-		    (kws (ekg-denote-export--sublist-kws (denote-sluggify-keywords tags) ekg-denote-combined-kws-len))
-		    (title (string-limit (denote-sluggify
-					  (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
-					 ekg-denote-title-max-len))
-		    (ext (if (eq ekg-capture-default-mode 'org-mode) ".org" ".md"))
-		    (old-denote-file (cl-find id (denote-directory-text-only-files)
-					      :test #'(lambda (substr str)
-							(string-prefix-p substr (file-name-nondirectory str)))))
-		    (filename (denote-format-file-name denote-directory id kws title ext)))
-	       (message "ekg-denote-export: Exporting note:%s with title:%s and tags:%S to file:%s"
-			note-id title tags filename)
-	       (when old-denote-file (denote-rename-file-and-buffer old-denote-file filename))
-	       (with-temp-file filename
-		 (insert (or (ekg-note-text note) "")))
-	       (denote-add-front-matter filename title kws)))))
+    (cl-loop
+     for note in notes do
+     (let* ((note-id (ekg-note-id note))
+	    (id (format-time-string denote-id-format (ekg-note-creation-time note)))
+	    (tags (ekg-note-tags note))
+	    (kws (ekg-denote-export--sublist-kws
+		  (denote-sluggify-keywords tags) ekg-denote-combined-kws-len))
+	    (title (string-limit (denote-sluggify
+				  (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
+				 ekg-denote-title-max-len))
+	    (ext (if (eq ekg-capture-default-mode 'org-mode) ".org" ".md"))
+	    (old-denote-file (cl-find id (denote-directory-text-only-files)
+				      :test #'(lambda (substr str)
+						(string-prefix-p substr (file-name-nondirectory str)))))
+	    (filename (denote-format-file-name denote-directory id kws title ext)))
+       (message "ekg-denote-export: Exporting note:%s with title:%s and tags:%S to file:%s"
+		note-id title tags filename)
+       (when old-denote-file (denote-rename-file-and-buffer old-denote-file filename))
+       (with-temp-file filename
+	 (insert (or (ekg-note-text note) "")))
+       (denote-add-front-matter filename title kws)))))
 
 (defun ekg-denote-import ()
   "Import denote files to ekg database by creating/modifying ekg notes."
