@@ -164,7 +164,7 @@ have already have information in denote, you should run
 	    (old-denote-file (cl-find id (denote-directory-text-only-files)
 				      :test #'(lambda (substr str)
 						(string-prefix-p substr (file-name-nondirectory str)))))
-	    (filename (denote-format-file-name denote-directory id kws title ext)))
+	    (filename (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext)))
        (message "ekg-denote-export: Exporting note:%s with title:%s and tags:%S to file:%s"
 		note-id title tags filename)
        (when old-denote-file (denote-rename-file-and-buffer old-denote-file filename))
