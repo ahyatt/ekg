@@ -188,6 +188,7 @@ notes, no deletions. Deletions has to be manually done."
      for file in files do
      (let* ((creation-time (time-convert (encode-time (parse-time-string (denote-retrieve-filename-identifier file))) 'integer ))
 	    (modified-time (time-convert (file-attributes-modification-time (file-attributes file)) 'integer))
+	    (title (denote-retrieve-filename-title file))
 	    (file-type (denote-filetype-heuristics file))
 	    (kws (denote-retrieve-keywords-value file file-type))
 	    (mode (if (equal 'org file-type) 'org-mode 'md-mode))
