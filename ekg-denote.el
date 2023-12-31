@@ -187,7 +187,6 @@ notes, no deletions. Deletions has to be manually done."
   ;; Force a backup pre-import.
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (let* ((last-import-time (ekg-denote-get-last-import))
-	 (start-time (current-time))
 	 (files (cl-remove-if-not
 		 (lambda (file)
 		   (time-less-p last-import-time (nth 5 (file-attributes file))))
