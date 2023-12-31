@@ -186,9 +186,8 @@ notes, no deletions. Deletions has to be manually done."
 		 (denote-directory-text-only-files))))
     (cl-loop
      for file in files do
-     (let* ((creation-time (floor (float-time (apply #'encode-time (parse-time-string (denote-retrieve-filename-identifier file))))))
-	    (modified-time (floor (float-time (nth 5 (file-attributes file)))))
-	    (title (when (string-match denote-title-regexp file) (match-string 1 file)))
+     (let* ((creation-time (time-convert (encode-time (parse-time-string (denote-retrieve-filename-identifier file))) 'integer ))
+	    (modified-time (time-convert (file-attributes-modification-time (file-attributes file)) 'integer))
 	    (file-type (denote-filetype-heuristics file))
 	    (kws (denote-retrieve-keywords-value file file-type))
 	    (mode (if (equal 'org file-type) 'org-mode 'md-mode))
