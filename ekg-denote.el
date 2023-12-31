@@ -184,6 +184,7 @@ notes, no deletions. Deletions has to be manually done."
 		 (lambda (file)
 		   (time-less-p last-import-time (nth 5 (file-attributes file))))
 		 (denote-directory-text-only-files))))
+    (message "Importing files since last-import-time:%s" last-import-time)
     (cl-loop
      for file in files do
      (let* ((creation-time (time-convert (encode-time (parse-time-string (denote-retrieve-filename-identifier file))) 'integer ))
@@ -205,6 +206,9 @@ notes, no deletions. Deletions has to be manually done."
 		      (ekg-get-note-with-id (car (car triples)))
 		    (ekg-note-create content mode kws))))
 
+       (if triples (message "ekg-denote-import: Updating existing note id:%s for file:%s" (ekg-note-id note) file)
+	 (message "ekg-denote-import: Creating new note for file: %s" file))
+
        ;; for modification, make sure that ekg note does not have a latest update.
        (if (and triples
 		(time-less-p modified-time (ekg-note-modified-time note)))
@@ -220,7 +224,7 @@ Ekg note ID:%s, denote file:%s, Creation-time:%s, Note-modified-time:%s, File-mo
        (when title
 	 (setf (ekg-note-properties note)
 	       (plist-put (ekg-note-properties note) :titled/title title)))
-       (message "ekg-denote-import: Importing File:%s to Note:%s with title:%s tags:%s modified-time:%s creation-time:%s"
+       (message "ekg-denote-import: Importing File:%s to Note:%s with title:%s, kws:%s, modified-time:%s, creation-time:%s"
 		file (ekg-note-id note) title kws modified-time creation-time)
        (ekg-save-note note)))))
 
