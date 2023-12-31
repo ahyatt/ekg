@@ -172,6 +172,14 @@ have already have information in denote, you should run
 	 (insert (or (ekg-note-text note) "")))
        (denote-add-front-matter filename title kws)))))
 
+(defun ekg-denote-import-update-file-modification-time-to-note-modification-time (file note-id)
+  "Update the FILE modification time equal to the ekg NOTE-ID modification time."
+  (let* ((note (ekg-get-note-with-id note-id))
+	 (modified-time (ekg-note-modified-time note)))
+    (with-temp-file file
+      (set-visited-file-modtime modified-time)
+      (save-buffer 0))))
+
 (defun ekg-denote-import ()
   "Import denote files to ekg database by creating/modifying ekg
 notes, no deletions. Deletions has to be manually done."
@@ -226,7 +234,8 @@ Ekg note ID:%s, denote file:%s, Creation-time:%s, Note-modified-time:%s, File-mo
 	       (plist-put (ekg-note-properties note) :titled/title title)))
        (message "ekg-denote-import: Importing File:%s to Note:%s with title:%s, kws:%s, modified-time:%s, creation-time:%s"
 		file (ekg-note-id note) title kws modified-time creation-time)
-       (ekg-save-note note)))))
+       (ekg-save-note note)
+       (ekg-denote-import-update-file-modification-time-to-note-modification-time file (ekg-note-id note))))))
 
 (defun ekg-denote-sync ()
   "Sync ekg and denote.
