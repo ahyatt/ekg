@@ -68,7 +68,7 @@ Installation
 
 Changelog
 
-* Version 0.4.4: Version 044. 
+* Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
@@ -103,6 +103,7 @@ Extras
 * Embeddings::
 * Logseq::
 * LLM::
+* Auto save::
 
 Logseq
 
@@ -195,7 +196,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
-* Version 0.4.4: Version 044. 
+* Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
 * Version 0.4.1: Version 041. 
@@ -208,10 +209,14 @@ triples library is already installed.
 * Version 0.2: Version 02. 
 @end menu
 
-@node Version 044
-@section Version 0.4.4
+@node Version 05
+@section Version 0.5
 
 @itemize
+@item
+@samp{ekg-auto-save}, a new module by @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
+@item
+Added canceling a note as an actual command, also by  @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
 @item
 Fix issue with trashing notes with tags that are partially trashed.
 @item
@@ -536,6 +541,8 @@ draft is like a normal note, but has a special tag, by default "draft".  (This
 can be customized in @samp{ekg-draft-tag}.)  Having this tag means the note doesn't
 show up in most views, much like the notes in "trash".  Once a note is saved
 normally, it loses the draft tag.
+
+See also the section on the @ref{Auto save, , auto save}, to see how to turn on and set up auto save, which can automatically save drafts for new notes.
 
 @node A warning about org-mode
 @section A warning about org-mode
@@ -1065,6 +1072,7 @@ package.
 * Embeddings::
 * Logseq::
 * LLM::
+* Auto save::
 @end menu
 
 @node Embeddings
@@ -1401,6 +1409,20 @@ to the query.
 Note that anything in your database could potentially be retrieved and sent to
 the LLM, so if you have notes that you consider too private to send for
 processing, you may not want to use this.
+
+@node Auto save
+@section Auto save
+
+The @samp{ekg-auto-save} module is useful for users who enter longer notes, so that the notes are protected against accidentally killing the buffer, or emacs crashing, or any similar problem.  It is designed to work similarly to the built-in auto-save functionality, and has it's own variables that default to the auto-save equivalent.  So, for example, there is @code{ekg-auto-save-timeout}, which defaults to the value of @code{auto-save-timeout}.
+
+To start using this, you need to require the module and turn on @samp{ekg-auto-save-mode} in the @samp{ekg-edit-mode` and =ekg-capture-mode}.  For example:
+@lisp
+(require 'ekg-auto-save)
+(add-hook 'ekg-capture-mode-hook 'ekg-auto-save-mode)
+(add-hook 'ekg-edit-mode-hook 'ekg-auto-save-mode)
+@end lisp
+
+In the capture mode, this. is equivalent to saving periodically (to drafts).  In edit mode, it will save the latest version while editing.
 
 @node Design
 @chapter Design

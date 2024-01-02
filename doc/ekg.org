@@ -73,7 +73,9 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
-** Version 0.4.4
+** Version 0.5
+- =ekg-auto-save=, a new module by [[https://github.com/qingshuizheng][Qingshui Zheng]].
+- Added canceling a note as an actual command, also by  [[https://github.com/qingshuizheng][Qingshui Zheng]].
 - Fix issue with trashing notes with tags that are partially trashed.
 - Saving while editing a note will no longer add the draft tag.  This means that if you are editing a draft, it will not keep it as a draft, so it will become a normal note.
 - Fix issue with using ekg-llm with vertex, which doesn't understand system prompts.
@@ -251,6 +253,8 @@ draft is like a normal note, but has a special tag, by default "draft".  (This
 can be customized in =ekg-draft-tag=.)  Having this tag means the note doesn't
 show up in most views, much like the notes in "trash".  Once a note is saved
 normally, it loses the draft tag.
+
+See also the section on the [[#autosave][auto save]], to see how to turn on and set up auto save, which can automatically save drafts for new notes.
 ** A warning about org-mode
 Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
 of funtionality, but much of it depends on the assumption that the buffer is all
@@ -1016,6 +1020,20 @@ to the query.
 Note that anything in your database could potentially be retrieved and sent to
 the LLM, so if you have notes that you consider too private to send for
 processing, you may not want to use this.
+** Auto save
+:PROPERTIES:
+:CUSTOM_ID: autosave
+:END:
+The =ekg-auto-save= module is useful for users who enter longer notes, so that the notes are protected against accidentally killing the buffer, or emacs crashing, or any similar problem.  It is designed to work similarly to the built-in auto-save functionality, and has it's own variables that default to the auto-save equivalent.  So, for example, there is ~ekg-auto-save-timeout~, which defaults to the value of ~auto-save-timeout~.
+
+To start using this, you need to require the module and turn on =ekg-auto-save-mode= in the =ekg-edit-mode` and =ekg-capture-mode=.  For example:
+#+begin_src emacs-lisp
+(require 'ekg-auto-save)
+(add-hook 'ekg-capture-mode-hook 'ekg-auto-save-mode)
+(add-hook 'ekg-edit-mode-hook 'ekg-auto-save-mode)
+#+end_src
+
+In the capture mode, this. is equivalent to saving periodically (to drafts).  In edit mode, it will save the latest version while editing.
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.
