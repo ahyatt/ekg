@@ -2021,7 +2021,10 @@ the database after the upgrade, in list form."
 
 (defun ekg-remove-unused-tags ()
   "Remove all tags that are not used and have no info."
-  (cl-loop for tag in (seq-filter (lambda (tag) (not (ekg-tag-used-p tag))) (ekg-tags))
+  (ekg-connect)
+  (cl-loop for tag in (seq-filter
+                       (lambda (tag) (not (ekg-tag-used-p tag)))
+                       (triples-subjects-of-type ekg-db 'tag))
            do
            (ekg-tag-delete tag)))
 
