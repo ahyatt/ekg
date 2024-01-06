@@ -1801,11 +1801,16 @@ are created with additional tags TAGS."
   (ekg-connect)
   (ekg-setup-notes-buffer
    "Trash"
-   (lambda () (sort
-               (mapcar #'ekg-get-note-with-id
-                       (seq-filter (lambda (id) (not (ekg-has-live-tags-p id)))
-                                   (triples-subjects-of-type ekg-db 'text)))
-               #'ekg-sort-by-creation-time))
+   (lambda ()
+     (sort
+      (mapcar #'ekg-get-note-with-id
+              (seq-uniq
+               (flatten-list
+                (mapcar (lambda (tag) (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+                        (seq-filter
+                         (lambda (tag) (string-match-p (rx (seq bol "trash/")) tag))
+                         (triples-subjects-of-type ekg-db 'tag))))))
+      #'ekg-sort-by-creation-time))
    nil))
 
 ;;;###autoload
@@ -1878,10 +1883,13 @@ notes to show. But with a prefix ARG, ask the user."
   "Return an alist of all titles.
 The key is the subject and the value is the title."
   (ekg-connect)
-  (mapcan (lambda (sub)
-            (mapcar (lambda (title) (cons sub title)) (plist-get (triples-get-type ekg-db sub 'titled) :title)))
-          (seq-filter #'ekg-active-id-p
-                      (triples-subjects-of-type ekg-db 'titled))))
+  (mapcan
+   (lambda (sub)
+     (mapcar (lambda (title) (cons sub title))
+             (plist-get (triples-get-type ekg-db sub 'titled) :title)))
+   (seq-difference
+    (triples-subjects-of-type ekg-db 'titled)
+    (ekg-inactive-note-ids))))
 
 (defun ekg-browse-url (title)
   "Browse the url corresponding to TITLE.
@@ -1903,11 +1911,24 @@ If no corresponding URL is found, an error is thrown."
   (let ((prefix "date/"))
     (string= prefix (substring-no-properties tag 0 (min (length prefix) (length tag))))))
 
+(defun ekg-inactive-note-ids ()
+  "Get a list of ekg-note objects, representing all inactive notes.
+Inactive in this context means trashed or draft note."
+  (seq-uniq
+   (flatten-list
+    (mapcar (lambda (tag) (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+            (seq-filter
+             (lambda (tag)
+               (string-match-p (rx (seq bol (or "trash/" (seq "draft" eol)))) tag))
+             (triples-subjects-of-type ekg-db 'tag))))))
+
 (defun ekg-active-note-ids ()
   "Get a list of ekg-note objects, representing all active notes.
 Active in this context means non-trashed."
   (ekg-connect)
-  (seq-filter #'ekg-active-id-p (triples-subjects-of-type ekg-db 'text)))
+  (seq-difference
+   (triples-subjects-of-type ekg-db 'text)
+   (ekg-inactive-note-ids)))
 
 (defun ekg-get-notes-cotagged-with-tags (tags cotag)
   "Return a list of all notes with one of TAGS and COTAG.
