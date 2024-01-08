@@ -76,6 +76,14 @@ check for the mode of the buffer."
   :type '(set function)
   :group 'ekg)
 
+(defcustom ekg-linkify-inline-tags t
+  "When non-nil, turn inline tags into links to ekg tags.
+This only applies to org-mode, which is the only mode that can
+link to ekg tag views. When non-nil, it also will add links to
+tags that may be created in some other way to the list of tags."
+  :type 'boolean
+  :group 'ekg)
+
 (defcustom ekg-notes-size 20
   "How many recently created or updated notes to show."
   :type 'integer
@@ -156,6 +164,16 @@ user which action to take."
           (const :tag "Abort unsaved changes (the saved part will be kept)" abort-unsaved)
           (const :tag "Abort capture in ekg-capture-mode, or abort all edits in ekg-edit-mode" abort-all)
           (const :tag "Save note" save))
+  :group 'ekg)
+
+(defcustom ekg-inline-custom-tag-completion-symbols '((?@ . "person")
+                                                      (?! . "idea"))
+  "A map of custom symbols to tag prefixes.
+The character in the car of the aliast will be used to trigger
+completion, and complete tags with the prefix of the cdr. The
+character `#' will always be used to complete arbitrary tags,
+and should not appear here."
+  :type '(alist :key-type character :value-type string)
   :group 'ekg)
 
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
@@ -385,6 +403,9 @@ the text and may be after trailing whitespace."
   "Save NOTE in database, replacing note information there."
   (ekg-connect)
   (ekg--normalize-note note)
+  (when (and (eq (ekg-note-mode note) 'org-mode) ekg-linkify-inline-tags)
+    (ekg--convert-inline-tags-to-links note))
+  (ekg--populate-inline-tags note)
   (run-hook-with-args 'ekg-note-pre-save-hook note)
   (triples-with-transaction
     ekg-db
@@ -526,11 +547,10 @@ then the note is really deleted."
     (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
         (ekg-note-delete note)
       (setf (ekg-note-tags note)
-            (mapcar (lambda (tag) (if (ekg-tag-trash-p tag)
-                                      tag
-                                    (ekg-mark-trashed tag)))
-                    (ekg-note-tags note)))
-      (ekg-save-note note)))
+            (mapcan (lambda (tag) (unless (ekg-tag-trash-p tag)
+                                    (list (ekg-mark-trashed tag))))
+                    (ekg-note-tags note))))
+    (ekg-save-note note))
   (triples-backups-maybe-backup ekg-db (ekg-db-file)))
 
 (defun ekg-content-tag-p (tag)
@@ -880,7 +900,19 @@ This is used when capturing new notes.")
   :init-value nil
   :lighter " EKG-CAP"
   :interactive nil
-  (when ekg-capture-mode (ekg--set-local-variables)))
+  (when ekg-capture-mode
+    (ekg--set-local-variables)
+    (setq-local completion-at-point-functions
+                (append (list #'ekg--capf #'ekg--transclude-titled-note-completion
+                              #'ekg--inline-tag-completion)
+                        completion-at-point-functions)
+                header-line-format
+                (substitute-command-keys
+                 "\\<ekg-capture-mode-map>Capture buffer.  Finish \
+`\\[ekg-capture-finalize]'."))))
+
+(defvar ekg-capture-mode-hook nil
+  "Hook for `ekg-capture-mode'.")
 
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
@@ -938,6 +970,122 @@ This is needed to identify references to refresh when the subject is changed.")
         (progn
           (require 'org)
           (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
+
+(defun ekg--possible-inline-tags-prefix-regexp ()
+  "Return a regexp of the possible inline tag prefixes."
+  (format "[%s]" (mapconcat (lambda (c) (format "%c" c)) (cons ?# (mapcar #'car ekg-inline-custom-tag-completion-symbols)))))
+
+(defun ekg--add-prefix-to-inline-tag (tag tag-symbol)
+  "Return TAG with the prefix denoted by TAG-SYMBOL.
+TAG-SYMBOL is a string. If TAG-SYMBOL is `#', then there is no
+prefix."
+  (if (equal tag-symbol "#")
+      tag
+    (concat (assoc-default (string-to-char tag-symbol)
+                           ekg-inline-custom-tag-completion-symbols) "/" tag)))
+
+(defconst ekg--nonlink-tag-regexp
+  (rx (or (seq (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+               (group-n 2 (one-or-more (not (any ?\[ ?\" ?\. whitespace)))))
+          (seq (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+               (= 1 ?\[) (group-n 2 (one-or-more (any word ?_ ?- whitespace))) ?\])))
+  "Regexp for detecting inline tags that are not org links.")
+
+(defun ekg--inline-tag-replace-with-org-link (tag-identifier symbol)
+  "Replace a match to inline TAG-IDENTIFIER with an org link.
+SYMBOL is the prefix to the tag identifier."
+  (replace-match
+   (concat symbol
+           (org-link-make-string
+            (ekg--link-for-tag
+             (ekg--add-prefix-to-inline-tag
+              tag-identifier
+              symbol))
+            tag-identifier))))
+
+(defun ekg--convert-inline-tags-to-links (note)
+  "Convert any inline tags of NOTE to links.
+This allows the user to create tags that don't exist yet, and
+will be turned into links before this note is saved. The tag will
+be added and will exist when `ekg--populate-inline-tags' runs and
+the note is saved.
+
+This will always run, so don't call without making sure it is
+appropriate first based on the mode and
+`ekg-linkify-inline-tags'."
+  (with-temp-buffer
+    (insert (ekg-note-text note))
+    (goto-char (point-min))
+    (while (re-search-forward ekg--nonlink-tag-regexp nil t)
+      (let ((symbol (match-string 1))
+            (tag (match-string 2)))
+        (ekg--inline-tag-replace-with-org-link tag symbol)))
+    (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max)))))
+
+(defun ekg--populate-inline-tags (note)
+  "Populate tags found in text of NOTE.
+Tags are prefixed by a hash symbol or a symbol in
+`ekg-inline-custom-tag-completion-symbols', and are enclosed in
+brackets if they have more than one word. The tags are added to
+the end of the tag list."  
+  (let ((use-links (and (eq (ekg-note-mode note) 'org-mode) ekg-linkify-inline-tags)))
+    (with-temp-buffer
+      (insert (ekg-note-text note))
+      (goto-char (point-min))
+      (let ((tags))
+        (while (re-search-forward
+                ;; If the tag has a space or punctuation, it needs to be enclosed
+                ;; in brackets.
+                (if use-links
+                    (rx (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+                        ?\[ ?\[ "ekg-tag:"
+                        (group-n 2 (one-or-more (any word whitespace ?_ ?/ ?-)))
+                        ?\])
+                  ekg--nonlink-tag-regexp)
+                nil t)
+          (let ((symbol (match-string 1))
+                (tag (match-string 2)))
+            (push (if use-links tag (ekg--add-prefix-to-inline-tag tag symbol)) tags)))
+        (setf (ekg-note-tags note) (seq-uniq (append (ekg-note-tags note) (nreverse tags))))))))
+
+(defun ekg--inline-tag-completion ()
+  "Completion function for tags in notes.
+This will tags that are prefixed by a hash symbol. The tag will
+complete, and if the tag has a space, it will be enclosed in
+brackets."
+  (let* ((begin (progn
+                  (save-excursion
+                    (let ((pos (search-backward-regexp
+                        (rx (seq (group-n 1 (or space line-start))
+                                 (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))))
+                        (save-excursion
+                          (or (search-backward " " (line-beginning-position) t) (line-beginning-position))) t)))
+                      (when pos (+ pos (1+ (length (match-string 1)))))))))
+         (end (point))
+         (type (match-string-no-properties 2)))
+    (when (and begin (<= begin end))
+      (list begin end
+            (completion-table-dynamic (lambda (_)
+                                        (if (equal type "#")
+                                            (ekg-tags)
+                                          (let ((prefix (concat (assoc-default (string-to-char type) ekg-inline-custom-tag-completion-symbols) "/")))
+                                            (mapcar (lambda (tag) (substring-no-properties tag (length prefix)))
+                                                    (ekg-tags-with-prefix prefix))))))
+            :exclusive nil :exit-function #'ekg--inline-tag-exit))))
+
+(defun ekg--inline-tag-exit (completion finished)
+  "When a tag is completed, add brackets if there is a space."
+  (when finished
+    (save-excursion
+      (when (and
+             (search-backward completion (line-beginning-position) t)
+             (or (string-match-p " " completion) ekg-linkify-inline-tags))
+        (if (and ekg-linkify-inline-tags (eq major-mode 'org-mode))
+            (ekg--inline-tag-replace-with-org-link
+             completion
+             ;; We should be just after the symbol
+             (save-excursion (buffer-substring (- (point) 1) (point))))
+          (replace-match (format "[%s]" completion)))))))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.
@@ -1550,6 +1698,13 @@ tags)."
                                  (string-match-p (rx (literal substring)) tag)))
               (triples-subjects-of-type ekg-db 'tag)))
 
+(defun ekg-tags-with-prefix (prefix)
+  "Return all tags with PREFIX."
+  (ekg-connect)
+  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
+                                 (string-match-p (rx (seq line-start (literal prefix))) tag)))
+              (triples-subjects-of-type ekg-db 'tag)))
+
 (defun ekg-tags-display (tags)
   "Return string representing a group of TAGS."
   (mapconcat #'identity
@@ -2117,10 +2272,14 @@ as long as those notes aren't on resources that are interesting.
 ;; Links for org-mode
 (require 'ol)
 
+(defun ekg--link-for-tag (tag)
+  "Return a link for a single tag."
+  (format "ekg-tag:%s" tag))
+
 (defun ekg--store-any-tags-link ()
   "Store a link to an any-tags ekg page."
-  (when (eq major-mode 'ekg-notes-mode)
-    ;; TODO: Stop assuming every notes mode is an any tags.
+  (when (and (eq major-mode 'ekg-notes-mode) (> (length ekg-notes-tags) 1))
+    ;; TODO: Stop assuming every notes mode with multiple tags is an any tags.
     (org-link-store-props :type "ekg-tags-any" :link (concat "ekg-tags-any:" (format "%S" ekg-notes-tags))
                           :description (format "EKG page for any of the tags: %s"
                                                (mapconcat #'identity ekg-notes-tags ", ")))))
@@ -2151,9 +2310,23 @@ STAGS is a string version of a tag, as stored in a link."
                             :link (concat "ekg-note:" (format "%S" id))
                             :description (format "EKG note: %S" id)))))
 
+(defun ekg--store-tag-link ()
+  "Store a link to an any-tags ekg page."
+  (when (and (eq major-mode 'ekg-notes-mode) (= (length ekg-notes-tags) 1))
+    ;; TODO: Stop assuming every notes mode with multiple tags is an any tags.
+    (org-link-store-props :type "ekg-tags-any" :link (ekg--link-for-tag (car ekg-notes-tags))
+                          :description (format "EKG page for tag: %s" (car ekg-notes-tags)))))
+
+(defun ekg--open-tag-link (tag)
+  "Open a link to an ekg page given by TAG."
+  (ekg-show-notes-with-tag tag))
+
 (defun ekg--open-note-link (id)
   "Open a link to a note given its ID."
   (ekg-edit (ekg-get-note-with-id (read id))))
+
+(org-link-set-parameters "ekg-tag" :follow #'ekg--open-tag-link
+                         :store #'ekg--store-tag-link)
 
 (org-link-set-parameters "ekg-tags-any" :follow #'ekg--open-any-tags-link
                          :store #'ekg--store-any-tags-link)
