@@ -839,11 +839,11 @@ returns nil, the buffer will leave open."
             (response-fn ()
               (cadr (read-multiple-choice
                      "Buffer modified; kill anyway?"
-                     `((?y "yes//abort-unsaved" "abort unsaved changes")
-                       (?Y "Yes//abort-all" ,(if ekg-capture-mode
+                     `((?k "yes/abort-unsaved" "abort unsaved changes")
+                       (?K "Yes/abort-all" ,(if ekg-capture-mode
                                                  "abort this capture"
                                                "abort all edits"))
-                       (?s "yes//save" "save note and then kill it")
+                       (?s "yes/save" "save note and then kill it")
                        (?n "no" "exit without doing anything"))
                      nil nil (and (not use-short-answers)
                                   (not (use-dialog-box-p)))))))
@@ -854,9 +854,9 @@ returns nil, the buffer will leave open."
           ('abort-all (abort-all-fn))
           ('save (save-fn))
           ('query (pcase (response-fn)
-                    ("yes//abort-unsaved" t)
-                    ("Yes//abort-all" (abort-all-fn))
-                    ("yes//save" (save-fn))
+                    ("yes/abort-unsaved" t)
+                    ("Yes/abort-all" (abort-all-fn))
+                    ("yes/save" (save-fn))
                     ("no" nil))))
       t)))
 
