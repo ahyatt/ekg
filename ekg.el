@@ -908,7 +908,7 @@ the end of the tag list."
                 (if use-links
                     (rx (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
                         ?\[ ?\[ "ekg-tag:"
-                        (group-n 2 (one-or-more (any word ?_ ?/ ?-)))
+                        (group-n 2 (one-or-more (any word whitespace ?_ ?/ ?-)))
                         ?\])
                   ekg--nonlink-tag-regexp)
                 nil t)
