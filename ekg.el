@@ -878,7 +878,8 @@ Abort `\\[ekg-edit-abort]'.")))
   "Set some common local variables."
   (setq-local
    completion-at-point-functions
-   (append (list #'ekg--capf #'ekg--transclude-titled-note-completion)
+   (append (list #'ekg--capf #'ekg--transclude-titled-note-completion
+                 #'ekg--inline-tag-completion)
            completion-at-point-functions)
    kill-buffer-query-functions
    (append (list #'ekg-kill-buffer-query-function)
