@@ -1464,7 +1464,9 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                  (skip-chars-forward "[ \t]")
                  (point))))
     (list start end (completion-table-dynamic
-                     (lambda (_) (ekg-tags)))
+                     (lambda (_)
+                       (ekg--update-from-metadata)
+                       (seq-difference (ekg-tags) (ekg-note-tags ekg-note))))
           :exclusive t :exit-function #'ekg--tags-cap-exit)))
 
 (defun ekg-save-draft ()
