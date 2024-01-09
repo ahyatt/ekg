@@ -1081,12 +1081,18 @@ brackets."
       (when (and
              (search-backward completion (line-beginning-position) t)
              (or (string-match-p " " completion) ekg-linkify-inline-tags))
-        (if (and ekg-linkify-inline-tags (eq major-mode 'org-mode))
-            (ekg--inline-tag-replace-with-org-link
-             completion
-             ;; We should be just after the symbol
-             (save-excursion (buffer-substring (- (point) 1) (point))))
-          (replace-match (format "[%s]" completion)))))))
+        (let ((symbol
+               ;; We should be just after the symbol
+               (save-excursion (buffer-substring (- (point) 1) (point)))))
+         (if (and ekg-linkify-inline-tags (eq major-mode 'org-mode))
+            (replace-match
+             (org-link-make-string
+              (ekg--link-for-tag
+               (ekg--add-prefix-to-inline-tag
+                completion
+                symbol))
+              completion))
+          (replace-match (format "[%s]" completion))))))))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.
