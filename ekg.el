@@ -986,10 +986,12 @@ prefix."
                            ekg-inline-custom-tag-completion-symbols) "/" tag)))
 
 (defconst ekg--nonlink-tag-regexp
-  (rx (or (seq (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-               (group-n 2 (one-or-more (not (any ?\[ ?\" ?\. whitespace)))))
-          (seq (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-               (= 1 ?\[) (group-n 2 (one-or-more (any word ?_ ?- whitespace))) ?\])))
+  (rx (or (seq (or whitespace line-start ?: ?\( ?\[)
+               (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+               (group-n 2 (not ?+ )(one-or-more (not (any ?\[ ?\" ?\. whitespace)))))
+          (seq (or whitespace line-start ?: ?\( ?\[)
+               (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+               (= 1 ?\[) (group-n 2 (not ?+) (one-or-more (any word ?_ ?- whitespace))) ?\])))
   "Regexp for detecting inline tags that are not org links.")
 
 (defun ekg--inline-tag-replace-with-org-link (tag-identifier symbol)
