@@ -42,12 +42,6 @@
 ;;  (ekg-denote-export--get-duplicate-notes       
 ;;   (ekg-denote-export-notes-modified-since 0))) ;; 0 means all notes
 
-;; SQL Queries for triples DB.
-
-;; Description: Get details for a Note.
-;; Query: SELECT * FROM triples where subject=<Note-ID>
-;; Sample: SELECT * FROM triples where subject=33542002092
-
 (require 'ekg)
 (require 'denote)
 (require 'triples)
