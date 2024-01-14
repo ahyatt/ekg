@@ -26,9 +26,9 @@
 (require 'ekg-denote)
 (require 'cl-lib)
 
-(ert-deftest ekg-denote-test-export--sublist-kws ()
-  (should (equal '("kw1") (ekg-denote-export--sublist-kws '("kw1" "kw2" "kw 3") 4)))
-  (should (equal '("kw1" "kw2") (ekg-denote-export--sublist-kws '("kw1" "kw2" "kw 3") 7)))
-  (should (equal '("kw1" "kw2" "kw 3") (ekg-denote-export--sublist-kws '("kw1" "kw2" "kw 3") 12))))
+(ert-deftest ekg-denote-test-sublist-kws ()
+  (should (equal '("kw1") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 4)))
+  (should (equal '("kw1" "kw2") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 8)))
+  (should (equal '("kw1" "kw2" "kw 3") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 13))))
 
 
