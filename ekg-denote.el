@@ -39,7 +39,7 @@
 ;; Eval to remove duplicates
 ;;
 ;; (ekg-denote-export-fix-duplicate-notes
-;;  (ekg-denote-export--get-duplicate-notes       
+;;  (ekg-denote-export-get-duplicate-notes
 ;;   (ekg-denote-export-notes-modified-since 0))) ;; 0 means all notes
 
 (require 'ekg)
@@ -93,31 +93,26 @@
 	   (plist-put plist :last-import (floor (float-time time))))))
 
 (defun ekg-denote-triples-get-rows-modified-since (time)
-  "Return rows modified since TIME from ekg-db."
+  "Return rows modified since TIME."
   (let ((pred (if (= 0 since-time) :time-tracked/creation-time :time-tracked/modified-time)))
     (triples-db-select-pred-op ekg-db pred '> since-time)))
 
-(defun ekg-denote--notes-modified-since (time)
+(defun ekg-denote-notes-modified-since (time)
   "Return notes modified since TIME."
-  (mapcar #'ekg-get-note-with-id
-	  (mapcar #'car (ekg-denote-triples-get-rows-modified-since time))))
-
-(defun ekg-denote--triples-update-creation-time ())
-
-(defun ekg-denote-fix-duplicate-notes-creation-time ()
-  
-  )
+  (mapcar
+   #'ekg-get-note-with-id
+   (mapcar #'car (ekg-denote-triples-get-rows-modified-since time))))
 
 (defun ekg-denote-export-fix-duplicate-notes (notes)
   "Fix duplicate notes out of the given NOTES list of list containing note-id and creation-time."
-  (dolist (note (ekg-denote-export--get-duplicate-notes notes))
+  (dolist (note (ekg-denote-export-get-duplicate-notes notes))
     (let ((note-id (car note))
 	  (updated-creation-time (cdr note)))
       (message "Updating note:%s with creation-time:%s" note-id updated-creation-time)
       (triples-set-type ekg-db (ekg-note-id note) 'time-tracked
 			:creation-time updated-creation-time))))
 
-(defun ekg-denote-export--get-duplicate-notes (notes)
+(defun ekg-denote-export-get-duplicate-notes (notes)
   "Return list of duplicate notes' id and creation-time out of the given ekg NOTES."
   (let* ((creation-times '())
 	 (duplicates '()))
@@ -132,81 +127,114 @@
 	(push updated-creation-time creation-times)))
     duplicates))
 
-(defun ekg-denote--sublist-kws (kws combined-length)
+(defun ekg-denote-sublist-kws (kws combined-length)
   "Return the sublist for the given KWS list such that the
 length of combined KWS is not more than the given COMBINED-LENGTH."
-  (if (length< (denote--keywords-combine kws) combined-length) kws
-    (ekg-denote-export--sublist-kws (butlast kws) combined-length)))
+  (if (length< (denote-keywords-combine kws) combined-length) kws
+    (ekg-denote-sublist-kws (butlast kws) combined-length)))
 
-(cl-defstruct ekg-denote-file
+(cl-defstruct ekg-denote
   "Representation of denote file."
   id note-id text kws title path)
 
-(defun ekg-denote--file-create (note)
+(defun ekg-denote-create (note)
   "Create a new `ekg-denote-file' from given NOTE."
   (let* ((id (format-time-string denote-id-format (ekg-note-creation-time note)))
 	 (note-id (ekg-note-id note))
 	 (text (or (ekg-note-text note) ""))
 	 (ext (if (eq ekg-capture-default-mode 'org-mode) ".org" ".md"))
-	 (kws (ekg-denote--sublist-kws
+	 (kws (ekg-denote-sublist-kws
 	       (denote-sluggify-keywords (ekg-note-tags note)) ekg-denote-combined-kws-len))
 	 (ekg-title (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
 	 (title (string-limit (denote-sluggify ekg-title) ekg-denote-title-max-len))
 	 (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext)))
-    (make-ekg-denote-file :id id
-			  :note-id note-id
-			  :text text
-			  :kws kws
-			  :title title
-			  :path path)))
+    (make-ekg-denote :id id
+		     :note-id note-id
+		     :text text
+		     :kws kws
+		     :title title
+		     :path path)))
 
-(defun ekg-denote--file-rename-existing (file)
-  (let* ((id (ekg-denote-file-id file))
-	 (path (ekg-denote-file-path path))
+(defun ekg-denote-path-changed (existing-path path)
+  "Return t if EXISTING-PATH different from PATH; nil otherwise"
+  (and existing-path (not (string= existing-path path))))
+
+(defun ekg-denote-rename (denote)
+  "Rename given DENOTE if path has changed."
+  (let* ((id (ekg-denote-id denote))
+	 (path (ekg-denote-path denote))
 	 (existing-path (denote-get-path-by-id id)))
-    (when (and existing-path (not (string= existing-path path)))
+    (when (ekg-denote-path-changed existing-path path)
       (denote-rename-file-and-buffer existing-path path))))
 
-(defun ekg-denote--file-save (file)
-  "Save the given FILE to the disk."
-  (ekg-denote--file-rename-existing file)
-  (let ((path (ekg-denote-file-path file))
-	(text (ekg-denote-file-text file))
-	(title (ekg-denote-file-title file))
-	(kws (ekg-denote-file-kws file)))
+(defun ekg-denote-save (denote)
+  "Save the given DENOTE to the disk."
+  (let ((path (ekg-denote-path denote))
+	(text (ekg-denote-text denote))
+	(title (ekg-denote-title denote))
+	(kws (ekg-denote-kws denote)))
     (with-temp-file path (insert text))
     (denote-add-front-matter path title kws)))
 
-(defun ekg-denote--file-create-save (note)
-  "Create file from NOTE and then save it."
-  (ekg-denote--file-save (ekg-denote--file-create note)))
+(defun ekg-denote-has-dups (sequence)
+  "Return t if SEQUENCE has duplicates."
+  (not (equal sequence (seq-uniq sequence))))
 
-(defun ekg-denote--has-dups (sequence)
-  "Returns t if SEQUENCE has duplicates."
-  (not (eq sequence (seq-uniq sequence))))
+(defun ekg-denote-modified-time (denote)
+  "Return modified time for the FILE"
+  (time-convert
+   (file-attribute-modification-time
+    (file-attributes (ekg-denote-path denote))) 'integer))
 
-(defun ekg-denote--assert-notes-have-unique-creation-time (notes)
+(defun ekg-denote-modified-since (denote time)
+  "Return t if DENOTE was modified since TIME."
+  (time-less-p time (ekg-denote-modified-time denote)))
+
+(defun ekg-denote-read-file (filepath)
+  "Return contents of a FILEPATH."
+  (with-temp-buffer
+    (insert-file-contents filepath)
+    (buffer-string)))
+
+(defvar ekg-denote-section-header (make-string 7 ?>) "Section header used during merging.")
+(defvar ekg-denote-section-footer (make-string 7 ?=) "Section footer used during merging.")
+
+(defun ekg-denote-section (text)
+  "Return formatted TEXT with section header and footer"
+  (format "%s\n%s\n%s" ekg-denote-section-header text ekg-denote-section-footer))
+
+(defun ekg-denote-get-merged-text (path text)
+  "Return merged text of file PATH and given TEXT."
+  (if-let ((file-text (ekg-denote-read-file path)))
+      (mapconcat #'ekg-denote-section (list file-text text) "\n")
+    text))
+
+(defun ekg-denote-merge (denote)
+  "Merge contents of DENOTE with the existing file on the disk."
+  (let ((path (ekg-denote-path denote))
+	(text (ekg-denote-text denote)))
+    (setf (ekg-denote-text denote)
+	  (ekg-denote-get-merged-text path text))))
+
+(defun ekg-denote-assert-notes-have-unique-creation-time (notes)
   "Raise error if NOTES are using duplicate creation-time.
-
-Unique creation time is needed as denote uses creation-time to
-create note ID."
-  (when (ekg-denote--has-dups (mapcar #'ekg-note-creation-time notes))
+Denote uses creation-time as note ID and assume it to be unique."
+  (when (ekg-denote-has-dups (mapcar #'ekg-note-creation-time notes))
     (error "ekg-denote: Notes using same creation time.")))
 
 (defun ekg-denote-export ()
-  "Export the current ekg database to denote.
-
-Because this overwrites denote data, running this by itself
-should only be done if your denote is meant as a read-only copy
-of your ekg database. If you intend to add to your denote, or you
-have already have information in denote, you should run
-`ekg-denote-sync' instead."
+  "Export the current ekg database to denote."
   (interactive)
   (ekg-denote-connect)
   (let* ((last-export-time (ekg-denote-get-last-export))
-	 (notes (ekg-denote--notes-modified-since last-export-time)))
-    (ekg-denote--assert-notes-have-unique-creation-time notes)
-    (mapc #'ekg-denote--file-create-save notes)))
+	 (notes (ekg-denote-notes-modified-since last-export-time)))
+    (ekg-denote-assert-notes-have-unique-creation-time notes)
+    (cl-loop for note in notes do
+	     (let ((denote (ekg-denote-create note)))
+	       (when (ekg-denote-modified-since denote last-export-time)
+		 (ekg-denote-merge denote))
+	       (ekg-denote-rename denote)
+	       (ekg-denote-save denote)))))
 
 (defun ekg-denote-import ()
   "Import denote files to ekg database by creating/modifying ekg
@@ -217,7 +245,7 @@ notes, no deletions. Deletions has to be manually done."
   (let* ((last-import-time (ekg-denote-get-last-import))
 	 (files (cl-remove-if-not
 		 (lambda (file)
-		   (time-less-p last-import-time) (file-attribute-modification-time (file-attributes file)))
+		   (time-less-p last-import-time (file-attribute-modification-time (file-attributes file))))
 		 (denote-directory-text-only-files))))
     (message "ekg-denote-import: Importing files since last-import-time: %s" last-import-time)
     (cl-loop
