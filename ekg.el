@@ -1582,7 +1582,7 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
                (when (and (eq major-mode 'ekg-notes-mode)
                           (seq-intersection (ekg-note-tags note)
                                             ekg-notes-tags))
-                 (ewoc-enter-last ekg-notes-ewoc note))))))
+                 (ewoc-enter-first ekg-notes-ewoc note))))))
 
 (defun ekg-capture-abort ()
   "Abort the current capture.
@@ -1835,7 +1835,7 @@ NAME is displayed at the top of the buffer."
   (erase-buffer)
   (let ((ewoc (ewoc-create #'ekg-display-note-insert
                            (propertize name 'face 'ekg-notes-mode-title))))
-    (mapc (lambda (note) (ewoc-enter-last ewoc note)) (funcall notes-func))
+    (mapc (lambda (note) (ewoc-enter-first ewoc note)) (funcall notes-func))
     (ekg-notes-mode)
     (setq-local ekg-notes-ewoc ewoc
                 ekg-notes-fetch-notes-function notes-func
@@ -1980,7 +1980,10 @@ other views."
   (ekg-connect)
   (ekg-setup-notes-buffer
    "Drafts"
-   (lambda () (ekg-get-notes-with-tag ekg-draft-tag))
+   (lambda ()
+     (sort
+      (ekg-get-notes-with-tag ekg-draft-tag)
+      #'ekg-sort-by-creation-time))
    nil))
 
 ;;;###autoload
