@@ -1628,17 +1628,18 @@ a write if there is a problem."
 (defun ekg-clean-dup-tags ()
   "Fix all duplicate tags in the database."
   (ekg-connect)
-  (let ((cleaned))
-    (cl-loop for tag in (ekg-tags) do
-                          (let ((tagged (plist-get (triples-get-type ekg-db tag 'tag) :tagged)))
-                            (when (> (length tagged) (length (seq-uniq tagged)))
-                              ;; if there is duplication in the tag list then
-                              ;; something must have duplicate tags.
-                              (mapc #'ekg-fix-renamed-dup-tags tagged)
-                              (push tag cleaned))))
+  (let ((cleaned)
+        (tags (triples-subjects-of-type ekg-db 'tag)))
+    (cl-loop for tag in tags do
+             (let ((tagged (plist-get (triples-get-type ekg-db tag 'tag) :tagged)))
+               (when (> (length tagged) (length (seq-uniq tagged)))
+                 ;; if there is duplication in the tag list then
+                 ;; something must have duplicate tags.
+                 (mapc #'ekg-fix-renamed-dup-tags tagged)
+                 (push tag cleaned))))
     (when cleaned
-        (message "%d cleaned tags that were duplicated: %s" (length cleaned)
-                 (mapconcat #'identity cleaned ", ")))))
+      (message "%d cleaned tags that were duplicated: %s" (length cleaned)
+               (mapconcat #'identity cleaned ", ")))))
 
 (defun ekg-clean-leftover-types ()
   "Clean up any ekg types that are left over without ekg notes."
