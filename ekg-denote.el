@@ -94,14 +94,15 @@
 
 (defun ekg-denote-triples-get-rows-modified-since (time)
   "Return rows modified since TIME."
-  (let ((pred (if (= 0 since-time) :time-tracked/creation-time :time-tracked/modified-time)))
-    (triples-db-select-pred-op ekg-db pred '> since-time)))
+  (let ((pred (if (= 0 time) :time-tracked/creation-time :time-tracked/modified-time)))
+    (triples-db-select-pred-op ekg-db pred '> time)))
 
 (defun ekg-denote-notes-modified-since (time)
   "Return notes modified since TIME."
-  (mapcar
-   #'ekg-get-note-with-id
-   (mapcar #'car (ekg-denote-triples-get-rows-modified-since time))))
+  (prin1 (ekg-denote-triples-get-rows-modified-since time))
+  (remove nil (mapcar
+	       #'ekg-get-note-with-id
+	       (mapcar #'car (ekg-denote-triples-get-rows-modified-since time)))))
 
 (defun ekg-denote-export-fix-duplicate-notes (notes)
   "Fix duplicate notes out of the given NOTES list of list containing note-id and creation-time."
