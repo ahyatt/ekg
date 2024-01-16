@@ -822,7 +822,7 @@ not supplied, we use a default of 10."
     (format "%s%s" (substring-no-properties (ekg-note-text note) 0 display-length)
             (if (> (length (ekg-note-text note)) display-length) "…" ""))))
 
-(defun ekg-kill-buffer-query-function ()
+(defun ekg--kill-buffer-query-function ()
   "Action to take for unsaved ekg editable buffer on buffer kill.
 If final result returns t, the buffer will be killed. If it
 returns nil, the buffer will leave open."
@@ -860,7 +860,7 @@ returns nil, the buffer will leave open."
                     ("no" nil))))
       t)))
 
-(defun ekg-header-line-format ()
+(defun ekg--header-line-format ()
   "Header line format for the ekg capture or edit buffer."
   (if ekg-capture-mode
       (substitute-command-keys
@@ -882,9 +882,9 @@ Abort `\\[ekg-edit-abort]'.")))
                  #'ekg--inline-tag-completion)
            completion-at-point-functions)
    kill-buffer-query-functions
-   (append (list #'ekg-kill-buffer-query-function)
+   (append (list #'ekg--kill-buffer-query-function)
            kill-buffer-query-functions)
-   header-line-format (ekg-header-line-format)))
+   header-line-format (ekg--header-line-format)))
 
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
@@ -1520,7 +1520,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (when (y-or-n-p "Are you sure you want to abort all the edits?")
     (ekg-save-note ekg-note-orig-note)
     (setq-local kill-buffer-query-functions
-                (delq 'ekg-kill-buffer-query-function
+                (delq 'ekg--kill-buffer-query-function
                       kill-buffer-query-functions))
     (kill-buffer)))
 
@@ -1603,7 +1603,7 @@ Discarded notes will be moved to trash."
       (when (ekg-note-with-id-exists-p id)
         (ekg-note-delete-by-id id)))
     (setq-local kill-buffer-query-functions
-                (delq 'ekg-kill-buffer-query-function
+                (delq 'ekg--kill-buffer-query-function
                       kill-buffer-query-functions))
     (kill-buffer)))
 
