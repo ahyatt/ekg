@@ -901,16 +901,7 @@ This is used when capturing new notes.")
   :init-value nil
   :lighter " EKG-CAP"
   :interactive nil
-  (when ekg-capture-mode
-    (ekg--set-local-variables)
-    (setq-local completion-at-point-functions
-                (append (list #'ekg--capf #'ekg--transclude-titled-note-completion
-                              #'ekg--inline-tag-completion)
-                        completion-at-point-functions)
-                header-line-format
-                (substitute-command-keys
-                 "\\<ekg-capture-mode-map>Capture buffer.  Finish \
-`\\[ekg-capture-finalize]'."))))
+  (ekg--set-local-variables))
 
 (defvar ekg-capture-mode-hook nil
   "Hook for `ekg-capture-mode'.")
