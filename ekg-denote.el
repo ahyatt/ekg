@@ -177,10 +177,6 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
     (with-temp-file path (insert text))
     (denote-add-front-matter path title kws)))
 
-(defun ekg-denote-has-dups (sequence)
-  "Return t if SEQUENCE has duplicates."
-  (not (equal sequence (seq-uniq sequence))))
-
 (defun ekg-denote-modified-time (denote)
   "Return modified time for the FILE"
   (time-convert
@@ -217,9 +213,33 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
     (setf (ekg-denote-text denote)
 	  (ekg-denote-get-merged-text path text))))
 
+(defun ekg-denote-has-dups (sequence)
+  "Return t if SEQUENCE has duplicates."
+  (prin1 sequence)
+  (not (equal sequence (seq-uniq sequence))))
+
+(defun ekg-denote-note-print (note)
+  "Return string representation of NOTE, useful for printing."
+  (format "ekg-denote: Note ID: %s, Modified: %s, Created: %s, Tags: %s, Title: %s, Text: %s"
+	  (ekg-note-id note)
+	  (ekg-note-modified-time note)
+	  (ekg-note-creation-time note)
+	  (ekg-note-tags note)
+	  (plist-get (ekg-note-properties note) :titled/title)
+	  (truncate-string-to-width (ekg-note-text note) 100 nil nil "...")))
+
+(defun ekg-denote-assert-notes-have-creation-time (notes)
+  "Raise error if NOTES are missing creation-time.
+Denote uses creation-time as note ID."
+  (cl-loop for note in notes do
+	   (when (not (ekg-note-creation-time note))
+	     (message (ekg-denote-note-print note))
+	     (error (format "ekg-denote: note missing creation time.")))))
+
 (defun ekg-denote-assert-notes-have-unique-creation-time (notes)
   "Raise error if NOTES are using duplicate creation-time.
 Denote uses creation-time as note ID and assume it to be unique."
+  (prin1 (mapcar #'ekg-note-id notes))
   (when (ekg-denote-has-dups (mapcar #'ekg-note-creation-time notes))
     (error "ekg-denote: Notes using same creation time.")))
 
@@ -229,7 +249,8 @@ Denote uses creation-time as note ID and assume it to be unique."
   (ekg-denote-connect)
   (let* ((last-export-time (ekg-denote-get-last-export))
 	 (notes (ekg-denote-notes-modified-since last-export-time)))
-    (ekg-denote-assert-notes-have-unique-creation-time notes)
+    (and (ekg-denote-assert-notes-have-creation-time notes)
+	 (ekg-denote-assert-notes-have-unique-creation-time notes))
     (cl-loop for note in notes do
 	     (let ((denote (ekg-denote-create note)))
 	       (when (ekg-denote-modified-since denote last-export-time)
