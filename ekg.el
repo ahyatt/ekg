@@ -1494,9 +1494,9 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                                       (ekg-note-id note))
                                (and orig-id
                                     (equal orig-id (ekg-note-id (ewoc-data n)))))
-                       (ewoc-set-data n note))
-                     (setq n (ewoc-next ekg-notes-ewoc n))))
-                 (ewoc-refresh ekg-notes-ewoc))))))
+                       (ewoc-set-data n note)
+                       (ewoc-invalidate ekg-notes-ewoc n))
+                     (setq n (ewoc-next ekg-notes-ewoc n)))))))))
 
 (defun ekg-edit-finalize ()
   "Save the edited note and refresh where it appears."
