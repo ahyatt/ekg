@@ -754,11 +754,10 @@ FORMAT-STR controls how the time is formatted."
 
 (defun ekg-display-note-titled (note)
   "Return text of the title of NOTE."
-  (if-let (title (plist-get (ekg-note-properties note) :titled/title))
-      (propertize
-       (concat
-        (mapconcat #'identity (plist-get (ekg-note-properties note) :titled/title)
-                   ", ") "\n") 'face 'ekg-title) ""))
+  (if-let (titles (plist-get (ekg-note-properties note) :titled/title))
+      (propertize (concat (mapconcat #'identity titles ", ") "\n")
+                  'face 'ekg-title)
+    ""))
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID."
@@ -1878,18 +1877,14 @@ NAME is displayed at the top of the buffer."
 (defun ekg-notes-next ()
   "Move to the next note, if possible."
   (interactive nil ekg-notes-mode)
-  (if-let (next (ewoc-next ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc)))
-      (progn
-        (goto-char (ewoc-location next))
-        (ekg--note-highlight))))
+  (ewoc-goto-next ekg-notes-ewoc 1)
+  (ekg--note-highlight))
 
 (defun ekg-notes-previous ()
   "Move to the previous note, if possible."
   (interactive nil ekg-notes-mode)
-  (if-let (prev (ewoc-prev ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc)))
-      (progn
-        (goto-char (ewoc-location prev))
-        (ekg--note-highlight))))
+  (ewoc-goto-prev ekg-notes-ewoc 1)
+  (ekg--note-highlight))
 
 (defun ekg-notes-any-note-tags ()
   "Show notes with any of the tags in the current note."
