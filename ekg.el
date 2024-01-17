@@ -1577,10 +1577,14 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
   (let ((note ekg-note))
     (kill-buffer)
     (cl-loop for b being the buffers do
-           (with-current-buffer b
+             (with-current-buffer b
                (when (and (eq major-mode 'ekg-notes-mode)
-                          (seq-intersection (ekg-note-tags note)
-                                            ekg-notes-tags))
+                          (or (seq-intersection (ekg-note-tags note) ekg-notes-tags)
+                              (string-match-p
+                               (rx (or "latest modified" "latest created"))
+                               (substring-no-properties
+                                (ewoc--node-data
+                                 (ewoc--header ekg-notes-ewoc))))))
                  (ewoc-enter-first ekg-notes-ewoc note))))))
 
 (defun ekg-capture-abort ()
