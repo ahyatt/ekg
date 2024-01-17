@@ -1396,7 +1396,7 @@ If none can be found, return NIL."
     (let ((line (buffer-substring (line-beginning-position) (line-end-position))))
       (when (string-match
               (rx (seq (group (seq (one-or-more (not ?\:))))
-                       ?\: (one-or-more whitespace)
+                       ?\: (zero-or-more whitespace)
                        (group (zero-or-more anychar)))) line)
         (cons (substring-no-properties (match-string 1 line))
               (substring-no-properties (match-string 2 line)))))))
