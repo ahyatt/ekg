@@ -105,7 +105,7 @@
 	       (mapcar #'car (ekg-denote-triples-get-rows-modified-since time)))))
 
 (defun ekg-denote-export-fix-duplicate-notes (notes)
-  "Fix duplicate notes out of the given NOTES list of list containing note-id and creation-time."
+  "Fix duplicate notes out of the given NOTES."
   (dolist (note (ekg-denote-export-get-duplicate-notes notes))
     (let ((note-id (car note))
 	  (updated-creation-time (cdr note)))
