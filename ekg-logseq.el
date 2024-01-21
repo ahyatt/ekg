@@ -46,7 +46,9 @@
   :group 'ekg)
 
 (defcustom ekg-logseq-dir nil
-  "Parent directory for logseq files, contains pages and diary directories."
+  "Parent directory for logseq files.
+The directory is expected to contain pages and journals
+directories."
   :type 'directory
   :group 'ekg-logseq)
 
