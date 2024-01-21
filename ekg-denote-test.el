@@ -44,17 +44,28 @@
   "Unique creation time should not error."
   (let* ((time (time-convert (current-time) 'integer))
 	 (note1 (make-ekg-note :id "ID1" :creation-time time))
-	 (note2 (make-ekg-note :id "ID2" :creation-time (1+ time))) (notes (list note1 note2)))
+	 (note2 (make-ekg-note :id "ID2" :creation-time (1+ time)))
+	 (notes (list note1 note2)))
     (should-not (ekg-denote-assert-notes-have-unique-creation-time notes))))
 
-
-;; TODO: add a success test case.
 (ert-deftest ekg-denote-test-notes-have-creation-time ()
-  "Raise error if notes do not have creation-time"
+  "Test for creation time uniquess needed in notes."
+
+  ;; Raise error if creation time missing.
   (let* ((time (time-convert (current-time) 'integer))
 	 (note1 (make-ekg-note :id "ID1" :creation-time time))
 	 (note2 (make-ekg-note :id "ID2")))
-    (should-error (ekg-denote-assert-notes-have-creation-time notes))))
+    (should-error (ekg-denote-assert-notes-have-creation-time notes)))
+
+  ;; Raise no error when creation-time is not missing.
+  (let* ((time (time-convert (current-time) 'integer))
+	 (note1 (make-ekg-note :id "ID1" :creation-time time))
+	 (note2 (make-ekg-note :id "ID2" :creation-time time))
+	 (notes (list note1 note2)))
+    (should-not (ekg-denote-assert-notes-have-creation-time notes))))
+
+
+(ert-deftest ekg-denote-test-notes-have-creation-time)
 
 (ert-deftest ekg-denote-test-merge ()
   "Validate the merging of the text with the existing file."
