@@ -148,7 +148,8 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 	       (denote-sluggify-keywords (ekg-note-tags note)) ekg-denote-combined-kws-len))
 	 (ekg-title (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
 	 (title (string-limit (denote-sluggify ekg-title) ekg-denote-title-max-len))
-	 (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext)))
+	 (signature-slug "")
+	 (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext signature-slug)))
     (make-ekg-denote :id id
 		     :note-id note-id
 		     :text text
