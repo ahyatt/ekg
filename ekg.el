@@ -1437,7 +1437,9 @@ attempt the completion."
            (seq-difference (mapcar #'car ekg-metadata-parsers)
                            (seq-difference
                             (mapcar #'car (ekg--metadata-fields nil))
-                            (mapcar #'car ekg-property-multivalue-type)))))))
+                            (mapcar #'car ekg-property-multivalue-type)))))
+        :exclusive t :exit-function (lambda (_completion finished)
+                                      (when finished (insert ": ")))))
 
 (defun ekg--tags-cap-exit (completion finished)
   "Cleanup after completion at point happened in a tag.
