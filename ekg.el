@@ -1842,7 +1842,7 @@ NAME is displayed at the top of the buffer."
   (erase-buffer)
   (let ((ewoc (ewoc-create #'ekg-display-note-insert
                            (propertize name 'face 'ekg-notes-mode-title))))
-    (mapc (lambda (note) (ewoc-enter-first ewoc note)) (funcall notes-func))
+    (mapc (lambda (note) (ewoc-enter-last ewoc note)) (funcall notes-func))
     (ekg-notes-mode)
     (setq-local ekg-notes-ewoc ewoc
                 ekg-notes-fetch-notes-function notes-func
