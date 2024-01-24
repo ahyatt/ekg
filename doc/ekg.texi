@@ -549,17 +549,22 @@ entire tag. It is acceptable to finish the completion with a tag that is not
 currently defined, as the tag will be added when the note is saved. However, if
 the tag contains spaces, it will not be "completed" by the system, meaning it
 will not automatically have brackets around it. In this case, you need to
-manually ensure that brackets are enclosing the tag. There is no functionality
-to remove inline tags that are deleted in the tag section. If an inline tag is
-not deleted in the note text, the tag will be re-added. There are other
-customizable tag symbols available, indicating different prefixes. By default,
-in addition to the "#" symbol (representing a tag with that name), there is also
-the "@@" symbol for tags prefixed with "person/", and the "!" symbol for tags
-prefixed with "idea/". For example, if a note text contains "#opensource @@rms",
-the tags and links added would be for the "opensource" tag and the "person/rms"
-tag. You can customize these symbols by modifying
-@samp{ekg-inline-custom-tag-completion-symbols}. Another type of completion is for
-inline commands, the ">t" completion, mentioned in the @ref{Inline commands}.
+manually ensure that brackets are enclosing the tag. The detection of plaintext
+tags of various types can be turned off by setting
+@samp{ekg-inline-populate-inline-text-tags} to @samp{nil}.
+
+There is no functionality to remove inline tags that are deleted in the tag
+section. If an inline tag is not deleted in the note text, the tag will be
+re-added. There are other customizable tag symbols available, indicating
+different prefixes. By default, in addition to the "#" symbol (representing a
+tag with that name), there is also the "@@" symbol for tags prefixed with
+"person/", and the "!" symbol for tags prefixed with "idea/". For example, if a
+note text contains "#opensource @@rms", the tags and links added would be for the
+"opensource" tag and the "person/rms" tag. You can customize these symbols by
+modifying @samp{ekg-inline-custom-tag-completion-symbols}.
+
+Another type of completion is for inline commands, the ">t" completion,
+mentioned in the @ref{Inline commands}.
 
 The metadata section above the notes often can be problematic for some commands,
 especially org commands. Because of this, before commands are executed, we check

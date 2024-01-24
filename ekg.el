@@ -176,6 +176,15 @@ and should not appear here."
   :type '(alist :key-type character :value-type string)
   :group 'ekg)
 
+(defcustom ekg-inline-populate-inline-text-tags t
+  "Whether to detect and link inline tags out of text tags.
+This happens when saving notes, which, if this is non-nil, will
+look for various kinds of tags in the text, with the `#' or
+prefixes in `ekg-inline-custom-tag-completion-symbols', and make
+links out of them, as well as adding them to the note text."
+  :type 'boolean
+  :group 'ekg)
+
 (defcustom ekg-command-regex-for-narrowing '("^org-")
   "A list of regex for commands which need a narrowed buffer."
   :type '(repeat string)
@@ -1062,15 +1071,19 @@ the note is saved.
 
 This will always run, so don't call without making sure it is
 appropriate first based on the mode and
-`ekg-linkify-inline-tags'."
-  (with-temp-buffer
-    (insert (ekg-note-text note))
-    (goto-char (point-min))
-    (while (re-search-forward ekg--nonlink-tag-regexp nil t)
-      (let ((symbol (match-string 1))
-            (tag (match-string 2)))
-        (ekg--inline-tag-replace-with-org-link tag symbol)))
-    (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max)))))
+`ekg-linkify-inline-tags'.
+
+This will only run if `ekg-inline-populate-inline-text-tags' is
+non-nil."
+  (when ekg-inline-populate-inline-text-tags
+    (with-temp-buffer
+      (insert (ekg-note-text note))
+      (goto-char (point-min))
+      (while (re-search-forward ekg--nonlink-tag-regexp nil t)
+        (let ((symbol (match-string 1))
+              (tag (match-string 2)))
+          (ekg--inline-tag-replace-with-org-link tag symbol)))
+      (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max))))))
 
 (defun ekg--populate-inline-tags (note)
   "Populate tags found in text of NOTE.
