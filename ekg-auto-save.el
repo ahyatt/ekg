@@ -72,12 +72,12 @@ will be called once in each ekg capture/edit buffer when the time
 comes to auto-save. A buffer will be saved only if the predicate
 function returns a non-nil value.
 
-For example, you could add this to your Init file to avoid saving
-current buffer while in `corfu' completion:
+For example, if you need to disable auto-save during `corfu'
+completion:
 
     (setq ekg-auto-save-predicate
           (lambda ()
-            (not (boundp \\='corfu--total))))
+            (null completion-in-region-mode)))
 
 Or, if you are right in the middle of a transient window, you
 do not want the buffer to be saved yet:

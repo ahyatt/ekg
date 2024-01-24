@@ -754,11 +754,10 @@ FORMAT-STR controls how the time is formatted."
 
 (defun ekg-display-note-titled (note)
   "Return text of the title of NOTE."
-  (if-let (title (plist-get (ekg-note-properties note) :titled/title))
-      (propertize
-       (concat
-        (mapconcat #'identity (plist-get (ekg-note-properties note) :titled/title)
-                   ", ") "\n") 'face 'ekg-title) ""))
+  (if-let (titles (plist-get (ekg-note-properties note) :titled/title))
+      (propertize (concat (mapconcat #'identity titles ", ") "\n")
+                  'face 'ekg-title)
+    ""))
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID."
@@ -822,7 +821,7 @@ not supplied, we use a default of 10."
     (format "%s%s" (substring-no-properties (ekg-note-text note) 0 display-length)
             (if (> (length (ekg-note-text note)) display-length) "…" ""))))
 
-(defun ekg-kill-buffer-query-function ()
+(defun ekg--kill-buffer-query-function ()
   "Action to take for unsaved ekg editable buffer on buffer kill.
 If final result returns t, the buffer will be killed. If it
 returns nil, the buffer will leave open."
@@ -860,7 +859,7 @@ returns nil, the buffer will leave open."
                     ("no" nil))))
       t)))
 
-(defun ekg-header-line-format ()
+(defun ekg--header-line-format ()
   "Header line format for the ekg capture or edit buffer."
   (if ekg-capture-mode
       (substitute-command-keys
@@ -882,9 +881,9 @@ Abort `\\[ekg-edit-abort]'.")))
                  #'ekg--inline-tag-completion)
            completion-at-point-functions)
    kill-buffer-query-functions
-   (append (list #'ekg-kill-buffer-query-function)
+   (append (list #'ekg--kill-buffer-query-function)
            kill-buffer-query-functions)
-   header-line-format (ekg-header-line-format)))
+   header-line-format (ekg--header-line-format)))
 
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
@@ -901,16 +900,7 @@ This is used when capturing new notes.")
   :init-value nil
   :lighter " EKG-CAP"
   :interactive nil
-  (when ekg-capture-mode
-    (ekg--set-local-variables)
-    (setq-local completion-at-point-functions
-                (append (list #'ekg--capf #'ekg--transclude-titled-note-completion
-                              #'ekg--inline-tag-completion)
-                        completion-at-point-functions)
-                header-line-format
-                (substitute-command-keys
-                 "\\<ekg-capture-mode-map>Capture buffer.  Finish \
-`\\[ekg-capture-finalize]'."))))
+  (ekg--set-local-variables))
 
 (defvar ekg-capture-mode-hook nil
   "Hook for `ekg-capture-mode'.")
@@ -1406,7 +1396,7 @@ If none can be found, return NIL."
     (let ((line (buffer-substring (line-beginning-position) (line-end-position))))
       (when (string-match
               (rx (seq (group (seq (one-or-more (not ?\:))))
-                       ?\: (one-or-more whitespace)
+                       ?\: (zero-or-more whitespace)
                        (group (zero-or-more anychar)))) line)
         (cons (substring-no-properties (match-string 1 line))
               (substring-no-properties (match-string 2 line)))))))
@@ -1447,7 +1437,9 @@ attempt the completion."
            (seq-difference (mapcar #'car ekg-metadata-parsers)
                            (seq-difference
                             (mapcar #'car (ekg--metadata-fields nil))
-                            (mapcar #'car ekg-property-multivalue-type)))))))
+                            (mapcar #'car ekg-property-multivalue-type)))))
+        :exclusive t :exit-function (lambda (_completion finished)
+                                      (when finished (insert ": ")))))
 
 (defun ekg--tags-cap-exit (completion finished)
   "Cleanup after completion at point happened in a tag.
@@ -1474,7 +1466,9 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                  (skip-chars-forward "[ \t]")
                  (point))))
     (list start end (completion-table-dynamic
-                     (lambda (_) (ekg-tags)))
+                     (lambda (_)
+                       (ekg--update-from-metadata)
+                       (seq-difference (ekg-tags) (ekg-note-tags ekg-note))))
           :exclusive t :exit-function #'ekg--tags-cap-exit)))
 
 (defun ekg-save-draft ()
@@ -1504,9 +1498,9 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                                       (ekg-note-id note))
                                (and orig-id
                                     (equal orig-id (ekg-note-id (ewoc-data n)))))
-                       (ewoc-set-data n note))
-                     (setq n (ewoc-next ekg-notes-ewoc n))))
-                 (ewoc-refresh ekg-notes-ewoc))))))
+                       (ewoc-set-data n note)
+                       (ewoc-invalidate ekg-notes-ewoc n))
+                     (setq n (ewoc-next ekg-notes-ewoc n)))))))))
 
 (defun ekg-edit-finalize ()
   "Save the edited note and refresh where it appears."
@@ -1520,7 +1514,7 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (when (y-or-n-p "Are you sure you want to abort all the edits?")
     (ekg-save-note ekg-note-orig-note)
     (setq-local kill-buffer-query-functions
-                (delq 'ekg-kill-buffer-query-function
+                (delq 'ekg--kill-buffer-query-function
                       kill-buffer-query-functions))
     (kill-buffer)))
 
@@ -1587,11 +1581,15 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
   (let ((note ekg-note))
     (kill-buffer)
     (cl-loop for b being the buffers do
-           (with-current-buffer b
+             (with-current-buffer b
                (when (and (eq major-mode 'ekg-notes-mode)
-                          (seq-intersection (ekg-note-tags note)
-                                            ekg-notes-tags))
-                 (ewoc-enter-last ekg-notes-ewoc note))))))
+                          (or (seq-intersection (ekg-note-tags note) ekg-notes-tags)
+                              (string-match-p
+                               (rx (or "latest modified" "latest created"))
+                               (substring-no-properties
+                                (ewoc--node-data
+                                 (ewoc--header ekg-notes-ewoc))))))
+                 (ewoc-enter-first ekg-notes-ewoc note))))))
 
 (defun ekg-capture-abort ()
   "Abort the current capture.
@@ -1603,7 +1601,7 @@ Discarded notes will be moved to trash."
       (when (ekg-note-with-id-exists-p id)
         (ekg-note-delete-by-id id)))
     (setq-local kill-buffer-query-functions
-                (delq 'ekg-kill-buffer-query-function
+                (delq 'ekg--kill-buffer-query-function
                       kill-buffer-query-functions))
     (kill-buffer)))
 
@@ -1637,17 +1635,18 @@ a write if there is a problem."
 (defun ekg-clean-dup-tags ()
   "Fix all duplicate tags in the database."
   (ekg-connect)
-  (let ((cleaned))
-    (cl-loop for tag in (ekg-tags) do
-                          (let ((tagged (plist-get (triples-get-type ekg-db tag 'tag) :tagged)))
-                            (when (> (length tagged) (length (seq-uniq tagged)))
-                              ;; if there is duplication in the tag list then
-                              ;; something must have duplicate tags.
-                              (mapc #'ekg-fix-renamed-dup-tags tagged)
-                              (push tag cleaned))))
+  (let ((cleaned)
+        (tags (triples-subjects-of-type ekg-db 'tag)))
+    (cl-loop for tag in tags do
+             (let ((tagged (plist-get (triples-get-type ekg-db tag 'tag) :tagged)))
+               (when (> (length tagged) (length (seq-uniq tagged)))
+                 ;; if there is duplication in the tag list then
+                 ;; something must have duplicate tags.
+                 (mapc #'ekg-fix-renamed-dup-tags tagged)
+                 (push tag cleaned))))
     (when cleaned
-        (message "%d cleaned tags that were duplicated: %s" (length cleaned)
-                 (mapconcat #'identity cleaned ", ")))))
+      (message "%d cleaned tags that were duplicated: %s" (length cleaned)
+               (mapconcat #'identity cleaned ", ")))))
 
 (defun ekg-clean-leftover-types ()
   "Clean up any ekg types that are left over without ekg notes."
@@ -1886,18 +1885,14 @@ NAME is displayed at the top of the buffer."
 (defun ekg-notes-next ()
   "Move to the next note, if possible."
   (interactive nil ekg-notes-mode)
-  (if-let (next (ewoc-next ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc)))
-      (progn
-        (goto-char (ewoc-location next))
-        (ekg--note-highlight))))
+  (ewoc-goto-next ekg-notes-ewoc 1)
+  (ekg--note-highlight))
 
 (defun ekg-notes-previous ()
   "Move to the previous note, if possible."
   (interactive nil ekg-notes-mode)
-  (if-let (prev (ewoc-prev ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc)))
-      (progn
-        (goto-char (ewoc-location prev))
-        (ekg--note-highlight))))
+  (ewoc-goto-prev ekg-notes-ewoc 1)
+  (ekg--note-highlight))
 
 (defun ekg-notes-any-note-tags ()
   "Show notes with any of the tags in the current note."
@@ -1988,7 +1983,10 @@ other views."
   (ekg-connect)
   (ekg-setup-notes-buffer
    "Drafts"
-   (lambda () (ekg-get-notes-with-tag ekg-draft-tag))
+   (lambda ()
+     (sort
+      (ekg-get-notes-with-tag ekg-draft-tag)
+      #'ekg-sort-by-creation-time))
    nil))
 
 ;;;###autoload
