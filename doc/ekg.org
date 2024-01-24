@@ -252,30 +252,28 @@ sure its a mode that makes sense for notes. The default mode is configured in
 ~ekg-capture-default-mode~, but can be changed when capturing with the command
 =ekg-change-mode=.
 
-The note text offers various completions. The most common completion is to type
-tags inline when writing notes, which will be added to the note upon save (this
-will happen whether completion is used or not). The tag completion is triggered
-by a "#" symbol. In =org-mode=, if =ekg-linkify-inline-tags= is non-nil (which it is
-by default), the tag will be turned into an org link to the tag. Otherwise, it
-will be in plain text, and if the tag has a space, it will be enclosed in
-brackets to delineate the entire tag. Finishing the completion with a tag that
-isn't a current tag is fine, since the tag will be added on save. However, if
-the tag has a space, it won't be "completed" by the completion system, which
-means it won't automatically get the brackets around it — so in that case, you
-must ensure that brackets are enclosing your tag yourself. There is no effort to
-clean up inline tags that are deleted in the tag section, and if an inline tag
-is not deleted in the note text, the tag contained will be re-added. Other tag
-symbols are available and customizable, and indicate different prefixes. To
-start with, by default, there is not only the "#" symbol (meaning just a tag
-with that name), but also the "@" symbol which indicates tags prefixed with
-"person/", and a "!" indicating tags prefixed with "idea/". For example, if a
-note text contains "#opensource @rms", the tags added (and links created) would
-be to the "opensource" tag and the "person/rms" tag. These can be customized by
-changing =ekg-inline-custom-tag-completion-symbols= to add or remove your own
-custom symbols.
-
-Another type of completion is for inline commands, the ">t" completion,
-mentioned in the [[#inlines][Inline commands]].
+The note text provides various options for completions. The most common
+completion is typing tags inline while writing notes. These tags will be added
+to the note automatically upon saving, regardless of whether completion is used
+or not. The tag completion is triggered by the "#" symbol. In =org-mode=, if
+=ekg-linkify-inline-tags= is set to non-nil (which is the default), the tag will
+be turned into an org link to the tag. Otherwise, it will remain as plain text.
+If the tag contains spaces, it will be enclosed in brackets to indicate the
+entire tag. It is acceptable to finish the completion with a tag that is not
+currently defined, as the tag will be added when the note is saved. However, if
+the tag contains spaces, it will not be "completed" by the system, meaning it
+will not automatically have brackets around it. In this case, you need to
+manually ensure that brackets are enclosing the tag. There is no functionality
+to remove inline tags that are deleted in the tag section. If an inline tag is
+not deleted in the note text, the tag will be re-added. There are other
+customizable tag symbols available, indicating different prefixes. By default,
+in addition to the "#" symbol (representing a tag with that name), there is also
+the "@" symbol for tags prefixed with "person/", and the "!" symbol for tags
+prefixed with "idea/". For example, if a note text contains "#opensource @rms",
+the tags and links added would be for the "opensource" tag and the "person/rms"
+tag. You can customize these symbols by modifying
+=ekg-inline-custom-tag-completion-symbols=. Another type of completion is for
+inline commands, the ">t" completion, mentioned in the [[#inlines][Inline commands]].
 ** Drafts
 Notes can be saved midway through editing, both for capturing and editing notes.
 The normal buffer-save keybinding (typically C-x C-s) will save a draft.  A
