@@ -233,6 +233,8 @@ Improve display regenerating embeddings via @samp{ekg-embedding-generate-all}.
 Change multi-title note display from using newlines to commas
 @item
 Made deleting titles and resources possible, and properly skipped empty properties for multi-line propeties.
+@item
+Handle backup errors better, warning and proceding if not a forced backup, erroring out with a better message if forced.
 @end itemize
 
 @node Version 043

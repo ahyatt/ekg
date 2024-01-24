@@ -399,6 +399,25 @@ the text and may be after trailing whitespace."
   (when (or (equal (ekg-note-id note) "") (not (ekg-note-id note)))
     (setf (ekg-note-id note) (ekg--generate-id))))
 
+(defun ekg-backup (&optional force)
+  "Backup the database.
+
+FORCE, if non-nil, will make sure a backup is stored, regardless
+of the settings of max-backups. Otherwise, a backup is just made
+if it is time for one, according to the settings in
+`ekg-default-num-backups' and `ekg-default-backups-strategy'."
+  (condition-case err
+      (if force
+          (triples-backup ekg-db ekg-db-file most-positive-fixnum)
+        (triples-backups-maybe-backup ekg-db (ekg-db-file)))
+    (file-missing
+     (let ((msg "Could not backup database, perhaps because of missing sqlite3 executable. Ensure the executable exists at the location specified by `triples-sqlite-executable' or `emacsql-sqlite-executable': %s"))
+       ;; If we are forcing the backup, this error probably is serious and
+       ;; should be investigated.
+       (if force
+           (error msg (cdr err))
+         (lwarn :error 'ekg msg (cdr err)))))))
+
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
   (ekg-connect)
@@ -446,7 +465,7 @@ the text and may be after trailing whitespace."
       (mapc (lambda (type) (triples-remove-type ekg-db (ekg-note-id note) type))
             (seq-difference empty-types nonempty-types)))
     (run-hook-with-args 'ekg-note-save-hook note))
-  (triples-backups-maybe-backup ekg-db (ekg-db-file))
+  (ekg-backup)
   (set-buffer-modified-p nil))
 
 (defun ekg-get-notes-with-tags (tags)
@@ -551,7 +570,7 @@ then the note is really deleted."
                                     (list (ekg-mark-trashed tag))))
                     (ekg-note-tags note))))
     (ekg-save-note note))
-  (triples-backups-maybe-backup ekg-db (ekg-db-file)))
+  (ekg-backup))
 
 (defun ekg-content-tag-p (tag)
   "Return non-nil if TAG represents user content.
@@ -1688,7 +1707,7 @@ FROM-TAG will use TO-TAG."
       (triples-remove-type ekg-db from-tag 'tag)
       (triples-set-type ekg-db to-tag 'tag)
       (mapc #'ekg-fix-renamed-dup-tags old-tag-ids)))
-  (triples-backups-maybe-backup ekg-db (ekg-db-file)))
+  (ekg-backup))
 
 (defun ekg-tags ()
   "Return a list of all tags.
@@ -2180,7 +2199,7 @@ the database after the upgrade, in list form."
     (ekg-connect)
     ;; In the future, we can separate out the backup from the upgrades.
     (when need-triple-0.3-upgrade
-      (triples-backup ekg-db ekg-db-file most-positive-fixnum)
+      (ekg-backup t)
       ;; This converts all string integers in subjects and objects to real integers.
       (triples-upgrade-to-0.3 ekg-db)
       ;; The above may cause issues if there tags that are integers, since tags have
@@ -2236,7 +2255,7 @@ as long as those notes aren't on resources that are interesting.
 "
   (interactive)
   (ekg-connect)
-  (triples-backup ekg-db ekg-db-file most-positive-fixnum)
+  (ekg-backup t)
   (ekg-remove-unused-tags)
   (cl-loop for id in (triples-subjects-of-type ekg-db 'text) do
            (let ((note (ekg-get-note-with-id id))

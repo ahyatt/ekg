@@ -84,6 +84,7 @@ triples library is already installed.
 - Improve display regenerating embeddings via =ekg-embedding-generate-all=.
 - Change multi-title note display from using newlines to commas
 - Made deleting titles and resources possible, and properly skipped empty properties for multi-line propeties.
+- Handle backup errors better, warning and proceding if not a forced backup, erroring out with a better message if forced.
 ** Version 0.4.3
 - Added autoloads
 - Fixed issue that could occur when saving with malformed buffers.
