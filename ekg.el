@@ -176,6 +176,11 @@ and should not appear here."
   :type '(alist :key-type character :value-type string)
   :group 'ekg)
 
+(defcustom ekg-command-regex-for-narrowing '("^org-")
+  "A list of regex for commands which need a narrowed buffer."
+  :type '(repeat string)
+  :group 'ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -892,6 +897,30 @@ Finish `\\[ekg-edit-finalize]'  \
 Save `\\[ekg-edit-save]'  \
 Abort `\\[ekg-edit-abort]'.")))
 
+(defun ekg-narrow-for-command ()
+  "Narrow buffer if the command requires it.
+This is based on `ekg-command-regex-for-narrowing'."
+  (condition-case err
+      (when (and
+             (not ekg-note-auto-narrowed)
+             (seq-some
+              (lambda (s) (string-match-p s (symbol-name this-command)))
+              ekg-command-regex-for-narrowing))
+        (narrow-to-region (1+ (overlay-end (ekg--metadata-overlay)))
+                          (point-max))
+        (setq ekg-note-auto-narrowed t))
+    (error (lwarn :error 'ekg "Error narrowing for command: %s"
+                  (error-message-string err)))))
+
+(defun ekg-unnarrow-for-command ()
+  "Unnarrow the buffer if it was automatically narrowed."
+  (condition-case err
+      (when ekg-note-auto-narrowed
+        (widen)
+        (setq ekg-note-auto-narrowed nil))
+    (error (lwarn :error 'ekg "Error unnarrowing for command: %s"
+                  (error-message-string err)))))
+
 (defun ekg--set-local-variables ()
   "Set some common local variables."
   (setq-local
@@ -902,7 +931,9 @@ Abort `\\[ekg-edit-abort]'.")))
    kill-buffer-query-functions
    (append (list #'ekg--kill-buffer-query-function)
            kill-buffer-query-functions)
-   header-line-format (ekg--header-line-format)))
+   header-line-format (ekg--header-line-format))
+  (add-hook 'pre-command-hook #'ekg-narrow-for-command nil t)
+  (add-hook 'post-command-hook #'ekg-unnarrow-for-command nil t))
 
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
@@ -952,6 +983,13 @@ This is needed to identify references to refresh when the subject is changed.")
 
 (defvar-local ekg-note-orig-fields nil
   "Holds the fields that were populated when the note was loaded.")
+
+(defvar-local ekg-note-auto-narrowed nil
+  "If we are currently in an auto-narrowed state.
+This happens when a command is run that likely needs to see a
+narrowed part of the buffer. It is only non-nil when running a
+command that needs to be narrowed for it, and it is needed so we
+can keep track of whether we need to unnarrow or not.")
 
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))

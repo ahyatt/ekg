@@ -75,6 +75,7 @@ triples library is already installed.
 * Changelog
 ** Version 0.5
 - Add tags while writing the body of notes by completing with "#".  See [[#note-text][Note text]] section for details.
+- Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See [[#note-text][Note text]] section for details.
 - =ekg-auto-save=, a new module by [[https://github.com/qingshuizheng][Qingshui Zheng]].
 - Added canceling a note as an actual command, also by  [[https://github.com/qingshuizheng][Qingshui Zheng]].
 - Fix issue with trashing notes with tags that are partially trashed.
@@ -274,6 +275,13 @@ the tags and links added would be for the "opensource" tag and the "person/rms"
 tag. You can customize these symbols by modifying
 =ekg-inline-custom-tag-completion-symbols=. Another type of completion is for
 inline commands, the ">t" completion, mentioned in the [[#inlines][Inline commands]].
+
+The metadata section above the notes often can be problematic for some commands,
+especially org commands. Because of this, before commands are executed, we check
+the command name against the =ekg-command-regex-for-narrowing=, and if there is a
+match to one of the regexes, we narrow to the note section just when the command
+is running. It defaults to all org commands, but if there are any weird
+behaviors caused by the metadata section, consider customizing this variable.
 ** Drafts
 Notes can be saved midway through editing, both for capturing and editing notes.
 The normal buffer-save keybinding (typically C-x C-s) will save a draft.  A

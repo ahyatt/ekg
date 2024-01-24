@@ -216,6 +216,8 @@ triples library is already installed.
 @item
 Add tags while writing the body of notes by completing with "#".  See @ref{Note text} section for details.
 @item
+Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See @ref{Note text} section for details.
+@item
 @samp{ekg-auto-save}, a new module by @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
 @item
 Added canceling a note as an actual command, also by  @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
@@ -558,6 +560,13 @@ the tags and links added would be for the "opensource" tag and the "person/rms"
 tag. You can customize these symbols by modifying
 @samp{ekg-inline-custom-tag-completion-symbols}. Another type of completion is for
 inline commands, the ">t" completion, mentioned in the @ref{Inline commands}.
+
+The metadata section above the notes often can be problematic for some commands,
+especially org commands. Because of this, before commands are executed, we check
+the command name against the @samp{ekg-command-regex-for-narrowing}, and if there is a
+match to one of the regexes, we narrow to the note section just when the command
+is running. It defaults to all org commands, but if there are any weird
+behaviors caused by the metadata section, consider customizing this variable.
 
 @node Drafts
 @section Drafts
