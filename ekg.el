@@ -1656,7 +1656,7 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
                (when (and (eq major-mode 'ekg-notes-mode)
                           (or (seq-intersection (ekg-note-tags note) ekg-notes-tags)
                               (string-match-p
-                               (rx (or "latest modified" "latest created"))
+                               (rx (or "latest modified" "latest captured"))
                                (substring-no-properties
                                 (ewoc--node-data
                                  (ewoc--header ekg-notes-ewoc))))))
