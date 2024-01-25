@@ -41,6 +41,7 @@
 (declare-function org-open-at-point "org")
 (declare-function org-redisplay-inline-images "org")
 (declare-function org-activate-links "org")
+(declare-function org-in-regexp "org")
 
 ;;; Code:
 
@@ -1042,12 +1043,9 @@ prefix."
                            ekg-inline-custom-tag-completion-symbols) "/" tag)))
 
 (defconst ekg--nonlink-tag-regexp
-  (rx (or (seq (or whitespace line-start ?: ?\( ?\[)
+  (rx (seq (or whitespace line-start ?: ?\( ?\[)
                (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-               (group-n 2 (not ?+ )(one-or-more (not (any ?\[ ?\" ?\. whitespace)))))
-          (seq (or whitespace line-start ?: ?\( ?\[)
-               (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-               (= 1 ?\[) (group-n 2 (not ?+) (one-or-more (any word ?_ ?- whitespace))) ?\])))
+               (= 1 ?\[) (group-n 2 (not ?+) (one-or-more (any word ?_ ?- whitespace))) ?\]))
   "Regexp for detecting inline tags that are not org links.")
 
 (defun ekg--inline-tag-replace-with-org-link (tag-identifier symbol)
@@ -1080,9 +1078,14 @@ non-nil."
       (insert (ekg-note-text note))
       (goto-char (point-min))
       (while (re-search-forward ekg--nonlink-tag-regexp nil t)
-        (let ((symbol (match-string 1))
+        (unless (and (eq 'org-mode (ekg-note-mode note))
+                     ;; This should result in us detecting any blocks.
+                     (save-match-data
+                       (defvar org-block-regexp)
+                       (org-in-regexp org-block-regexp)))
+            (let ((symbol (match-string 1))
               (tag (match-string 2)))
-          (ekg--inline-tag-replace-with-org-link tag symbol)))
+          (ekg--inline-tag-replace-with-org-link tag symbol))))
       (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max))))))
 
 (defun ekg--populate-inline-tags (note)
@@ -1137,12 +1140,10 @@ brackets."
             :exclusive nil :exit-function #'ekg--inline-tag-exit))))
 
 (defun ekg--inline-tag-exit (completion finished)
-  "When a tag is completed, add brackets if there is a space."
+  "When a tag is completed, add brackets."
   (when finished
     (save-excursion
-      (when (and
-             (search-backward completion (line-beginning-position) t)
-             (or (string-match-p " " completion) ekg-linkify-inline-tags))
+      (when (search-backward completion (line-beginning-position) t)
         (let ((symbol
                ;; We should be just after the symbol
                (save-excursion (buffer-substring (- (point) 1) (point)))))
