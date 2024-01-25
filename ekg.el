@@ -186,7 +186,7 @@ links out of them, as well as adding them to the note text."
   :type 'boolean
   :group 'ekg)
 
-(defcustom ekg-command-regex-for-narrowing '("^org-")
+(defcustom ekg-command-regex-for-narrowing '("^org-insert")
   "A list of regex for commands which need a narrowed buffer."
   :type '(repeat string)
   :group 'ekg)
