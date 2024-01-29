@@ -168,20 +168,21 @@ a complete list of commands and keybindings.
 * Command summary
 Global commands, can be run everywhere, and most should be bound to useful keybindings:
 
-| Command                          | Description                                                            |
-|----------------------------------+------------------------------------------------------------------------|
-| =ekg-capture=                    | Capture a new note                                                     |
-| =ekg-capture-url=                | Capture a new note (or open an existing note) about a URL              |
-| =ekg-capture-file=               | Capture a new note (or open an existing note) about a file             |
-| =ekg-show-notes-with-tag=        | Open a tag buffer for notes matching the single tag given              |
-| =ekg-show-notes-with-any-tags=   | Open a tag buffer for notes matching any of the given tags             |
-| =ekg-show-notes-with-all-tags=   | Open a tag buffer for notes matching all of the given tags             |
-| =ekg-show-notes-in-trash=        | Open a tag buffer that shows all notes with only trashed tags          |
-| =ekg-show-notes-in-drafts=       | Open a tag buffer that shows all draft notes (saved but not finalized) |
-| =ekg-show-notes-for-today=       | Open a tag buffer that shows notes with today's tag                    |
-| =ekg-show-notes-latest-captured= | Open a buffer that shows the latest notes that have been captured      |
-| =ekg-show-notes-latest-modified= | Open a buffer that shows the latest notes that have been modified      |
-| =ekg-browse-url=                 | Open a URL stored as a resource to a note, completing by note title    |
+| Command                        | Description                                                               |
+|--------------------------------+---------------------------------------------------------------------------|
+| =ekg-capture=                    | Capture a new note                                                        |
+| =ekg-capture-url=                | Capture a new note (or open an existing note) about a URL                 |
+| =ekg-capture-file=               | Capture a new note (or open an existing note) about a file                |
+| =ekg-show-notes-with-tag=        | Open a buffer for notes matching the single tag given                     |
+| =ekg-show-notes-with-any-tags=   | Open a buffer for notes matching any of the given tags                    |
+| =ekg-show-notes-with-all-tags=   | Open a buffer for notes matching all of the given tags                    |
+| =ekg-show-notes-with-tag-prefix= | Open a buffer for notes matching any tag with a tag with the given prefix |
+| =ekg-show-notes-in-trash=        | Open a tag buffer that shows all notes in the trash                       |
+| =ekg-show-notes-in-drafts=       | Open a tag buffer that shows all draft notes (saved but not finalized)    |
+| =ekg-show-notes-for-today=       | Open a tag buffer that shows notes with today's tag                       |
+| =ekg-show-notes-latest-captured= | Open a buffer that shows the latest notes that have been captured         |
+| =ekg-show-notes-latest-modified= | Open a buffer that shows the latest notes that have been modified         |
+| =ekg-browse-url=                 | Open a URL stored as a resource to a note, completing by note title       |
 
 
 These are also global commands, but for more occasional or specialized uses:

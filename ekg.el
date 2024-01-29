@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.4.0"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.4.3
+;; Version: 0.5.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -110,6 +110,11 @@ See `ekg-on-add-tag-insert-template' for details on how this works."
 This takes effect on the note buffer when editing or capturing,
 and will take effect for all other tags on the same note that
 holds this tag."
+  :type '(string :tag "tag")
+  :group 'ekg)
+
+(defcustom ekg-trash-tag "trash"
+  "The tag that is used to mark a note as a trashed noted."
   :type '(string :tag "tag")
   :group 'ekg)
 
@@ -295,7 +300,7 @@ This includes new notes that start with tags.  All functions are
 called with the tag as the single argument, and run in the buffer
 editing the note.")
 
-(defconst ekg-version "0.4.3"
+(defconst ekg-version "0.5.0"
   "The version of ekg, used to understand when the database needs
 upgrading.")
 
@@ -571,35 +576,28 @@ If the ID does not exist, create a new note with that ID."
   (triples-remove-type ekg-db tag 'tag))
 
 (defun ekg-note-trash (note)
-  "Move NOTE to the trash.
-This prepends all tags with `trash/'. This can be garbage
-collected at a later time. If all tags are already trash tags,
-then the note is really deleted."
+  "Add the trash tag to NOTE."
   (ekg-connect)
-  (triples-with-transaction
-    ekg-db
-    (if (seq-every-p #'ekg-tag-trash-p (ekg-note-tags note))
-        (ekg-note-delete note)
-      (setf (ekg-note-tags note)
-            (mapcan (lambda (tag) (unless (ekg-tag-trash-p tag)
-                                    (list (ekg-mark-trashed tag))))
-                    (ekg-note-tags note))))
-    (ekg-save-note note))
+  (if (member ekg-trash-tag (ekg-note-tags note))
+      (ekg-note-delete note)
+    (triples-with-transaction
+      ekg-db
+      (push ekg-trash-tag (ekg-note-tags note))
+      (ekg-save-note note)))
   (ekg-backup))
 
 (defun ekg-content-tag-p (tag)
   "Return non-nil if TAG represents user content.
 This is opposed to tags that are used for internal purposes."
-  (and (not (member tag (list ekg-draft-tag ekg-template-tag ekg-function-tag)))
-       (not (ekg-tag-trash-p tag))))
+  (not (member tag
+               (list ekg-draft-tag ekg-template-tag ekg-function-tag ekg-trash-tag))))
 
 (defun ekg-note-active-p (note)
   "Return non-nil if NOTE is active.
 This is similar to `ekg-active-id-p', but takes a note, which may
 be unsaved."
-  (and (not (seq-every-p (lambda (tag) (ekg-tag-trash-p tag))
-                         (ekg-note-tags note)))
-       (not (member ekg-draft-tag (ekg-note-tags note)))))
+  (not (seq-intersection (list ekg-draft-tag ekg-trash-tag)
+                         (ekg-note-tags note))))
 
 (defun ekg-active-id-p (id)
   "Return non-nil if the note with ID is active.
@@ -608,10 +606,10 @@ least one non-trash tag."
   (ekg-connect)
   (ekg-note-active-p (ekg-get-note-with-id id)))
 
-(defun ekg-has-live-tags-p (sub)
+(defun ekg-live-id-p (sub)
   "Return non-nil if SUB represents an undeleted note."
   (ekg-connect)
-  (seq-filter (lambda (tag) (not (ekg-tag-trash-p tag))) (plist-get (triples-get-type ekg-db sub 'tagged) :tag)))
+  (not (seq-some (lambda (tag) (equal tag ekg-trash-tag)) (plist-get (triples-get-type ekg-db sub 'tagged) :tag))))
 
 (defun ekg-extract-inlines (text)
   "Return a cons of TEXT without inline commands, and the commands.
@@ -1664,33 +1662,22 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
 
 (defun ekg-capture-abort ()
   "Abort the current capture.
-Discarded notes will be moved to trash."
+Discarded notes will be deleted."
   (interactive nil ekg-capture-mode)
   (ekg-connect)
   (when (y-or-n-p "Are you sure you want to abort this capture?")
     (let ((id (ekg-note-id ekg-note)))
       (when (ekg-note-with-id-exists-p id)
-        (ekg-note-delete-by-id id)))
+        (ekg-note-trash ekg-note)))
     (setq-local kill-buffer-query-functions
                 (delq 'ekg--kill-buffer-query-function
                       kill-buffer-query-functions))
     (kill-buffer)))
 
-(defun ekg-tag-trash-p (tag)
-  "Return non-nil if TAG is part of the trash."
-  ;; All tags should be strings, but better to ignore violations here.
-  (and (stringp tag)
-       (string-match-p (rx (seq string-start "trash/")) tag)))
-
 (defun ekg-note-active-tags (note)
   "Return the tags of NOTE that are considered normal tags."
-  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
-                                 (not (equal tag ekg-draft-tag))))
-              (ekg-note-tags note)))
-
-(defun ekg-mark-trashed (tag)
-  "Return TAG transformed to mark it as trash."
-  (format "trash/%s" tag))
+  (seq-difference (ekg-note-tags note)
+                  (list ekg-draft-tag ekg-trash-tag)))
 
 (defun ekg-fix-renamed-dup-tags (id)
   "Fix duplicate tags in note with ID.
@@ -1766,22 +1753,19 @@ FROM-TAG will use TO-TAG."
 Does not include any tags with special uses (e.g. trash and draft
 tags)."
   (ekg-connect)
-  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
-                                 (not (equal tag ekg-draft-tag))))
-              (triples-subjects-of-type ekg-db 'tag)))
+  (seq-difference (triples-subjects-of-type ekg-db 'tag)
+                  (list ekg-draft-tag ekg-trash-tag)))
 
 (defun ekg-tags-including (substring)
   "Return all tags including SUBSTRING."
   (ekg-connect)
-  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
-                                 (string-match-p (rx (literal substring)) tag)))
+  (seq-filter (lambda (tag) (string-match-p (rx (literal substring)) tag))
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-with-prefix (prefix)
   "Return all tags with PREFIX."
   (ekg-connect)
-  (seq-filter (lambda (tag) (and (not (ekg-tag-trash-p tag))
-                                 (string-match-p (rx (seq line-start (literal prefix))) tag)))
+  (seq-filter (lambda (tag) (string-match-p (rx (seq line-start (literal prefix))) tag))
               (triples-subjects-of-type ekg-db 'tag)))
 
 (defun ekg-tags-display (tags)
@@ -2033,15 +2017,22 @@ are created with additional tags TAGS."
    "Trash"
    (lambda ()
      (sort
-      (mapcar #'ekg-get-note-with-id
-              (seq-uniq
-               (flatten-list
-                (mapcar (lambda (tag) (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
-                        (seq-filter
-                         (lambda (tag) (string-match-p (rx (seq bol "trash/")) tag))
-                         (triples-subjects-of-type ekg-db 'tag))))))
+      (ekg-get-notes-with-tag ekg-trash-tag)
       #'ekg-sort-by-creation-time))
    nil))
+
+(defun ekg-show-notes-with-tag-prefix (prefix)
+  "Show notes that contain a tag with PREFIX."
+  (interactive "Mtag prefix: ")
+  (ekg-connect)
+  (let ((tags (ekg-tags-with-prefix prefix)))
+    (ekg-setup-notes-buffer
+     (format "tag prefix: %s" prefix)
+     (lambda ()
+       (sort
+        (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))
+        #'ekg-sort-by-creation-time))
+     tags)))
 
 ;;;###autoload
 (defun ekg-show-notes-in-drafts ()
@@ -2147,13 +2138,9 @@ If no corresponding URL is found, an error is thrown."
 (defun ekg-inactive-note-ids ()
   "Get a list of ekg-note objects, representing all inactive notes.
 Inactive in this context means trashed or draft note."
-  (seq-uniq
-   (flatten-list
-    (mapcar (lambda (tag) (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
-            (seq-filter
-             (lambda (tag)
-               (string-match-p (rx (seq bol (or "trash/" (seq "draft" eol)))) tag))
-             (triples-subjects-of-type ekg-db 'tag))))))
+  (mapcan (lambda (tag)
+            (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+          (list ekg-draft-tag ekg-trash-tag)))
 
 (defun ekg-active-note-ids ()
   "Get a list of ekg-note objects, representing all active notes.
@@ -2242,7 +2229,11 @@ backup settings, and will not delete any backups, regardless of
 other settings.  FROM-VERSION is the version of the database
 before the upgrade, in list form.  TO-VERSION is the version of
 the database after the upgrade, in list form."
-  (let ((need-triple-0.3-upgrade
+  (let ((need-trash-upgrade
+         (or (null from-version)
+             ;; Version 0.5.0 changed how trashed tags are handled.
+             (version-list-< from-version '(0 5 0))))
+        (need-triple-0.3-upgrade
          (or (null from-version)
              ;; We have done upgrades to 0.3.1, but we want to re-do them for
              ;; additional bugfixes. There should be no downside to doing the
@@ -2266,7 +2257,31 @@ the database after the upgrade, in list form."
       (when (eq 'builtin triples-sqlite-interface)
         (sqlite-execute
          ekg-db
-         "UPDATE OR IGNORE triples SET object = '\"' || CAST(object AS TEXT) || '\"' WHERE predicate = 'text/text' AND typeof(object) = 'integer'")))))
+         "UPDATE OR IGNORE triples SET object = '\"' || CAST(object AS TEXT) || '\"' WHERE predicate = 'text/text' AND typeof(object) = 'integer'")))
+    (when need-trash-upgrade
+      (ekg-backup t)
+      (let* ((trash-ids (ekg-tags-with-prefix "trash/"))
+             (note-ids (mapcan (lambda (tag) (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+                               trash-ids)))
+       (triples-with-transaction
+         ekg-db
+         (cl-loop for id in note-ids do
+                  (let ((note (ekg-get-note-with-id id)))
+                           (cond
+                            ((null note)
+                             (message "ekg-upgrade-db: Note %s has a trashed tag but doesn't exist!  This is unusual and should not happen." id))
+                            ((seq-some (lambda (tag)
+                                         (not (string-match-p (rx (literal "trash/")) tag)))
+                                       (ekg-note-tags note))
+                             (message "ekg-upgrade-db: Note %s has some trash tags but not all trash tags,  you can run ekg-show-notes-with-tag-prefix to find all notes with tags with the 'trash/' prefix."
+                                      id))
+                            (t
+                              (message "ekg-upgrade-db: Moving note %s from trash tags to trash tag"
+                                       id)
+                              (ekg-note-trash note)))))
+        (cl-loop for tag in trash-ids do
+                 (triples-remove-type ekg-db tag 'tag)
+                 (triples-set-type ekg-db ekg-trash-tag 'tag)))))))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
@@ -2329,8 +2344,7 @@ as long as those notes aren't on resources that are interesting.
                     (ekg-note-delete note)
                     (setq deleted t)))))
              (unless deleted
-               (let ((trashed-note (and (ekg-note-tags note)
-                                      (not (ekg-has-live-tags-p id))))
+               (let ((trashed-note (member ekg-trash-tag (ekg-note-tags note)))
                      (almost-empty-note (string= (string-trim (ekg-note-text note)) "*"))
                      (empty-note (string= (string-trim (ekg-note-text note)) ""))
                      (note-without-properties (null (ekg-note-properties note))))

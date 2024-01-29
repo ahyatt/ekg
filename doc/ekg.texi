@@ -214,6 +214,10 @@ triples library is already installed.
 
 @itemize
 @item
+Simplified trashed tags from using tag prefixes to using a simple trash tag (@samp{ekg-trash-tag}).
+@item
+Added @samp{ekg-show-notes-with-tag-prefix}.
+@item
 Add tags while writing the body of notes by completing with "#".  See @ref{Note text} section for details.
 @item
 Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See @ref{Note text} section for details.
@@ -952,20 +956,16 @@ there.
 @node The trash
 @chapter The trash
 
-Notes deleted from note lists (@samp{ekg-notes-mode}) buffers are not deleted
-outright, but rather put in the trash.  There are two concepts here: trashed
-tags, and trashed note.  A trashed tag is a tag with the prefix "trash/" added.
-Such tags are ignored and not shown to users except when editing notes, at which
-point the user can choose to remove the trash prefix to un-trash them.  When you
-run @samp{ekg-notes-delete} on a note, all its tags are trashed (i.e. prefixed with
-"trash/").
+Notes deleted from note lists (@samp{ekg-notes-mode}) buffers are not deleted outright,
+but rather put in the trash, which is done by adding the @samp{ekg-trash-tag}, by
+default, "trash", to the note. Any note with the "trash" tag will not be shown
+in normal tag buffers.
 
-If all of a note's tags are trashed, then the note itself is considered to be
-trashed.  Trashed notes can be seen by calling @samp{ekg-show-notes-in-trash}.  If
-notes are deleted from this list via @samp{ekg-notes-delete} again, they are deleted
-permanently.  The function @samp{ekg-notes-delete} will only permanently delete a
-note if all its tags were previously trashed.  If you want to un-trash the note,
-you can edit the note and remove the trash prefix from one or more of the tags.
+Trashed notes can be seen by calling @samp{ekg-show-notes-in-trash}. If notes are
+deleted from this list via @samp{ekg-notes-delete} again, they are deleted permanently.
+The function @samp{ekg-notes-delete} will always delete a note if the note is in the
+trash, and trash it otherwise. If you want to un-trash the note, you can remove
+the trash tag.
 
 @node Links to ekg in org-mode
 @chapter Links to ekg in org-mode
