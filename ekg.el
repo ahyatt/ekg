@@ -172,6 +172,12 @@ user which action to take."
           (const :tag "Save note" save))
   :group 'ekg)
 
+(defcustom ekg-confirm-on-abort nil
+  "Non-nil if the user should be asked to confirm before aborting.
+The affects aborting both the capture and edit buffer."
+  :type 'boolean
+  :group 'ekg)
+
 (defcustom ekg-inline-custom-tag-completion-symbols '((?@ . "person")
                                                       (?! . "idea"))
   "A map of custom symbols to tag prefixes.
@@ -1580,7 +1586,8 @@ Argument FINISHED is non-nil if the user has chosen a completion."
 (defun ekg-edit-abort ()
   "Abort the current edit, restore to its orignial state."
   (interactive nil ekg-edit-mode)
-  (when (y-or-n-p "Are you sure you want to abort all the edits?")
+  (when (or (not ekg-confirm-on-abort)
+            (y-or-n-p "Are you sure you want to abort all the edits?"))
     (ekg-save-note ekg-note-orig-note)
     (setq-local kill-buffer-query-functions
                 (delq 'ekg--kill-buffer-query-function
@@ -1665,7 +1672,8 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
 Discarded notes will be deleted."
   (interactive nil ekg-capture-mode)
   (ekg-connect)
-  (when (y-or-n-p "Are you sure you want to abort this capture?")
+  (when (or (not ekg-confirm-on-abort)
+             (y-or-n-p "Are you sure you want to abort this capture?"))
     (let ((id (ekg-note-id ekg-note)))
       (when (ekg-note-with-id-exists-p id)
         (ekg-note-trash ekg-note)))
