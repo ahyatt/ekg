@@ -670,7 +670,7 @@ a new note with whatever tags (if any) are associated with the notes buffer.
 
 @noindent
 To save any note that is being captured, press @samp{C-c C-c} or call
-@samp{ekg-capture-finalize}.  To cancel, just kill the buffer.
+@samp{ekg-capture-finalize}.  To cancel, just kill the buffer.  You can also abort with @samp{C-c C-k}, or @samp{ekg-capture-abort}, which will not only kill the buffer but delete any draft saved.
 
 @menu
 * Templates::

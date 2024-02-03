@@ -156,25 +156,10 @@ not in the template."
   :type 'boolean
   :group 'ekg)
 
-(defcustom ekg-save-action-on-buffer-kill 'query
-  "Action to take on unsaved ekg editable buffer on buffer kill.
-If value is \\='abort-unsaved, discard the unsaved changes, the
-already saved part will be kept. If value is \\='abort-all, for
-`ekg-capture-mode', the whole capture will be aborted; for
-`ekg-edit-mode', all edits (saved or not) will be discarded, the
-note will be restored to its original state at open. If value is
-\\='save, save the note to db. If value is \\='query, ask the
-user which action to take."
-  :type '(choice
-          (const :tag "Ask before killing" query)
-          (const :tag "Abort unsaved changes (the saved part will be kept)" abort-unsaved)
-          (const :tag "Abort capture in ekg-capture-mode, or abort all edits in ekg-edit-mode" abort-all)
-          (const :tag "Save note" save))
-  :group 'ekg)
-
-(defcustom ekg-confirm-on-abort nil
-  "Non-nil if the user should be asked to confirm before aborting.
-The affects aborting both the capture and edit buffer."
+(defcustom ekg-confirm-on-buffer-kill nil
+  "Non-nil if the user should confirm before killing a note buffer.
+The affects killing both the capture and edit buffer, only when
+there are unsaved changes."
   :type 'boolean
   :group 'ekg)
 
@@ -860,42 +845,13 @@ not supplied, we use a default of 10."
             (if (> (length (ekg-note-text note)) display-length) "…" ""))))
 
 (defun ekg--kill-buffer-query-function ()
-  "Action to take for unsaved ekg editable buffer on buffer kill.
+  "Action to take when the user kills a capture or edit buffer.
 If final result returns t, the buffer will be killed. If it
-returns nil, the buffer will leave open."
-  (cl-flet ((save-fn ()
-              (if ekg-capture-mode
-                  (ekg-save-draft)
-                (ekg-edit-save)) t)
-            (abort-all-fn ()
-              (if ekg-capture-mode
-                  (let ((id (ekg-note-id ekg-note)))
-                    (when (ekg-note-with-id-exists-p id)
-                      (ekg-note-delete-by-id id)))
-                (ekg-save-note ekg-note-orig-note)) t)
-            (response-fn ()
-              (cadr (read-multiple-choice
-                     "Buffer modified; kill anyway?"
-                     `((?k "yes/abort-unsaved" "abort unsaved changes")
-                       (?K "Yes/abort-all" ,(if ekg-capture-mode
-                                                 "abort this capture"
-                                               "abort all edits"))
-                       (?s "yes/save" "save note and then kill it")
-                       (?n "no" "exit without doing anything"))
-                     nil nil (and (not use-short-answers)
-                                  (not (use-dialog-box-p)))))))
-    (if (and (or ekg-capture-mode ekg-edit-mode)
-             (buffer-modified-p))
-        (pcase ekg-save-action-on-buffer-kill
-          ('abort-unsaved t)
-          ('abort-all (abort-all-fn))
-          ('save (save-fn))
-          ('query (pcase (response-fn)
-                    ("yes/abort-unsaved" t)
-                    ("Yes/abort-all" (abort-all-fn))
-                    ("yes/save" (save-fn))
-                    ("no" nil))))
-      t)))
+returns nil, the buffer will be left open.
+This always returns t for saved buffers."
+  (or (not ekg-confirm-on-buffer-kill)
+      (not (buffer-modified-p))
+      (yes-or-no-p "Unsaved changes exist, do you still want to exit? ")))
 
 (defun ekg--header-line-format ()
   "Header line format for the ekg capture or edit buffer."
@@ -904,12 +860,11 @@ returns nil, the buffer will leave open."
        "\\<ekg-capture-mode-map>Capture buffer. \
 Finish `\\[ekg-capture-finalize]'  \
 Save as draft `\\[ekg-save-draft]'  \
-Abort `\\[ekg-capture-abort]'.")
+Abort and delete draft `\\[ekg-capture-abort]'.")
     (substitute-command-keys
      "\\<ekg-edit-mode-map>Edit buffer. \
 Finish `\\[ekg-edit-finalize]'  \
-Save `\\[ekg-edit-save]'  \
-Abort `\\[ekg-edit-abort]'.")))
+Save `\\[ekg-edit-save]'")))
 
 (defun ekg-narrow-for-command ()
   "Narrow buffer if the command requires it.
@@ -972,7 +927,6 @@ This is used when capturing new notes.")
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
-    (define-key map "\C-c\C-k" #'ekg-edit-abort)
     (define-key map "\C-c#" #'ekg-edit-add-inline)
     (substitute-key-definition #'save-buffer #'ekg-edit-save map global-map)
     map)
@@ -1583,17 +1537,6 @@ Argument FINISHED is non-nil if the user has chosen a completion."
   (ekg-edit-save)
   (kill-buffer))
 
-(defun ekg-edit-abort ()
-  "Abort the current edit, restore to its orignial state."
-  (interactive nil ekg-edit-mode)
-  (when (or (not ekg-confirm-on-abort)
-            (y-or-n-p "Are you sure you want to abort all the edits?"))
-    (ekg-save-note ekg-note-orig-note)
-    (setq-local kill-buffer-query-functions
-                (delq 'ekg--kill-buffer-query-function
-                      kill-buffer-query-functions))
-    (kill-buffer)))
-
 (defun ekg--split-metadata-string (val)
   "Split multi-valued metadata field VAL into the component values.
 The metadata fields are comma separated."
@@ -1669,18 +1612,16 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
 
 (defun ekg-capture-abort ()
   "Abort the current capture.
-Discarded notes will be deleted."
+Notes saved as drafts will be deleted."
   (interactive nil ekg-capture-mode)
   (ekg-connect)
-  (when (or (not ekg-confirm-on-abort)
-             (y-or-n-p "Are you sure you want to abort this capture?"))
-    (let ((id (ekg-note-id ekg-note)))
-      (when (ekg-note-with-id-exists-p id)
-        (ekg-note-trash ekg-note)))
-    (setq-local kill-buffer-query-functions
-                (delq 'ekg--kill-buffer-query-function
-                      kill-buffer-query-functions))
-    (kill-buffer)))
+  (let ((id (ekg-note-id ekg-note)))
+    (when (ekg-note-with-id-exists-p id)
+      (ekg-note-delete ekg-note)))
+  (setq-local kill-buffer-query-functions
+              (delq 'ekg--kill-buffer-query-function
+                    kill-buffer-query-functions))
+  (kill-buffer))
 
 (defun ekg-note-active-tags (note)
   "Return the tags of NOTE that are considered normal tags."
