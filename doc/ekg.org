@@ -295,8 +295,10 @@ The metadata section above the notes often can be problematic for some commands,
 especially org commands. Because of this, before commands are executed, we check
 the command name against the =ekg-command-regex-for-narrowing=, and if there is a
 match to one of the regexes, we narrow to the note section just when the command
-is running. It defaults to all org-insert commands, but if there are any weird
-behaviors caused by the metadata section, consider customizing this variable.
+is running. It defaults to all org-insert commands and ~org-meta-return~, but if
+there are any weird behaviors caused by the metadata section, consider
+customizing this variable. Right now this just works for keybindings, and not
+using ~execute-extended-command~.
 ** Drafts
 Notes can be saved midway through editing, both for capturing and editing notes.
 The normal buffer-save keybinding (typically C-x C-s) will save a draft.  A
