@@ -38,9 +38,9 @@
     ;; WHen we get notes with tags, it's an AND, so it shouldn't get anything.
     (should (= 0 (length (ekg-get-notes-with-tags '("tag1" "tag2" "nonexistent")))))
     (should (equal note (car (ekg-get-notes-with-tags '("tag1")))))
-    (should (ekg-has-live-tags-p (ekg-note-id note)))
+    (should (ekg-live-id-p (ekg-note-id note)))
     (ekg-note-trash note)
-    (should-not (ekg-has-live-tags-p (ekg-note-id note)))
+    (should-not (ekg-live-id-p (ekg-note-id note)))
     (should (= 0 (length (ekg-get-notes-with-tags '("tag1" "tag2")))))))
 
 (ekg-deftest ekg-test-tags ()
@@ -367,9 +367,9 @@
                 (ekg--populate-inline-tags note)
                 (should (equal (ekg-note-tags note) target-tags)))))
     (assert-tag-population "foo bar" nil)
-    (assert-tag-population "foo #bar" '("bar"))
-    (assert-tag-population "foo #bar @baz" '("bar" "person/baz"))
-    (assert-tag-population "foo #bar\n@baz\n#quux" '("bar" "person/baz" "quux"))))
+    (assert-tag-population "foo #[bar]" '("bar"))
+    (assert-tag-population "foo #[bar] @[baz]" '("bar" "person/baz"))
+    (assert-tag-population "foo #[bar]\n@[baz]\n#[quux]" '("bar" "person/baz" "quux"))))
 
 (provide 'ekg-test)
 

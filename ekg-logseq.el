@@ -197,8 +197,9 @@ store as markdown."
                  (ekg-logseq-note-to-logseq-md note tag)))
               (seq-filter (lambda (note)
                             (and (equal tag (ekg-logseq-primary-tag (ekg-note-tags note)))
-                                 (not (equal "" (ekg-note-text note))))) notes)
-             "\n")))
+                                 (not (equal "" (ekg-note-text note)))))
+                          (seq-filter #'ekg-note-active-p notes))
+              "\n")))
 
 (defun ekg-logseq-tag-to-file (tag)
   "Return text to populate to a logseq file for TAG."

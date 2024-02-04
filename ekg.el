@@ -490,8 +490,12 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                  tags)))
     (seq-filter
      (lambda (note)
-       (or (not (member ekg-draft-tag (ekg-note-tags note)))
-           (member ekg-draft-tag tags)))
+       ;; Remove draft and trash notes unless they are specifically requested.
+       (not
+        (or (and (not (member ekg-draft-tag tags))
+                 (member ekg-draft-tag (ekg-note-tags note)))
+            (and (not (member ekg-trash-tag tags))
+                 (member ekg-trash-tag (ekg-note-tags note))))))
      (mapcar #'ekg-get-note-with-id
              (seq-reduce #'seq-intersection
                          ids-by-tag
