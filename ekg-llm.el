@@ -86,7 +86,7 @@ The type and contents of the struct vary by provider.")
               ('org-mode "emacs org-mode")
               ('markdown-mode "markdown")
               (_ (format "emacs %s" (symbol-name major-mode))))))
-   "Anything inside an LLM_OUTPUT block is previous output you have given."))
+   "Anything inside an LLM_OUTPUT block is previous output you have given, but do not generate the block yourself.  We will do that around the result you give to us."))
 
 (defun ekg-llm-prompt-for-note (note)
   "Return the prompt for NOTE, using the tags on the note.
