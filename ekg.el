@@ -182,7 +182,7 @@ links out of them, as well as adding them to the note text."
   :type 'boolean
   :group 'ekg)
 
-(defcustom ekg-command-regex-for-narrowing '("^org-insert")
+(defcustom ekg-command-regex-for-narrowing '("^org-insert" "org-meta-return")
   "A list of regex for commands which need a narrowed buffer."
   :type '(repeat string)
   :group 'ekg)
@@ -881,7 +881,10 @@ This is based on `ekg-command-regex-for-narrowing'."
               ekg-command-regex-for-narrowing))
         (narrow-to-region (1+ (overlay-end (ekg--metadata-overlay)))
                           (point-max))
-        (setq ekg-note-auto-narrowed t))
+        ;; execute-extended-command will then call another command, and we need
+        ;; to also possibly narrow for that.
+        (unless (eq this-command 'execute-extended-command)
+            (setq ekg-note-auto-narrowed t)))
     (error (lwarn :error 'ekg "Error narrowing for command: %s"
                   (error-message-string err)))))
 
