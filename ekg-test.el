@@ -371,6 +371,12 @@
     (assert-tag-population "foo #[bar] @[baz]" '("bar" "person/baz"))
     (assert-tag-population "foo #[bar]\n@[baz]\n#[quux]" '("bar" "person/baz" "quux"))))
 
+(ert-deftest ekg--convert-inline-tags-to-links ()
+  (let ((note (make-ekg-note :text "foo #[bar]")))
+      (ekg--populate-inline-tags note)
+      (ekg--convert-inline-tags-to-links note)
+      (should (equal (ekg-note-text note) "foo #[[ekg-tag:bar][bar]]"))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here

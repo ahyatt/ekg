@@ -1008,16 +1008,18 @@ prefix."
                            ekg-inline-custom-tag-completion-symbols) "/" tag)))
 
 (defconst ekg--nonlink-tag-regexp
-  (rx (seq (or whitespace line-start ?: ?\( ?\[)
-               (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-               (= 1 ?\[) (group-n 2 (not ?+) (one-or-more (any word ?_ ?- whitespace))) ?\]))
+  (rx (seq (group-n 1 (or whitespace line-start ?: ?\( ?\[))
+           (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+           (= 1 ?\[) (group-n 3 (not ?+) (one-or-more (any word ?_ ?- whitespace))) ?\]))
   "Regexp for detecting inline tags that are not org links.")
 
-(defun ekg--inline-tag-replace-with-org-link (tag-identifier symbol)
+(defun ekg--inline-tag-replace-with-org-link (prefix tag-identifier symbol)
   "Replace a match to inline TAG-IDENTIFIER with an org link.
-SYMBOL is the prefix to the tag identifier."
+SYMBOL is the prefix to the tag identifier.
+PREFIX is the prefix that is before the tag identifier."
   (replace-match
-   (concat symbol
+   (concat prefix
+           symbol
            (org-link-make-string
             (ekg--link-for-tag
              (ekg--add-prefix-to-inline-tag
@@ -1048,9 +1050,9 @@ non-nil."
                      (save-match-data
                        (defvar org-block-regexp)
                        (org-in-regexp org-block-regexp)))
-            (let ((symbol (match-string 1))
-              (tag (match-string 2)))
-          (ekg--inline-tag-replace-with-org-link tag symbol))))
+            (let ((symbol (match-string 2))
+              (tag (match-string 3)))
+              (ekg--inline-tag-replace-with-org-link (match-string 1) tag symbol))))
       (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max))))))
 
 (defun ekg--populate-inline-tags (note)
