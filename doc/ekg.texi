@@ -241,6 +241,8 @@ Change multi-title note display from using newlines to commas
 Made deleting titles and resources possible, and properly skipped empty properties for multi-line propeties.
 @item
 Handle backup errors better, warning and proceding if not a forced backup, erroring out with a better message if forced.
+@item
+Don't show trashed notes in drafts.
 @end itemize
 
 @node Version 043

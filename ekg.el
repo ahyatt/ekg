@@ -1996,7 +1996,8 @@ other views."
    "Drafts"
    (lambda ()
      (sort
-      (ekg-get-notes-with-tag ekg-draft-tag)
+      (seq-filter (lambda (note) (not (member ekg-trash-tag (ekg-note-tags note))))
+       (ekg-get-notes-with-tag ekg-draft-tag))
       #'ekg-sort-by-creation-time))
    nil))
 
