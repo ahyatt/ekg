@@ -1010,7 +1010,7 @@ prefix."
 (defconst ekg--nonlink-tag-regexp
   (rx (seq (group-n 1 (or whitespace line-start ?: ?\( ?\[))
            (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-           (= 1 ?\[) (group-n 3 (not ?+) (one-or-more (any word ?_ ?- whitespace))) ?\]))
+           (= 1 ?\[) (group-n 3 (not ?+) (one-or-more (any word ?/ ?_ ?- whitespace))) ?\]))
   "Regexp for detecting inline tags that are not org links.")
 
 (defun ekg--inline-tag-replace-with-org-link (prefix tag-identifier symbol)

@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
@@ -196,6 +197,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
@@ -208,6 +210,14 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 051
+@section Version 0.5.1
+
+@itemize
+@item
+Improve regex for inline tag linkification so we linkify more valid inline tags.
+@end itemize
 
 @node Version 05
 @section Version 0.5
