@@ -37,7 +37,10 @@
     (should (equal '("* Heading\n** Subheading\n*** Subsubheading\n"
                      "* Heading 4\nText for another subheading")
                    (ekg-logseq--to-import-text))))
-
+  (with-temp-buffer
+    (insert ":PROPERTIES:\n:ID:123\n:END:#+title: My org file\nContents")
+    (org-mode)
+    (should (equal '("Contents") (ekg-logseq--to-import-text))))
   (with-temp-buffer
     (insert "- ## My markdown file\n" "Contents")
     (should (equal '("## My markdown file\nContents")

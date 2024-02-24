@@ -217,6 +217,8 @@ triples library is already installed.
 @itemize
 @item
 Improve regex for inline tag linkification so we linkify more valid inline tags.
+@item
+Improve logseq import to import notes without org structure, and use filetags.
 @end itemize
 
 @node Version 05
