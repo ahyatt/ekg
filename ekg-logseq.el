@@ -423,12 +423,13 @@ which will import and re-export back to logseq."
                                             ":" t (rx (1+ space)))))
                              (cl-loop for text in items
                                       do
-                                      (message "ekg-logseq-import: saving note from file %s" file)
+                                      (when (> (length text) 0)
+                                        (message "ekg-logseq-import: saving note from file %s" file)
                                         (cl-incf count)
                                         (let ((note (ekg-logseq--text-to-note tag text)))
                                           (setf (ekg-note-tags note)
                                                 (seq-uniq (append (ekg-note-tags note) filetags) 'equal))
-                                          (ekg-save-note note)))))))))
+                                          (ekg-save-note note))))))))))
     (message "ekg-logseq-import: imported %d notes" count)
     (ekg-logseq-set-last-import start-time)))
 
