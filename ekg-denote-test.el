@@ -32,40 +32,36 @@
   (should (equal '("kw1" "kw2") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 8)))
   (should (equal '("kw1" "kw2" "kw 3") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 13))))
 
-(ert-deftest ekg-denote-test-assert-notes-have-duplicate-creation-time-should-error ()
-  "Duplicate notes should error."
+(ert-deftest ekg-denote-test-notes-having-duplicate-creation-time ()
+  "Notes with duplicate creation time should error."
   (let* ((time (time-convert (current-time) 'integer))
 	 (note1 (make-ekg-note :id "ID1" :creation-time time))
 	 (note2 (make-ekg-note :id "ID2" :creation-time time))
 	 (notes (list note1 note2)))
     (should-error (ekg-denote-assert-notes-have-unique-creation-time notes))))
 
-(ert-deftest ekg-denote-test-assert-notes-have-unique-creation-time-should-not-error ()
-  "Unique creation time should not error."
+(ert-deftest ekg-denote-test-notes-having-unique-creation-tiem ()
+  "Notes with unique creation time should not error."
   (let* ((time (time-convert (current-time) 'integer))
 	 (note1 (make-ekg-note :id "ID1" :creation-time time))
 	 (note2 (make-ekg-note :id "ID2" :creation-time (1+ time)))
 	 (notes (list note1 note2)))
     (should-not (ekg-denote-assert-notes-have-unique-creation-time notes))))
 
-(ert-deftest ekg-denote-test-notes-have-creation-time ()
-  "Test for creation time uniquess needed in notes."
-
-  ;; Raise error if creation time missing.
+(ert-deftest ekg-denote-test-notes-missing-creation-time ()
+  "Notes missing creation time should error."
   (let* ((time (time-convert (current-time) 'integer))
 	 (note1 (make-ekg-note :id "ID1" :creation-time time))
 	 (note2 (make-ekg-note :id "ID2")))
-    (should-error (ekg-denote-assert-notes-have-creation-time notes)))
+    (should-error (ekg-denote-assert-notes-have-creation-time notes))))
 
-  ;; Raise no error when creation-time is not missing.
+(ert-deftest ekg-denote-test-notes-having-creation-time ()
+  "Notes having creation time should not error."
   (let* ((time (time-convert (current-time) 'integer))
 	 (note1 (make-ekg-note :id "ID1" :creation-time time))
-	 (note2 (make-ekg-note :id "ID2" :creation-time time))
+	 (note2 (make-ekg-note :id "ID2" :creation-time (1+ time)))
 	 (notes (list note1 note2)))
     (should-not (ekg-denote-assert-notes-have-creation-time notes))))
-
-
-(ert-deftest ekg-denote-test-notes-have-creation-time)
 
 (ert-deftest ekg-denote-test-merge ()
   "Validate the merging of the text with the existing file."
@@ -76,3 +72,18 @@
       (should (equal
 	       ">>>>>>>\nfile-txt...\n=======\n>>>>>>>\ndenote-text...\n======="
 	       (ekg-denote-text denote1))))))
+
+
+;; /Users/jr/org/denote/20230604T080005--ledger__ledgerfy20232024_date20230604_docledger.org
+(ert-deftest ekg-denote-test-denote-file-name ()
+  "Verify denote file name corresponding ekg notes."
+  (let* ((time (time-convert (current-time) 'integer))
+	 (note1 (make-ekg-note :id "ID1"
+			       :creation-time time
+			       :tags '("date/20230101", "portfolio")))
+	 (denote1 (make-ekg-denote :id (format-time-string denote-id-format time)
+				   :note-id "ID1"
+				   :kws '("portfolio")))
+	 )
+    )
+  )
