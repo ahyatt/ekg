@@ -76,6 +76,7 @@ triples library is already installed.
 ** Version 0.5.1
 - Improve regex for inline tag linkification so we linkify more valid inline tags.
 - Improve logseq import to import notes without org structure, and use filetags.
+- Fix inline tag bug that test and real failures.
 ** Version 0.5
 - Simplified trashed tags from using tag prefixes to using a simple trash tag (=ekg-trash-tag=).
 - Added =ekg-show-notes-with-tag-prefix=.
