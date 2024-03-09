@@ -113,7 +113,10 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 		     :path path)))
 
 (defun ekg-denote-rename (denote)
-  "Rename given DENOTE if path has changed."
+  "Rename given DENOTE if path has changed.
+
+Path can change due to title or tag changes.
+"
   (let* ((id (ekg-denote-id denote))
 	 (path (ekg-denote-path denote))
 	 (existing-path (denote-get-path-by-id id)))
