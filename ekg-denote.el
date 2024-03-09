@@ -167,7 +167,7 @@ Path can change due to title or tag changes.
 	  (ekg-denote-get-merged-text path text))))
 
 (defun ekg-denote-note-print (note)
-  "Return string representation of NOTE, useful for printing."
+  "Return string representation of NOTE for printing."
   (format "Note ID: %s, Modified: %s, Created: %s, Tags: %s, Title: %s, Text: %s"
 	  (ekg-note-id note)
 	  (ekg-note-modified-time note)
@@ -186,7 +186,7 @@ Denote uses creation-time as ID."
 
 (defun ekg-denote-assert-notes-have-unique-creation-time (notes)
   "Raise error if NOTES are using duplicate creation-time.
-Denote uses creation-time as note ID and assume it to be unique."
+Denote uses creation-time as ID and assume it to be unique."
   (let ((notes (mapcar #'ekg-note-creation-time notes)))
     (when (note (equal notes (seq-uniq notes)))
       (error "ekg-denote: Notes using same creation time."))))
