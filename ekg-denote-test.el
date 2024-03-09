@@ -1,6 +1,6 @@
 ;;; ekg-denote-test.el --- Tests for ekg-denote  -*- lexical-binding: t; -*-
 
-;; Copyright (c) 2023  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2024  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -55,7 +55,7 @@
 	 (note2 (make-ekg-note :id "ID2")))
     (should-error (ekg-denote-assert-notes-have-creation-time notes))))
 
-(ert-deftest ekg-denote-test-notes-having-creation-time ()
+(ert-deftest ekg-denote-test-notes-not-missing-creation-time ()
   "Notes having creation time should not error."
   (let* ((time (time-convert (current-time) 'integer))
 	 (note1 (make-ekg-note :id "ID1" :creation-time time))
