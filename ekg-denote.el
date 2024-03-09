@@ -188,7 +188,7 @@ Denote uses creation-time as ID."
   "Raise error if NOTES are using duplicate creation-time.
 Denote uses creation-time as ID and assume it to be unique."
   (let ((notes (mapcar #'ekg-note-creation-time notes)))
-    (when (note (equal notes (seq-uniq notes)))
+    (when (not (equal notes (seq-uniq notes)))
       (error "ekg-denote: Notes using same creation time."))))
 
 (defun ekg-denote-export ()
