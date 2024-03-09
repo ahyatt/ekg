@@ -142,9 +142,21 @@ Path can change due to title or tag changes.
 
 (defun ekg-denote-read-file (filepath)
   "Return contents of a FILEPATH."
-  (with-temp-buffer
-    (insert-file-contents filepath)
-    (buffer-string)))
+  (let* ((file-type (denote-filetype-heuristics filepath))
+	 (front-matter (denote--front-matter file-type))
+	 (list1 (split-string front-matter "\n"))
+	 (list1 (mapcar (lambda (x) (replace-regexp-in-string "%.*s" "" x)) list1))
+	 (list1 (mapcar #'string-trim list1))
+	 (list1 (seq-remove #'string-empty-p list1)))
+    (with-temp-buffer
+      (insert-file-contents filepath)
+      (dolist (elt list1)
+	(goto-char (point-min))
+	(when (search-forward elt (line-end-position) t 1)
+	  (progn
+	    (move-beginning-of-line nil)
+	    (kill-line 1))))
+      (string-trim (buffer-string)))))
 
 (defvar ekg-denote-section-header (make-string 7 ?>) "Section header used during merging.")
 (defvar ekg-denote-section-footer (make-string 7 ?<) "Section footer used during merging.")
@@ -211,7 +223,8 @@ Denote uses creation-time as ID and assume it to be unique."
 		 (ekg-denote-merge denote))
 	       (ekg-denote-rename denote)
 	       (ekg-denote-save denote)))
-    (ekg-denote-set-last-export start-time)))
+    ;; (ekg-denote-set-last-export start-time)
+    ))
 
 (provide 'ekg-denote)
 ;;; ekg-denote.el ends here.
