@@ -75,9 +75,10 @@
 
 (defun ekg-denote-notes-modified-since (time)
   "Return notes modified since TIME."
-  (remove nil (mapcar
-	       #'ekg-get-note-with-id
-	       (mapcar #'car (ekg-denote-triples-get-rows-modified-since time)))))
+  (let* ((rows (ekg-denote-triples-get-rows-modified-since time))
+	 (ids (mapcar #'car rows))
+	 (notes (mapcar #'ekg-get-note-with-id ids)))
+    (remove nil notes)))
 
 (defun ekg-denote-sublist-kws (kws combined-length)
   "Return the sublist for the given KWS list such that the
