@@ -197,7 +197,9 @@ Denote uses creation-time as note ID and assume it to be unique."
 	 (notes (ekg-denote-notes-modified-since last-export-time)))
     (and (ekg-denote-assert-notes-have-creation-time notes)
 	 (ekg-denote-assert-notes-have-unique-creation-time notes))
-    (message "ekg-denote-export: exporting notes modified since %s" last-export-time)
+    (message "ekg-denote-export: exporting notes modified since epoch: %s, date-time: %s"
+	     last-export-time
+	     (format-time-string "%Y%m%dT%H%M%S" last-export-time))
     (cl-loop for note in notes do
 	     (message "ekg-denote-export: exporting %s." (ekg-denote-note-print note))
 	     (let* ((denote (ekg-denote-create note))
