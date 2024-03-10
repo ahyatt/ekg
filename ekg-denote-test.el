@@ -115,6 +115,19 @@
 				  :text "Text"
 				  :path (format "/tmp/%s--title-1234__portfolio.org" denote-id )
 				  :kws '("portfolio"))))
-    (should (equal denote (ekg-denote-create note))))
+    (should (equal denote (ekg-denote-create note)))))
 
-  )
+(ekg-deftest ekg-test-export ()
+  "Verify export."
+
+  ; export create new files
+  (let* ((denote-directory (make-temp-file "denote" t)))
+    (ekg-save-note (ekg-note-create :text "text1" :mode 'org-mode :tags '("portfolio")))
+    (ekg-denote-export)
+    (let* ((files (denote-directory-text-only-files))
+	   (file (when (length> files 0) (car files))))
+      (should file)
+      (should (string-match-p "__portfolio" file))
+      (should (equal "text1" (with-temp-buffer
+			       (insert-file-contents file)
+			       (buffer-string)))))))
