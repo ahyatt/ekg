@@ -66,24 +66,55 @@
 (ert-deftest ekg-denote-test-merge ()
   "Validate the merging of the text with the existing file."
   (let ((denote1 (make-ekg-denote :text "denote-text..." :path "/mock/file/path")))
-    (cl-letf (((symbol-function 'ekg-denote-read-file)
+    (cl-letf (((symbol-function 'ekg-denote-text-from-file)
 	       (lambda (path) "file-txt...")))
       (ekg-denote-merge denote1)
       (should (equal
-	       ">>>>>>>\nfile-txt...\n=======\n>>>>>>>\ndenote-text...\n======="
+	       "\n>>>>>>>\nfile-txt...\n<<<<<<<\n\n>>>>>>>\ndenote-text...\n<<<<<<<\n"
 	       (ekg-denote-text denote1))))))
 
+(ert-deftest ekg-denote-test-create ()
+  "Verify creation of `ekg-denote' against given ekg note."
 
-;; /Users/jr/org/denote/20230604T080005--ledger__ledgerfy20232024_date20230604_docledger.org
-(ert-deftest ekg-denote-test-denote-file-name ()
-  "Verify denote file name corresponding ekg notes."
+  ; date tag is removed.
+  ; text defaults to ""
+  ; ext defaults to ekg-default-capture-mode
+  ; title defaults to ""
+  ; path uses denote-id and tags
+  ; ekg-id is copied
   (let* ((time (time-convert (current-time) 'integer))
-	 (note1 (make-ekg-note :id "ID1"
-			       :creation-time time
-			       :tags '("date/20230101", "portfolio")))
-	 (denote1 (make-ekg-denote :id (format-time-string denote-id-format time)
-				   :note-id "ID1"
-				   :kws '("portfolio")))
-	 )
-    )
+	 (denote-directory "/tmp")
+	 (denote-id (format-time-string denote-id-format time))
+	 (ekg-default-capture-mode 'org-mode)
+	 (note (make-ekg-note :id "ID1"
+			      :creation-time time
+			      :tags '("date/20230101" "portfolio" "tag2")))
+	 (denote (make-ekg-denote :id denote-id
+				  :note-id "ID1"
+				  :title ""
+				  :text ""
+				  :path (format "/tmp/%s__portfolio_tag2.org" denote-id )
+				  :kws '("portfolio" "tag2"))))
+    (should (equal denote (ekg-denote-create note))))
+
+  ; text is copied as it is
+  ; title is truncated, copied and sluggified
+  (let* ((time (time-convert (current-time) 'integer))
+	 (denote-directory "/tmp")
+	 (denote-id (format-time-string denote-id-format time))
+	 (ekg-default-capture-mode 'org-mode)
+	 (ekg-denote-title-max-len 10)
+	 (note (make-ekg-note :id "ID1"
+			      :creation-time time
+			      :text "Text"
+			      :properties `(:titled/title ,(list "Title 123456789"))
+			      :tags '("date/20230101" "portfolio")))
+	 (denote (make-ekg-denote :id denote-id
+				  :note-id "ID1"
+				  :title "title-1234"
+				  :text "Text"
+				  :path (format "/tmp/%s--title-1234__portfolio.org" denote-id )
+				  :kws '("portfolio"))))
+    (should (equal denote (ekg-denote-create note))))
+
   )
