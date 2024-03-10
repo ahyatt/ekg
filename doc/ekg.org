@@ -73,6 +73,22 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.5
+- Simplified trashed tags from using tag prefixes to using a simple trash tag (=ekg-trash-tag=).
+- Added =ekg-show-notes-with-tag-prefix=.
+- Add tags while writing the body of notes by completing with "#".  See [[#note-text][Note text]] section for details.
+- Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See [[#note-text][Note text]] section for details.
+- =ekg-auto-save=, a new module by [[https://github.com/qingshuizheng][Qingshui Zheng]].
+- Added canceling a note as an actual command, also by  [[https://github.com/qingshuizheng][Qingshui Zheng]].
+- Fix issue with trashing notes with tags that are partially trashed.
+- Saving while editing a note will no longer add the draft tag.  This means that if you are editing a draft, it will not keep it as a draft, so it will become a normal note.
+- Fix issue with using ekg-llm with vertex, which doesn't understand system prompts.
+- Fix metadata face which didn't work well with all themes - now the metadata section is just bolded.
+- Improve display regenerating embeddings via =ekg-embedding-generate-all=.
+- Change multi-title note display from using newlines to commas
+- Made deleting titles and resources possible, and properly skipped empty properties for multi-line propeties.
+- Handle backup errors better, warning and proceding if not a forced backup, erroring out with a better message if forced.
+- Don't show trashed notes in drafts.
 ** Version 0.4.3
 - Added autoloads
 - Fixed issue that could occur when saving with malformed buffers.
@@ -227,15 +243,62 @@ Ekg makes some effort to make sure that the user doesn't accidentally extend the
 property section without adding actual properties, since this will likely result
 in a confusing experience for the user.
 ** Note text
-Below the property section is the text section.  The text could be anything (or
-nothing).  This is the body text of the note, where you write down whatever you
-want to note about, that is relevant to the tags for the note.
+:PROPERTIES:
+:CUSTOM_ID: note-text
+:END:
+Below is the property section is the note section. The text could be anything
+(or nothing). This is the body text of the note, where you write down whatever
+you want to note about, that is relevant to the tags for the note.
 
-There are three modes for the note text: =text-mode=, =markdown-mode=, and
-=org-mode=.  More can be added by customizing the variable
-~ekg-acceptable-modes~, just make sure it's a mode that makes sense for
-notes.  The default mode is configured in ~ekg-capture-default-mode~, but can be
-changed when capturing with the command =ekg-change-mode=.
+There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=.
+More can be added by customizing the variable ~ekg-acceptable-modes~, just make
+sure its a mode that makes sense for notes. The default mode is configured in
+~ekg-capture-default-mode~, but can be changed when capturing with the command
+=ekg-change-mode=.
+
+The note text provides various options for completions. The most common
+completion is typing tags inline while writing notes. These tags will be added
+to the note automatically upon saving, regardless of whether completion is used
+or not. The tag completion is triggered by the "#" symbol. In =org-mode=, if
+=ekg-linkify-inline-tags= is set to non-nil (which is the default), the tag will
+be turned into an org link to the tag. Otherwise, it will remain as plain text.
+It is necessary to enclose the tag in square brackets to be detected as an
+inline tag. It is acceptable to finish the completion with a tag that is not
+currently defined, as the tag will be added when the note is saved. The
+detection of plaintext tags of various types can be turned off by setting
+=ekg-inline-populate-inline-text-tags= to =nil=. There are other customizable tag
+symbols available, indicating different prefixes. By default, in addition to the
+"#" symbol (representing a tag with that name), there is also the "@" symbol for
+tags prefixed with "person/", and the "!" symbol for tags prefixed with "idea/".
+These other symbols and the prefixes they mean are controlled by
+=ekg-inline-custom-tag-completion-symbols=. By default, we have "@" which will
+denote a tag with the "person/" prefix, and "!" which will denote a tag with the
+"idea/" prefix. So to sum up, if the note text has the following:
+
+#+begin_example
+Everything related to #[emacs] should be colored #ffa500.  This is the opinion of @[rms].
+#+end_example
+
+The tags that will be detected are "emacs" and, because of the special "@"
+prefix that indicates a tag prefix, "person/rms". The color will not be picked
+up as a tag, because it is not enclosed in brackets. This helps us avoid false
+positives.
+
+There is no functionality to remove inline tags that are deleted in the tag
+section. If an inline tag is not deleted in the note text, the tag will be
+re-added. 
+
+Another type of completion is for inline commands, the ">t" completion,
+mentioned in the [[#inlines][Inline commands]].
+
+The metadata section above the notes often can be problematic for some commands,
+especially org commands. Because of this, before commands are executed, we check
+the command name against the =ekg-command-regex-for-narrowing=, and if there is a
+match to one of the regexes, we narrow to the note section just when the command
+is running. It defaults to all org-insert commands and ~org-meta-return~, but if
+there are any weird behaviors caused by the metadata section, consider
+customizing this variable. Right now this just works for keybindings, and not
+using ~execute-extended-command~.
 ** Drafts
 Notes can be saved midway through editing, both for capturing and editing notes.
 The normal buffer-save keybinding (typically C-x C-s) will save a draft.  A
@@ -243,6 +306,9 @@ draft is like a normal note, but has a special tag, by default "draft".  (This
 can be customized in =ekg-draft-tag=.)  Having this tag means the note doesn't
 show up in most views, much like the notes in "trash".  Once a note is saved
 normally, it loses the draft tag.
+
+See also the section on the [[#autosave][auto save]], to see how to turn on and set up auto
+save, which can automatically save drafts for new notes.
 ** A warning about org-mode
 Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
 of funtionality, but much of it depends on the assumption that the buffer is all
@@ -309,7 +375,7 @@ a new note with whatever tags (if any) are associated with the notes buffer.
 
 #+texinfo: @noindent
 To save any note that is being captured, press =C-c C-c= or call
-=ekg-capture-finalize=.  To cancel, just kill the buffer.
+=ekg-capture-finalize=.  To cancel, just kill the buffer.  You can also abort with =C-c C-k=, or =ekg-capture-abort=, which will not only kill the buffer but delete any draft saved.
 ** Templates
 :PROPERTIES:
 :CUSTOM_ID: templates
@@ -563,20 +629,16 @@ there.
 :CUSTOM_ID: trash
 :END:
 
-Notes deleted from note lists (=ekg-notes-mode=) buffers are not deleted
-outright, but rather put in the trash.  There are two concepts here: trashed
-tags, and trashed note.  A trashed tag is a tag with the prefix "trash/" added.
-Such tags are ignored and not shown to users except when editing notes, at which
-point the user can choose to remove the trash prefix to un-trash them.  When you
-run =ekg-notes-delete= on a note, all its tags are trashed (i.e. prefixed with
-"trash/").
+Notes deleted from note lists (=ekg-notes-mode=) buffers are not deleted outright,
+but rather put in the trash, which is done by adding the =ekg-trash-tag=, by
+default, "trash", to the note. Any note with the "trash" tag will not be shown
+in normal tag buffers.
 
-If all of a note's tags are trashed, then the note itself is considered to be
-trashed.  Trashed notes can be seen by calling =ekg-show-notes-in-trash=.  If
-notes are deleted from this list via =ekg-notes-delete= again, they are deleted
-permanently.  The function =ekg-notes-delete= will only permanently delete a
-note if all its tags were previously trashed.  If you want to un-trash the note,
-you can edit the note and remove the trash prefix from one or more of the tags.
+Trashed notes can be seen by calling =ekg-show-notes-in-trash=. If notes are
+deleted from this list via =ekg-notes-delete= again, they are deleted permanently.
+The function =ekg-notes-delete= will always delete a note if the note is in the
+trash, and trash it otherwise. If you want to un-trash the note, you can remove
+the trash tag.
 * Links to ekg in org-mode
 Both notes in ekg and certain note list buffers can be stored and linked to in
 org-mode.  To store a link to a note, you have to edit that note and call
@@ -1009,6 +1071,20 @@ to the query.
 Note that anything in your database could potentially be retrieved and sent to
 the LLM, so if you have notes that you consider too private to send for
 processing, you may not want to use this.
+** Auto save
+:PROPERTIES:
+:CUSTOM_ID: autosave
+:END:
+The =ekg-auto-save= module is useful for users who enter longer notes, so that the notes are protected against accidentally killing the buffer, or emacs crashing, or any similar problem.  It is designed to work similarly to the built-in auto-save functionality, and has it's own variables that default to the auto-save equivalent.  So, for example, there is ~ekg-auto-save-timeout~, which defaults to the value of ~auto-save-timeout~.
+
+To start using this, you need to require the module and turn on =ekg-auto-save-mode= in the =ekg-edit-mode` and =ekg-capture-mode=.  For example:
+#+begin_src emacs-lisp
+(require 'ekg-auto-save)
+(add-hook 'ekg-capture-mode-hook 'ekg-auto-save-mode)
+(add-hook 'ekg-edit-mode-hook 'ekg-auto-save-mode)
+#+end_src
+
+In the capture mode, this. is equivalent to saving periodically (to drafts).  In edit mode, it will save the latest version while editing.
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.

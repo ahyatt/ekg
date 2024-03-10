@@ -86,7 +86,7 @@ The type and contents of the struct vary by provider.")
               ('org-mode "emacs org-mode")
               ('markdown-mode "markdown")
               (_ (format "emacs %s" (symbol-name major-mode))))))
-   "Anything inside an LLM_OUTPUT block is previous output you have given."))
+   "Anything inside an LLM_OUTPUT block is previous output you have given, but do not generate the block yourself.  We will do that around the result you give to us."))
 
 (defun ekg-llm-prompt-for-note (note)
   "Return the prompt for NOTE, using the tags on the note.
@@ -175,9 +175,6 @@ The return value is a list of `ekg-llm-prompt-interaction'
 structs."
   (list
    (make-llm-chat-prompt-interaction
-    :role 'system
-    :content (ekg-llm-prompt-prelude))
-   (make-llm-chat-prompt-interaction
     :role 'user
     :content (substring-no-properties (ekg-edit-note-display-text)))))
 
@@ -189,7 +186,7 @@ of the response."
   (let ((markers (funcall marker-func))
         (prompt (make-llm-chat-prompt
                  :temperature temperature
-                 :context (or prompt ekg-llm-default-prompt)
+                 :context (concat (ekg-llm-prompt-prelude) "\n" (or prompt ekg-llm-default-prompt))
                  :interactions (ekg-llm-note-interactions))))
     (delete-region (car markers) (cdr markers))
     (condition-case nil

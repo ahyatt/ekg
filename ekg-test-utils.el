@@ -36,7 +36,8 @@ BODY is the test body."
            (ekg-note-save-hook nil)
            (ekg-note-pre-delete-hook nil)
            (ekg-note-delete-hook nil)
-           (ekg-note-add-tag-hook nil))
+           (ekg-note-add-tag-hook nil)
+           (ekg-confirm-on-buffer-kill nil))
        (ekg-connect)
        (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))
        (save-excursion

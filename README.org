@@ -138,6 +138,17 @@ Open AI's API is the following:
 
 Note: make sure to never check in an API key, so if you check in your
 configuration, set up your API key in a loaded elisp file you do not check in.
+
+If you'd like to enable auto-saving while editing:
+
+#+begin_src emacs-lisp
+(use-package ekg
+  :config
+  (require 'ekg-auto-save)
+  (add-hook 'ekg-capture-mode-hook #'ekg-auto-save-mode)
+  (add-hook 'ekg-edit-mode-hook #'ekg-auto-save-mode))
+#+end_src
+
 * Usage
 To create a note, run =ekg-capture= to capture a text note, or =ekg-capture-url= to
 capture a website. The note will, by default, be tagged with the current date.
@@ -157,20 +168,21 @@ a complete list of commands and keybindings.
 * Command summary
 Global commands, can be run everywhere, and most should be bound to useful keybindings:
 
-| Command                          | Description                                                            |
-|----------------------------------+------------------------------------------------------------------------|
-| =ekg-capture=                    | Capture a new note                                                     |
-| =ekg-capture-url=                | Capture a new note (or open an existing note) about a URL              |
-| =ekg-capture-file=               | Capture a new note (or open an existing note) about a file             |
-| =ekg-show-notes-with-tag=        | Open a tag buffer for notes matching the single tag given              |
-| =ekg-show-notes-with-any-tags=   | Open a tag buffer for notes matching any of the given tags             |
-| =ekg-show-notes-with-all-tags=   | Open a tag buffer for notes matching all of the given tags             |
-| =ekg-show-notes-in-trash=        | Open a tag buffer that shows all notes with only trashed tags          |
-| =ekg-show-notes-in-drafts=       | Open a tag buffer that shows all draft notes (saved but not finalized) |
-| =ekg-show-notes-for-today=       | Open a tag buffer that shows notes with today's tag                    |
-| =ekg-show-notes-latest-captured= | Open a buffer that shows the latest notes that have been captured      |
-| =ekg-show-notes-latest-modified= | Open a buffer that shows the latest notes that have been modified      |
-| =ekg-browse-url=                 | Open a URL stored as a resource to a note, completing by note title    |
+| Command                        | Description                                                               |
+|--------------------------------+---------------------------------------------------------------------------|
+| =ekg-capture=                    | Capture a new note                                                        |
+| =ekg-capture-url=                | Capture a new note (or open an existing note) about a URL                 |
+| =ekg-capture-file=               | Capture a new note (or open an existing note) about a file                |
+| =ekg-show-notes-with-tag=        | Open a buffer for notes matching the single tag given                     |
+| =ekg-show-notes-with-any-tags=   | Open a buffer for notes matching any of the given tags                    |
+| =ekg-show-notes-with-all-tags=   | Open a buffer for notes matching all of the given tags                    |
+| =ekg-show-notes-with-tag-prefix= | Open a buffer for notes matching any tag with a tag with the given prefix |
+| =ekg-show-notes-in-trash=        | Open a tag buffer that shows all notes in the trash                       |
+| =ekg-show-notes-in-drafts=       | Open a tag buffer that shows all draft notes (saved but not finalized)    |
+| =ekg-show-notes-for-today=       | Open a tag buffer that shows notes with today's tag                       |
+| =ekg-show-notes-latest-captured= | Open a buffer that shows the latest notes that have been captured         |
+| =ekg-show-notes-latest-modified= | Open a buffer that shows the latest notes that have been modified         |
+| =ekg-browse-url=                 | Open a URL stored as a resource to a note, completing by note title       |
 
 
 These are also global commands, but for more occasional or specialized uses:
@@ -187,12 +199,14 @@ Commands relevant to capture buffers:
 |------------------------+--------------------------------------|
 | =ekg-change-mode=      | Change note major-mode               |
 | =ekg-capture-finalize= | Finish and save (bound to =C-c C-c=) |
+| =ekg-capture-abort=    | Trash the note  (bound to =C-c C-k=) |
 
 Commands relevant to edit buffers:
 
 | Command             | Description                          |
 |---------------------+--------------------------------------|
 | =ekg-change-mode=   | Change note major-mode               |
+| =ekg-edit-abort=    | Abort all edits (bound to =C-c C-k=) |
 | =ekg-edit-finalize= | Finish and save (bound to =C-c C-c=) |
 
 Commands relevant to note view buffers:
