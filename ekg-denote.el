@@ -128,8 +128,10 @@ Path can change due to title or tag changes.
     (when (and existing-path (not (string= existing-path path)))
       (denote-rename-file-and-buffer existing-path path))))
 
-(defun ekg-denote--save (denote)
-  "Save the given DENOTE to the disk."
+(defun ekg-denote--text-save (denote)
+  "Save the text from given DENOTE to the disk.
+
+Optionally add front-matter."
   (let ((path (ekg-denote-path denote))
 	(text (ekg-denote-text denote))
 	(title (ekg-denote-title denote))
@@ -228,7 +230,7 @@ Denote uses creation-time as ID and assume it to be unique."
 	       (when (and modified-at (time-less-p last-export-time modified-at))
 		 (ekg-denote--rename-if-path-changed denote)
 		 (ekg-denote--merge-if-text-differ denote))
-	       (ekg-denote--save denote)))
+	       (ekg-denote--text-save denote)))
     (ekg-denote-set-last-export start-time)))
 
 (provide 'ekg-denote)
