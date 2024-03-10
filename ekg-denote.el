@@ -112,7 +112,7 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 		     :title title
 		     :path path)))
 
-(defun ekg-denote-rename (denote)
+(defun ekg-denote-rename-if-path-changed (denote)
   "Rename given DENOTE if path has changed.
 
 Path can change due to title or tag changes.
@@ -132,7 +132,7 @@ Path can change due to title or tag changes.
     (with-temp-file path (insert text))
     (denote-add-front-matter path title kws)))
 
-(defun ekg-denote-modified-time (denote)
+(defun ekg-denote-modified-time-from-file (denote)
   "Return modified time for the DENOTE"
   (let ((path (ekg-denote-path denote)))
     (when (file-exists-p path)
@@ -140,43 +140,43 @@ Path can change due to title or tag changes.
        (file-attribute-modification-time
 	(file-attributes path)) 'integer))))
 
-(defun ekg-denote-read-file (filepath)
-  "Return contents of a FILEPATH."
-  (let* ((file-type (denote-filetype-heuristics filepath))
+(defun ekg-denote-text-from-file (denote)
+  "Return contents of a DENOTE from file on the disk."
+  (let* ((file-type (denote-filetype-heuristics (ekg-denote-path denote)))
 	 (front-matter (denote--front-matter file-type))
-	 (list1 (split-string front-matter "\n"))
-	 (list1 (mapcar (lambda (x) (replace-regexp-in-string "%.*s" "" x)) list1))
-	 (list1 (mapcar #'string-trim list1))
-	 (list1 (seq-remove #'string-empty-p list1)))
+	 (front-matter-list (split-string front-matter "\n"))
+	 (front-matter-list (mapcar (lambda (x) (replace-regexp-in-string "%.*s" "" x)) front-matter-list))
+	 (front-matter-list (mapcar #'string-trim front-matter-list))
+	 (front-matter-list (seq-remove #'string-empty-p front-matter-list)))
     (with-temp-buffer
-      (insert-file-contents filepath)
-      (dolist (elt list1)
+      (insert-file-contents file)
+      (dolist (elt front-matter-list)
 	(goto-char (point-min))
 	(when (search-forward elt (line-end-position) t 1)
-	  (progn
-	    (move-beginning-of-line nil)
-	    (kill-line 1))))
-      (string-trim (buffer-string)))))
+	  (move-beginning-of-line nil)
+	  (kill-line 1)))
+      (buffer-string))))
 
 (defvar ekg-denote-section-header (make-string 7 ?>) "Section header used during merging.")
 (defvar ekg-denote-section-footer (make-string 7 ?<) "Section footer used during merging.")
 
 (defun ekg-denote-section (text)
   "Return formatted TEXT with section header and footer"
-  (format "%s\n%s\n%s" ekg-denote-section-header text ekg-denote-section-footer))
+  (concat "\n" ekg-denote-section-header "\n" text "\n" ekg-denote-section-footer "\n"))
 
-(defun ekg-denote-get-merged-text (path text)
-  "Return merged text of file PATH and given TEXT."
-  (if-let ((file-text (ekg-denote-read-file path)))
-      (mapconcat #'ekg-denote-section (list file-text text) "\n")
-    text))
+(defun ekg-denote-get-merged-text (text-from-file text)
+  "Return merged text from TEXT-FROM-FILE and TEXT."
+  (concat (ekg-denote-section text-from-file) (ekg-denote-section text)))
 
-(defun ekg-denote-merge (denote)
-  "Merge contents of DENOTE with the existing file on the disk."
-  (let ((path (ekg-denote-path denote))
-	(text (ekg-denote-text denote)))
-    (setf (ekg-denote-text denote)
-	  (ekg-denote-get-merged-text path text))))
+(defun ekg-denote-merge-if-text-differ (denote)
+  "Merge content of existing file with DENOTE if content differs."
+  (let* ((text (ekg-denote-text denote))
+	 (text-from-file (ekg-denote-text-from-file denote)))
+    (when (not (string-equal
+		(string-trim text)
+		(string-trim text-from-file)))
+      (setf (ekg-denote-text denote)
+	    (ekg-denote-get-merged-text text-from-file text)))))
 
 (defun ekg-denote-note-print (note)
   "Return string representation of NOTE for printing."
@@ -218,13 +218,12 @@ Denote uses creation-time as ID and assume it to be unique."
     (cl-loop for note in notes do
 	     (message "ekg-denote-export: exporting %s." (ekg-denote-note-print note))
 	     (let* ((denote (ekg-denote-create note))
-		    (modified-at (ekg-denote-modified-time denote)))
+		    (modified-at (ekg-denote-modified-time-from-file denote)))
 	       (when (and modified-at (time-less-p last-export-time modified-at))
-		 (ekg-denote-merge denote))
-	       (ekg-denote-rename denote)
+		 (ekg-denote-rename-if-path-changed denote)
+		 (ekg-denote-merge-if-text-differ denote))
 	       (ekg-denote-save denote)))
-    ;; (ekg-denote-set-last-export start-time)
-    ))
+    (ekg-denote-set-last-export start-time)))
 
 (provide 'ekg-denote)
 ;;; ekg-denote.el ends here.
