@@ -45,6 +45,11 @@
   :type 'integer
   :group 'ekg-denote)
 
+(defcustom ekg-denote-add-front-matter-on-export nil
+  "Whether fron-matter is added by default on export."
+  :type 'boolean
+  :group 'ekg-denote)
+
 (defun ekg-denote-connect ()
   "Connect to ekg and ensure denote schema is set up."
   (ekg-connect)
@@ -68,14 +73,14 @@
     (apply #'triples-set-type ekg-db 'denote 'denote
 	   (plist-put plist :last-export (floor (float-time time))))))
 
-(defun ekg-denote-triples-get-rows-modified-since (time)
+(defun ekg-denote--triples-get-rows-modified-since (time)
   "Return rows modified since TIME."
   (let ((pred (if (= 0 time) :time-tracked/creation-time :time-tracked/modified-time)))
     (triples-db-select-pred-op ekg-db pred '> time)))
 
-(defun ekg-denote-notes-modified-since (time)
+(defun ekg-denote--notes-modified-since (time)
   "Return notes modified since TIME."
-  (let* ((rows (ekg-denote-triples-get-rows-modified-since time))
+  (let* ((rows (ekg-denote--triples-get-rows-modified-since time))
 	 (ids (mapcar #'car rows))
 	 (notes (mapcar #'ekg-get-note-with-id ids)))
     (remove nil notes)))
@@ -112,7 +117,7 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 		     :title title
 		     :path path)))
 
-(defun ekg-denote-rename-if-path-changed (denote)
+(defun ekg-denote--rename-if-path-changed (denote)
   "Rename given DENOTE if path has changed.
 
 Path can change due to title or tag changes.
@@ -123,16 +128,17 @@ Path can change due to title or tag changes.
     (when (and existing-path (not (string= existing-path path)))
       (denote-rename-file-and-buffer existing-path path))))
 
-(defun ekg-denote-save (denote)
+(defun ekg-denote--save (denote)
   "Save the given DENOTE to the disk."
   (let ((path (ekg-denote-path denote))
 	(text (ekg-denote-text denote))
 	(title (ekg-denote-title denote))
 	(kws (ekg-denote-kws denote)))
     (with-temp-file path (insert text))
-    (denote-add-front-matter path title kws)))
+    (when ekg-denote-add-front-matter-on-export
+      (denote-add-front-matter path title kws))))
 
-(defun ekg-denote-modified-time-from-file (denote)
+(defun ekg-denote--modified-time-from-file (denote)
   "Return modified time for the DENOTE"
   (let ((path (ekg-denote-path denote)))
     (when (file-exists-p path)
@@ -140,7 +146,7 @@ Path can change due to title or tag changes.
        (file-attribute-modification-time
 	(file-attributes path)) 'integer))))
 
-(defun ekg-denote-text-from-file (denote)
+(defun ekg-denote--text-from-file (denote)
   "Return contents of a DENOTE from file on the disk."
   (let* ((file-type (denote-filetype-heuristics (ekg-denote-path denote)))
 	 (front-matter (denote--front-matter file-type))
@@ -160,25 +166,25 @@ Path can change due to title or tag changes.
 (defvar ekg-denote-section-header (make-string 7 ?>) "Section header used during merging.")
 (defvar ekg-denote-section-footer (make-string 7 ?<) "Section footer used during merging.")
 
-(defun ekg-denote-section (text)
+(defun ekg-denote--section (text)
   "Return formatted TEXT with section header and footer"
   (concat "\n" ekg-denote-section-header "\n" text "\n" ekg-denote-section-footer "\n"))
 
-(defun ekg-denote-get-merged-text (text-from-file text)
+(defun ekg-denote--get-merged-text (text-from-file text)
   "Return merged text from TEXT-FROM-FILE and TEXT."
-  (concat (ekg-denote-section text-from-file) (ekg-denote-section text)))
+  (concat (ekg-denote--section text-from-file) (ekg-denote--section text)))
 
-(defun ekg-denote-merge-if-text-differ (denote)
+(defun ekg-denote--merge-if-text-differ (denote)
   "Merge content of existing file with DENOTE if content differs."
   (let* ((text (ekg-denote-text denote))
-	 (text-from-file (ekg-denote-text-from-file denote)))
+	 (text-from-file (ekg-denote--text-from-file denote)))
     (when (not (string-equal
 		(string-trim text)
 		(string-trim text-from-file)))
       (setf (ekg-denote-text denote)
-	    (ekg-denote-get-merged-text text-from-file text)))))
+	    (ekg-denote--get-merged-text text-from-file text)))))
 
-(defun ekg-denote-note-print (note)
+(defun ekg-denote--note-print (note)
   "Return string representation of NOTE for printing."
   (format "Note ID: %s, Modified: %s, Created: %s, Tags: %s, Title: %s, Text: %s"
 	  (ekg-note-id note)
@@ -193,7 +199,7 @@ Path can change due to title or tag changes.
 Denote uses creation-time as ID."
   (cl-loop for note in notes do
 	   (when (not (ekg-note-creation-time note))
-	     (message "ekg-denote: %s" (ekg-denote-note-print note))
+	     (message "ekg-denote: %s" (ekg-denote--note-print note))
 	     (error (format "ekg-denote: note missing creation time.")))))
 
 (defun ekg-denote-assert-notes-have-unique-creation-time (notes)
@@ -209,20 +215,20 @@ Denote uses creation-time as ID and assume it to be unique."
   (ekg-denote-connect)
   (let* ((last-export-time (ekg-denote-get-last-export))
 	 (start-time (current-time))
-	 (notes (ekg-denote-notes-modified-since last-export-time)))
+	 (notes (ekg-denote--notes-modified-since last-export-time)))
     (and (ekg-denote-assert-notes-have-creation-time notes)
 	 (ekg-denote-assert-notes-have-unique-creation-time notes))
     (message "ekg-denote-export: exporting notes modified since epoch: %s, date-time: %s"
 	     last-export-time
 	     (format-time-string "%Y%m%dT%H%M%S" last-export-time))
     (cl-loop for note in notes do
-	     (message "ekg-denote-export: exporting %s." (ekg-denote-note-print note))
+	     (message "ekg-denote-export: exporting %s." (ekg-denote--note-print note))
 	     (let* ((denote (ekg-denote-create note))
-		    (modified-at (ekg-denote-modified-time-from-file denote)))
+		    (modified-at (ekg-denote--modified-time-from-file denote)))
 	       (when (and modified-at (time-less-p last-export-time modified-at))
-		 (ekg-denote-rename-if-path-changed denote)
-		 (ekg-denote-merge-if-text-differ denote))
-	       (ekg-denote-save denote)))
+		 (ekg-denote--rename-if-path-changed denote)
+		 (ekg-denote--merge-if-text-differ denote))
+	       (ekg-denote--save denote)))
     (ekg-denote-set-last-export start-time)))
 
 (provide 'ekg-denote)
