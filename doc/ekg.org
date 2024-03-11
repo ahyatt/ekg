@@ -1091,9 +1091,8 @@ In the capture mode, this. is equivalent to saving periodically (to drafts).  In
 :END:
 ekg can export notes as denotes. Denote is a note taking and file
 naming tool. Primary reason for export is taking backup of your notes
-in a git backed repository. Import is in road map (PR is welcome).
-
-To export to denote, =ekg-denote= module is required.
+in a git backed repository. Import is in road map (PR is welcome). To
+export to denote, =ekg-denote= module is required.
 
 #+begin_src emacs-lisp
   (use-package ekg-denote
@@ -1116,11 +1115,11 @@ day.
 User can optionally enable adding of denote front-matter to files by
 setting =ekg-denote-add-front-matter-on-export= to =t=. Denote front
 matter is added using =denote-add-front-matter= function defined by
-=denote= package which open note in an emacs buffer requires a
-=save-buffer= by the user. The =ekg-denote-add-front-matter-on-export=
-is defaulted to =nil= to ease regression testing. Most of the user
-shall be setting =ekg-denote-add-front-matter-on-export= to =t= for
-personal use.
+=denote= package which open note in an emacs buffer and requires
+manual execution of =save-buffer= by the user. The
+=ekg-denote-add-front-matter-on-export= is defaulted to =nil= to ease
+regression testing. Most of the user shall be setting
+=ekg-denote-add-front-matter-on-export= to =t= for personal use.
 
 Ekg and denote have differences, due to which following customization
 are made available:
