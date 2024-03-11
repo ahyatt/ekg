@@ -1135,7 +1135,9 @@ by keeping denotes in a git repository and making sure to check-in any
 changes before and after export.
 
 If ekg and denote are both found to be updated after the last export,
-=ekg-denote= merges the content of ekg and denote during export.
+=ekg-denote= merges the content of ekg and denote during export. Note
+that the title and tags are used from ekg and no merging is done for
+title and tags.
 
 #+begin_example
 >>>>>>>
