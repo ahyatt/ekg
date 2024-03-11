@@ -1,6 +1,6 @@
 ;;; ekg-denote.el --- ekg and denote integration -*- lexical-binding: t -*-
 
-;; Copyright (c) 2024  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2024  Jay Rajput <jayrajput@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
