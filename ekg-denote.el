@@ -40,8 +40,8 @@
   :type 'integer
   :group 'ekg-denote)
 
-(defcustom ekg-denote-combined-kws-len 150
-  "Maximum length of the combined kws used for trimming kws when converting tags to kws during export."
+(defcustom ekg-denote-combined-keywords-len 150
+  "Maximum length of the combined keywords used for trimming kws when converting tags to kws during export."
   :type 'integer
   :group 'ekg-denote)
 
@@ -85,11 +85,11 @@
 	 (notes (mapcar #'ekg-get-note-with-id ids)))
     (remove nil notes)))
 
-(defun ekg-denote-sublist-kws (kws combined-length)
+(defun ekg-denote-sublist-keywords (kws combined-length)
   "Return the sublist for the given KWS list such that the
 length of combined KWS is not more than the given COMBINED-LENGTH."
   (if (length< (denote-keywords-combine kws) combined-length) kws
-    (ekg-denote-sublist-kws (butlast kws) combined-length)))
+    (ekg-denote-sublist-keywords (butlast kws) combined-length)))
 
 (cl-defstruct ekg-denote
   "Representation of denote file."
@@ -104,8 +104,8 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 	 ;; remove date tag as denote uses date in ID.
 	 (tags (seq-filter (lambda (tag)
 			     (not (string-prefix-p "date/" tag))) (ekg-note-tags note)))
-	 (kws (ekg-denote-sublist-kws
-	       (denote-sluggify-keywords tags) ekg-denote-combined-kws-len))
+	 (kws (ekg-denote-sublist-keywords
+	       (denote-sluggify-keywords tags) ekg-denote-combined-keywords-len))
 	 (ekg-title (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
 	 (title (string-limit (denote-sluggify ekg-title) ekg-denote-title-max-len))
 	 (signature-slug "")

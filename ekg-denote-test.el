@@ -26,11 +26,11 @@
 (require 'ekg-denote)
 (require 'cl-lib)
 
-(ert-deftest ekg-denote-test-sublist-kws ()
-  "Combined length of the sublist kws is as per the allowed combined length argument."
-  (should (equal '("kw1") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 4)))
-  (should (equal '("kw1" "kw2") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 8)))
-  (should (equal '("kw1" "kw2" "kw 3") (ekg-denote-sublist-kws '("kw1" "kw2" "kw 3") 13))))
+(ert-deftest ekg-denote-test-sublist-keywords ()
+  "Combined length of the sublist keywords is as per the allowed combined length argument."
+  (should (equal '("kw1") (ekg-denote-sublist-keywords '("kw1" "kw2" "kw 3") 4)))
+  (should (equal '("kw1" "kw2") (ekg-denote-sublist-keywords '("kw1" "kw2" "kw 3") 8)))
+  (should (equal '("kw1" "kw2" "kw 3") (ekg-denote-sublist-keywords '("kw1" "kw2" "kw 3") 13))))
 
 (ert-deftest ekg-denote-test-notes-having-duplicate-creation-time ()
   "Notes with duplicate creation time should error."
