@@ -1085,6 +1085,68 @@ To start using this, you need to require the module and turn on =ekg-auto-save-m
 #+end_src
 
 In the capture mode, this. is equivalent to saving periodically (to drafts).  In edit mode, it will save the latest version while editing.
+** Denote
+:PROPERTIES:
+:CUSTOM_ID: denote
+:END:
+ekg can export notes as denotes. Denote is a note taking and file
+naming tool. Primary reason for export is taking backup of your notes
+in a git backed repository. Import is in road map (PR is welcome).
+
+To export to denote, =ekg-denote= module is required.
+
+#+begin_src emacs-lisp
+  (use-package ekg-denote
+    :init
+    (setq ekg-denote-add-front-matter-on-export t)
+    (setq ekg-denote-title-max-len 50)
+    (setq ekg-denote-combined-keywords-len 150))
+#+end_src
+
+To export, call =ekg-denote-export= which will export any modified
+note after the last export as a denote in the =denote-directory=
+defined by =denote= package. If it is your first time exporting, all
+the notes will be exported to the =denote-directory=.
+
+=ekg-denote= keeps record of the last export time in the ekg db and
+use that to find the notes changed since last export. This way the
+exports are much faster. It is suggested to export your notes every
+day.
+
+User can optionally enable adding of denote front-matter to files by
+setting =ekg-denote-add-front-matter-on-export= to =t=. Denote front
+matter is added using =denote-add-front-matter= function defined by
+=denote= package which open note in an emacs buffer requires a
+=save-buffer= by the user. The =ekg-denote-add-front-matter-on-export=
+is defaulted to =nil= to ease regression testing. Most of the user
+shall be setting =ekg-denote-add-front-matter-on-export= to =t= for
+personal use.
+
+Ekg and denote have differences, due to which following customization
+are made available:
+
+- =ekg-denote-title-max-len= to trim the title during export. Default
+  is 50 characters.
+- =ekg-denote-combined-keywords-len= to trim the combined length of
+  keywords. Default is 150 characters.
+
+It is user responsibility to backup the denotes before and after
+export to protect against accidental deletes. This can be easily done
+by keeping denotes in a git repository and making sure to check-in any
+changes before and after export.
+
+If ekg and denote are both found to be updated after the last export,
+=ekg-denote= merges the content of ekg and denote during export.
+
+#+begin_example
+>>>>>>>
+Denote Text
+<<<<<<<
+>>>>>>>
+Ekg Text
+<<<<<<<
+#+end_example
+
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.
