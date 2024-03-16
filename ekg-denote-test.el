@@ -122,3 +122,8 @@
       (should (equal "text1" (with-temp-buffer
 			       (insert-file-contents file)
 			       (buffer-string)))))))
+
+(ekg-deftest ekg-denote-test-last-import-export ()
+  (should (= 0 (ekg-denote-get-last-export)))
+  (ekg-denote-set-last-export 123)
+  (should (= 123 (ekg-denote-get-last-export))))

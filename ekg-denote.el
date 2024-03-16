@@ -75,9 +75,9 @@ You can choose not to backup in case denotes are already backed up using git or 
 
 (defun ekg-denote-set-last-export (time)
   "Set the last export time to TIME."
-  (when nil (let ((plist (triples-get-type ekg-db 'denote 'denote)))
-     (apply #'triples-set-type ekg-db 'denote 'denote
-	    (plist-put plist :last-export (floor (float-time time)))))))
+  (let ((plist (triples-get-type ekg-db 'denote 'denote)))
+    (apply #'triples-set-type ekg-db 'denote 'denote
+	   (plist-put plist :last-export (floor (float-time time))))))
 
 (defun ekg-denote--triples-get-rows-modified-since (time)
   "Return rows modified since TIME."
