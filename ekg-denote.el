@@ -206,8 +206,8 @@ Denote uses creation-time as ID and assume it to be unique."
 	     (let* ((denote (ekg-denote-create note))
 		    (modified-at (ekg-denote--modified-time-from-file denote)))
 	       (when (and modified-at (time-less-p last-export-time modified-at))
-		 (ekg-denote--backup denote)
-		 (ekg-denote--rename-if-path-changed denote))
+		 (ekg-denote--backup denote))
+	       (ekg-denote--rename-if-path-changed denote)
 	       (ekg-denote--text-save denote)))
     (ekg-denote-set-last-export start-time)))
 
