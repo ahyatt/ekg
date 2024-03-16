@@ -63,15 +63,6 @@
 	 (notes (list note1 note2)))
     (should-not (ekg-denote-assert-notes-have-creation-time notes))))
 
-(ert-deftest ekg-denote-test-merge ()
-  "Validate the merging of the text with the existing file."
-  (let ((denote1 (make-ekg-denote :text "denote-text..." :path "/mock/file/path")))
-    (cl-letf (((symbol-function 'ekg-denote-text-from-file)
-	       (lambda (path) "file-txt...")))
-      (ekg-denote-merge denote1)
-      (should (equal
-	       "\n>>>>>>>\nfile-txt...\n<<<<<<<\n\n>>>>>>>\ndenote-text...\n<<<<<<<\n"
-	       (ekg-denote-text denote1))))))
 
 (ert-deftest ekg-denote-test-create ()
   "Verify creation of `ekg-denote' against given ekg note."
@@ -103,7 +94,7 @@
 	 (denote-directory "/tmp")
 	 (denote-id (format-time-string denote-id-format time))
 	 (ekg-default-capture-mode 'org-mode)
-	 (ekg-denote-title-max-len 10)
+	 (ekg-denote-export-title-max-len 10)
 	 (note (make-ekg-note :id "ID1"
 			      :creation-time time
 			      :text "Text"

@@ -35,20 +35,26 @@
 (require 'triples)
 (require 'seq)
 
-(defcustom ekg-denote-title-max-len 50
-  "Maximum length of the title to trim during export."
+(defcustom ekg-denote-export-title-max-len 50
+  "Maximum length of the title to trim to during export."
   :type 'integer
-  :group 'ekg-denote)
+  :group 'ekg-denote-export)
 
-(defcustom ekg-denote-combined-keywords-len 150
-  "Maximum length of the combined keywords used for trimming kws when converting tags to kws during export."
+(defcustom ekg-denote-export-combined-keywords-len 150
+  "Maximum length of the combined keywords used for trimming kws when converting tags to keywords during export."
   :type 'integer
-  :group 'ekg-denote)
+  :group 'ekg-denote-export)
 
-(defcustom ekg-denote-add-front-matter-on-export nil
-  "Whether fron-matter is added by default on export."
+(defcustom ekg-denote-export-add-front-matter nil
+  "Whether front-matter is added or not to denotes during export."
   :type 'boolean
-  :group 'ekg-denote)
+  :group 'ekg-denote-export)
+
+(defcustom ekg-denote-export-backup-on-conflict t
+  "Whether to backup denotes using `backup-buffer' on conflict during export.
+You can choose not to backup in case denotes are already backed up using git or in other usecases."
+  :type 'boolean
+  :group 'ekg-denote-export)
 
 (defun ekg-denote-connect ()
   "Connect to ekg and ensure denote schema is set up."
@@ -69,9 +75,9 @@
 
 (defun ekg-denote-set-last-export (time)
   "Set the last export time to TIME."
-  (let ((plist (triples-get-type ekg-db 'denote 'denote)))
-    (apply #'triples-set-type ekg-db 'denote 'denote
-	   (plist-put plist :last-export (floor (float-time time))))))
+  (when nil (let ((plist (triples-get-type ekg-db 'denote 'denote)))
+     (apply #'triples-set-type ekg-db 'denote 'denote
+	    (plist-put plist :last-export (floor (float-time time)))))))
 
 (defun ekg-denote--triples-get-rows-modified-since (time)
   "Return rows modified since TIME."
@@ -105,9 +111,9 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 	 (tags (seq-filter (lambda (tag)
 			     (not (string-prefix-p "date/" tag))) (ekg-note-tags note)))
 	 (kws (ekg-denote-sublist-keywords
-	       (denote-sluggify-keywords tags) ekg-denote-combined-keywords-len))
+	       (denote-sluggify-keywords tags) ekg-denote-export-combined-keywords-len))
 	 (ekg-title (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
-	 (title (string-limit (denote-sluggify ekg-title) ekg-denote-title-max-len))
+	 (title (string-limit (denote-sluggify ekg-title) ekg-denote-export-title-max-len))
 	 (signature-slug "")
 	 (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext signature-slug)))
     (make-ekg-denote :id id
@@ -116,6 +122,17 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 		     :kws kws
 		     :title title
 		     :path path)))
+
+
+(defun ekg-denote--backup (denote)
+  "Backup given DENOTE."
+  (message "ekg-denote: Taking backup of %s" (ekg-denote-path denote))
+  (when ekg-denote-export-backup-on-conflict
+    (let ((make-backup-files t)
+	  (backup-by-copying t)
+	  (backup-inhibited nil))
+      (with-current-buffer (create-file-buffer (ekg-denote-path denote))
+	(backup-buffer)))))
 
 (defun ekg-denote--rename-if-path-changed (denote)
   "Rename given DENOTE if path has changed.
@@ -137,7 +154,7 @@ Optionally add front-matter."
 	(title (ekg-denote-title denote))
 	(kws (ekg-denote-kws denote)))
     (with-temp-file path (insert text))
-    (when ekg-denote-add-front-matter-on-export
+    (when ekg-denote-export-add-front-matter
       (denote-add-front-matter path title kws))))
 
 (defun ekg-denote--modified-time-from-file (denote)
@@ -147,44 +164,6 @@ Optionally add front-matter."
       (time-convert
        (file-attribute-modification-time
 	(file-attributes path)) 'integer))))
-
-(defun ekg-denote--text-from-file (denote)
-  "Return contents of a DENOTE from file on the disk."
-  (let* ((file-type (denote-filetype-heuristics (ekg-denote-path denote)))
-	 (front-matter (denote--front-matter file-type))
-	 (front-matter-list (split-string front-matter "\n"))
-	 (front-matter-list (mapcar (lambda (x) (replace-regexp-in-string "%.*s" "" x)) front-matter-list))
-	 (front-matter-list (mapcar #'string-trim front-matter-list))
-	 (front-matter-list (seq-remove #'string-empty-p front-matter-list)))
-    (with-temp-buffer
-      (insert-file-contents file)
-      (dolist (elt front-matter-list)
-	(goto-char (point-min))
-	(when (search-forward elt (line-end-position) t 1)
-	  (move-beginning-of-line nil)
-	  (kill-line 1)))
-      (buffer-string))))
-
-(defvar ekg-denote-section-header (make-string 7 ?>) "Section header used during merging.")
-(defvar ekg-denote-section-footer (make-string 7 ?<) "Section footer used during merging.")
-
-(defun ekg-denote--section (text)
-  "Return formatted TEXT with section header and footer"
-  (concat "\n" ekg-denote-section-header "\n" text "\n" ekg-denote-section-footer "\n"))
-
-(defun ekg-denote--get-merged-text (text-from-file text)
-  "Return merged text from TEXT-FROM-FILE and TEXT."
-  (concat (ekg-denote--section text-from-file) (ekg-denote--section text)))
-
-(defun ekg-denote--merge-if-text-differ (denote)
-  "Merge content of existing file with DENOTE if content differs."
-  (let* ((text (ekg-denote-text denote))
-	 (text-from-file (ekg-denote--text-from-file denote)))
-    (when (not (string-equal
-		(string-trim text)
-		(string-trim text-from-file)))
-      (setf (ekg-denote-text denote)
-	    (ekg-denote--get-merged-text text-from-file text)))))
 
 (defun ekg-denote--note-print (note)
   "Return string representation of NOTE for printing."
@@ -201,14 +180,13 @@ Optionally add front-matter."
 Denote uses creation-time as ID."
   (cl-loop for note in notes do
 	   (when (not (ekg-note-creation-time note))
-	     (message "ekg-denote: %s" (ekg-denote--note-print note))
-	     (error (format "ekg-denote: note missing creation time.")))))
+	     (error (format "ekg-denote: note missing creation time: %s" (ekg-denote--note-print note))))))
 
 (defun ekg-denote-assert-notes-have-unique-creation-time (notes)
   "Raise error if NOTES are using duplicate creation-time.
 Denote uses creation-time as ID and assume it to be unique."
-  (let ((notes (mapcar #'ekg-note-creation-time notes)))
-    (when (not (equal notes (seq-uniq notes)))
+  (let ((creation-times (mapcar #'ekg-note-creation-time notes)))
+    (when (not (equal creation-times (seq-uniq creation-times)))
       (error "ekg-denote: Notes using same creation time."))))
 
 (defun ekg-denote-export ()
@@ -228,8 +206,8 @@ Denote uses creation-time as ID and assume it to be unique."
 	     (let* ((denote (ekg-denote-create note))
 		    (modified-at (ekg-denote--modified-time-from-file denote)))
 	       (when (and modified-at (time-less-p last-export-time modified-at))
-		 (ekg-denote--rename-if-path-changed denote)
-		 (ekg-denote--merge-if-text-differ denote))
+		 (ekg-denote--backup denote)
+		 (ekg-denote--rename-if-path-changed denote))
 	       (ekg-denote--text-save denote)))
     (ekg-denote-set-last-export start-time)))
 
