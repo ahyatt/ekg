@@ -1097,7 +1097,7 @@ export to denote, =ekg-denote= module is required.
 #+begin_src emacs-lisp
   (use-package ekg-denote
     :init
-    (setq ekg-denote-export-add-front-matter t)
+    (setq ekg-denote-export-add-front-matter nil)
     (setq ekg-denote-export-backup-on-conflict t)
     (setq ekg-denote-export-title-max-len 50)
     (setq ekg-denote-export-combined-keywords-len 150))
@@ -1117,10 +1117,7 @@ User can optionally enable adding of denote front-matter to exported
 denotes by setting =ekg-denote-export-add-front-matter= to
 =t=. Denote front matter is added using =denote-add-front-matter=
 function defined by =denote= package which open note in an emacs
-buffer and requires manual execution of =save-buffer= by the user. The
-=ekg-denote-export-add-front-matter= is defaulted to =nil= to ease
-regression testing. Most of the user shall be setting
-=ekg-denote-export-add-front-matter= to =t= for personal use.
+buffer and requires manual execution of =save-buffer= by the user.
 
 Ekg and denote have differences, due to which following customization
 are made available:
@@ -1139,8 +1136,8 @@ by keeping denotes in a git repository and making sure to check-in any
 changes before and after export.
 
 If ekg and denote are both found to be updated after the last export
-which should ideally not happen, denote is updated with ekg after
-taking a backup. A message indicating the conflict is generated.
+which should ideally not happen, denote is updated with ekg. A backup
+is taken based on =ekg-denote-export-backup-on-conflict= setting.
 
 * Design
 ** The triple database
