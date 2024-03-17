@@ -163,7 +163,8 @@ Optionally add front-matter."
     (when (file-exists-p path)
       (time-convert
        (file-attribute-modification-time
-	(file-attributes path)) 'integer))))
+	(file-attributes path))
+       'integer))))
 
 (defun ekg-denote--note-print (note)
   "Return string representation of NOTE for printing."
