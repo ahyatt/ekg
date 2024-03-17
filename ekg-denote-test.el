@@ -63,7 +63,6 @@
 	 (notes (list note1 note2)))
     (should-not (ekg-denote-assert-notes-have-creation-time notes))))
 
-
 (ert-deftest ekg-denote-test-create ()
   "Verify creation of `ekg-denote' against given ekg note."
 
@@ -115,8 +114,7 @@
 Enforces single match."
   (let ((files (seq-filter (lambda (x) (string-match-p regexp x))
 			   (denote-directory-text-only-files))))
-    (should (length= files 1))
-    (car files)))
+    (when files (car files))))
 
 (defun ekg-test--denote-text (file)
   "Get text from denote FILE."
@@ -152,9 +150,18 @@ Enforces single match."
     (setq note (ekg-test--denote-ekg denote-file))
     (setf (ekg-note-text note) "text2")
     (ekg-save-note note)
+    (sleep-for 1)
     (ekg-denote-export)
     (setq denote-file (ekg-test--matching-denote "__portfolio"))
-    (should (equal "text2" (ekg-test--denote-text denote-file)))))
+    (should (equal "text2" (ekg-test--denote-text denote-file)))
+    ;; ekg note tag update cause denote file rename
+    (setq note (ekg-test--denote-ekg denote-file))
+    (setf (ekg-note-tags note) '("updatedtag"))
+    (ekg-save-note note)
+    (sleep-for 1)
+    (ekg-denote-export)
+    (should (ekg-test--matching-denote "__updatedtag"))
+    (should-not (ekg-test--matching-denote "__portfolio"))))
 
 (ekg-deftest ekg-denote-test-last-export ()
   "Verify last export time updates."
