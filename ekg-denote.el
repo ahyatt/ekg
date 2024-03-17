@@ -82,7 +82,7 @@ You can choose not to backup in case denotes are already backed up using git or 
 (defun ekg-denote--triples-get-rows-modified-since (time)
   "Return rows modified since TIME."
   (let ((pred (if (= 0 time) :time-tracked/creation-time :time-tracked/modified-time)))
-    (triples-db-select-pred-op ekg-db pred '> time)))
+    (triples-db-select-pred-op ekg-db pred '>= time)))
 
 (defun ekg-denote--notes-modified-since (time)
   "Return notes modified since TIME."
