@@ -118,20 +118,43 @@ Enforces single match."
     (should (length= files 1))
     (car files)))
 
-(defun ekg-test--file-text (file)
-  "Get text from FILE."
+(defun ekg-test--denote-text (file)
+  "Get text from denote FILE."
   (with-temp-buffer
     (insert-file-contents file)
     (buffer-string)))
 
+(defun ekg-test--creation-time-from-denote-file (file)
+  "Return creation time for the denote FILE."
+  (time-convert
+   (encode-time
+    (parse-time-string
+     (denote-retrieve-filename-identifier file)))
+   'integer))
+
+(defun ekg-test--denote-ekg (file)
+  "Return ekg note for given denote FILE."
+  (let* ((creation-time (ekg-test--creation-time-from-denote-file file))
+	 (triples (triples-db-select-pred-op ekg-db :time-tracked/creation-time '= creation-time)))
+    (should (length= triples 1))
+    (ekg-get-note-with-id (car (car triples)))))
+
 (ekg-deftest ekg-test-export ()
   "Verify export."
   (let ((denote-directory (make-temp-file "denote" t)))
-    ;; export create new files with note text
+    ;; ekg note creations are exported
     (ekg-save-note (ekg-note-create :text "text1" :mode 'org-mode :tags '("portfolio")))
+    (sleep-for 1)
     (ekg-denote-export)
-    (setq denote (ekg-test--matching-denote "__portfolio"))
-    (should (equal "text1" (ekg-test--file-text denote)))))
+    (setq denote-file (ekg-test--matching-denote "__portfolio"))
+    (should (equal "text1" (ekg-test--denote-text denote-file)))
+    ;; ekg note updates are exported
+    (setq note (ekg-test--denote-ekg denote-file))
+    (setf (ekg-note-text note) "text2")
+    (ekg-save-note note)
+    (ekg-denote-export)
+    (setq denote-file (ekg-test--matching-denote "__portfolio"))
+    (should (equal "text2" (ekg-test--denote-text denote-file)))))
 
 (ekg-deftest ekg-denote-test-last-export ()
   "Verify last export time updates."
