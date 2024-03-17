@@ -126,12 +126,12 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 
 (defun ekg-denote--backup (denote)
   "Backup given DENOTE."
-  (message "ekg-denote: Taking backup of %s" (ekg-denote-path denote))
   (when ekg-denote-export-backup-on-conflict
-    (let ((make-backup-files t)
-	  (backup-by-copying t)
-	  (backup-inhibited nil))
-      (with-current-buffer (create-file-buffer (ekg-denote-path denote))
+    (message "ekg-denote: Taking backup of %s" (ekg-denote-path denote))
+    (with-current-buffer (find-file-noselect (ekg-denote-path denote))
+      (let ((make-backup-files t)
+	    (backup-by-copying t)
+	    (backup-inhibited nil))
 	(backup-buffer)))))
 
 (defun ekg-denote--rename-if-path-changed (denote)
