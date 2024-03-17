@@ -108,20 +108,30 @@
 				  :kws '("portfolio"))))
     (should (equal denote (ekg-denote-create note)))))
 
+
+(defun ekg-test--matching-denote (regexp)
+  "Get denote file name containing REGEXP.
+
+Enforces single match."
+  (let ((files (seq-filter (lambda (x) (string-match-p regexp x))
+			   (denote-directory-text-only-files))))
+    (should (length= files 1))
+    (car files)))
+
+(defun ekg-test--file-text (file)
+  "Get text from FILE."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (buffer-string)))
+
 (ekg-deftest ekg-test-export ()
   "Verify export."
-
-  ; export create new files
-  (let* ((denote-directory (make-temp-file "denote" t)))
+  (let ((denote-directory (make-temp-file "denote" t)))
+    ;; export create new files with note text
     (ekg-save-note (ekg-note-create :text "text1" :mode 'org-mode :tags '("portfolio")))
     (ekg-denote-export)
-    (let* ((files (denote-directory-text-only-files))
-	   (file (when (length> files 0) (car files))))
-      (should file)
-      (should (string-match-p "__portfolio" file))
-      (should (equal "text1" (with-temp-buffer
-			       (insert-file-contents file)
-			       (buffer-string)))))))
+    (setq denote (ekg-test--matching-denote "__portfolio"))
+    (should (equal "text1" (ekg-test--file-text denote)))))
 
 (ekg-deftest ekg-denote-test-last-export ()
   "Verify last export time updates."
