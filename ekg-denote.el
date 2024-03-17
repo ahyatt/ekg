@@ -123,7 +123,6 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 		     :title title
 		     :path path)))
 
-
 (defun ekg-denote--backup (denote)
   "Backup given DENOTE."
   (when ekg-denote-export-backup-on-conflict
