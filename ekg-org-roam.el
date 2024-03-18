@@ -117,9 +117,10 @@ However, we do pay attention to
                             :text text
                             :mode 'org-mode
                             :tags (seq-difference (seq-uniq
-                                                   (cons
-                                                    (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node))
-                                                    tags-from-links))
+                                                   (append
+                                                    (list (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))
+                                                    tags-from-links
+                                                    (org-roam-node-tags node)))
                                                   (seq-union ekg-org-roam-import-tag-to-ignore
                                                              ekg-org-roam-import-tag-to-prefix
                                                              #'equal)

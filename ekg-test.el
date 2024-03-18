@@ -369,7 +369,8 @@
     (assert-tag-population "foo bar" nil)
     (assert-tag-population "foo #[bar]" '("bar"))
     (assert-tag-population "foo #[bar] @[baz]" '("bar" "person/baz"))
-    (assert-tag-population "foo #[bar]\n@[baz]\n#[quux]" '("bar" "person/baz" "quux"))))
+    (assert-tag-population "foo #[bar]\n@[baz]\n#[quux]" '("bar" "person/baz" "quux"))
+    (assert-tag-population "foo [[bar]]" nil)))
 
 (ert-deftest ekg--convert-inline-tags-to-links ()
   (let ((note (make-ekg-note :text "foo #[bar]")))

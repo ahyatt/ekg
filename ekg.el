@@ -1011,7 +1011,7 @@ prefix."
 (defconst ekg--nonlink-tag-regexp
   (rx (seq (group-n 1 (or whitespace line-start ?: ?\( ?\[))
            (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-           (= 1 ?\[) (group-n 3 (not ?+) (one-or-more (any word ?_ ?- whitespace))) ?\]))
+           (= 1 ?\[) (group-n 3 (not ?+) (one-or-more (any word ?/ ?_ ?- whitespace))) ?\]))
   "Regexp for detecting inline tags that are not org links.")
 
 (defun ekg--inline-tag-replace-with-org-link (prefix tag-identifier symbol)
@@ -1071,14 +1071,14 @@ the end of the tag list."
                 ;; If the tag has a space or punctuation, it needs to be enclosed
                 ;; in brackets.
                 (if use-links
-                    (rx (group-n 1 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+                    (rx (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))
                         ?\[ ?\[ "ekg-tag:"
-                        (group-n 2 (one-or-more (any word whitespace ?_ ?/ ?-)))
+                        (group-n 3 (one-or-more (any word whitespace ?_ ?/ ?-)))
                         ?\])
                   ekg--nonlink-tag-regexp)
                 nil t)
-          (let ((symbol (match-string 1))
-                (tag (match-string 2)))
+          (let ((symbol (match-string 2))
+                (tag (match-string 3)))
             (push (if use-links tag (ekg--add-prefix-to-inline-tag tag symbol)) tags)))
         (setf (ekg-note-tags note) (seq-uniq (append (ekg-note-tags note) (nreverse tags))))))))
 

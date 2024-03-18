@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
@@ -196,6 +197,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
 * Version 0.4.2: Version 042. 
@@ -208,6 +210,18 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 051
+@section Version 0.5.1
+
+@itemize
+@item
+Improve regex for inline tag linkification so we linkify more valid inline tags.
+@item
+Improve logseq import to import notes without org structure, and use filetags.
+@item
+Fix inline tag bug that test and real failures.
+@end itemize
 
 @node Version 05
 @section Version 0.5
@@ -985,12 +999,12 @@ in the list.
 @chapter Importing from org-roam
 
 You can import your notes from org-roam.  This will turn all titles into tags,
-and all links will become tags as well.  At the moment, this is done via
-executing elisp, since importing can be fairly idiosyncratic, and ekg and
-org-roam have different ways of expressing the same thing that you may want to
-change.  It's best if you looked over @samp{ekg-org-roam.el} and see what is going
-on, but at least read the following description before manually executing
-@code{(ekg-org-roam-import)}.
+and all links will become tags as well, as well as any tags org-roam thought
+were in the document.  At the moment, the import is started via executing elisp,
+since importing can be fairly idiosyncratic, and ekg and org-roam have different
+ways of expressing the same thing that you may want to change.  It's best if you
+looked over @samp{ekg-org-roam.el} and see what is going on, but at least read the
+following description before manually executing @code{(ekg-org-roam-import)}.
 
 The import is idempotent, so it always will import to the same entities,
 overwriting older data with new data.  If you want to update what is in ekg, you

@@ -29,6 +29,13 @@
 
 (ert-deftest ekg-logseq-test-to-import-text ()
   (with-temp-buffer
+    (insert
+     "#+title:test\n#+ekg_export: true\n\n"
+     "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: abc\n:END:\n#[[test]]\ntest\n"
+     "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: bce\n:gEND:\n#[[test]]\ntest\n")
+    (org-mode)
+    (should (equal (ekg-logseq--to-import-text) nil)))
+  (with-temp-buffer
     (insert "* Heading\n** Subheading\n*** Subsubheading\n"
             "* Heading 2\n:PROPERTIES:\n:EKG_HASH: 123\n:END:\n"
             "* Heading 3\n:PROPERTIES:\n:ekg_hash: 456\n:END:\n"
@@ -37,7 +44,10 @@
     (should (equal '("* Heading\n** Subheading\n*** Subsubheading\n"
                      "* Heading 4\nText for another subheading")
                    (ekg-logseq--to-import-text))))
-
+  (with-temp-buffer
+    (insert ":PROPERTIES:\n:ID:123\n:END:#+title: My org file\nContents")
+    (org-mode)
+    (should (equal '("Contents") (ekg-logseq--to-import-text))))
   (with-temp-buffer
     (insert "- ## My markdown file\n" "Contents")
     (should (equal '("## My markdown file\nContents")
