@@ -73,6 +73,10 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.5.1
+- Improve regex for inline tag linkification so we linkify more valid inline tags.
+- Improve logseq import to import notes without org structure, and use filetags.
+- Fix inline tag bug that test and real failures.
 ** Version 0.5
 - Simplified trashed tags from using tag prefixes to using a simple trash tag (=ekg-trash-tag=).
 - Added =ekg-show-notes-with-tag-prefix=.
@@ -648,12 +652,12 @@ store their tags assuming the user wants a link to a list with any of the tags
 in the list.
 * Importing from org-roam
 You can import your notes from org-roam.  This will turn all titles into tags,
-and all links will become tags as well.  At the moment, this is done via
-executing elisp, since importing can be fairly idiosyncratic, and ekg and
-org-roam have different ways of expressing the same thing that you may want to
-change.  It's best if you looked over =ekg-org-roam.el= and see what is going
-on, but at least read the following description before manually executing
-~(ekg-org-roam-import)~.
+and all links will become tags as well, as well as any tags org-roam thought
+were in the document.  At the moment, the import is started via executing elisp,
+since importing can be fairly idiosyncratic, and ekg and org-roam have different
+ways of expressing the same thing that you may want to change.  It's best if you
+looked over =ekg-org-roam.el= and see what is going on, but at least read the
+following description before manually executing ~(ekg-org-roam-import)~.
 
 The import is idempotent, so it always will import to the same entities,
 overwriting older data with new data.  If you want to update what is in ekg, you

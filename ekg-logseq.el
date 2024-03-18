@@ -268,15 +268,30 @@ the leading star, because a nested structure beneath seems to
 make less sense without it."
   (save-excursion
     (if (eq major-mode 'org-mode)
-        (org-element-map (org-element-parse-buffer) 'headline
-          (lambda (headline)
-            (unless (or (org-element-property :ekg_hash headline)
-                        (org-element-property :EKG_HASH headline)
-                        (> (org-element-property :level headline) 1))
-              (buffer-substring-no-properties
-               (org-element-property :begin headline)
-               (org-element-property :end headline))))
-          nil nil 'headline)
+        (let ((headline-found nil))
+          (or
+           (org-element-map (org-element-parse-buffer) 'headline
+             (lambda (headline)
+               (setq headline-found t)
+               (unless (or (org-element-property :ekg_hash headline)
+                           (org-element-property :EKG_HASH headline)
+                           (> (org-element-property :level headline) 1))
+                 (buffer-substring-no-properties
+                  (org-element-property :begin headline)
+                  (org-element-property :end headline))))
+             nil nil 'headline)
+           ;; If there are no headlines, return the text of the note.
+           (unless headline-found
+             (list (buffer-substring-no-properties
+                    ;; Let's take the start of the note the first line that
+                    ;; isn't a header (starts with ':' or '#').
+                    (save-excursion
+                      (goto-char (point-min))
+                      (re-search-forward (rx (seq line-start
+                                                  (not (or ?: ?#)))) nil t)
+                      (beginning-of-line)
+                      (point))
+                    (point-max))))))
       ;; Not org-mode, it must be markdown. Iterate over the top-level list
       ;; items, keeping any that don't have an "ekg_id".
       (let ((pos (point-min))
@@ -401,12 +416,20 @@ which will import and re-export back to logseq."
                              (org-mode))
                            ;; No need to do the same for markdown, because we
                            ;; don't need any special parsing capabilities.
-                           (let ((items (ekg-logseq--to-import-text)))
+                           (let ((items (ekg-logseq--to-import-text))
+                                 (filetags (split-string
+                                            (or (cadar (org-collect-keywords '("filetags")))
+                                                "")
+                                            ":" t (rx (1+ space)))))
                              (cl-loop for text in items
                                       do
-                                      (message "ekg-logseq-import: saving note from file %s" file)
+                                      (when (> (length text) 0)
+                                        (message "ekg-logseq-import: saving note from file %s" file)
                                         (cl-incf count)
-                                        (ekg-save-note (ekg-logseq--text-to-note tag text)))))))))
+                                        (let ((note (ekg-logseq--text-to-note tag text)))
+                                          (setf (ekg-note-tags note)
+                                                (seq-uniq (append (ekg-note-tags note) filetags) 'equal))
+                                          (ekg-save-note note))))))))))
     (message "ekg-logseq-import: imported %d notes" count)
     (ekg-logseq-set-last-import start-time)))
 
@@ -475,7 +498,6 @@ logseq is marked as being part of logseq.
 All logic will be run in the background."
   (interactive)
   (ekg-logseq-connect)
-  (message "ekg-logseq-sync: Starting in the background")
   (ekg-logseq-import)
   (ekg-logseq-export))
 
