@@ -87,8 +87,26 @@
 				  :kws '("portfolio" "tag2"))))
     (should (equal denote (ekg-denote-create note))))
 
-  ; text is copied as it is
-  ; title is truncated, copied and sluggified
+  ;; scalar title values shall work
+  (let* ((time (time-convert (current-time) 'integer))
+	 (denote-directory "/tmp")
+	 (denote-id (format-time-string denote-id-format time))
+	 (ekg-default-capture-mode 'org-mode)
+	 (note (make-ekg-note :id "ID1"
+			      :creation-time time
+			      :text "Text"
+			      :properties `(:titled/title "MyTitle")
+			      :tags '("date/20230101" "portfolio")))
+	 (denote (make-ekg-denote :id denote-id
+				  :note-id "ID1"
+				  :title "mytitle"
+				  :text "Text"
+				  :path (format "/tmp/%s--mytitle__portfolio.org" denote-id )
+				  :kws '("portfolio"))))
+    (should (equal denote (ekg-denote-create note))))
+
+  ;; text is copied as it is
+  ;; title is truncated, copied and sluggified
   (let* ((time (time-convert (current-time) 'integer))
 	 (denote-directory "/tmp")
 	 (denote-id (format-time-string denote-id-format time))

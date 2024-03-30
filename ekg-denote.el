@@ -112,7 +112,9 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 			     (not (string-prefix-p "date/" tag))) (ekg-note-tags note)))
 	 (kws (ekg-denote-sublist-keywords
 	       (denote-sluggify-keywords tags) ekg-denote-export-combined-keywords-len))
-	 (ekg-title (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
+	 (ekg-title (plist-get (ekg-note-properties note) :titled/title))
+	 (ekg-title (if (listp ekg-title) (car ekg-title) ekg-title))
+	 (ekg-title (or ekg-title ""))
 	 (title (string-limit (denote-sluggify ekg-title) ekg-denote-export-title-max-len))
 	 (signature-slug "")
 	 (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext signature-slug)))
@@ -173,7 +175,7 @@ Optionally add front-matter."
 	  (ekg-note-creation-time note)
 	  (ekg-note-tags note)
 	  (plist-get (ekg-note-properties note) :titled/title)
-	  (truncate-string-to-width (ekg-note-text note) 100 nil nil "...")))
+	  (truncate-string-to-width (or (ekg-note-text note) "") 100 nil nil "...")))
 
 (defun ekg-denote-assert-notes-have-creation-time (notes)
   "Raise error if NOTES are missing creation-time.
@@ -209,6 +211,7 @@ Denote uses creation-time as ID and assume it to be unique."
 		 (ekg-denote--backup denote))
 	       (ekg-denote--rename-if-path-changed denote)
 	       (ekg-denote--text-save denote)))
+    (message "ekg-denote-export: completed.")
     (ekg-denote-set-last-export start-time)))
 
 (provide 'ekg-denote)
