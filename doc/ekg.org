@@ -73,6 +73,8 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.5.2
+- Add inline links for Markdown, as wiki links.
 ** Version 0.5.1
 - Improve regex for inline tag linkification so we linkify more valid inline tags.
 - Improve logseq import to import notes without org structure, and use filetags.
@@ -265,22 +267,29 @@ completion is typing tags inline while writing notes. These tags will be added
 to the note automatically upon saving, regardless of whether completion is used
 or not. The tag completion is triggered by the "#" symbol. In =org-mode=, if
 =ekg-linkify-inline-tags= is set to non-nil (which is the default), the tag will
-be turned into an org link to the tag. Otherwise, it will remain as plain text.
-It is necessary to enclose the tag in square brackets to be detected as an
-inline tag. It is acceptable to finish the completion with a tag that is not
-currently defined, as the tag will be added when the note is saved. The
-detection of plaintext tags of various types can be turned off by setting
-=ekg-inline-populate-inline-text-tags= to =nil=. There are other customizable tag
-symbols available, indicating different prefixes. By default, in addition to the
-"#" symbol (representing a tag with that name), there is also the "@" symbol for
-tags prefixed with "person/", and the "!" symbol for tags prefixed with "idea/".
-These other symbols and the prefixes they mean are controlled by
+be turned into an org link to the tag. It is necessary to enclose the tag in
+square brackets to be detected as an inline tag.  In =markdown-mode=, the tag will
+be turned into a wiki link (denoted by double square brackets).  It is acceptable
+to finish the completion with a tag that is not currently defined, as the tag
+will be added when the note is saved. The detection of plaintext tags of various
+types can be turned off by setting =ekg-inline-populate-inline-text-tags= to
+=nil=. There are other customizable tag symbols available, indicating different
+prefixes. By default, in addition to the "#" symbol (representing a tag with
+that name), there is also the "@" symbol for tags prefixed with "person/", and
+the "!" symbol for tags prefixed with "idea/".  These other symbols and the
+prefixes they mean are controlled by
 =ekg-inline-custom-tag-completion-symbols=. By default, we have "@" which will
 denote a tag with the "person/" prefix, and "!" which will denote a tag with the
-"idea/" prefix. So to sum up, if the note text has the following:
+"idea/" prefix. So to sum up, in =org-mode=, if the note text has the following:
 
 #+begin_example
 Everything related to #[emacs] should be colored #ffa500.  This is the opinion of @[rms].
+#+end_example
+
+Or in =markdown-mode=,
+
+#+begin_example
+Everything related to [[emacs]] should be colored #ffa500.  This is the opinion of [[@rms]].
 #+end_example
 
 The tags that will be detected are "emacs" and, because of the special "@"

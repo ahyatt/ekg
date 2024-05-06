@@ -42,6 +42,9 @@
 (declare-function org-redisplay-inline-images "org")
 (declare-function org-activate-links "org")
 (declare-function org-in-regexp "org")
+(declare-function markdown-follow-thing-at-point "markdown-mode")
+(declare-function markdown-wiki-link-p "markdown-mode")
+(declare-function markdown-wiki-link-link "markdown-mode")
 
 ;;; Code:
 
@@ -898,6 +901,22 @@ This is based on `ekg-command-regex-for-narrowing'."
     (error (lwarn :error 'ekg "Error unnarrowing for command: %s"
                   (error-message-string err)))))
 
+(defun ekg--markdown-follow-thing-at-point (arg)
+  "Follow the thing at point, including ekg wiki links."
+  (interactive "P")
+  (if (markdown-wiki-link-p)
+      (let* ((first-char (string-to-char (markdown-wiki-link-link)))
+             (symbol (when (member first-char (mapcar #'car ekg-inline-custom-tag-completion-symbols))
+                       first-char)))
+        (when arg
+          (other-window 1))
+        (ekg-show-notes-with-tag (if symbol
+                                     (ekg--add-prefix-to-inline-tag
+                                      (substring (markdown-wiki-link-link) 1)
+                                      (char-to-string symbol))
+                                   (markdown-wiki-link-link))))
+    (markdown-follow-thing-at-point arg)))
+
 (defun ekg--set-local-variables ()
   "Set some common local variables."
   (setq-local
@@ -910,7 +929,15 @@ This is based on `ekg-command-regex-for-narrowing'."
            kill-buffer-query-functions)
    header-line-format (ekg--header-line-format))
   (add-hook 'pre-command-hook #'ekg-narrow-for-command nil t)
-  (add-hook 'post-command-hook #'ekg-unnarrow-for-command nil t))
+  (add-hook 'post-command-hook #'ekg-unnarrow-for-command nil t)
+  (when (eq major-mode 'markdown-mode)
+    (setq-local markdown-enable-wiki-links t
+                markdown-wiki-link-fontify-missing nil)
+    ;; We can't redefine how wiki links are handled, and we shouldn't use
+    ;; advice, so instead we create a new function that handles wiki links, and
+    ;; use it in keybindings.
+    (keymap-set (current-local-map) "<remap> <markdown-follow-thing-at-point>"
+                #'ekg--markdown-follow-thing-at-point)))
 
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
@@ -1116,14 +1143,25 @@ brackets."
                ;; We should be just after the symbol
                (save-excursion (buffer-substring (- (point) 1) (point)))))
          (if (and ekg-linkify-inline-tags (eq major-mode 'org-mode))
-            (replace-match
-             (org-link-make-string
-              (ekg--link-for-tag
-               (ekg--add-prefix-to-inline-tag
-                completion
-                symbol))
-              completion))
-          (replace-match (format "[%s]" completion))))))))
+             (replace-match
+              (org-link-make-string
+               (ekg--link-for-tag
+                (ekg--add-prefix-to-inline-tag
+                 completion
+                 symbol))
+               completion))
+           (cond
+            ((eq major-mode 'org-mode)
+             (replace-match (format "[%s]" completion)))
+            ((eq major-mode 'markdown-mode)
+             ;; Remove the symbol prefixing the tag
+             (replace-match
+              (format "[[%s%s]]"
+                      (if (equal symbol "#") "" symbol)
+                      completion))
+             (save-excursion
+               (goto-char (match-beginning 0))
+               (delete-char -1))))))))))
 
 (defvar-local ekg-notes-fetch-notes-function nil
   "Function to call to fetch the notes that define this buffer.
