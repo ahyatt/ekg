@@ -81,11 +81,11 @@ The type and contents of the struct vary by provider.")
   ;; Text mode doesn't really need anything.
   (concat
    (unless (eq major-mode 'text-mode)
-    (format "All input in this prompt is in %s. "
-            (pcase major-mode
-              ('org-mode "emacs org-mode")
-              ('markdown-mode "markdown")
-              (_ (format "emacs %s" (symbol-name major-mode))))))
+     (format "All input in this prompt is in %s. "
+             (pcase major-mode
+               ('org-mode "emacs org-mode")
+               ('markdown-mode "markdown")
+               (_ (format "emacs %s" (symbol-name major-mode))))))
    "Anything inside an LLM_OUTPUT block is previous output you have given, but do not generate the block yourself.  We will do that around the result you give to us."))
 
 (defun ekg-llm-prompt-for-note (note)
@@ -158,16 +158,16 @@ The note text will be replaced by the result of the LLM."
 PREFIX and SUFFIX surround the marker, which are inserted into
 the current buffer."
   (save-excursion
-   (insert prefix "\n")
-   (let ((start (make-marker))
-         (end (make-marker)))
-     (set-marker start (point))
-     (set-marker end (point))
-     (set-marker-insertion-type start nil)
-     (insert "\n")
-     (set-marker-insertion-type end t)
-     (insert suffix "\n")
-     (cons start end))))
+    (insert prefix "\n")
+    (let ((start (make-marker))
+          (end (make-marker)))
+      (set-marker start (point))
+      (set-marker end (point))
+      (set-marker-insertion-type start nil)
+      (insert "\n")
+      (set-marker-insertion-type end t)
+      (insert suffix "\n")
+      (cons start end))))
 
 (defun ekg-llm-note-interactions ()
   "From an ekg note buffer, create the prompt for the LLM.
@@ -190,15 +190,15 @@ of the response."
                  :interactions (ekg-llm-note-interactions))))
     (delete-region (car markers) (cdr markers))
     (condition-case nil
-          (llm-chat-streaming-to-point
-           ekg-llm-provider
-           prompt
-           (marker-buffer (car markers))
-           (marker-position (car markers))
-           (lambda ()))
-        (not-implemented
-         ;; Fallback to synchronous chat if streaming isn't supported.
-         (message "Streaming not supported, falling back to synchronous chat, which may take around 10 seconds.")))))
+        (llm-chat-streaming-to-point
+         ekg-llm-provider
+         prompt
+         (marker-buffer (car markers))
+         (marker-position (car markers))
+         (lambda ()))
+      (not-implemented
+       ;; Fallback to synchronous chat if streaming isn't supported.
+       (message "Streaming not supported, falling back to synchronous chat, which may take around 10 seconds.")))))
 
 (defun ekg-llm-interaction-func (interaction-type)
   "Return a function for each valid INTERACTION-TYPE.
