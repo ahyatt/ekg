@@ -85,12 +85,16 @@ questions posed in the notes.")
 (llm-defprompt ekg-llm-fill-prompt
   "The user has written a note, and would like you to append to it,
 to make it more useful.  This is important: only output your
-additions, and do not repeat anything in the user's note.
+additions, and do not repeat anything in the user's note.  Write
+as a third party adding information to a note, so do not use the
+first person.
 
-First, I'll give you information about the note, then helpful
+First, I'll give you information about the note, then similar
 other notes that user has written, in JSON.  Finally, I'll give
 you instructions.  The user's note will be your input, all the
-rest, including this, is just context for it.
+rest, including this, is just context for it.  The notes given
+are to be used as background material, which can be referenced in
+your answer.
 
 The user's note uses tags: {{tags}}.  The notes with the same
 tags, listed here in reverse date order: {{tag-notes:10}}
