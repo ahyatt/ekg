@@ -56,8 +56,6 @@ knowledge, create a final answer that may, if needed, quote from
 the notes.  If you don't know the answer, tell the user that.
 Never try to make up an answer.
 
-Notes:
-
 {{notes}}
 ")
 
@@ -216,18 +214,22 @@ structs."
     :role 'user
     :content (substring-no-properties (ekg-edit-note-display-text)))))
 
-(defun ekg-llm-make-similar-note-generator (note)
-  "Return a function that generates similar notes to NOTE."
+(defun ekg-llm-make-similar-text-generator (text)
+  "Return a function that generates similar notes to TEXT."
   (iter-lambda ()
     (let ((similar-notes (ekg-embedding-n-most-similar-notes
                           (llm-embedding ekg-embedding-provider
-                                         (substring-no-properties (ekg-display-note-text note)))
+                                         (substring-no-properties text))
                           1000)))
       (dolist (id similar-notes)
         (let ((note (ekg-get-note-with-id id)))
           (when (and (ekg-note-is-content-p note)
                      (not (member ekg-llm-prompt-tag (ekg-note-tags note))))
             (iter-yield (ekg-llm-note-to-text note))))))))
+
+(defun ekg-llm-make-similar-note-generator (note)
+  "Return a function that generates similar notes to NOTE."
+  (ekg-llm-make-similar-text-generator (ekg-display-note-text note)))
 
 (defun ekg-llm-format-time (time)
   "Return a string representation of TIME in a format suitable for LLMs."
@@ -323,28 +325,16 @@ newline."
   "Query the LLM with QUERY, including relevant notes in the prompt.
 The answer will appear in a new buffer"
   (interactive "sQuery: ")
-  (let ((notes (mapcar #'ekg-get-note-with-id
-                       (ekg-embedding-n-most-similar-notes (llm-embedding ekg-embedding-provider query)
-                                                           ekg-llm-query-num-notes)))
-        (buf (get-buffer-create
+  (let ((buf (get-buffer-create
               (format "*ekg llm query '%s'*" (ekg-truncate-at query 5)))))
     (with-current-buffer buf
       (erase-buffer)
-      (let ((prompt (make-llm-chat-prompt
-                     :context ekg-llm-query-prompt-intro
-                     :interactions
-                     (append
-                      (mapcar
-                       (lambda (note)
-                         (make-llm-chat-prompt-interaction
-                          :role 'user
-                          :content
-                          (format "%s\n%s" (ekg-llm-note-metadata-for-input note)
-                                  (substring-no-properties (ekg-display-note-text note)))))
-                       notes)
-                      (list (make-llm-chat-prompt-interaction
-                             :role 'user
-                             :content (format "Query: %s" query)))))))
+      (let ((prompt (llm-make-chat-prompt
+                     query
+                     :context
+                     (llm-prompt-fill 'ekg-llm-note-query-prompt
+                                      ekg-llm-provider
+                                      :notes (ekg-llm-make-similar-text-generator query)))))
         (condition-case nil
             (llm-chat-streaming ekg-llm-provider
                                 prompt
