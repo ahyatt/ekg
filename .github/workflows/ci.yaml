@@ -5,7 +5,7 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "*" ]
 
 jobs:
   test:
@@ -13,9 +13,6 @@ jobs:
     strategy:
       matrix:
         emacs_version:
-          # Add more lines like this if you want to test on different Emacs versions.
-          - 28.1
-          - 28.2
           - 29.1
           - 29.2
     steps:
