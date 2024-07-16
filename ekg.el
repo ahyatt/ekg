@@ -2024,7 +2024,7 @@ notes are created with additional tags TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tags (any): %s" (ekg-tags-display tags))
-   (ekg-get-notes-with-any-tags tags)
+   (lambda () (ekg-get-notes-with-any-tags tags))
    tags))
 
 ;;;###autoload
@@ -2294,7 +2294,7 @@ the database after the upgrade, in list form."
       ;; this for the builtin sqlite, since that's the only case that
       ;; triples-upgrade-to-0.3 will do anything.
       (when (eq 'builtin triples-sqlite-interface)
-        (if (fboundp 'sqlite-excute)
+        (if (fboundp 'sqlite-execute)
             (sqlite-execute
              ekg-db
              "UPDATE OR IGNORE triples SET object = '\"' || CAST(object AS TEXT) || '\"' WHERE predicate = 'text/text' AND typeof(object) = 'integer'")
