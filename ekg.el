@@ -867,46 +867,6 @@ for saved buffers."
       (not (buffer-modified-p))
       (yes-or-no-p "Unsaved changes exist, do you still want to exit? ")))
 
-(defun ekg--header-line-format ()
-  "Header line format for the ekg capture or edit buffer."
-  (if ekg-capture-mode
-      (substitute-command-keys
-       "\\<ekg-capture-mode-map>Capture buffer. \
-Finish `\\[ekg-capture-finalize]'  \
-Save as draft `\\[ekg-save-draft]'  \
-Abort and delete draft `\\[ekg-capture-abort]'.")
-    (substitute-command-keys
-     "\\<ekg-edit-mode-map>Edit buffer. \
-Finish `\\[ekg-edit-finalize]'  \
-Save `\\[ekg-edit-save]'")))
-
-(defun ekg-narrow-for-command ()
-  "Narrow buffer if the command requires it.
-This is based on `ekg-command-regex-for-narrowing'."
-  (condition-case err
-      (when (and
-             (not ekg-note-auto-narrowed)
-             (seq-some
-              (lambda (s) (string-match-p s (symbol-name this-command)))
-              ekg-command-regex-for-narrowing))
-        (narrow-to-region (1+ (overlay-end (ekg--metadata-overlay)))
-                          (point-max))
-        ;; execute-extended-command will then call another command, and we need
-        ;; to also possibly narrow for that.
-        (unless (eq this-command 'execute-extended-command)
-          (setq ekg-note-auto-narrowed t)))
-    (error (lwarn :error 'ekg "Error narrowing for command: %s"
-                  (error-message-string err)))))
-
-(defun ekg-unnarrow-for-command ()
-  "Unnarrow the buffer if it was automatically narrowed."
-  (condition-case err
-      (when ekg-note-auto-narrowed
-        (widen)
-        (setq ekg-note-auto-narrowed nil))
-    (error (lwarn :error 'ekg "Error unnarrowing for command: %s"
-                  (error-message-string err)))))
-
 (defun ekg--markdown-follow-thing-at-point (arg)
   "Follow the thing at point, including ekg wiki links.
 ARG is the prefix argument, if used it opens in another window."
@@ -1029,6 +989,46 @@ can keep track of whether we need to unnarrow or not.")
       (progn
         (require 'org)
         (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
+
+(defun ekg--header-line-format ()
+  "Header line format for the ekg capture or edit buffer."
+  (if ekg-capture-mode
+      (substitute-command-keys
+       "\\<ekg-capture-mode-map>Capture buffer. \
+Finish `\\[ekg-capture-finalize]'  \
+Save as draft `\\[ekg-save-draft]'  \
+Abort and delete draft `\\[ekg-capture-abort]'.")
+    (substitute-command-keys
+     "\\<ekg-edit-mode-map>Edit buffer. \
+Finish `\\[ekg-edit-finalize]'  \
+Save `\\[ekg-edit-save]'")))
+
+(defun ekg-narrow-for-command ()
+  "Narrow buffer if the command requires it.
+This is based on `ekg-command-regex-for-narrowing'."
+  (condition-case err
+      (when (and
+             (not ekg-note-auto-narrowed)
+             (seq-some
+              (lambda (s) (string-match-p s (symbol-name this-command)))
+              ekg-command-regex-for-narrowing))
+        (narrow-to-region (1+ (overlay-end (ekg--metadata-overlay)))
+                          (point-max))
+        ;; execute-extended-command will then call another command, and we need
+        ;; to also possibly narrow for that.
+        (unless (eq this-command 'execute-extended-command)
+          (setq ekg-note-auto-narrowed t)))
+    (error (lwarn :error 'ekg "Error narrowing for command: %s"
+                  (error-message-string err)))))
+
+(defun ekg-unnarrow-for-command ()
+  "Unnarrow the buffer if it was automatically narrowed."
+  (condition-case err
+      (when ekg-note-auto-narrowed
+        (widen)
+        (setq ekg-note-auto-narrowed nil))
+    (error (lwarn :error 'ekg "Error unnarrowing for command: %s"
+                  (error-message-string err)))))
 
 (defun ekg--possible-inline-tags-prefix-regexp ()
   "Return a regexp of the possible inline tag prefixes."
