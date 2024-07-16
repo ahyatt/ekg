@@ -484,6 +484,20 @@ if it is time for one, according to the settings in
   (ekg-backup)
   (set-buffer-modified-p nil))
 
+(defun ekg-get-notes-with-any-tags (tags)
+  "Get all notes with any of the tags in TAGS.
+This returns notes that have any of the tags in TAGS.  Special
+tags are not returned.
+
+The notes returtned are sorted in reverse chronological order."
+  (ekg-connect)
+  (sort
+   (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag))
+                     (seq-difference tags (list ekg-draft-tag
+                                                ekg-trash-tag
+                                                ekg-function-tag))))
+   #'ekg-sort-by-creation-time))
+
 (defun ekg-get-notes-with-tags (tags)
   "Get all notes with TAGS, returning a list of `ekg-note' structs.
 This returns only notes that have all the tags in TAGS.
@@ -598,6 +612,12 @@ This is similar to `ekg-active-id-p', but takes a note, which may
 be unsaved."
   (not (seq-intersection (list ekg-draft-tag ekg-trash-tag)
                          (ekg-note-tags note))))
+
+(defun ekg-note-is-content-p (note)
+  "Return non-nil if NOTE has no control-type tags.
+
+Those tags are things such as `ekg-draft-tag', or `ekg-function-tag'."
+  (seq-every-p #'ekg-content-tag-p (ekg-note-tags note)))
 
 (defun ekg-active-id-p (id)
   "Return non-nil if the note with ID is active.
@@ -2002,9 +2022,7 @@ notes are created with additional tags TAGS."
   (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tags (any): %s" (ekg-tags-display tags))
-   (lambda () (sort
-               (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag)) tags))
-               #'ekg-sort-by-creation-time))
+   (ekg-get-notes-with-any-tags tags)
    tags))
 
 ;;;###autoload
