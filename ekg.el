@@ -1052,7 +1052,9 @@ This is based on `ekg-command-regex-for-narrowing'."
 
 (defun ekg--possible-inline-tags-prefix-regexp ()
   "Return a regexp of the possible inline tag prefixes."
-  (format "[%s]" (mapconcat (lambda (c) (format "%c" c)) (cons ?# (mapcar #'car ekg-inline-custom-tag-completion-symbols)))))
+  (format "[%s]" (mapconcat (lambda (c) (format "%c" c))
+                            (cons ?# (mapcar #'car ekg-inline-custom-tag-completion-symbols))
+                            "")))
 
 (defun ekg--add-prefix-to-inline-tag (tag tag-symbol)
   "Return TAG with the prefix denoted by TAG-SYMBOL.
