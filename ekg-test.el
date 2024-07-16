@@ -56,21 +56,21 @@
   (let* ((note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
          (note-buf (ekg-edit note)))
     (unwind-protect
-     (progn
-       ;; Can we store a link?
-       (with-current-buffer note-buf
-         (org-store-link nil 1)
-         (should (car org-stored-links)))
-       (with-temp-buffer
-         ;; Does the link look correct?
-         (org-mode)
-         (org-insert-last-stored-link nil)
-         (should (string= (buffer-string) (format "[[ekg-note:%d][EKG note: %d]]\n" (ekg-note-id note) (ekg-note-id note))))
-         ;; Does the link work?
-         (goto-char 1)
-         (org-open-at-point nil)
-         (should (eq note-buf (current-buffer)))))
-     (kill-buffer note-buf))))
+        (progn
+          ;; Can we store a link?
+          (with-current-buffer note-buf
+            (org-store-link nil 1)
+            (should (car org-stored-links)))
+          (with-temp-buffer
+            ;; Does the link look correct?
+            (org-mode)
+            (org-insert-last-stored-link nil)
+            (should (string= (buffer-string) (format "[[ekg-note:%d][EKG note: %d]]\n" (ekg-note-id note) (ekg-note-id note))))
+            ;; Does the link work?
+            (goto-char 1)
+            (org-open-at-point nil)
+            (should (eq note-buf (current-buffer)))))
+      (kill-buffer note-buf))))
 
 (ekg-deftest ekg-test-org-link-to-tags ()
   (require 'ol)
@@ -110,8 +110,8 @@
 
 (ekg-deftest ekg-test-sort-nondestructive ()
   (mapc #'ekg-save-note
-      (list (ekg-note-create :text "a" :mode ekg-capture-default-mode :tags '("tag/a"))
-            (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
+        (list (ekg-note-create :text "a" :mode ekg-capture-default-mode :tags '("tag/a"))
+              (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
   (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
   (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a, tag/b")))
 
@@ -374,9 +374,9 @@
 
 (ert-deftest ekg--convert-inline-tags-to-links ()
   (let ((note (make-ekg-note :text "foo #[bar]")))
-      (ekg--populate-inline-tags note)
-      (ekg--convert-inline-tags-to-links note)
-      (should (equal (ekg-note-text note) "foo #[[ekg-tag:bar][bar]]"))))
+    (ekg--populate-inline-tags note)
+    (ekg--convert-inline-tags-to-links note)
+    (should (equal (ekg-note-text note) "foo #[[ekg-tag:bar][bar]]"))))
 
 (provide 'ekg-test)
 
