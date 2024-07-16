@@ -1,10 +1,10 @@
 ;;; ekg.el --- A system for recording and linking information -*- lexical-binding: t -*-
 
-;; Copyright (c) 2022-2023  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2022-2024  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.4.0"))
+;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.17.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.5.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
