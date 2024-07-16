@@ -73,7 +73,10 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
-** Version 0.5.2
+** Version 0.6.0
+- Add tag and similar notes to the context when having LLMs add to or replace
+  notes.  ~ekg-llm-default-instructions~ replaces the previous variable,
+  ~ekg-llm-default-prompt~ (because the prompt now contains the instructions).
 - Add inline links for Markdown, as wiki links.
 ** Version 0.5.1
 - Improve regex for inline tag linkification so we linkify more valid inline tags.

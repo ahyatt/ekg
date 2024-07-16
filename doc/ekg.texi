@@ -68,7 +68,7 @@ Installation
 
 Changelog
 
-* Version 0.5.2: Version 052. 
+* Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
@@ -198,7 +198,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
-* Version 0.5.2: Version 052. 
+* Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
@@ -213,10 +213,14 @@ triples library is already installed.
 * Version 0.2: Version 02. 
 @end menu
 
-@node Version 052
-@section Version 0.5.2
+@node Version 060
+@section Version 0.6.0
 
 @itemize
+@item
+Add tag and similar notes to the context when having LLMs add to or replace
+notes.  @code{ekg-llm-default-instructions} replaces the previous variable,
+@code{ekg-llm-default-prompt} (because the prompt now contains the instructions).
 @item
 Add inline links for Markdown, as wiki links.
 @end itemize
