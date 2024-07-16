@@ -22,7 +22,7 @@
 
 ;;; Commentary:
 ;; ekg-llm provides a way to interact with a language model using prompts that
-;; are stored in ekg, and able to provide output to ekg notes. Notes can have
+;; are stored in ekg, and able to provide output to ekg notes.  Notes can have
 ;; certain prompts associated with them by using "magic tags".
 ;;
 ;; This currently only works with Open AI's API, but could be extended to work
@@ -60,8 +60,9 @@ Never try to make up an answer.
 ")
 
 (defcustom ekg-llm-prompt-tag "prompt"
-  "The tag to use to denote a prompt. Notes tagged with this and
-other tags will be used as prompts for those other tags."
+  "The tag to use to denote a prompt.
+Notes tagged with this and other tags will be used as prompts for
+those other tags."
   :type 'string
   :group 'ekg-llm)
 
@@ -125,9 +126,9 @@ Your instructions on what content to add to the note:
 
 (defun ekg-llm-instructions-for-note (note)
   "Return the prompt for NOTE, using the tags on the note.
-Return value is a string. This is calculated by looking at the
+Return value is a string.  This is calculated by looking at the
 tags on the note, and finding the ones that are co-occuring with
-the ekg-llm-prompt-tag. The  will be built up from
+the ekg-llm-prompt-tag.  The instructions will be built up from
 appending the prompts together, in the order of the tags in the
 note.
 
@@ -137,11 +138,11 @@ If there are no prompts on any of the note tags, use
   (let ((prompt-notes (ekg-get-notes-cotagged-with-tags
                        (ekg-note-tags note) ekg-llm-prompt-tag)))
     (if prompt-notes
-        (let ((prompt (mapconcat
-                       (lambda (prompt-note)
-                         (string-trim
-                          (substring-no-properties (ekg-display-note-text prompt-note))))
-                       prompt-notes "\n"))))
+        (mapconcat
+         (lambda (prompt-note)
+           (string-trim
+            (substring-no-properties (ekg-display-note-text prompt-note))))
+         prompt-notes "\n")
       ekg-llm-default-instructions)))
 
 (defun ekg-llm--send-and-process-note (arg interaction-type)
@@ -184,10 +185,10 @@ The note text will be replaced by the result of the LLM."
   (interactive "P")
   (ekg-llm--send-and-process-note arg 'replace))
 
-(keymap-set ekg-capture-mode-map "C-c ." #'ekg-llm-send-and-append-note)
-(keymap-set ekg-edit-mode-map "C-c ." #'ekg-llm-send-and-append-note)
-(keymap-set ekg-capture-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
-(keymap-set ekg-edit-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
+(define-key ekg-capture-mode-map "C-c ." #'ekg-llm-send-and-append-note)
+(define-key ekg-edit-mode-map "C-c ." #'ekg-llm-send-and-append-note)
+(define-key ekg-capture-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
+(define-key ekg-edit-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
 
 (defun ekg-llm-create-output-holder (prefix suffix)
   "Create a marker pair for the output of the LLM.
@@ -215,7 +216,7 @@ structs."
     :content (substring-no-properties (ekg-edit-note-display-text)))))
 
 (defun ekg-llm-make-similar-text-generator (text)
-  "Return a function that generates similar notes to TEXT."
+  "Return a generator for similar notes to TEXT."
   (iter-lambda ()
     (let ((similar-notes (ekg-embedding-n-most-similar-notes
                           (llm-embedding ekg-embedding-provider
@@ -228,7 +229,7 @@ structs."
             (iter-yield (ekg-llm-note-to-text note))))))))
 
 (defun ekg-llm-make-similar-note-generator (note)
-  "Return a function that generates similar notes to NOTE."
+  "Return a generator for similar notes to NOTE."
   (ekg-llm-make-similar-text-generator (ekg-display-note-text note)))
 
 (defun ekg-llm-format-time (time)
@@ -247,16 +248,17 @@ structs."
     (json-encode result)))
 
 (defun ekg-llm-make-any-tag-generator (tags)
-  "Return a function that generates notes with any of TAGS."
+  "Return a generator for notes with any of TAGS."
   (iter-lambda ()
     (dolist (note (ekg-get-notes-with-any-tags tags))
       (iter-yield (ekg-llm-note-to-text note)))))
 
 (defun ekg-llm-send-and-use (marker-func instructions &optional temperature)
   "Run the LLM and replace markers supplied by MARKER-FUNC.
-If PROMPT is nil, use `ekg-llm-default-prompt'. TEMPERATURE is a
+If PROMPT is nil, use `ekg-llm-default-prompt'.  TEMPERATURE is a
 float between 0 and 1, controlling the randomness and creativity
-of the response."
+of the response.  INSTRUCTIONS gives instructions for the
+LLM on what to generate, and will be used in the prompt."
   (let ((prompt (make-llm-chat-prompt
                  :temperature temperature
                  :context (concat (ekg-llm-prompt-prelude) "\n"
@@ -304,8 +306,8 @@ The valid interaction types are `'append' and `'replace'."
 
 (defun ekg-llm-note-metadata-for-input (note)
   "Return a brief description of the metdata of NOTE.
-The description is appropriate for input to a LLM. This is
-designed to be on a line of its own. It does not return a
+The description is appropriate for input to a LLM.  This is
+designed to be on a line of its own.  It does not return a
 newline."
   (let ((title (plist-get (ekg-note-properties note) :titled/title))
         (tags (ekg-note-tags note))

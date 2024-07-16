@@ -266,7 +266,7 @@ that isn't exported by EKG is included.
 For markdown, it's the same thing except for list items, which
 are always the top-level constructs in markdown mode.
 
-For markdown, remove the leading dash.  For org-mode, don't
+For markdown, remove the leading dash.  For `org-mode', don't
 remove the leading star, because a nested structure beneath seems
 to make less sense without it."
   (save-excursion
