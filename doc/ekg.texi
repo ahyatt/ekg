@@ -1412,22 +1412,25 @@ The output from the LLM is appended at the end of the note, in a special
 section.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
-the LLM@.  The default prompt is a fixed string you can configure in
-@code{ekg-llm-default-prompt}.  But alternatively, you can create alternative prompts
-for different ekg tags in the same way that @ref{Templates, , templates} work, by creating a note
-tagged with "prompt" and any other tag (the special "prompt" tag can be changed
-by customizing @code{ekg-llm-prompt-tag}).  The alternate prompt is created by
+the LLM@.  The prompt consists of context about previous notes that contain the
+tags of your note, and similar notes.  It also contains instructions to the LLM
+to how to generate the note text to be added or replaced. The default
+instructions are a fixed string you can configure in
+@code{ekg-llm-default-instructions}.  But alternatively, you can create alternative
+prompts for different ekg tags in the same way that @ref{Templates, , templates} work, by creating
+a note tagged with "prompt" and any other tag (the special "prompt" tag can be
+changed by customizing @code{ekg-llm-prompt-tag}).  The alternate prompt is created by
 appending all "prompt"-tagged notes.  Note that, as with templates, hierarchical
 tags can have prompts attached at any or all levels of the hierarchy.
 
-To take an example, imagine that you have a note tagged with @samp{prompt} and
-@samp{recipe}, containing a prompt saying the LLM should imagine itself an authority
-on cooking and provide you helpful tips to improve your recipes.  You then
-create a note with a child tag of @samp{recipe}, let's say @samp{recipe/monkfish}, with
-some details of your attempt to cook monkfish, and then hit @samp{[C-c .]}.  Because
-@samp{recipe} is a parent of @samp{recipe/monkfish}, ekg-llm will use this prompt instead
-of the default one, and will also append your note, and place the LLM's response
-in a special section at the end of your note.  For example:
+To take an example, imagine that you have a note tagged with @samp{prompt} and @samp{recipe},
+containing instructions saying the LLM should imagine itself an authority on
+cooking and provide you helpful tips to improve your recipes.  You then create a
+note with a child tag of @samp{recipe}, let's say @samp{recipe/monkfish}, with some details of
+your attempt to cook monkfish, and then hit @samp{[C-c .]}.  Because @samp{recipe} is a parent
+of @samp{recipe/monkfish}, ekg-llm will use these instructions instead of the default
+one, and will also append your note, and place the LLM's response in a special
+section at the end of your note.  For example:
 
 @example
 Making monkfish again.  It is thick but tends to be wet and hard to get a good
@@ -1446,11 +1449,13 @@ overcooking the inside.  Happy cooking!
 
 Instead of appending, the note can be replaced with the output of the LLM by
 using @samp{ekg-llm-send-and-replace-note} which is bound to @samp{[C-c ,]}.  As with the
-append command, using a prefix argument will let you edit the prompt before
-sending it.
+append command, using a prefix argument will let you edit the instructions
+before sending it.
 
 All prompts sent from a note in org or markdown modes have a prelude that notes
-the format of the input and expected output.
+the format of the input and expected output.  However, LLMs typically will
+produce markdown regardless of what you ask it to do, so if you want to use
+LLMs, you may want to use markdown as a default note format.
 
 @node Using ekg notes as prompts
 @subsection Using ekg notes as prompts
