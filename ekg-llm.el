@@ -185,10 +185,10 @@ The note text will be replaced by the result of the LLM."
   (interactive "P")
   (ekg-llm--send-and-process-note arg 'replace))
 
-(define-key ekg-capture-mode-map "C-c ." #'ekg-llm-send-and-append-note)
-(define-key ekg-edit-mode-map "C-c ." #'ekg-llm-send-and-append-note)
-(define-key ekg-capture-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
-(define-key ekg-edit-mode-map "C-c ," #'ekg-llm-send-and-replace-note)
+(define-key ekg-capture-mode-map (kbd "C-c .") #'ekg-llm-send-and-append-note)
+(define-key ekg-edit-mode-map (kbd "C-c .") #'ekg-llm-send-and-append-note)
+(define-key ekg-capture-mode-map (kbd "C-c ,") #'ekg-llm-send-and-replace-note)
+(define-key ekg-edit-mode-map (kbd "C-c ,") #'ekg-llm-send-and-replace-note)
 
 (defun ekg-llm-create-output-holder (prefix suffix)
   "Create a marker pair for the output of the LLM.
