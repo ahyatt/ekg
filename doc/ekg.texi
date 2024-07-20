@@ -579,30 +579,25 @@ or not. The tag completion is triggered by the "#" symbol. In @samp{org-mode}, i
 @samp{ekg-linkify-inline-tags} is set to non-nil (which is the default), the tag will
 be turned into an org link to the tag. It is necessary to enclose the tag in
 square brackets to be detected as an inline tag.  In @samp{markdown-mode}, the tag will
-be turned into a wiki link (denoted by double square brackets).  It is acceptable
-to finish the completion with a tag that is not currently defined, as the tag
-will be added when the note is saved. The detection of plaintext tags of various
-types can be turned off by setting @samp{ekg-inline-populate-inline-text-tags} to
-@samp{nil}. There are other customizable tag symbols available, indicating different
+be turned into a wiki link (denoted by double square brackets).  It is
+acceptable to finish the completion with a tag that is not currently defined, as
+the tag will be added when the note is saved. The detection of plaintext tags of
+various types can be turned off by setting @samp{ekg-inline-populate-inline-text-tags}
+to @samp{nil}. There are other customizable tag symbols available, indicating different
 prefixes. By default, in addition to the "#" symbol (representing a tag with
 that name), there is also the "@@" symbol for tags prefixed with "person/", and
 the "!" symbol for tags prefixed with "idea/".  These other symbols and the
 prefixes they mean are controlled by
 @samp{ekg-inline-custom-tag-completion-symbols}. By default, we have "@@" which will
 denote a tag with the "person/" prefix, and "!" which will denote a tag with the
-"idea/" prefix. So to sum up, in @samp{org-mode}, if the note text has the following:
+"idea/" prefix.  So if, in either @samp{org-mode} or @samp{markdown-mode}, the text has the
+following:
 
 @example
 Everything related to #[emacs] should be colored #ffa500.  This is the opinion of @@[rms].
 @end example
 
-Or in @samp{markdown-mode},
-
-@example
-Everything related to [[emacs]] should be colored #ffa500.  This is the opinion of [[@@rms]].
-@end example
-
-The tags that will be detected are "emacs" and, because of the special "@@"
+the tags that will be detected are "emacs" and, because of the special "@@"
 prefix that indicates a tag prefix, "person/rms". The color will not be picked
 up as a tag, because it is not enclosed in brackets. This helps us avoid false
 positives.
@@ -1398,7 +1393,8 @@ description of how to do this, but an example would be the following:
 
 The embedding and LLM providers can be different.  The LLM provider can change
 at will, while the embedding provider must be the same for all embeddings in the
-database.
+database.  It is necessary to create both of these providers, because some LLM
+functionality depends on having embeddings.
 
 @menu
 * Augmenting notes with LLM output::
@@ -1417,9 +1413,10 @@ section.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM@.  The prompt consists of context about previous notes that contain the
-tags of your note, and similar notes.  It also contains instructions to the LLM
-to how to generate the note text to be added or replaced. The default
-instructions are a fixed string you can configure in
+tags of your note, and similar notes, which is what will generate high-quality
+content that is appropriate in the context of your notes.  It also contains
+instructions to the LLM to how to generate the note text to be added or
+replaced. The default instructions are a fixed string you can configure in
 @code{ekg-llm-default-instructions}.  But alternatively, you can create alternative
 prompts for different ekg tags in the same way that @ref{Templates, , templates} work, by creating
 a note tagged with "prompt" and any other tag (the special "prompt" tag can be
