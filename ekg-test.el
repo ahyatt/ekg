@@ -334,9 +334,6 @@
       (cl-loop for i from 1 to 10
                do
                (ekg-capture)
-               ;; TODO(ahyatt) Find out why this is necessary to reproduce bad
-               ;; behavior.
-               (funcall mode)
                (goto-char i)
                (cond
                 ((= i 1)
