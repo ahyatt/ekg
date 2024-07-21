@@ -334,6 +334,8 @@
       (cl-loop for i from 1 to 10
                do
                (ekg-capture)
+               ;; Necessary to reproduce the original issue with markdown-mode.
+               (font-lock-ensure)
                (goto-char i)
                (cond
                 ((= i 1)
