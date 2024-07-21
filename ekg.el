@@ -904,19 +904,6 @@ ARG is the prefix argument, if used it opens in another window."
                                    (markdown-wiki-link-link))))
     (markdown-follow-thing-at-point arg)))
 
-(defun ekg-detect-tag-completion ()
-  "After a modification, check if the user has completed a tag.
-If so, call the necessary hooks."
-  (let ((field (ekg--metadata-current-field)))
-    (when (equal "Tags" (car field))
-      (let ((current-tags (ekg-note-tags ekg-note))
-            (maybe-tag (car (last (string-split (cdr field))))))
-        (when (and (not (member maybe-tag current-tags))
-                   (member maybe-tag (ekg-tags)))
-          (ekg--update-from-metadata)
-          (run-hook-with-args 'ekg-note-add-tag-hook maybe-tag)
-          (ekg-maybe-function-tag maybe-tag))))))
-
 (defun ekg--set-local-variables ()
   "Set some common local variables."
   (setq-local
@@ -1589,6 +1576,19 @@ attempt the completion."
                      (lambda (_)
                        (seq-difference (ekg-tags) (ekg-note-tags ekg-note))))
           :exclusive t)))
+
+(defun ekg-detect-tag-completion ()
+  "After a modification, check if the user has completed a tag.
+If so, call the necessary hooks."
+  (let ((field (ekg--metadata-current-field)))
+    (when (equal "Tags" (car field))
+      (let ((current-tags (ekg-note-tags ekg-note))
+            (maybe-tag (car (last (split-string (cdr field))))))
+        (when (and (not (member maybe-tag current-tags))
+                   (member maybe-tag (ekg-tags)))
+          (ekg--update-from-metadata)
+          (run-hook-with-args 'ekg-note-add-tag-hook maybe-tag)
+          (ekg-maybe-function-tag maybe-tag))))))
 
 (defun ekg-save-draft ()
   "Save the current note as a draft."
