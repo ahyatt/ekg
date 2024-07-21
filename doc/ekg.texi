@@ -68,6 +68,8 @@ Installation
 
 Changelog
 
+* Version 0.7.0: Version 070. 
+* Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
@@ -197,6 +199,8 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.7.0: Version 070. 
+* Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
 * Version 0.4.3: Version 043. 
@@ -210,6 +214,26 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 070
+@section Version 0.7.0
+
+@itemize
+@item
+Fix issue in @samp{markdown-mode} where the beginning of the tag values was incorrectly read-only.
+@end itemize
+
+@node Version 060
+@section Version 0.6.0
+
+@itemize
+@item
+Add tag and similar notes to the context when having LLMs add to or replace
+notes.  @code{ekg-llm-default-instructions} replaces the previous variable,
+@code{ekg-llm-default-prompt} (because the prompt now contains the instructions).
+@item
+Add inline links for Markdown, as wiki links.
+@end itemize
 
 @node Version 051
 @section Version 0.5.1
@@ -563,25 +587,27 @@ completion is typing tags inline while writing notes. These tags will be added
 to the note automatically upon saving, regardless of whether completion is used
 or not. The tag completion is triggered by the "#" symbol. In @samp{org-mode}, if
 @samp{ekg-linkify-inline-tags} is set to non-nil (which is the default), the tag will
-be turned into an org link to the tag. Otherwise, it will remain as plain text.
-It is necessary to enclose the tag in square brackets to be detected as an
-inline tag. It is acceptable to finish the completion with a tag that is not
-currently defined, as the tag will be added when the note is saved. The
-detection of plaintext tags of various types can be turned off by setting
-@samp{ekg-inline-populate-inline-text-tags} to @samp{nil}. There are other customizable tag
-symbols available, indicating different prefixes. By default, in addition to the
-"#" symbol (representing a tag with that name), there is also the "@@" symbol for
-tags prefixed with "person/", and the "!" symbol for tags prefixed with "idea/".
-These other symbols and the prefixes they mean are controlled by
+be turned into an org link to the tag. It is necessary to enclose the tag in
+square brackets to be detected as an inline tag.  In @samp{markdown-mode}, the tag will
+be turned into a wiki link (denoted by double square brackets).  It is
+acceptable to finish the completion with a tag that is not currently defined, as
+the tag will be added when the note is saved. The detection of plaintext tags of
+various types can be turned off by setting @samp{ekg-inline-populate-inline-text-tags}
+to @samp{nil}. There are other customizable tag symbols available, indicating different
+prefixes. By default, in addition to the "#" symbol (representing a tag with
+that name), there is also the "@@" symbol for tags prefixed with "person/", and
+the "!" symbol for tags prefixed with "idea/".  These other symbols and the
+prefixes they mean are controlled by
 @samp{ekg-inline-custom-tag-completion-symbols}. By default, we have "@@" which will
 denote a tag with the "person/" prefix, and "!" which will denote a tag with the
-"idea/" prefix. So to sum up, if the note text has the following:
+"idea/" prefix.  So if, in either @samp{org-mode} or @samp{markdown-mode}, the text has the
+following:
 
 @example
 Everything related to #[emacs] should be colored #ffa500.  This is the opinion of @@[rms].
 @end example
 
-The tags that will be detected are "emacs" and, because of the special "@@"
+the tags that will be detected are "emacs" and, because of the special "@@"
 prefix that indicates a tag prefix, "person/rms". The color will not be picked
 up as a tag, because it is not enclosed in brackets. This helps us avoid false
 positives.
@@ -1145,7 +1171,8 @@ package.
 @node Embeddings
 @section Embeddings
 
-The embeddings functionality can be turned on by requiring the embeddings file and enabling it, such as:
+The embeddings functionality, for integration with an LLM, can be turned on by
+requiring the ekg-embeddings file and enabling it, such as:
 
 @lisp
 (require 'ekg-embedding)
@@ -1194,22 +1221,22 @@ as the LLM provider (if you also use the @ref{LLM} add-on.)  Also note that the
 provider will get the text of all your notes, so if that bothers you, do not use
 any provider on a server.
 
-Once you have this set up, and you have already called @code{(require 'ekg-embedding)}
-and @code{(ekg-embedding-generate-on-save)} you can call @samp{M-x
-ekg-embedding-generate-all}. This may take a long time as each embedding has to
-be generated separately with its own API call. Once you've done this, you can
+Once you have this set up, and you have already called @code{(require
+'ekg-embedding)} and @code{(ekg-embedding-generate-on-save)} you can call @samp{M-x
+ekg-embedding-generate-all}.  This may take a long time as each embedding has to
+be generated separately with its own API call.  Once you've done this, you can
 call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar
-notes. You can also call @samp{ekg-embedding-search} to perform a search over your
-notes using embeddings. In any buffer, you can call
-@samp{ekg-embedding-show-similar-to-current-buffer} to similar notes to whatever the
-text is in the curent buffer.
+notes.  You can also call @samp{ekg-embedding-search} to perform a search over your
+notes using embeddings.  In any buffer, you can call
+@samp{ekg-embedding-show-similar-to-current-buffer} to show notes similar to whatever
+the text is in the current buffer.
 
-The variable @samp{ekg-embedding-text-selector} has a value that is a function that
-will pre-process all text that is sent for embeddings. The default value is
-@samp{ekg-embedding-text-selector-initial}, which will estimate the size of the tokens
-sent and limit the text to the first 8k tokens. Right now the function is tuned
-to the limits of Open AI's embedding framework, and a different function may be
-needed for other embedding APIs.
+The variable @samp{ekg-embedding-text-selector} has a function that will pre-process
+all text that is sent for embeddings.  The default value is
+@samp{ekg-embedding-text-selector-initial}, which will estimate the size of the
+tokens sent and limit the text to the first 8k tokens.  Right now the function
+is tuned to the limits of Open AI's embedding framework, and a different
+function may be needed for other embedding APIs.
 
 If you would like to stop generating embeddings for notes in a session, you can
 call @code{(ekg-embedding-disable-generate-on-save)}.
@@ -1376,7 +1403,8 @@ description of how to do this, but an example would be the following:
 
 The embedding and LLM providers can be different.  The LLM provider can change
 at will, while the embedding provider must be the same for all embeddings in the
-database.
+database.  It is necessary to create both of these providers, because some LLM
+functionality depends on having embeddings.
 
 @menu
 * Augmenting notes with LLM output::
@@ -1394,22 +1422,26 @@ The output from the LLM is appended at the end of the note, in a special
 section.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
-the LLM@.  The default prompt is a fixed string you can configure in
-@code{ekg-llm-default-prompt}.  But alternatively, you can create alternative prompts
-for different ekg tags in the same way that @ref{Templates, , templates} work, by creating a note
-tagged with "prompt" and any other tag (the special "prompt" tag can be changed
-by customizing @code{ekg-llm-prompt-tag}).  The alternate prompt is created by
+the LLM@.  The prompt consists of context about previous notes that contain the
+tags of your note, and similar notes, which is what will generate high-quality
+content that is appropriate in the context of your notes.  It also contains
+instructions to the LLM to how to generate the note text to be added or
+replaced. The default instructions are a fixed string you can configure in
+@code{ekg-llm-default-instructions}.  But alternatively, you can create alternative
+prompts for different ekg tags in the same way that @ref{Templates, , templates} work, by creating
+a note tagged with "prompt" and any other tag (the special "prompt" tag can be
+changed by customizing @code{ekg-llm-prompt-tag}).  The alternate prompt is created by
 appending all "prompt"-tagged notes.  Note that, as with templates, hierarchical
 tags can have prompts attached at any or all levels of the hierarchy.
 
-To take an example, imagine that you have a note tagged with @samp{prompt} and
-@samp{recipe}, containing a prompt saying the LLM should imagine itself an authority
-on cooking and provide you helpful tips to improve your recipes.  You then
-create a note with a child tag of @samp{recipe}, let's say @samp{recipe/monkfish}, with
-some details of your attempt to cook monkfish, and then hit @samp{[C-c .]}.  Because
-@samp{recipe} is a parent of @samp{recipe/monkfish}, ekg-llm will use this prompt instead
-of the default one, and will also append your note, and place the LLM's response
-in a special section at the end of your note.  For example:
+To take an example, imagine that you have a note tagged with @samp{prompt} and @samp{recipe},
+containing instructions saying the LLM should imagine itself an authority on
+cooking and provide you helpful tips to improve your recipes.  You then create a
+note with a child tag of @samp{recipe}, let's say @samp{recipe/monkfish}, with some details of
+your attempt to cook monkfish, and then hit @samp{[C-c .]}.  Because @samp{recipe} is a parent
+of @samp{recipe/monkfish}, ekg-llm will use these instructions instead of the default
+one, and will also append your note, and place the LLM's response in a special
+section at the end of your note.  For example:
 
 @example
 Making monkfish again.  It is thick but tends to be wet and hard to get a good
@@ -1428,11 +1460,13 @@ overcooking the inside.  Happy cooking!
 
 Instead of appending, the note can be replaced with the output of the LLM by
 using @samp{ekg-llm-send-and-replace-note} which is bound to @samp{[C-c ,]}.  As with the
-append command, using a prefix argument will let you edit the prompt before
-sending it.
+append command, using a prefix argument will let you edit the instructions
+before sending it.
 
 All prompts sent from a note in org or markdown modes have a prelude that notes
-the format of the input and expected output.
+the format of the input and expected output.  However, LLMs typically will
+produce markdown regardless of what you ask it to do, so if you want to use
+LLMs, you may want to use markdown as a default note format.
 
 @node Using ekg notes as prompts
 @subsection Using ekg notes as prompts

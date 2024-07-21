@@ -1,6 +1,6 @@
 ;;; ekg-test.el --- Tests for ekg  -*- lexical-binding: t; -*-
 
-;; Copyright (c) 2022-2023  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2022-2024  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -25,6 +25,7 @@
 (require 'ert)
 (require 'ert-x)
 (require 'org)
+(require 'markdown-mode)
 (require 'ekg-test-utils)
 
 (ekg-deftest ekg-test-note-lifecycle ()
@@ -56,21 +57,21 @@
   (let* ((note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
          (note-buf (ekg-edit note)))
     (unwind-protect
-     (progn
-       ;; Can we store a link?
-       (with-current-buffer note-buf
-         (org-store-link nil 1)
-         (should (car org-stored-links)))
-       (with-temp-buffer
-         ;; Does the link look correct?
-         (org-mode)
-         (org-insert-last-stored-link nil)
-         (should (string= (buffer-string) (format "[[ekg-note:%d][EKG note: %d]]\n" (ekg-note-id note) (ekg-note-id note))))
-         ;; Does the link work?
-         (goto-char 1)
-         (org-open-at-point nil)
-         (should (eq note-buf (current-buffer)))))
-     (kill-buffer note-buf))))
+        (progn
+          ;; Can we store a link?
+          (with-current-buffer note-buf
+            (org-store-link nil 1)
+            (should (car org-stored-links)))
+          (with-temp-buffer
+            ;; Does the link look correct?
+            (org-mode)
+            (org-insert-last-stored-link nil)
+            (should (string= (buffer-string) (format "[[ekg-note:%d][EKG note: %d]]\n" (ekg-note-id note) (ekg-note-id note))))
+            ;; Does the link work?
+            (goto-char 1)
+            (org-open-at-point nil)
+            (should (eq note-buf (current-buffer)))))
+      (kill-buffer note-buf))))
 
 (ekg-deftest ekg-test-org-link-to-tags ()
   (require 'ol)
@@ -110,8 +111,8 @@
 
 (ekg-deftest ekg-test-sort-nondestructive ()
   (mapc #'ekg-save-note
-      (list (ekg-note-create :text "a" :mode ekg-capture-default-mode :tags '("tag/a"))
-            (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
+        (list (ekg-note-create :text "a" :mode ekg-capture-default-mode :tags '("tag/a"))
+              (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
   (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
   (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a, tag/b")))
 
@@ -316,6 +317,33 @@
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
       (should (= (point) (overlay-end o))))))
 
+(ekg-deftest ekg-test-metadata-read-only ()
+  (dolist (mode '(org-mode markdown-mode text-mode))
+    (let ((ekg-capture-default-mode mode))
+      (cl-loop for i from 1 to 10
+               do
+               (ekg-capture)
+               ;; TODO(ahyatt) Find out why this is necessary to reproduce bad
+               ;; behavior.
+               (funcall mode)
+               (goto-char i)
+               (cond
+                ((= i 1)
+                 (ert-info
+                     ((format "%s: Inserting text at position %d in beginning of the line should be allowed."
+                              mode i))
+                   (insert "foo")))
+                ((> i (length "Tags: "))
+                 (ert-info
+                     ((format "%s: Inserting text at position %d in the field value should be allowed."
+                              mode i))
+                   (insert "foo")))
+                (t (ert-info
+                       ((format "%s: Inserting text at position %d in the tag field name should not be allowed."
+                                mode i))
+                     (should-error (insert "foo")))))
+               (kill-buffer)))))
+
 (ekg-deftest ekg-test-draft ()
   (ekg-capture :tags '("test"))
   (insert "foo")
@@ -374,9 +402,9 @@
 
 (ert-deftest ekg--convert-inline-tags-to-links ()
   (let ((note (make-ekg-note :text "foo #[bar]")))
-      (ekg--populate-inline-tags note)
-      (ekg--convert-inline-tags-to-links note)
-      (should (equal (ekg-note-text note) "foo #[[ekg-tag:bar][bar]]"))))
+    (ekg--populate-inline-tags note)
+    (ekg--convert-inline-tags-to-links note)
+    (should (equal (ekg-note-text note) "foo #[[ekg-tag:bar][bar]]"))))
 
 (provide 'ekg-test)
 

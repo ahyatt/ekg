@@ -32,7 +32,7 @@
     (insert
      "#+title:test\n#+ekg_export: true\n\n"
      "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: abc\n:END:\n#[[test]]\ntest\n"
-     "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: bce\n:gEND:\n#[[test]]\ntest\n")
+     "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: bce\n:END:\n#[[test]]\ntest\n")
     (org-mode)
     (should (equal (ekg-logseq--to-import-text) nil)))
   (with-temp-buffer

@@ -37,14 +37,18 @@ BODY is the test body."
            (ekg-note-pre-delete-hook nil)
            (ekg-note-delete-hook nil)
            (ekg-note-add-tag-hook nil)
-           (ekg-confirm-on-buffer-kill nil))
-       (ekg-connect)
-       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))
-       (save-excursion
-         (unwind-protect
-             (progn ,@body)
-           ;; Kill all opened bufferes
-           (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers)))))))
+           (ekg-confirm-on-buffer-kill nil)
+           (id-count 0))
+       (cl-letf (((symbol-function 'ekg--generate-id)
+                  (lambda () (cl-incf id-count))))
+         (ekg-connect)
+         (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))
+         (save-excursion
+           (unwind-protect
+               (progn ,@body)
+             (delete-file ekg-db-file)
+             ;; Kill all opened bufferes
+             (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers))))))))
 
 (provide 'ekg-test-utils)
 

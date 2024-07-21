@@ -24,9 +24,9 @@
 ;;
 ;;; Commentary:
 ;;
-;; Automatically save EKG notes. This is a safety measure to prevent
-;; you from losing more than a limited amount of work in case of
-;; system crashes or accidental buffer kill.
+;; Automatically save EKG notes.  This is a safety measure to prevent you from
+;; losing more than a limited amount of work in case of system crashes or
+;; accidental buffer kill.
 ;;
 ;;; Code:
 
@@ -47,7 +47,7 @@ idleness."
 
 (defcustom ekg-auto-save-interval auto-save-interval
   "Number of input events between auto-saves.
-This is similar to, and works like `auto-save-interval'. Zero or
+This is similar to, and works like `auto-save-interval'.  Zero or
 nil means disable auto-saving due to number of keystrokes typed."
   :type '(choice integer (const nil))
   :group 'ekg)
@@ -69,7 +69,7 @@ nil means disable auto-saving due to number of keystrokes typed."
   "Predicate function for `ekg-auto-save-mode'.
 If non-nil, the value should be a function of no arguments; it
 will be called once in each ekg capture/edit buffer when the time
-comes to auto-save. A buffer will be saved only if the predicate
+comes to auto-save.  A buffer will be saved only if the predicate
 function returns a non-nil value.
 
 For example, if you need to disable auto-save during `corfu'
@@ -223,7 +223,7 @@ advices on commands when there's no editable ekg buffer."
   :group 'ekg
   :global nil
   (unless (or ekg-edit-mode ekg-capture-mode)
-    (user-error "Only available in ekg-capture/edit-mode."))
+    (user-error "Only available in ekg-capture/edit-mode"))
   (if ekg-auto-save-mode
       (ekg-auto-save-initialize)
     (ekg-auto-save-stop)))
