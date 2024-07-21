@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.8.0: Version 080. 
 * Version 0.7.0: Version 070. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
@@ -200,6 +201,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.8.0: Version 080. 
 * Version 0.7.0: Version 070. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
@@ -216,6 +218,16 @@ triples library is already installed.
 * Version 0.2: Version 02. 
 @end menu
 
+@node Version 080
+@section Version 0.8.0
+
+@itemize
+@item
+Add export to @uref{https://github.com/protesilaos/denote, denote} (by @uref{https://github.com/jayrajput, Jay Rajput})
+@item
+Allow emojis as tags.
+@end itemize
+
 @node Version 070
 @section Version 0.7.0
 
@@ -226,8 +238,6 @@ Use the global keymap in the note metadata region.
 Run tag hooks when a valid tag is typed, instead of relying on completion, which often doesn't work.
 @item
 Fix issue in @samp{markdown-mode} where the beginning of the tag values was incorrectly read-only.
-@item
-Add export to @uref{https://github.com/protesilaos/denote, denote} (by @uref{https://github.com/jayrajput, Jay Rajput})
 @end itemize
 
 @node Version 060
