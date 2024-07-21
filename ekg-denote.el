@@ -18,13 +18,13 @@
 ;;; Commentary:
 ;; This package provides integration between ekg and denote.
 ;;
-;; During export, for each ekg note, a denote file is created. Denote
+;; During export, for each ekg note, a denote file is created.  Denote
 ;; does not allow creation time for two notes within a second whereas
 ;; ekg has no such restriction, so it is necessary to ensure that each
 ;; ekg note has a unique creation time for export.  Additionally,
 ;; denote embeds the title and tags in the filename, which is limited
-;; based on the underlying operating system. The titles and tags of
-;; ekg notes are trimmed to a configurable length before export. Ekg
+;; based on the underlying operating system.  The titles and tags of
+;; ekg notes are trimmed to a configurable length before export.  Ekg
 ;; notes can have creation time within a second when trying to bulk
 ;; import org-roam files to ekg.
 ;;
@@ -34,6 +34,8 @@
 (require 'denote)
 (require 'triples)
 (require 'seq)
+
+;;; Code:
 
 (defcustom ekg-denote-export-title-max-len 50
   "Maximum length of the title to trim to during export."
@@ -92,8 +94,9 @@ You can choose not to backup in case denotes are already backed up using git or 
     (remove nil notes)))
 
 (defun ekg-denote-sublist-keywords (kws combined-length)
-  "Return the sublist for the given KWS list such that the
-length of combined KWS is not more than the given COMBINED-LENGTH."
+  "Return the sublist for the given KWS list.
+The length of combined KWS is not more than the given
+COMBINED-LENGTH."
   (if (length< (denote-keywords-combine kws) combined-length) kws
     (ekg-denote-sublist-keywords (butlast kws) combined-length)))
 
@@ -137,7 +140,6 @@ length of combined KWS is not more than the given COMBINED-LENGTH."
 
 (defun ekg-denote--rename-if-path-changed (denote)
   "Rename given DENOTE if path has changed.
-
 Path can change due to title or tag changes.
 "
   (let* ((id (ekg-denote-id denote))
@@ -159,7 +161,7 @@ Optionally add front-matter."
       (denote-add-front-matter path title kws))))
 
 (defun ekg-denote--modified-time-from-file (denote)
-  "Return modified time for the DENOTE"
+  "Return modified time for the DENOTE."
   (let ((path (ekg-denote-path denote)))
     (when (file-exists-p path)
       (time-convert
@@ -189,7 +191,7 @@ Denote uses creation-time as ID."
 Denote uses creation-time as ID and assume it to be unique."
   (let ((creation-times (mapcar #'ekg-note-creation-time notes)))
     (when (not (equal creation-times (seq-uniq creation-times)))
-      (error "ekg-denote: Notes using same creation time."))))
+      (error "ekg-denote: Notes using same creation time"))))
 
 (defun ekg-denote-export ()
   "Export the current ekg database to denote."
