@@ -73,7 +73,7 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
-** Version 0.7.0
+** Version 0.6.1
 - Use the global keymap in the note metadata region.
 - Run tag hooks when a valid tag is typed, instead of relying on completion, which often doesn't work.
 - Fix issue in =markdown-mode= where the beginning of the tag values was incorrectly read-only.

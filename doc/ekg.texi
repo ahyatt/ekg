@@ -68,7 +68,7 @@ Installation
 
 Changelog
 
-* Version 0.7.0: Version 070. 
+* Version 0.6.1: Version 061. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
@@ -199,7 +199,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
-* Version 0.7.0: Version 070. 
+* Version 0.6.1: Version 061. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
@@ -215,8 +215,8 @@ triples library is already installed.
 * Version 0.2: Version 02. 
 @end menu
 
-@node Version 070
-@section Version 0.7.0
+@node Version 061
+@section Version 0.6.1
 
 @itemize
 @item
