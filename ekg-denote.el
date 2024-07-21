@@ -140,8 +140,7 @@ COMBINED-LENGTH."
 
 (defun ekg-denote--rename-if-path-changed (denote)
   "Rename given DENOTE if path has changed.
-Path can change due to title or tag changes.
-"
+Path can change due to title or tag changes."
   (let* ((id (ekg-denote-id denote))
 	 (path (ekg-denote-path denote))
 	 (existing-path (denote-get-path-by-id id)))
@@ -150,7 +149,6 @@ Path can change due to title or tag changes.
 
 (defun ekg-denote--text-save (denote)
   "Save the text from given DENOTE to the disk.
-
 Optionally add front-matter."
   (let ((path (ekg-denote-path denote))
 	(text (ekg-denote-text denote))
