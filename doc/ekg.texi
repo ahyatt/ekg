@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.7.0: Version 070. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
@@ -198,6 +199,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.7.0: Version 070. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
@@ -212,6 +214,16 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 070
+@section Version 0.7.0
+
+@itemize
+@item
+Use the global keymap in the note metadata region.
+@item
+Run tag hooks when a valid tag is typed, instead of relying on completion, which often doesn't work.
+@end itemize
 
 @node Version 060
 @section Version 0.6.0
@@ -727,9 +739,11 @@ of tags are also searched, so the same thing will happen if the tag you add is
 long as it exists.
 
 The adding of templates happens whether intially when setting up the capture
-buffer, or later when the user completes a tag.  Tags added without completion
-won't trigger this behavior, since at the moment ekg will not be able to
-understand that a tag has changed.
+buffer, or later when the user types a tag that is a valid tag.  Because of
+this, it's best to avoid adding templates to tags that are prefixes of other
+tags you'd like to use, but don't want the template on, because as soon as ekg
+sees the prefix that's a valid tag being typed, it will trigger that tag's
+templates.
 
 You can choose a tag other than "template" as the trigger for this templating
 behavior, by customizing @code{ekg-template-tag}.
@@ -955,8 +969,8 @@ tags, you can enable this tag-based customization.
 This works in a similar manner to @ref{Templates, , templates}, except that a template tag only
 takes effect when you add it, while a magic tag takes effect both when first
 adding it and when editing a note with the tag.  But they also share the same
-shortcoming: you must add the tag via completion to get its effects to run.  (It
-will still take effect when editing the note though.)
+shortcoming: if the tag is a prefix, it will trigger as soon as typed, even if
+you wanted to use a different tag that is prefixed with the tag.
 
 Creating magic tags is also like creating templates.  You create a note and use
 a special tag that indicates this tag is a magic tag.  That special tag is

@@ -132,6 +132,17 @@
       (should (string-match (rx (literal "ABC")) text))
       (should (string-match (rx (literal "DEF")) text)))))
 
+(ekg-deftest ekg-test-template-completion ()
+  (ekg-save-note (ekg-note-create :text "ABC" :mode #'text-mode :tags '("test" "template")))
+  (let ((ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)))
+    (ekg-capture)
+    (goto-char (point-min))
+    (end-of-line)
+    (insert ", tes")
+    (ert-simulate-command '(completion-at-point)))
+  (should (string-match (rx (literal "ABC")) (substring-no-properties (buffer-string))))
+  (kill-buffer))
+
 (ekg-deftest ekg-test-get-notes-with-tags ()
   (ekg-save-note (ekg-note-create :text "ABC" :mode #'text-mode :tags '("foo" "bar")))
   (should-not (ekg-get-notes-with-tags '("foo" "none")))
