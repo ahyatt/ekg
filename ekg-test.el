@@ -416,6 +416,12 @@
     (ekg--convert-inline-tags-to-links note)
     (should (equal (ekg-note-text note) "foo #[[ekg-tag:bar][bar]]"))))
 
+(ert-deftest ekg-test-convert-emoji-tags-to-links ()
+  (let ((note (make-ekg-note :text "foo #[🦜]")))
+    (ekg--populate-inline-tags note)
+    (ekg--convert-inline-tags-to-links note)
+    (should (equal (ekg-note-text note) "foo #[[ekg-tag:🦜][🦜]]"))))
+
 (provide 'ekg-test)
 
 ;;; ekg-test.el ends here

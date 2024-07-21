@@ -225,6 +225,8 @@ Use the global keymap in the note metadata region.
 Run tag hooks when a valid tag is typed, instead of relying on completion, which often doesn't work.
 @item
 Fix issue in @samp{markdown-mode} where the beginning of the tag values was incorrectly read-only.
+@item
+Allow emojis as tags.
 @end itemize
 
 @node Version 060
