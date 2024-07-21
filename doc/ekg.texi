@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.7.0: Version 070. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
@@ -198,6 +199,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.7.0: Version 070. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
 * Version 0.5: Version 05. 
@@ -212,6 +214,14 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 070
+@section Version 0.7.0
+
+@itemize
+@item
+Fix issue in @samp{markdown-mode} where the beginning of the tag values was incorrectly read-only.
+@end itemize
 
 @node Version 060
 @section Version 0.6.0
