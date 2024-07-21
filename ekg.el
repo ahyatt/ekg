@@ -1238,7 +1238,7 @@ This will be displayed at the top of the note buffer."
     (format "%s%s%s"
             (concat
              (propertize (concat property ":") 'face 'bold 'read-only read-only)
-             (propertize " " 'read-only read-only 'rear-nonsticky t))
+             (propertize " " 'read-only nil 'rear-nonsticky t))
             value
             (propertize "\n" 'read-only read-only 'rear-nonsticky t))))
 

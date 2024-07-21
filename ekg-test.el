@@ -25,6 +25,7 @@
 (require 'ert)
 (require 'ert-x)
 (require 'org)
+(require 'markdown-mode)
 (require 'ekg-test-utils)
 
 (ekg-deftest ekg-test-note-lifecycle ()
@@ -326,6 +327,33 @@
       (ignore-errors (delete-char -1))
       (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
       (should (= (point) (overlay-end o))))))
+
+(ekg-deftest ekg-test-metadata-read-only ()
+  (dolist (mode '(org-mode markdown-mode text-mode))
+    (let ((ekg-capture-default-mode mode))
+      (cl-loop for i from 1 to 10
+               do
+               (ekg-capture)
+               ;; TODO(ahyatt) Find out why this is necessary to reproduce bad
+               ;; behavior.
+               (funcall mode)
+               (goto-char i)
+               (cond
+                ((= i 1)
+                 (ert-info
+                     ((format "%s: Inserting text at position %d in beginning of the line should be allowed."
+                              mode i))
+                   (insert "foo")))
+                ((> i (length "Tags: "))
+                 (ert-info
+                     ((format "%s: Inserting text at position %d in the field value should be allowed."
+                              mode i))
+                   (insert "foo")))
+                (t (ert-info
+                       ((format "%s: Inserting text at position %d in the tag field name should not be allowed."
+                                mode i))
+                     (should-error (insert "foo")))))
+               (kill-buffer)))))
 
 (ekg-deftest ekg-test-draft ()
   (ekg-capture :tags '("test"))
