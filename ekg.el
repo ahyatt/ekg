@@ -917,6 +917,7 @@ ARG is the prefix argument, if used it opens in another window."
    header-line-format (ekg--header-line-format))
   (add-hook 'pre-command-hook #'ekg-narrow-for-command nil t)
   (add-hook 'post-command-hook #'ekg-unnarrow-for-command nil t)
+
   (when (eq major-mode 'markdown-mode)
     (setq-local markdown-enable-wiki-links t
                 markdown-wiki-link-fontify-missing nil)
@@ -1309,6 +1310,7 @@ after the modification.
   3) The user can't delete the metadata - if the user tries to
 delete from the end of the metadata, we need to fix it back up."
   (when after
+    (ekg-detect-tag-completion)
     ;; If we're at the end of the metadata, we need to make sure we don't delete
     ;; it from the previous line. Moving after is also suspicious, because we
     ;; don't know where to move it. It's easiest and clearest if we just do
@@ -1362,6 +1364,7 @@ delete from the end of the metadata, we need to fix it back up."
     (overlay-put o 'modification-hooks '(ekg--metadata-modification))
     (overlay-put o 'insert-behind-hooks '(ekg--metadata-on-insert-behind))
     (overlay-put o 'face 'ekg-metadata)
+    (overlay-put o 'local-map global-map)
     (buffer-enable-undo)
     ;; If org-mode is on, the metadata messes up the org-element-cache, so let's disable it.
     (when (eq major-mode 'org-mode)
@@ -1559,20 +1562,6 @@ attempt the completion."
         :exclusive t :exit-function (lambda (_completion finished)
                                       (when finished (insert ": ")))))
 
-(defun ekg--tags-cap-exit (completion finished)
-  "Cleanup after completion at point happened in a tag.
-The cleanup now is just to always have a space after every comma.
-Argument COMPLETION is the chosen completion.
-Argument FINISHED is non-nil if the user has chosen a completion."
-  (when finished
-    (save-excursion
-      (when (search-backward (format ",%s" completion) (line-beginning-position) t)
-        (replace-match (format ", %s" completion)))
-      (when (search-backward (format ":%s" completion) (line-beginning-position) t)
-        (replace-match (format ": %s" completion)))
-      (run-hook-with-args 'ekg-note-add-tag-hook completion)
-      (ekg-maybe-function-tag completion))))
-
 (defun ekg--tags-complete ()
   "Completion function for tags, CAPF-style."
   (let ((end (save-excursion
@@ -1585,9 +1574,21 @@ Argument FINISHED is non-nil if the user has chosen a completion."
                  (point))))
     (list start end (completion-table-dynamic
                      (lambda (_)
-                       (ekg--update-from-metadata)
                        (seq-difference (ekg-tags) (ekg-note-tags ekg-note))))
-          :exclusive t :exit-function #'ekg--tags-cap-exit)))
+          :exclusive t)))
+
+(defun ekg-detect-tag-completion ()
+  "After a modification, check if the user has completed a tag.
+If so, call the necessary hooks."
+  (let ((field (ekg--metadata-current-field)))
+    (when (equal "Tags" (car field))
+      (let ((current-tags (ekg-note-tags ekg-note))
+            (maybe-tag (car (last (split-string (cdr field))))))
+        (when (and (not (member maybe-tag current-tags))
+                   (member maybe-tag (ekg-tags)))
+          (ekg--update-from-metadata)
+          (run-hook-with-args 'ekg-note-add-tag-hook maybe-tag)
+          (ekg-maybe-function-tag maybe-tag))))))
 
 (defun ekg-save-draft ()
   "Save the current note as a draft."

@@ -133,6 +133,17 @@
       (should (string-match (rx (literal "ABC")) text))
       (should (string-match (rx (literal "DEF")) text)))))
 
+(ekg-deftest ekg-test-template-completion ()
+  (ekg-save-note (ekg-note-create :text "ABC" :mode #'text-mode :tags '("test" "template")))
+  (let ((ekg-note-add-tag-hook '(ekg-on-add-tag-insert-template)))
+    (ekg-capture)
+    (goto-char (point-min))
+    (end-of-line)
+    (insert ", tes")
+    (ert-simulate-command '(completion-at-point)))
+  (should (string-match (rx (literal "ABC")) (substring-no-properties (buffer-string))))
+  (kill-buffer))
+
 (ekg-deftest ekg-test-get-notes-with-tags ()
   (ekg-save-note (ekg-note-create :text "ABC" :mode #'text-mode :tags '("foo" "bar")))
   (should-not (ekg-get-notes-with-tags '("foo" "none")))
@@ -323,9 +334,8 @@
       (cl-loop for i from 1 to 10
                do
                (ekg-capture)
-               ;; TODO(ahyatt) Find out why this is necessary to reproduce bad
-               ;; behavior.
-               (funcall mode)
+               ;; Necessary to reproduce the original issue with markdown-mode.
+               (font-lock-ensure)
                (goto-char i)
                (cond
                 ((= i 1)
