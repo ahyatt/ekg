@@ -118,7 +118,7 @@ COMBINED-LENGTH."
 	 (ekg-title (plist-get (ekg-note-properties note) :titled/title))
 	 (ekg-title (if (listp ekg-title) (car ekg-title) ekg-title))
 	 (ekg-title (or ekg-title ""))
-	 (title (string-limit (denote-sluggify ekg-title) ekg-denote-export-title-max-len))
+	 (title (string-limit (denote-sluggify 'title ekg-title) ekg-denote-export-title-max-len))
 	 (signature-slug "")
 	 (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext signature-slug)))
     (make-ekg-denote :id id

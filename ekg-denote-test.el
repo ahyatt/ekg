@@ -126,20 +126,20 @@
     (should (equal denote (ekg-denote-create note)))))
 
 
-(defun ekg-denote-test--matching-denote (regexp)
+(defun ekg-test--matching-denote (regexp)
   "Get denote file name containing REGEXP.
 Enforces single match."
   (let ((files (seq-filter (lambda (x) (string-match-p regexp x))
-			   (denote-directory-text-only-files))))
+			   (denote-directory-files nil nil :text-only))))
     (when files (car files))))
 
-(defun ekg-denote-test--denote-text (file)
+(defun ekg-test--denote-text (file)
   "Get text from denote FILE."
   (with-temp-buffer
     (insert-file-contents file)
     (buffer-string)))
 
-(defun ekg-denote-test--creation-time-from-denote-file (file)
+(defun ekg-test--creation-time-from-denote-file (file)
   "Return creation time for the denote FILE."
   (time-convert
    (encode-time
@@ -147,7 +147,7 @@ Enforces single match."
      (denote-retrieve-filename-identifier file)))
    'integer))
 
-(defun ekg-denote-test--denote-ekg (file)
+(defun ekg-test--denote-ekg (file)
   "Return ekg note for given denote FILE."
   (let* ((creation-time (ekg-test--creation-time-from-denote-file file))
 	 (triples (triples-db-select-pred-op ekg-db :time-tracked/creation-time '= creation-time)))
