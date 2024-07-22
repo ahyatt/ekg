@@ -128,10 +128,9 @@
 
 (defun ekg-test--matching-denote (regexp)
   "Get denote file name containing REGEXP.
-
 Enforces single match."
   (let ((files (seq-filter (lambda (x) (string-match-p regexp x))
-			   (denote-directory-text-only-files))))
+			   (denote-directory-files nil nil :text-only))))
     (when files (car files))))
 
 (defun ekg-test--denote-text (file)
@@ -155,7 +154,7 @@ Enforces single match."
     (should (length= triples 1))
     (ekg-get-note-with-id (car (car triples)))))
 
-(ekg-deftest ekg-test-export ()
+(ekg-deftest ekg-denote-test-export ()
   "Verify export."
   (let ((denote-directory (make-temp-file "denote" t)))
     ;; ekg note creations are exported
