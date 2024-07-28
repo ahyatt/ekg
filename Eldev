@@ -3,3 +3,4 @@
 (eldev-use-package-archive 'gnu-elpa)
 (eldev-use-plugin 'maintainer)
 (eldev-add-extra-dependencies 'test '(:package markdown-mode :archive melpa))
+(eldev-add-extra-dependencies 'test 'denote)

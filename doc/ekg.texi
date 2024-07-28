@@ -107,6 +107,7 @@ Extras
 * Logseq::
 * LLM::
 * Auto save::
+* Denote::
 
 Logseq
 
@@ -227,6 +228,8 @@ Run tag hooks when a valid tag is typed, instead of relying on completion, which
 Fix issue in @samp{markdown-mode} where the beginning of the tag values was incorrectly read-only.
 @item
 Allow emojis as tags.
+@item
+Add export to @uref{https://github.com/protesilaos/denote, denote} (by @uref{https://github.com/jayrajput, Jay Rajput})
 @end itemize
 
 @node Version 060
@@ -1174,6 +1177,7 @@ package.
 * Logseq::
 * LLM::
 * Auto save::
+* Denote::
 @end menu
 
 @node Embeddings
@@ -1532,6 +1536,64 @@ To start using this, you need to require the module and turn on @samp{ekg-auto-s
 @end lisp
 
 In the capture mode, this. is equivalent to saving periodically (to drafts).  In edit mode, it will save the latest version while editing.
+
+@node Denote
+@section Denote
+
+ekg can export notes as denotes. Denote is a note taking and file
+naming tool. Primary reason for export is taking backup of your notes
+in a git backed repository. Import is in road map (PR is welcome). To
+export to denote, @samp{ekg-denote} module is required.
+
+@lisp
+(use-package ekg-denote
+  :init
+  (setq ekg-denote-export-add-front-matter nil)
+  (setq ekg-denote-export-backup-on-conflict t)
+  (setq ekg-denote-export-title-max-len 50)
+  (setq ekg-denote-export-combined-keywords-len 150))
+@end lisp
+
+To export, call @samp{ekg-denote-export} which will export any modified
+note after the last export as a denote in the @samp{denote-directory}
+defined by @samp{denote} package. If it is your first time exporting, all
+the notes will be exported to the @samp{denote-directory}.
+
+@samp{ekg-denote} keeps record of the last export time in the ekg db and
+use that to find the notes changed since last export. This way the
+exports are much faster. It is suggested to export your notes every
+day.
+
+User can optionally enable adding of denote front-matter to exported
+denotes by setting @samp{ekg-denote-export-add-front-matter} to
+@samp{t}. Denote front matter is added using @samp{denote-add-front-matter}
+function defined by @samp{denote} package which open note in an emacs
+buffer and requires manual execution of @samp{save-buffer} by the user.
+
+Ekg and denote have differences, due to which following customization
+are made available:
+
+@itemize
+@item
+@samp{ekg-denote-export-title-max-len} to trim the title during export. Default
+is 50 characters.
+@item
+@samp{ekg-denote-export-combined-keywords-len} to trim the combined length of
+keywords. Default is 150 characters.
+@item
+@samp{ekg-denote-export-backup-on-conflict} to backup the denote if both
+ekg and denote are found to be updated after last export. Default is
+@samp{t}.
+@end itemize
+
+It is user responsibility to backup the denotes before and after
+export to protect against accidental deletes. This can be easily done
+by keeping denotes in a git repository and making sure to check-in any
+changes before and after export.
+
+If ekg and denote are both found to be updated after the last export
+which should ideally not happen, denote is updated with ekg. A backup
+is taken based on @samp{ekg-denote-export-backup-on-conflict} setting.
 
 @node Design
 @chapter Design
