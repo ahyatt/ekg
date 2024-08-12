@@ -295,7 +295,7 @@ This includes new notes that start with tags.  All functions are
 called with the tag as the single argument, and run in the buffer
 editing the note.")
 
-(defconst ekg-version "0.5.1"
+(defconst ekg-version "0.6.2"
   "The version of ekg.
 
 This is used to understand when the database needs upgrading.")
