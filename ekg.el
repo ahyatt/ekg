@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.17.0"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.6.1
+;; Version: 0.6.2
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -295,7 +295,7 @@ This includes new notes that start with tags.  All functions are
 called with the tag as the single argument, and run in the buffer
 editing the note.")
 
-(defconst ekg-version "0.5.1"
+(defconst ekg-version "0.6.2"
   "The version of ekg.
 
 This is used to understand when the database needs upgrading.")

@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.6.2: Version 062. 
 * Version 0.6.1: Version 061. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
@@ -200,6 +201,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.6.2: Version 062. 
 * Version 0.6.1: Version 061. 
 * Version 0.6.0: Version 060. 
 * Version 0.5.1: Version 051. 
@@ -216,6 +218,14 @@ triples library is already installed.
 * Version 0.2: Version 02. 
 @end menu
 
+@node Version 062
+@section Version 0.6.2
+
+@itemize
+@item
+Add export to @uref{https://github.com/protesilaos/denote, denote} (by @uref{https://github.com/jayrajput, Jay Rajput})
+@end itemize
+
 @node Version 061
 @section Version 0.6.1
 
@@ -228,8 +238,6 @@ Run tag hooks when a valid tag is typed, instead of relying on completion, which
 Fix issue in @samp{markdown-mode} where the beginning of the tag values was incorrectly read-only.
 @item
 Allow emojis as tags.
-@item
-Add export to @uref{https://github.com/protesilaos/denote, denote} (by @uref{https://github.com/jayrajput, Jay Rajput})
 @end itemize
 
 @node Version 060

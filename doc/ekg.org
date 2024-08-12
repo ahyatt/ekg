@@ -73,12 +73,13 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.6.2
+- Add export to [[https://github.com/protesilaos/denote][denote]] (by [[https://github.com/jayrajput][Jay Rajput]])
 ** Version 0.6.1
 - Use the global keymap in the note metadata region.
 - Run tag hooks when a valid tag is typed, instead of relying on completion, which often doesn't work.
 - Fix issue in =markdown-mode= where the beginning of the tag values was incorrectly read-only.
 - Allow emojis as tags.
-- Add export to [[https://github.com/protesilaos/denote][denote]] (by [[https://github.com/jayrajput][Jay Rajput]])
 ** Version 0.6.0
 - Add tag and similar notes to the context when having LLMs add to or replace
   notes.  ~ekg-llm-default-instructions~ replaces the previous variable,
