@@ -2016,7 +2016,7 @@ notes are created with additional tags TAGS."
   (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
-    (pop-to-buffer buf)))
+    (switch-to-buffer buf)))
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."
