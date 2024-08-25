@@ -1273,7 +1273,8 @@ rather than an auto-generated number."
                                             (if (listp v)
                                                 (mapconcat (lambda (v) (format "%s" v))
                                                            v ", ")
-                                              (format "%s" v)))))))))
+                                              (format "%s" v))))))
+                       (insert (ekg--metadata-string label v)))))
                  (ekg-note-properties note))
       (buffer-string))))
 

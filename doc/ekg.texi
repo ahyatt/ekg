@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.6.3: Version 063. 
 * Version 0.6.2: Version 062. 
 * Version 0.6.1: Version 061. 
 * Version 0.6.0: Version 060. 
@@ -201,6 +202,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.6.3: Version 063. 
 * Version 0.6.2: Version 062. 
 * Version 0.6.1: Version 061. 
 * Version 0.6.0: Version 060. 
@@ -217,6 +219,11 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 063
+@section Version 0.6.3
+
+-Fix issue in trying to get a single-valued item to show up in the metadata line
 
 @node Version 062
 @section Version 0.6.2
