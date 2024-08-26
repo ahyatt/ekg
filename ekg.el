@@ -361,10 +361,6 @@ callers have already called this function")
                       '(for-text :base/unique t))
   (triples-add-schema ekg-db 'tag
                       '(tagged :base/virtual-reversed tagged/tag))
-  (triples-add-schema ekg-db 'named 'name)
-  (triples-add-schema ekg-db 'email 'address)
-  ;; Person is just a marker
-  (triples-add-schema ekg-db 'person)
   ;; A URL can be a subject too, and has data, including the title. The title is
   ;; something that can be used to select the subject via completion.
   (triples-add-schema ekg-db 'titled '(title :base/type string))
