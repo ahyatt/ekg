@@ -223,7 +223,12 @@ triples library is already installed.
 @node Version 063
 @section Version 0.6.3
 
--Fix issue in trying to get a single-valued item to show up in the metadata line
+@itemize
+@item
+Fix issue in trying to get a single-valued item to show up in the metadata line.
+@item
+Remove the never-used named, email, and person schema.
+@end itemize
 
 @node Version 062
 @section Version 0.6.2

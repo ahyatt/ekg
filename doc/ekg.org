@@ -74,7 +74,8 @@ triples library is already installed.
 #+end_src
 * Changelog
 ** Version 0.6.3
--Fix issue in trying to get a single-valued item to show up in the metadata line
+- Fix issue in trying to get a single-valued item to show up in the metadata line.
+- Remove the never-used named, email, and person schema.
 ** Version 0.6.2
 - Add export to [[https://github.com/protesilaos/denote][denote]] (by [[https://github.com/jayrajput][Jay Rajput]])
 ** Version 0.6.1

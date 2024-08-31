@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.3.5") (emacs "28.1") (llm "0.17.0"))
+;; Package-Requires: ((triples "0.4.0") (emacs "28.1") (llm "0.17.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.6.2
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -367,10 +367,6 @@ callers have already called this function")
                       '(for-text :base/unique t))
   (triples-add-schema ekg-db 'tag
                       '(tagged :base/virtual-reversed tagged/tag))
-  (triples-add-schema ekg-db 'named 'name)
-  (triples-add-schema ekg-db 'email 'address)
-  ;; Person is just a marker
-  (triples-add-schema ekg-db 'person)
   ;; A URL can be a subject too, and has data, including the title. The title is
   ;; something that can be used to select the subject via completion.
   (triples-add-schema ekg-db 'titled '(title :base/type string))
@@ -2283,9 +2279,16 @@ the database after the upgrade, in list form."
              ;; We have done upgrades to 0.3.1, but we want to re-do them for
              ;; additional bugfixes. There should be no downside to doing the
              ;; upgrade many times.
-             (version-list-< from-version '(0 3 2)))))
+             (version-list-< from-version '(0 3 2))))
+        (need-type-removal-upgrade
+         (or (null from-version)
+             (version-list-< from-version '(0 6 3)))))
     (ekg-connect)
     ;; In the future, we can separate out the backup from the upgrades.
+    (when need-type-removal-upgrade
+      (ekg-backup t)
+      (triples-remove-schema-type ekg-db 'person)
+      (triples-remove-schema-type ekg-db 'email))
     (when need-triple-0.3-upgrade
       (ekg-backup t)
       ;; This converts all string integers in subjects and objects to real integers.
