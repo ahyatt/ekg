@@ -75,6 +75,7 @@ triples library is already installed.
 * Changelog
 ** Version 0.6.3
 - Fix issue in trying to get a single-valued item to show up in the metadata line.
+- Remove the never-used named, email, and person schema.
 - Fix issue with tag completions triggering incorrectly if they contained spaces.
 - Fix error when displaying unknown schema.
 - Improve JSONification of notes when sending context to LLMs.
