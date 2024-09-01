@@ -74,7 +74,8 @@ triples library is already installed.
 #+end_src
 * Changelog
 ** Version 0.6.4
-- Fix display of extended structured data in notes
+- Fix display of extended structured data in notes.
+- Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.
 ** Version 0.6.3
 - Fix issue in trying to get a single-valued item to show up in the metadata line.
 - Remove the never-used named, email, and person schema.
@@ -1172,7 +1173,14 @@ changes before and after export.
 If ekg and denote are both found to be updated after the last export
 which should ideally not happen, denote is updated with ekg. A backup
 is taken based on =ekg-denote-export-backup-on-conflict= setting.
+** Email
+The =ekg-email= module adds schema for storing the =to=, =from=, and =cc= email
+addresses associated with an email, and a way to import an email into notes from
+Gnus.  Other importing methods may be available in the future.
 
+While in a Gnus article buffer, you can execute the command =ekg-email-from-gnus=.
+
+Once mails are imported, you can search for email addresses associated with them with =ekg-email-show-notes-with-address=.
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.
