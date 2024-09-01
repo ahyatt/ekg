@@ -28,6 +28,7 @@
 (require 'seq)
 
 (defun ekg-email-add-schema ()
+  "Add the email schema to the ekg database."
   (triples-add-schema ekg-db 'email
                       '(to :base/type string)
                       '(from :base/type string :base/unique t)
@@ -112,7 +113,9 @@ NOTE is the note being saved."
 (add-hook 'ekg-note-save-hook #'ekg-email-save)
 
 (defun ekg-email-delete (note-id)
-  "Delete email information associated with a note being deleted."
+  "Delete email information associated with a note being deleted.
+
+NOTE-ID is the id of the note that will be deleted."
   (triples-remove-type ekg-db note-id 'email))
 
 (add-hook 'ekg-note-delete-hook #'ekg-email-delete)
