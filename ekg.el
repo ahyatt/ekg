@@ -1827,11 +1827,12 @@ tags)."
                       (if (and (eq 'note (ekg-inline-type i))
                                (eq 'other (car (ekg-inline-command i))))
                           (cl-loop for type in
-                                   (seq-difference
-                                    (mapcar (lambda (prop)
-                                              (car (triples-combined-to-type-and-prop prop)))
-                                            (map-keys (ekg-note-properties note)))
-                                    template-types)
+                                   (seq-uniq
+                                    (seq-difference
+                                     (mapcar (lambda (prop)
+                                               (car (triples-combined-to-type-and-prop prop)))
+                                             (map-keys (ekg-note-properties note)))
+                                     template-types))
                                    when (fboundp (intern (format "ekg-display-note-%s" type)))
                                    collect (make-ekg-inline :type 'note
                                                             :command (list type)
