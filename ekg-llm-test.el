@@ -44,6 +44,28 @@
       (should (equal "BEGIN\nvery different text\nEND\n"
                      (substring-no-properties (buffer-string)))))))
 
+(ert-deftest ekg-llm-test-note-to-text ()
+  (let* ((time (current-time))
+         (time-str (format-time-string "%Y-%m-%dT%H:%M:%S" time))
+         (json-encoding-pretty-print t))
+    (should (equal
+             (json-encode
+              (sort
+               `(("tags" . ["tag1" "tag2"])
+                 ("created" . ,time-str)
+                 ("modified" . ,time-str)
+                 ("title" . ["Title"])
+                 ("text" . "Content")
+                 ("id" . "http://example.com/1"))
+               (lambda (a b) (string< (car a) (car b)))))
+             (ekg-llm-note-to-text
+              (make-ekg-note :id "http://example.com/1"
+                             :properties '(:titled/title ("Title"))
+                             :text "Content"
+                             :creation-time time
+                             :modified-time time
+                             :tags '("tag1" "tag2")))))))
+
 (provide 'ekg-llm-test)
 
 ;;; ekg-llm-test.el ends here
