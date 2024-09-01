@@ -74,7 +74,8 @@ triples library is already installed.
 #+end_src
 * Changelog
 ** Version 0.6.4
-- Fix display of extended structured data in notes
+- Fix display of extended structured data in notes.
+- Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.
 ** Version 0.6.3
 - Fix issue in trying to get a single-valued item to show up in the metadata line.
 - Remove the never-used named, email, and person schema.

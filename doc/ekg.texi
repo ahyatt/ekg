@@ -228,7 +228,9 @@ triples library is already installed.
 
 @itemize
 @item
-Fix display of extended structured data in notes
+Fix display of extended structured data in notes.
+@item
+Add contrib directory and @samp{ekg-email} as a contribution to import emails to notes in a structured way.
 @end itemize
 
 @node Version 063
