@@ -250,12 +250,6 @@ is a multivalue type.")
 The values are symbols, COMMA means a comma-separated value.
 LINE means each value gets its own property line.")
 
-(defconst ekg-property-multivalue-type '(("Tags" . comma)
-                                         ("Title" . line))
-  "Defines per type how multiple values are separated.
-The values are symbols, COMMA means a comma-separated value.
-LINE means each value gets its own property line.")
-
 (defvar ekg-metadata-labels '((:titled/title . "Title"))
   "Alist of properties that can be on the note and their labels.
 The label needs to match the keys in the `ekg-metadata-parsers' alist.")
