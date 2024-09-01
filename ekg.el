@@ -250,12 +250,6 @@ is a multivalue type.")
 The values are symbols, COMMA means a comma-separated value.
 LINE means each value gets its own property line.")
 
-(defconst ekg-property-multivalue-type '(("Tags" . comma)
-                                         ("Title" . line))
-  "Defines per type how multiple values are separated.
-The values are symbols, COMMA means a comma-separated value.
-LINE means each value gets its own property line.")
-
 (defvar ekg-metadata-labels '((:titled/title . "Title"))
   "Alist of properties that can be on the note and their labels.
 The label needs to match the keys in the `ekg-metadata-parsers' alist.")
@@ -685,8 +679,9 @@ point.  NUMTOK is the number of tokens available to be used."
                                                    (error-message-string err))
                                            'face 'error)))))))
       (cl-loop for mil in mils do
-               (goto-char (car mil))
-               (insert-before-markers (cdr mil))))
+               (when (cdr mil)
+                 (goto-char (car mil))
+                 (insert-before-markers (cdr mil)))))
     (buffer-string)))
 
 (defun ekg-inline-to-text (inline)
@@ -1583,13 +1578,13 @@ attempt the completion."
 If so, call the necessary hooks."
   (let ((field (ekg--metadata-current-field)))
     (when (equal "Tags" (car field))
-      (let ((current-tags (ekg-note-tags ekg-note))
-            (maybe-tag (car (last (split-string (cdr field))))))
-        (when (and (not (member maybe-tag current-tags))
-                   (member maybe-tag (ekg-tags)))
-          (ekg--update-from-metadata)
-          (run-hook-with-args 'ekg-note-add-tag-hook maybe-tag)
-          (ekg-maybe-function-tag maybe-tag))))))
+      (let ((current-tags (ekg-note-tags ekg-note)))
+        (dolist (maybe-tag (mapcar #'string-trim (split-string (cdr field) ",")))
+          (when (and (not (member maybe-tag current-tags))
+                     (member maybe-tag (ekg-tags)))
+            (ekg--update-from-metadata)
+            (run-hook-with-args 'ekg-note-add-tag-hook maybe-tag)
+            (ekg-maybe-function-tag maybe-tag)))))))
 
 (defun ekg-save-draft ()
   "Save the current note as a draft."
