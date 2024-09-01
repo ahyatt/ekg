@@ -34,6 +34,7 @@
 (require 'llm)
 (require 'llm-prompt)
 (require 'json)
+(require 'map)
 (require 'org nil t)
 
 ;;; Code:
@@ -241,10 +242,18 @@ structs."
   (let ((result `((tags . ,(ekg-note-tags note))
                   (created . ,(ekg-llm-format-time (ekg-note-creation-time note)))
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
-                  (text . ,(substring-no-properties (ekg-display-note-text note)))))
-        (titles (plist-get (ekg-note-properties note) :titled/title))
+                  (text . ,(substring-no-properties (substring-no-properties
+                                                     (ekg-note-text note))))))
         (json-encoding-pretty-print t))
-    (when titles (push (cons 'titles titles) result))
+    (when (ekg-should-show-id-p note)
+      (push (cons "id" (ekg-note-id note)) result))
+    (map-do
+     (lambda (prop value)
+       (when-let ((label (assoc-default prop ekg-metadata-labels)))
+         (push (cons (downcase label) value) result)))
+     (ekg-note-properties note))
+    ;; Sort the result so JSON is deterministic and we can test it.
+    (sort result (lambda (a b) (string< (car a) (car b))))
     (json-encode result)))
 
 (defun ekg-llm-make-any-tag-generator (tags)
