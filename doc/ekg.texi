@@ -110,6 +110,7 @@ Extras
 * LLM::
 * Auto save::
 * Denote::
+* Email::
 
 Logseq
 
@@ -1202,6 +1203,7 @@ package.
 * LLM::
 * Auto save::
 * Denote::
+* Email::
 @end menu
 
 @node Embeddings
@@ -1618,6 +1620,17 @@ changes before and after export.
 If ekg and denote are both found to be updated after the last export
 which should ideally not happen, denote is updated with ekg. A backup
 is taken based on @samp{ekg-denote-export-backup-on-conflict} setting.
+
+@node Email
+@section Email
+
+The @samp{ekg-email} module adds schema for storing the @samp{to}, @samp{from}, and @samp{cc} email
+addresses associated with an email, and a way to import an email into notes from
+Gnus.  Other importing methods may be available in the future.
+
+While in a Gnus article buffer, you can execute the command @samp{ekg-email-from-gnus}.
+
+Once mails are imported, you can search for email addresses associated with them with @samp{ekg-email-show-notes-with-address}.
 
 @node Design
 @chapter Design
