@@ -689,8 +689,9 @@ point.  NUMTOK is the number of tokens available to be used."
                                                    (error-message-string err))
                                            'face 'error)))))))
       (cl-loop for mil in mils do
-               (goto-char (car mil))
-               (insert-before-markers (cdr mil))))
+               (when (cdr mil)
+                 (goto-char (car mil))
+                 (insert-before-markers (cdr mil)))))
     (buffer-string)))
 
 (defun ekg-inline-to-text (inline)
