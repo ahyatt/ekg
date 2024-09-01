@@ -227,6 +227,8 @@ triples library is already installed.
 @item
 Fix issue in trying to get a single-valued item to show up in the metadata line.
 @item
+Fix issue with tag completions triggering incorrectly if they contained spaces.
+@item
 Fix error when displaying unknown schema.
 @end itemize
 
