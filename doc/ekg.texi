@@ -232,6 +232,8 @@ Remove the never-used named, email, and person schema.
 Fix issue with tag completions triggering incorrectly if they contained spaces.
 @item
 Fix error when displaying unknown schema.
+@item
+Improve JSONification of notes when sending context to LLMs.
 @end itemize
 
 @node Version 062
