@@ -1587,13 +1587,13 @@ attempt the completion."
 If so, call the necessary hooks."
   (let ((field (ekg--metadata-current-field)))
     (when (equal "Tags" (car field))
-      (let ((current-tags (ekg-note-tags ekg-note))
-            (maybe-tag (car (last (split-string (cdr field))))))
-        (when (and (not (member maybe-tag current-tags))
-                   (member maybe-tag (ekg-tags)))
-          (ekg--update-from-metadata)
-          (run-hook-with-args 'ekg-note-add-tag-hook maybe-tag)
-          (ekg-maybe-function-tag maybe-tag))))))
+      (let ((current-tags (ekg-note-tags ekg-note)))
+        (dolist (maybe-tag (mapcar #'string-trim (split-string (cdr field) ",")))
+          (when (and (not (member maybe-tag current-tags))
+                     (member maybe-tag (ekg-tags)))
+            (ekg--update-from-metadata)
+            (run-hook-with-args 'ekg-note-add-tag-hook maybe-tag)
+            (ekg-maybe-function-tag maybe-tag)))))))
 
 (defun ekg-save-draft ()
   "Save the current note as a draft."
