@@ -159,6 +159,7 @@
   (should (equal "foo/bar" (ekg-logseq-filename-to-tag "foo$bar.org"))))
 
 (ekg-deftest ekg-logseq-test-last-import-export ()
+  (ekg-logseq-add-schema)
   (should (= 0 (ekg-logseq-get-last-export)))
   (should (= 0 (ekg-logseq-get-last-import)))
   (ekg-logseq-set-last-export 123)
@@ -169,6 +170,7 @@
   (should (= 456 (ekg-logseq-get-last-import))))
 
 (ekg-deftest ekg-logseq-test-tags-with-notes-modified-since ()
+  (ekg-logseq-add-schema)
   (cl-flet ((create (time tags)
               (let ((note (ekg-note-create :text "" :mode 'org-mode :tags tags)))
                 (cl-letf (((symbol-function 'time-convert)
