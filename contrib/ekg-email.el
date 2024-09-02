@@ -40,7 +40,8 @@
 
 ;; Add the email schema to the database now, since the ekg-add-schema-hook is
 ;; not always run at the right time.
-(ekg-email-add-schema)
+(when ekg-db
+  (ekg-email-add-schema))
 (add-hook 'ekg-add-schema-hook 'ekg-email-add-schema)
 
 (add-to-list 'ekg-metadata-parsers
