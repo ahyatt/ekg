@@ -38,6 +38,9 @@
                       '(emails-from :base/virtual-reversed email/from)
                       '(emails-cc :base/virtual-reversed email/cc)))
 
+;; Add the email schema to the database now, since the ekg-add-schema-hook is
+;; not always run at the right time.
+(ekg-email-add-schema)
 (add-hook 'ekg-add-schema-hook 'ekg-email-add-schema)
 
 (add-to-list 'ekg-metadata-parsers
