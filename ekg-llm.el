@@ -243,7 +243,7 @@ structs."
                   (created . ,(ekg-llm-format-time (ekg-note-creation-time note)))
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
                   (text . ,(substring-no-properties (substring-no-properties
-                                                     (ekg-note-text note))))))
+                                                     (ekg-display-note-text note))))))
         (json-encoding-pretty-print t))
     (when (ekg-should-show-id-p note)
       (push (cons "id" (ekg-note-id note)) result))
