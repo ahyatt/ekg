@@ -38,6 +38,10 @@
                       '(emails-from :base/virtual-reversed email/from)
                       '(emails-cc :base/virtual-reversed email/cc)))
 
+;; Add the email schema to the database now, since the ekg-add-schema-hook is
+;; not always run at the right time.
+(when ekg-db
+  (ekg-email-add-schema))
 (add-hook 'ekg-add-schema-hook 'ekg-email-add-schema)
 
 (add-to-list 'ekg-metadata-parsers
@@ -82,11 +86,14 @@
 (defun ekg-email-from-gnus ()
   "Create a note with the current email as content and metadata."
   (interactive nil gnus-article-mode)
-  (let ((to (mapcar #'string-trim (split-string (gnus-fetch-field "To") ",")))
-        (from (gnus-fetch-field "From"))
-        (cc (mapcar #'string-trim (split-string (gnus-fetch-field "Cc") ",")))
-        (subject (gnus-fetch-field "Subject"))
-        (message-id (gnus-fetch-field "Message-ID")))
+  (let* ((to (mapcar #'string-trim (split-string (gnus-fetch-field "To") ",")))
+         (from (gnus-fetch-field "From"))
+         (cc (when-let ((cc (gnus-fetch-field "Cc")))
+               (mapcar #'string-trim (split-string cc ","))))
+         (subject (gnus-fetch-field "Subject"))
+         (prop-plist `(:email/to ,to :email/from ,from :titled/title ,subject)))
+    (when cc
+      (plist-put prop-plist :email/cc cc))
     (ekg-capture
      :text (gnus-with-article-buffer
              (buffer-substring-no-properties
@@ -94,8 +101,7 @@
                 (article-goto-body)
                 (point))
               (point-max)))
-     :properties `(:email/to ,to :email/from ,from :email/cc ,cc
-                             :titled/title ,subject))))
+     :properties prop-plist)))
 
 (defun ekg-email-save (note)
   "On a save, for any email addresses, type them with email-address.
