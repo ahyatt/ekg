@@ -1805,6 +1805,30 @@ tags)."
   (seq-filter (lambda (tag) (string-match-p (rx (seq line-start (literal prefix))) tag))
               (triples-subjects-of-type ekg-db 'tag)))
 
+(cl-defun ekg-tags-complete (&key prompt collection predicate require-match 
+                                  initial-input hist def inherit-input-method)
+  "Select an ekg tag from the current `ekg-db' as if by `completing-read'.
+Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT, HIST,
+DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
+See also `ekg-tags-complete-doc', `ekg-tags'."
+  (interactive)
+  (completing-read
+   (or prompt "Select an ekg tag: ")
+   (or collection (ekg-tags))
+   predicate
+   require-match
+   initial-input
+   hist
+   def
+   inherit-input-method))
+
+(defun ekg-tags-complete-doc ()
+  "Select a doc/tag from the current `ekg-db' as if by `completing-read'.
+See also `ekg-tags-complete'."
+  (interactive)
+  (ekg-tags-complete :prompt "Select an ekg \"doc/<TAG>\" tag: "
+                     :initial-input "doc/"))
+
 (defun ekg-tags-display (tags)
   "Return string representing a group of TAGS."
   (mapconcat #'identity
