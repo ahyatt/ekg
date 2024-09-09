@@ -2030,11 +2030,11 @@ NAME is the base name, to which ekg will be prepended, and
 asterisks will surround (to indicate a non-file-based buffer).
 NOTES-FUNC is used to get the list of notes to display.  New
 notes are created with additional tags TAGS."
-  (let ((buf (get-buffer-create (format "*ekg %s*" name)))
-        (default-directory (file-name-parent-directory ekg-db-file)))
+  (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
-    (switch-to-buffer buf)))
+    (switch-to-buffer buf)
+    (setq-local default-directory (file-name-parent-directory ekg-db-file))))
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."
