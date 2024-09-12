@@ -1827,12 +1827,12 @@ tags)."
 (cl-defun ekg-tags-complete (&key prompt collection predicate require-match 
                                   initial-input hist def inherit-input-method)
   "Select an ekg tag from the current `ekg-db'.
-Tag completion performed according to specified `ekg-tags-completion-function'.
+Tag completion performed according to `ekg-tags-complete-function'.
 Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
 HIST, DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
 See also `ekg-tags-complete-doc', `ekg-tags'."
   (interactive)
-  (apply ekg-tags-completion-function
+  (apply ekg-tags-complete-function
          (or prompt "Select an ekg tag: ")
          (or collection (ekg-tags))
          predicate
