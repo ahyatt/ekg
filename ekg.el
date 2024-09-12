@@ -190,6 +190,14 @@ links out of them, as well as adding them to the note text."
   :type '(repeat string)
   :group 'ekg)
 
+(defcustom ege-tags-completion-function 'completing-read
+  "Completion function for use with `ekg-tags-complete'.
+The function should accept the following 8 arguments as per `completing-read':
+ PROMPT COLLECTION PREDICATE REQUIRE-MATCH 
+ INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
+  :type 'function
+  :group ekg)
+
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
