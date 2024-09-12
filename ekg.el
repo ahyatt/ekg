@@ -1933,7 +1933,9 @@ Raise an error if there is no current note."
   "Show notes associated with TAG.
 If TAG is nil, it will be read, selecting from the list of the current note's
 tags."
-  (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg-current-note-or-error))))
+  (interactive (list (ekg-tags-complete
+                      :prompt "Tag: "
+                      :collection (ekg-note-tags (ekg-current-note-or-error))))
                ekg-notes-mode)
   (ekg-show-notes-with-tag tag))
 
