@@ -190,7 +190,7 @@ links out of them, as well as adding them to the note text."
   :type '(repeat string)
   :group 'ekg)
 
-(defcustom ekg-tags-complete-function 'completing-read
+(defcustom ekg-tags-complete-function 'completing-read ; 'completing-read-default
   "Completion function for use with `ekg-tags-complete'.
 The function should accept the following 8 arguments as per `completing-read':
 
