@@ -2113,7 +2113,9 @@ notes are created with additional tags TAGS."
 ;;;###autoload
 (defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
-  (interactive (list (completing-read "Tag: " (ekg-tags))))
+  (interactive (list (ekg-tags-complete 
+                      :prompt "Tag: " 
+                      :collection (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tag: %s" (ekg-tags-display (list tag)))
    (lambda () (sort (ekg-get-notes-with-tag tag) #'ekg-sort-by-creation-time))
