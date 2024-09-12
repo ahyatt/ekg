@@ -190,9 +190,20 @@ links out of them, as well as adding them to the note text."
   :type '(repeat string)
   :group 'ekg)
 
-(defcustom ekg-tags-completion-function 'completing-read
+(defcustom ekg-tags-complete-function 'completing-read
   "Completion function for use with `ekg-tags-complete'.
 The function should accept the following 8 arguments as per `completing-read':
+
+ PROMPT COLLECTION PREDICATE REQUIRE-MATCH 
+ INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
+  :type 'function
+  :group 'ekg)
+
+(defcustom ekg-tags-complete-multiple-function 'completing-read-multiple
+  "Completion function for use with `ekg-tags-complete-multiple'.
+Default value is `completing-read-multiple', which see.
+The function should accept the following 8 arguments as per `completing-read':
+
  PROMPT COLLECTION PREDICATE REQUIRE-MATCH 
  INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
   :type 'function
