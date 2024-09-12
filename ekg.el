@@ -1870,12 +1870,19 @@ See also `ekg-tags-complete-doc', `ekg-tags'."
          def
          inherit-input-method))
 
-(defun ekg-tags-complete-doc ()
-  "Select a doc/tag from the current `ekg-db' as if by `completing-read'.
-See also `ekg-tags-complete'."
-  (interactive)
+(defun ekg-tags-complete-doc (&optional multiple)
+  "Select a doc/tag from the current `ekg-db' as if by `ekg-tags-complete'.
+When optional arg MULTIPLE is non-nil, select multiple tags as if by
+`ekg-tags-complete-multiple'.
+See also `ekg-tags-with-prefix'."
+  (interactive "P")
+(if multiple
+    (ekg-tags-complete-multiple :prompt "Select ekg \"doc/<TAG>\" tag(s): "
+                                :collection (ekg-tags-with-prefix "doc/")
+                                :initial-input "doc/")
   (ekg-tags-complete :prompt "Select an ekg \"doc/<TAG>\" tag: "
-                     :initial-input "doc/"))
+                     :collection (ekg-tags-with-prefix "doc/")
+                     :initial-input "doc/")))
 
 (defun ekg-tags-display (tags)
   "Return string representing a group of TAGS."
