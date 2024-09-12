@@ -1840,7 +1840,7 @@ tags)."
 Tag completion performed according to `ekg-tags-complete-function'.
 Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
 HIST, DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
-See also `ekg-tags-complete-doc', `ekg-tags'."
+See also `ekg-tags-complete-multiple', `ekg-tags-complete-doc', and `ekg-tags'."
   (interactive)
   (apply ekg-tags-complete-function
          (or prompt "Select an ekg tag: ")
@@ -1858,7 +1858,7 @@ See also `ekg-tags-complete-doc', `ekg-tags'."
 Tag\(s\) completion performed according to `ekg-tags-complete-multiple-function'.
 Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
 HIST, DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
-See also `ekg-tags-complete-doc', `ekg-tags'."
+See also `ekg-tags-complete', and `ekg-tags'."
   (interactive)
   (apply ekg-tags-complete-multiple-function
          (or prompt "Select ekg tag(s): ")
