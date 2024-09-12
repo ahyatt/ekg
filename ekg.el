@@ -2105,7 +2105,9 @@ notes are created with additional tags TAGS."
 ;;;###autoload
 (defun ekg-show-notes-with-all-tags (tags)
   "Show notes that contain all TAGS."
-  (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
+  (interactive (list (ekg-tags-complete-multiple
+                      :prompt "Tags: "
+                      :collection (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tags (all): %s" (ekg-tags-display tags))
    (lambda () (sort (ekg-get-notes-with-tags tags)
