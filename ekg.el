@@ -1787,8 +1787,15 @@ executing a write if there is a problem."
 This can be done whether TO-TAG already exists or not.  This
 renames all instances of the tag globally, and all notes with
 FROM-TAG will use TO-TAG."
-  (interactive (list (completing-read "From tag: " (ekg-tags) nil t)
-                     (ekg--normalize-tag (completing-read "To tag: " (ekg-tags)))))
+  (interactive (list (ekg-tags-complete
+                      :prompt "From tag: "
+                      :collection (ekg-tags)
+                      :predicate nil
+                      :require-match t)
+                     (ekg--normalize-tag 
+                      (ekg-tags-complete 
+                       :prompt "To tag: "
+                       :collection (ekg-tags)))))
   (ekg-connect)
   (triples-with-transaction
     ekg-db
