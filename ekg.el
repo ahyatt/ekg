@@ -196,7 +196,7 @@ The function should accept the following 8 arguments as per `completing-read':
  PROMPT COLLECTION PREDICATE REQUIRE-MATCH 
  INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
   :type 'function
-  :group ekg)
+  :group 'ekg)
 
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
