@@ -853,8 +853,11 @@ Returns the ID of the note."
                                      (ekg-document-titles)))
              (selected-title (completing-read "Title: " title-id-pairs nil t)))
         (cdr (assoc selected-title title-id-pairs)))
-    (let* ((notes (ekg-get-notes-with-tag
-                   (completing-read "Tag: " (ekg-tags) nil t)))
+    (let* ((notes (ekg-get-notes-with-tag (ekg-tags-complete
+                                           :prompt "Tag: "
+                                           :collection (ekg-tags)
+                                           :predicate nil
+                                           :require-match t)))
            (completion-pairs (mapcar
                               (lambda (note)
                                 (cons (ekg-display-note-text note 10)
