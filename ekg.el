@@ -1832,6 +1832,25 @@ tags)."
   (seq-filter (lambda (tag) (string-match-p (rx (seq line-start (literal prefix))) tag))
               (triples-subjects-of-type ekg-db 'tag)))
 
+(defun ekg-tags-with-distance (string distance &optional predicate)
+  "Return all tags with a `string-distance' from STRING `<=' DISTANCE.
+STRING is a string.
+DISTANCE is an positive integer value, and shuold satsify `natnump'.
+PREDICATE is a numeric comparison predicate. When non-nil it should be one of
+following `=', `<', `>', `/=', `<=', or `>='. Default is `<='.
+See also `ekg-tags-including', `ekg-tags-with-prefix'."
+  (or (stringp string)
+      (error "Argument STRING does not satisfy `stringp'. got: %s" string))
+  (or (and (integerp distance) (>= distance 0))
+      (error "Argument DISTANCE not `natnump', got: %s" distance))
+  (and predicate (or (memq predicate '(= < > /= <= >=))
+                     (error "Argument PREDICATE must be one of `=', `<', `>', `/=',`<=', or `>='")))
+  (ekg-connect)
+  (seq-filter (lambda (tag) (funcall (or predicate '<=)
+                                     (string-distance string tag)
+                                     distance))
+              (triples-subjects-of-type ekg-db 'tag)))
+
 (cl-defun ekg-tags-complete (&key prompt collection predicate require-match 
                                   initial-input hist def inherit-input-method)
   "Select an ekg tag from the current `ekg-db'.
