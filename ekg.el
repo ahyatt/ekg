@@ -856,7 +856,6 @@ Returns the ID of the note."
     (let* ((notes (ekg-get-notes-with-tag (ekg-tags-complete
                                            :prompt "Tag: "
                                            :collection (ekg-tags)
-                                           :predicate nil
                                            :require-match t)))
            (completion-pairs (mapcar
                               (lambda (note)
@@ -1790,7 +1789,6 @@ FROM-TAG will use TO-TAG."
   (interactive (list (ekg-tags-complete
                       :prompt "From tag: "
                       :collection (ekg-tags)
-                      :predicate nil
                       :require-match t)
                      (ekg--normalize-tag 
                       (ekg-tags-complete 
