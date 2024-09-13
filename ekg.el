@@ -1872,15 +1872,31 @@ See also `ekg-tags-complete', and `ekg-tags'."
   "Select a doc/tag from the current `ekg-db' as if by `ekg-tags-complete'.
 When optional arg MULTIPLE is non-nil, select multiple tags as if by
 `ekg-tags-complete-multiple'.
-See also `ekg-tags-with-prefix'."
+See also `ekg-tags-with-prefix', `ekg-tags-including', `ekg-tags-with-distance'."
+  (interactive "P")
+  (if multiple
+      (ekg-tags-complete-multiple :prompt "Select ekg \"doc/<TAG>\" tag(s): "
+                                  :collection (ekg-tags-with-prefix "doc/")
+                                  ;; :predicate  (lambda (tag) (string-prefix-p "doc/" tag))
+                                  :initial-input "doc/")
+    (ekg-tags-complete :prompt "Select an ekg \"doc/<TAG>\" tag: "
+                       :collection (ekg-tags-with-prefix "doc/")
+                       :initial-input "doc/")))
+
+(defun ekg-tags-complete-date (&optional multiple)
+  "Select a date/tag from the current `ekg-db' as if by `ekg-tags-complete'.
+When optional arg MULTIPLE is non-nil, select multiple tags as if by
+`ekg-tags-complete-multiple'.
+See also `ekg-tags-with-prefix', `ekg-tags-including', `ekg-tags-with-distance'."
   (interactive "P")
 (if multiple
-    (ekg-tags-complete-multiple :prompt "Select ekg \"doc/<TAG>\" tag(s): "
-                                :collection (ekg-tags-with-prefix "doc/")
-                                :initial-input "doc/")
-  (ekg-tags-complete :prompt "Select an ekg \"doc/<TAG>\" tag: "
-                     :collection (ekg-tags-with-prefix "doc/")
-                     :initial-input "doc/")))
+    (ekg-tags-complete-multiple :prompt "Select ekg \"date/<TAG>\" tag(s): "
+                                :collection (ekg-tags-with-prefix "date/")
+                                ;; :predicate  (lambda (tag) (string-prefix-p "date/" tag))
+                                :initial-input "date/")
+  (ekg-tags-complete :prompt "Select an ekg \"date/<TAG>\" tag: "
+                     :collection (ekg-tags-with-prefix "date/")
+                     :initial-input "date/")))
 
 (defun ekg-tags-display (tags)
   "Return string representing a group of TAGS."
