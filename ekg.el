@@ -1859,6 +1859,7 @@ Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
 HIST, DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
 See also `ekg-tags-complete-multiple', `ekg-tags-complete-doc', and `ekg-tags'."
   (interactive)
+  (ekg-connect)
   (apply ekg-tags-complete-function
          (or prompt "Select an ekg tag: ")
          (or collection (ekg-tags))
@@ -1877,6 +1878,7 @@ Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
 HIST, DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
 See also `ekg-tags-complete', and `ekg-tags'."
   (interactive)
+  (ekg-connect)
   (apply ekg-tags-complete-multiple-function
          (or prompt "Select ekg tag(s): ")
          (or collection (ekg-tags))
