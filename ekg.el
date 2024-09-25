@@ -194,7 +194,7 @@ links out of them, as well as adding them to the note text."
   "Completion function for use with `ekg-tags-complete'.
 The function should accept the following 8 arguments as per `completing-read':
 
- PROMPT COLLECTION PREDICATE REQUIRE-MATCH 
+ PROMPT COLLECTION PREDICATE REQUIRE-MATCH
  INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
   :type 'function
   :group 'ekg)
@@ -204,7 +204,7 @@ The function should accept the following 8 arguments as per `completing-read':
 Default value is `completing-read-multiple', which see.
 The function should accept the following 8 arguments as per `completing-read':
 
- PROMPT COLLECTION PREDICATE REQUIRE-MATCH 
+ PROMPT COLLECTION PREDICATE REQUIRE-MATCH
  INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
   :type 'function
   :group 'ekg)
@@ -1790,8 +1790,8 @@ FROM-TAG will use TO-TAG."
                       :prompt "From tag: "
                       :collection (ekg-tags)
                       :require-match t)
-                     (ekg--normalize-tag 
-                      (ekg-tags-complete 
+                     (ekg--normalize-tag
+                      (ekg-tags-complete
                        :prompt "To tag: "
                        :collection (ekg-tags)))))
   (ekg-connect)
@@ -1831,93 +1831,6 @@ tags)."
   (ekg-connect)
   (seq-filter (lambda (tag) (string-match-p (rx (seq line-start (literal prefix))) tag))
               (triples-subjects-of-type ekg-db 'tag)))
-
-(defun ekg-tags-with-distance (string distance &optional predicate)
-  "Return all tags with a `string-distance' from STRING `<=' DISTANCE.
-STRING is a string.
-DISTANCE is an positive integer value, and shuold satsify `natnump'.
-PREDICATE is a numeric comparison predicate. When non-nil it should be one of
-following `=', `<', `>', `/=', `<=', or `>='. Default is `<='.
-See also `ekg-tags-including', `ekg-tags-with-prefix'."
-  (or (stringp string)
-      (error "Argument STRING does not satisfy `stringp'. got: %s" string))
-  (or (and (integerp distance) (>= distance 0))
-      (error "Argument DISTANCE not `natnump', got: %s" distance))
-  (and predicate (or (memq predicate '(= < > /= <= >=))
-                     (error "Argument PREDICATE must be one of `=', `<', `>', `/=',`<=', or `>='")))
-  (ekg-connect)
-  (seq-filter (lambda (tag) (funcall (or predicate '<=)
-                                     (string-distance string tag)
-                                     distance))
-              (triples-subjects-of-type ekg-db 'tag)))
-
-(cl-defun ekg-tags-complete (&key prompt collection predicate require-match 
-                                  initial-input hist def inherit-input-method)
-  "Select an ekg tag from the current `ekg-db'.
-Tag completion performed according to `ekg-tags-complete-function'.
-Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
-HIST, DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
-See also `ekg-tags-complete-multiple', `ekg-tags-complete-doc', and `ekg-tags'."
-  (interactive)
-  (ekg-connect)
-  (apply ekg-tags-complete-function
-         (or prompt "Select an ekg tag: ")
-         (or collection (ekg-tags))
-         predicate
-         require-match
-         initial-input
-         hist
-         def
-         inherit-input-method))
-
-(cl-defun ekg-tags-complete-multiple (&key prompt collection predicate require-match 
-                                           initial-input hist def inherit-input-method)
-  "Select one or more ekg tags from the current `ekg-db'.
-Tag\(s\) completion performed according to `ekg-tags-complete-multiple-function'.
-Keyword arguments PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
-HIST, DEF, and INHERIT-INPUT-METHOD are as per `completing-read', which see.
-See also `ekg-tags-complete', and `ekg-tags'."
-  (interactive)
-  (ekg-connect)
-  (apply ekg-tags-complete-multiple-function
-         (or prompt "Select ekg tag(s): ")
-         (or collection (ekg-tags))
-         predicate
-         require-match
-         initial-input
-         hist
-         def
-         inherit-input-method))
-
-(defun ekg-tags-complete-doc (&optional multiple)
-  "Select a doc/tag from the current `ekg-db' as if by `ekg-tags-complete'.
-When optional arg MULTIPLE is non-nil, select multiple tags as if by
-`ekg-tags-complete-multiple'.
-See also `ekg-tags-with-prefix', `ekg-tags-including', `ekg-tags-with-distance'."
-  (interactive "P")
-  (if multiple
-      (ekg-tags-complete-multiple :prompt "Select ekg \"doc/<TAG>\" tag(s): "
-                                  :collection (ekg-tags-with-prefix "doc/")
-                                  ;; :predicate  (lambda (tag) (string-prefix-p "doc/" tag))
-                                  :initial-input "doc/")
-    (ekg-tags-complete :prompt "Select an ekg \"doc/<TAG>\" tag: "
-                       :collection (ekg-tags-with-prefix "doc/")
-                       :initial-input "doc/")))
-
-(defun ekg-tags-complete-date (&optional multiple)
-  "Select a date/tag from the current `ekg-db' as if by `ekg-tags-complete'.
-When optional arg MULTIPLE is non-nil, select multiple tags as if by
-`ekg-tags-complete-multiple'.
-See also `ekg-tags-with-prefix', `ekg-tags-including', `ekg-tags-with-distance'."
-  (interactive "P")
-(if multiple
-    (ekg-tags-complete-multiple :prompt "Select ekg \"date/<TAG>\" tag(s): "
-                                :collection (ekg-tags-with-prefix "date/")
-                                ;; :predicate  (lambda (tag) (string-prefix-p "date/" tag))
-                                :initial-input "date/")
-  (ekg-tags-complete :prompt "Select an ekg \"date/<TAG>\" tag: "
-                     :collection (ekg-tags-with-prefix "date/")
-                     :initial-input "date/")))
 
 (defun ekg-tags-display (tags)
   "Return string representing a group of TAGS."
@@ -2159,8 +2072,8 @@ notes are created with additional tags TAGS."
 ;;;###autoload
 (defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
-  (interactive (list (ekg-tags-complete 
-                      :prompt "Tag: " 
+  (interactive (list (ekg-tags-complete
+                      :prompt "Tag: "
                       :collection (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tag: %s" (ekg-tags-display (list tag)))
