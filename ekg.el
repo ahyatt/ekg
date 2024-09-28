@@ -309,6 +309,13 @@ non-nil, it will be used as the filename, otherwise
       ekg-db-file-obsolete
     ekg-db-file))
 
+(defun ekg--notes-directory ()
+  "Return the directory ekg notes buffers have as the default directory.
+This will be the location of the database file."
+  (file-name-parent-directory
+   (or (ekg-db-file)
+       triples-default-database-filename)))
+
 ;; `ekg-connect' will do things that might themselves call `ekg-connect', so we
 ;; need to protect against an infinite recursion.
 (defalias 'ekg-connect
@@ -2010,7 +2017,7 @@ notes are created with additional tags TAGS."
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
     (switch-to-buffer buf)
-    (setq-local default-directory (file-name-parent-directory ekg-db-file))))
+    (setq-local default-directory (ekg--notes-directory))))
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."
