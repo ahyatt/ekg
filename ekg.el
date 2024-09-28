@@ -312,7 +312,7 @@ non-nil, it will be used as the filename, otherwise
 (defun ekg--notes-directory ()
   "Return the directory ekg notes buffers have as the default directory.
 This will be the location of the database file."
-  (file-name-parent-directory
+  (file-name-directory
    (or (ekg-db-file)
        triples-default-database-filename)))
 
