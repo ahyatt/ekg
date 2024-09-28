@@ -77,6 +77,7 @@ triples library is already installed.
 - Fix display of extended structured data in notes.
 - Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.
 - Fix inlines not expanding in the contextual notes in =ekg-llm=.
+- Set =default-directory= to db location in notes buffers (by [[https://github.com/monkpearman][S Pearman]]).
 ** Version 0.6.3
 - Fix issue in trying to get a single-valued item to show up in the metadata line.
 - Remove the never-used named, email, and person schema.
