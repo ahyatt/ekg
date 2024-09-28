@@ -190,25 +190,6 @@ links out of them, as well as adding them to the note text."
   :type '(repeat string)
   :group 'ekg)
 
-(defcustom ekg-tags-complete-function 'completing-read ; 'completing-read-default
-  "Completion function for use with `ekg-tags-complete'.
-The function should accept the following 8 arguments as per `completing-read':
-
- PROMPT COLLECTION PREDICATE REQUIRE-MATCH
- INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
-  :type 'function
-  :group 'ekg)
-
-(defcustom ekg-tags-complete-multiple-function 'completing-read-multiple
-  "Completion function for use with `ekg-tags-complete-multiple'.
-Default value is `completing-read-multiple', which see.
-The function should accept the following 8 arguments as per `completing-read':
-
- PROMPT COLLECTION PREDICATE REQUIRE-MATCH
- INITIAL-INPUT HIST DEF INHERIT-INPUT-METHOD"
-  :type 'function
-  :group 'ekg)
-
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -853,10 +834,8 @@ Returns the ID of the note."
                                      (ekg-document-titles)))
              (selected-title (completing-read "Title: " title-id-pairs nil t)))
         (cdr (assoc selected-title title-id-pairs)))
-    (let* ((notes (ekg-get-notes-with-tag (ekg-tags-complete
-                                           :prompt "Tag: "
-                                           :collection (ekg-tags)
-                                           :require-match t)))
+    (let* ((notes (ekg-get-notes-with-tag
+                   (completing-read "Tag: " (ekg-tags) nil t)))
            (completion-pairs (mapcar
                               (lambda (note)
                                 (cons (ekg-display-note-text note 10)
@@ -1786,14 +1765,8 @@ executing a write if there is a problem."
 This can be done whether TO-TAG already exists or not.  This
 renames all instances of the tag globally, and all notes with
 FROM-TAG will use TO-TAG."
-  (interactive (list (ekg-tags-complete
-                      :prompt "From tag: "
-                      :collection (ekg-tags)
-                      :require-match t)
-                     (ekg--normalize-tag
-                      (ekg-tags-complete
-                       :prompt "To tag: "
-                       :collection (ekg-tags)))))
+  (interactive (list (completing-read "From tag: " (ekg-tags) nil t)
+                     (ekg--normalize-tag (completing-read "To tag: " (ekg-tags)))))
   (ekg-connect)
   (triples-with-transaction
     ekg-db
@@ -1895,9 +1868,7 @@ Raise an error if there is no current note."
   "Show notes associated with TAG.
 If TAG is nil, it will be read, selecting from the list of the current note's
 tags."
-  (interactive (list (ekg-tags-complete
-                      :prompt "Tag: "
-                      :collection (ekg-note-tags (ekg-current-note-or-error))))
+  (interactive (list (completing-read "Tag: " (ekg-note-tags (ekg-current-note-or-error))))
                ekg-notes-mode)
   (ekg-show-notes-with-tag tag))
 
@@ -2049,9 +2020,7 @@ notes are created with additional tags TAGS."
 ;;;###autoload
 (defun ekg-show-notes-with-any-tags (tags)
   "Show notes with any of TAGS."
-  (interactive (list (ekg-tags-complete-multiple
-                      :prompt "Tags: "
-                      :collection (ekg-tags))))
+  (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tags (any): %s" (ekg-tags-display tags))
    (lambda () (ekg-get-notes-with-any-tags tags))
@@ -2060,9 +2029,7 @@ notes are created with additional tags TAGS."
 ;;;###autoload
 (defun ekg-show-notes-with-all-tags (tags)
   "Show notes that contain all TAGS."
-  (interactive (list (ekg-tags-complete-multiple
-                      :prompt "Tags: "
-                      :collection (ekg-tags))))
+  (interactive (list (completing-read-multiple "Tags: " (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tags (all): %s" (ekg-tags-display tags))
    (lambda () (sort (ekg-get-notes-with-tags tags)
@@ -2072,9 +2039,7 @@ notes are created with additional tags TAGS."
 ;;;###autoload
 (defun ekg-show-notes-with-tag (tag)
   "Show notes that contain TAG."
-  (interactive (list (ekg-tags-complete
-                      :prompt "Tag: "
-                      :collection (ekg-tags))))
+  (interactive (list (completing-read "Tag: " (ekg-tags))))
   (ekg-setup-notes-buffer
    (format "tag: %s" (ekg-tags-display (list tag)))
    (lambda () (sort (ekg-get-notes-with-tag tag) #'ekg-sort-by-creation-time))
