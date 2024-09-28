@@ -233,6 +233,8 @@ Fix display of extended structured data in notes.
 Add contrib directory and @samp{ekg-email} as a contribution to import emails to notes in a structured way.
 @item
 Fix inlines not expanding in the contextual notes in @samp{ekg-llm}.
+@item
+Set @samp{default-directory} to db location in notes buffers (by @uref{https://github.com/monkpearman, S Pearman}).
 @end itemize
 
 @node Version 063
