@@ -154,6 +154,11 @@ not in the template."
   :type 'boolean
   :group 'ekg)
 
+(defcustom ekg-highlight-note nil
+  "Whether current note are highlighted by default."
+  :type 'boolean
+  :group 'ekg)
+
 (defcustom ekg-save-no-message nil
   "Non-nil means do not print any message when saving."
   :type 'boolean
@@ -995,6 +1000,7 @@ can keep track of whether we need to unnarrow or not.")
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
     (define-key map "t" #'ekg-notes-tag)
+    (define-key map "T" #'ekg-notes-more-tags)
     (define-key map "q" #'kill-current-buffer)
     (define-key map "k" #'ekg-notes-kill)
     map))
@@ -1474,7 +1480,7 @@ file.  If not, an error will be thrown."
                ekg-notes-display-images)
           (org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
-    (pop-to-buffer buf)))
+    (pop-to-buffer-same-window buf)))
 
 (defun ekg--save-note-in-buffer ()
   "Save the current note.
@@ -1628,7 +1634,7 @@ If so, call the necessary hooks."
   "Save the edited note and refresh where it appears."
   (interactive nil ekg-edit-mode)
   (ekg-edit-save)
-  (kill-buffer-and-window))
+  (kill-buffer))
 
 (defun ekg--split-metadata-string (val)
   "Split multi-valued metadata field VAL into the component values.
@@ -1691,7 +1697,7 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
   (ekg--update-from-metadata)
   (ekg--save-note-in-buffer)
   (let ((note ekg-note))
-    (kill-buffer-and-window)
+    (kill-buffer)
     (cl-loop for b being the buffers do
              (with-current-buffer b
                (when (and (eq major-mode 'ekg-notes-mode)
@@ -1714,7 +1720,7 @@ Notes saved as drafts will be deleted."
   (setq-local kill-buffer-query-functions
               (delq 'ekg--kill-buffer-query-function
                     kill-buffer-query-functions))
-  (kill-buffer-and-window))
+  (kill-buffer))
 
 (defun ekg-note-active-tags (note)
   "Return the tags of NOTE that are considered normal tags."
@@ -1879,6 +1885,24 @@ tags."
                ekg-notes-mode)
   (ekg-show-notes-with-tag tag))
 
+(defun ekg-notes-more-tags (&optional tags)
+  "Further filter the current note buffer with more tags.
+  If tags is nil, it will be read, selecting from the list of
+  the remaining tags in the current note buffer."
+  (interactive (list (completing-read-multiple
+                      "Tags: "
+                      (seq-difference
+                       (seq-uniq (flatten-list
+                                  (mapcar (lambda (n) (ekg-note-tags n))
+                                          (ewoc-collect ekg-notes-ewoc #'identity))))
+                       ekg-notes-tags))))
+  (setq tags (seq-union ekg-notes-tags tags))
+  (ekg-setup-notes-buffer
+   (format "tags (all): %s" (ekg-tags-display tags))
+   (lambda () (sort (ekg-get-notes-with-tags tags)
+                    #'ekg-sort-by-creation-time))
+   tags))
+
 (defun ekg-notes-open ()
   "Open the current note."
   (interactive nil ekg-notes-mode)
@@ -1949,7 +1973,8 @@ NAME is displayed at the top of the buffer."
                 ekg-notes-name name
                 ekg-notes-hl (make-overlay 1 1)
                 ekg-notes-tags tags)
-    (overlay-put ekg-notes-hl 'face hl-line-face)
+    (when ekg-highlight-note
+        (overlay-put ekg-notes-hl 'face hl-line-face))
     ;; Move past the title
     (forward-line 1)
     (ekg--note-highlight)
@@ -2013,7 +2038,7 @@ NAME is the base name, to which ekg will be prepended, and
 asterisks will surround (to indicate a non-file-based buffer).
 NOTES-FUNC is used to get the list of notes to display.  New
 notes are created with additional tags TAGS."
-  (let ((buf (get-buffer-create (format "*ekg %s*" name))))
+  (let ((buf (get-buffer-create (format "*EKG %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
     (switch-to-buffer buf)
