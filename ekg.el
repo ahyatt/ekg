@@ -1628,7 +1628,7 @@ If so, call the necessary hooks."
   "Save the edited note and refresh where it appears."
   (interactive nil ekg-edit-mode)
   (ekg-edit-save)
-  (kill-buffer))
+  (kill-buffer-and-window))
 
 (defun ekg--split-metadata-string (val)
   "Split multi-valued metadata field VAL into the component values.
@@ -1691,7 +1691,7 @@ If EXPECT-VALID is true, warn when we encounter an unparseable field."
   (ekg--update-from-metadata)
   (ekg--save-note-in-buffer)
   (let ((note ekg-note))
-    (kill-buffer)
+    (kill-buffer-and-window)
     (cl-loop for b being the buffers do
              (with-current-buffer b
                (when (and (eq major-mode 'ekg-notes-mode)
@@ -1714,7 +1714,7 @@ Notes saved as drafts will be deleted."
   (setq-local kill-buffer-query-functions
               (delq 'ekg--kill-buffer-query-function
                     kill-buffer-query-functions))
-  (kill-buffer))
+  (kill-buffer-and-window))
 
 (defun ekg-note-active-tags (note)
   "Return the tags of NOTE that are considered normal tags."
