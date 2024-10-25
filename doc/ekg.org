@@ -78,6 +78,7 @@ triples library is already installed.
 - Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.
 - Fix inlines not expanding in the contextual notes in =ekg-llm=.
 - Set =default-directory= to db location in notes buffers (by [[https://github.com/monkpearman][S Pearman]]).
+- Add tags when saving and exiting notes for any linkified markdown links.
 ** Version 0.6.3
 - Fix issue in trying to get a single-valued item to show up in the metadata line.
 - Remove the never-used named, email, and person schema.
@@ -311,6 +312,11 @@ the tags that will be detected are "emacs" and, because of the special "@"
 prefix that indicates a tag prefix, "person/rms". The color will not be picked
 up as a tag, because it is not enclosed in brackets. This helps us avoid false
 positives.
+
+In =org-mode= and =markdown-mode=, linkified links, which you get with tag
+completion if =ekg-linkify-inline-tags= is true, the links will be detected as
+tags, and the tags will be added to the list of note tags on saving and exiting
+the note.
 
 There is no functionality to remove inline tags that are deleted in the tag
 section. If an inline tag is not deleted in the note text, the tag will be
