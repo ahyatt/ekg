@@ -82,9 +82,8 @@ function to check for the mode of the buffer."
 
 (defcustom ekg-linkify-inline-tags t
   "When non-nil, turn inline tags into links to ekg tags.
-This only applies to `org-mode', which is the only mode that can
-link to ekg tag views.  When non-nil, it also will add links to
-tags that may be created in some other way to the list of tags."
+This will also make sure to detect the links when detecting tags to add
+when saving notes."
   :type 'boolean
   :group 'ekg)
 
@@ -1063,6 +1062,7 @@ prefix."
       tag
     (concat (assoc-default (string-to-char tag-symbol)
                            ekg-inline-custom-tag-completion-symbols) "/" tag)))
+
 (defconst ekg--nonlink-tag-regexp
   (rx (seq (group-n 1 (or whitespace line-start ?: ?\( ?\[))
            (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))
@@ -1119,10 +1119,12 @@ non-nil."
 (defun ekg--populate-inline-tags (note)
   "Populate tags found in text of NOTE.
 Tags are prefixed by a hash symbol or a symbol in
-`ekg-inline-custom-tag-completion-symbols', and are enclosed in
-brackets if they have more than one word.  The tags are added to
-the end of the tag list."
-  (let ((use-links (and (eq (ekg-note-mode note) 'org-mode) ekg-linkify-inline-tags)))
+`ekg-inline-custom-tag-completion-symbols', and are enclosed in brackets
+if they have more than one word.  They aso can be org or markdown links,
+depending on the note mode.  The tags are added to the end of the tag
+list."
+  (let ((use-links (and (member (ekg-note-mode note) '(org-mode markdown-mode))
+                        ekg-linkify-inline-tags)))
     (with-temp-buffer
       (insert (ekg-note-text note))
       (goto-char (point-min))
@@ -1131,15 +1133,27 @@ the end of the tag list."
                 ;; If the tag has a space or punctuation, it needs to be enclosed
                 ;; in brackets.
                 (if use-links
-                    (rx (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))
-                        ?\[ ?\[ "ekg-tag:"
-                        (group-n 3 (one-or-more (any word whitespace ?_ ?/ ?-)))
-                        ?\])
+                    (cond
+                     ((eq (ekg-note-mode note) 'org-mode)
+                      (rx (group-n 2 (regexp (ekg--possible-inline-tags-prefix-regexp)))
+                          ?\[ ?\[ "ekg-tag:"
+                          (group-n 3 (one-or-more (any word whitespace ?_ ?/ ?-)))
+                          ?\]))
+                     ((eq (ekg-note-mode note) 'markdown-mode)
+                      (rx (seq
+                           ?\[ ?\[
+                           (group-n 2 (? (regexp (ekg--possible-inline-tags-prefix-regexp))))
+                           (group-n 3 (one-or-more (any word whitespace ?_ ?/ ?-)))
+                           ?\] ?\]))))
                   ekg--nonlink-tag-regexp)
                 nil t)
-          (let ((symbol (match-string 2))
+          (let ((symbol (if (= 0 (length (match-string 2)))
+                            "#"
+                          (match-string 2)))
                 (tag (match-string 3)))
-            (push (if use-links tag (ekg--add-prefix-to-inline-tag tag symbol)) tags)))
+            (push (if (and use-links (eq (ekg-note-mode note) 'org-mode)) tag
+                    (ekg--add-prefix-to-inline-tag tag symbol))
+                  tags)))
         (setf (ekg-note-tags note) (seq-uniq (append (ekg-note-tags note) (nreverse tags))))))))
 
 (defun ekg--inline-tag-completion ()
