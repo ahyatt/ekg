@@ -122,7 +122,8 @@ wait for the embedding to return and be set."
 
 (defun ekg-embedding-generate-batch-async (notes success-callback error-callback)
   "Generate embeddings for NOTES in a batch.
-SUCCESS-CALLBACK is called with the size of the batch after the batch is finished.
+SUCCESS-CALLBACK is called with the size of the batch after the batch is
+finished.
 ERROR-CALLBACK is called with error-type and message on errors."
   (let ((texts (mapcar (lambda (note)
                          (funcall ekg-embedding-text-selector

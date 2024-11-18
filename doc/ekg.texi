@@ -237,6 +237,8 @@ Fix inlines not expanding in the contextual notes in @samp{ekg-llm}.
 Set @samp{default-directory} to db location in notes buffers (by @uref{https://github.com/monkpearman, S Pearman}).
 @item
 Add tags when saving and exiting notes for any linkified markdown links.
+@item
+Generate embeddings in batch in @samp{ekg-embedding-generate-all}.
 @end itemize
 
 @node Version 063
