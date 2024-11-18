@@ -51,6 +51,11 @@ return the text to pass to the embedding API."
   :type '(function)
   :group 'ekg-embedding)
 
+(defcustom ekg-embedding-batch-size 100
+  "The number of embeddings to generate in a single batch."
+  :type 'integer
+  :group 'ekg-embedding)
+
 (defconst ekg-embedding-provider nil
   "The provider of the embedding.
 This is a struct representing a provider in the `llm' package.")
@@ -114,6 +119,28 @@ wait for the embedding to return and be set."
                           :embedding embedding)
       (lwarn 'ekg :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
              (ekg-note-id note) embedding))))
+
+(defun ekg-embedding-generate-batch-async (notes success-callback error-callback)
+  "Generate embeddings for NOTES in a batch.
+SUCCESS-CALLBACK is called with the size of the batch after the batch is finished.
+ERROR-CALLBACK is called with error-type and message on errors."
+  (let ((texts (mapcar (lambda (note)
+                         (funcall ekg-embedding-text-selector
+                                  (substring-no-properties
+                                   (ekg-display-note-text note))))
+                       notes)))
+    (llm-batch-embeddings-async
+     ekg-embedding-provider
+     texts
+     (lambda (embeddings)
+       (ekg-connect)
+       (cl-loop for note in notes
+                for embedding in embeddings
+                do (triples-set-type ekg-db (ekg-note-id note) 'embedding
+                                     :embedding embedding)
+                finally
+                (when success-callback (funcall success-callback (length notes)))))
+     error-callback)))
 
 (defun ekg-embedding-generate-for-note-tags-delayed (note)
   "Run `ekg-embedding-generate-for-note-tags' after a delay.
@@ -186,44 +213,52 @@ Everything here is done asynchronously.  A message will be
 printed when everything is finished."
   (interactive "P")
   (ekg-embedding-connect)
-  (let ((count 0)
-        (to-generate
-         (seq-filter (if arg #'identity (lambda (id)
-                                          (not (ekg-embedding-valid-p
-                                                (plist-get
-                                                 (triples-get-type ekg-db id 'embedding) :embedding)))))
-                     (ekg-active-note-ids))))
-    (cl-labels ((complete-id (_)
-                  (cl-incf count)
-                  (when (= 0 (mod count (max 10 (/ (length to-generate) 20))))
-                    (insert (format "Generated %d/%d (%.0f%% done)\n" count (length to-generate)
+  (let* ((count 0)
+         (to-generate
+          (seq-filter (if arg #'identity (lambda (id)
+                                           (not (ekg-embedding-valid-p
+                                                 (plist-get
+                                                  (triples-get-type ekg-db id 'embedding) :embedding)))))
+                      (ekg-active-note-ids)))
+         (notes-to-generate
+          (seq-filter (lambda (note) (> (length (ekg-note-text note)) 0))
+                      (mapcar #'ekg-get-note-with-id to-generate))))
+    (cl-labels ((complete-id (num)
+                  (cl-incf count num)
+                  (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
+                    (goto-char (point-max))
+                    (insert (format "Generated %d/%d (%.0f%% done)\n"
+                                    count (length to-generate)
                                     (/ (* count 100.0) (length to-generate)))))))
       (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
         (goto-char (point-max))
         (insert (format "\nGenerating %d embeddings\n" (length to-generate)))
         (display-buffer (current-buffer))
-        (cl-loop for id in to-generate do
-                 (let ((note (ekg-get-note-with-id id)))
-                   (if (> (length (ekg-note-text note)) 0)
-                       (ekg-embedding-generate-for-note-async
-                        note
-                        #'complete-id
-                        (lambda (_ msg) (insert "Could not generate embedding for %s: %s"
-                                                (ekg-note-id note) msg)))
-                     (complete-id note)))
-                 ;; Let's not just send all embeddings off at once, instead we'll
-                 ;; pace it out so we don't run into threading issues.
-                 (sit-for 1)
-                 finally
-                 (insert (format "Generated %d/%d (100%% done)\n" count count)))
 
-        ;; At this point, a lot of async things are happening, so we need to wait
-        ;; on all of them. We don't want to bother with a ton of mutexes, so
-        ;; we'll just wait for a bit, until everything is idle again.
+        ;; Process notes in batches
+        (let ((batches (seq-partition notes-to-generate ekg-embedding-batch-size)))
+          (cl-loop for batch in batches do
+                   (ekg-embedding-generate-batch-async
+                    batch
+                    #'complete-id
+                    (lambda (error-type msg)
+                      (insert (format "Could not generate embedding batch: %s %s\n"
+                                      error-type msg))))
+                   ;; Add a small delay between batches
+                   (sit-for 1)))
+
+        ;; Process empty notes
+        (cl-loop for id in to-generate
+                 when (= (length (ekg-note-text (ekg-get-note-with-id id))) 0)
+                 collect id into ids
+                 finally
+                 do (complete-id (length ids)))
+
+        ;; At this point, async things are happening, wait for idle
         (run-with-idle-timer (* 60 5) nil
                              (lambda ()
                                (let ((tags (ekg-tags)))
-                                 (cl-loop for s in (ekg-tags) do
+                                 (cl-loop for s in tags do
                                           (ekg-embedding-refresh-tag-embedding s))
                                  (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
                                    (insert (format "Refreshed %d tags\n" (length tags)))))))))))
