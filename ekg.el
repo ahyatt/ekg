@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.4.0") (emacs "28.1") (llm "0.17.0"))
+;; Package-Requires: ((triples "0.4.0") (emacs "28.1") (llm "0.18.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.6.3
 ;; SPDX-License-Identifier: GPL-3.0-or-later
