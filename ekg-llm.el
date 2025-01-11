@@ -242,8 +242,7 @@ structs."
   (let ((result `((tags . ,(ekg-note-tags note))
                   (created . ,(ekg-llm-format-time (ekg-note-creation-time note)))
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
-                  (text . ,(substring-no-properties (substring-no-properties
-                                                     (ekg-display-note-text note))))))
+                  (text . ,(substring-no-properties (ekg-display-note-text note nil t)))))
         (json-encoding-pretty-print t))
     (when (ekg-should-show-id-p note)
       (push (cons "id" (ekg-note-id note)) result))

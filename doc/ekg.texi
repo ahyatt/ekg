@@ -68,6 +68,7 @@ Installation
 
 Changelog
 
+* Version 0.6.5: Version 065. 
 * Version 0.6.4: Version 064. 
 * Version 0.6.3: Version 063. 
 * Version 0.6.2: Version 062. 
@@ -204,6 +205,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.6.5: Version 065. 
 * Version 0.6.4: Version 064. 
 * Version 0.6.3: Version 063. 
 * Version 0.6.2: Version 062. 
@@ -222,6 +224,14 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 065
+@section Version 0.6.5
+
+@itemize
+@item
+Speed up for LLM calls with notes as context
+@end itemize
 
 @node Version 064
 @section Version 0.6.4
