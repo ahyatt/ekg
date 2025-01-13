@@ -73,6 +73,50 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.6.4
+- Fix display of extended structured data in notes.
+- Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.
+- Fix inlines not expanding in the contextual notes in =ekg-llm=.
+- Set =default-directory= to db location in notes buffers (by [[https://github.com/monkpearman][S Pearman]]).
+- Add tags when saving and exiting notes for any linkified markdown links.
+- Generate embeddings in batch in =ekg-embedding-generate-all=.
+** Version 0.6.3
+- Fix issue in trying to get a single-valued item to show up in the metadata line.
+- Remove the never-used named, email, and person schema.
+- Fix issue with tag completions triggering incorrectly if they contained spaces.
+- Fix error when displaying unknown schema.
+- Improve JSONification of notes when sending context to LLMs.
+** Version 0.6.2
+- Add export to [[https://github.com/protesilaos/denote][denote]] (by [[https://github.com/jayrajput][Jay Rajput]])
+** Version 0.6.1
+- Run tag hooks when a valid tag is typed, instead of relying on completion, which often doesn't work.
+- Fix issue in =markdown-mode= where the beginning of the tag values was incorrectly read-only.
+- Allow emojis as tags.
+** Version 0.6.0
+- Add tag and similar notes to the context when having LLMs add to or replace
+  notes.  ~ekg-llm-default-instructions~ replaces the previous variable,
+  ~ekg-llm-default-prompt~ (because the prompt now contains the instructions).
+- Add inline links for Markdown, as wiki links.
+** Version 0.5.1
+- Improve regex for inline tag linkification so we linkify more valid inline tags.
+- Improve logseq import to import notes without org structure, and use filetags.
+- Fix inline tag bug that test and real failures.
+** Version 0.5
+- Simplified trashed tags from using tag prefixes to using a simple trash tag (=ekg-trash-tag=).
+- Added =ekg-show-notes-with-tag-prefix=.
+- Add tags while writing the body of notes by completing with "#".  See [[#note-text][Note text]] section for details.
+- Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See [[#note-text][Note text]] section for details.
+- =ekg-auto-save=, a new module by [[https://github.com/qingshuizheng][Qingshui Zheng]].
+- Added canceling a note as an actual command, also by  [[https://github.com/qingshuizheng][Qingshui Zheng]].
+- Fix issue with trashing notes with tags that are partially trashed.
+- Saving while editing a note will no longer add the draft tag.  This means that if you are editing a draft, it will not keep it as a draft, so it will become a normal note.
+- Fix issue with using ekg-llm with vertex, which doesn't understand system prompts.
+- Fix metadata face which didn't work well with all themes - now the metadata section is just bolded.
+- Improve display regenerating embeddings via =ekg-embedding-generate-all=.
+- Change multi-title note display from using newlines to commas
+- Made deleting titles and resources possible, and properly skipped empty properties for multi-line propeties.
+- Handle backup errors better, warning and proceding if not a forced backup, erroring out with a better message if forced.
+- Don't show trashed notes in drafts.
 ** Version 0.4.3
 - Added autoloads
 - Fixed issue that could occur when saving with malformed buffers.
@@ -227,15 +271,69 @@ Ekg makes some effort to make sure that the user doesn't accidentally extend the
 property section without adding actual properties, since this will likely result
 in a confusing experience for the user.
 ** Note text
-Below the property section is the text section.  The text could be anything (or
-nothing).  This is the body text of the note, where you write down whatever you
-want to note about, that is relevant to the tags for the note.
+:PROPERTIES:
+:CUSTOM_ID: note-text
+:END:
+Below is the property section is the note section. The text could be anything
+(or nothing). This is the body text of the note, where you write down whatever
+you want to note about, that is relevant to the tags for the note.
 
-There are three modes for the note text: =text-mode=, =markdown-mode=, and
-=org-mode=.  More can be added by customizing the variable
-~ekg-acceptable-modes~, just make sure it's a mode that makes sense for
-notes.  The default mode is configured in ~ekg-capture-default-mode~, but can be
-changed when capturing with the command =ekg-change-mode=.
+There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=.
+More can be added by customizing the variable ~ekg-acceptable-modes~, just make
+sure its a mode that makes sense for notes. The default mode is configured in
+~ekg-capture-default-mode~, but can be changed when capturing with the command
+=ekg-change-mode=.
+
+The note text provides various options for completions. The most common
+completion is typing tags inline while writing notes. These tags will be added
+to the note automatically upon saving, regardless of whether completion is used
+or not. The tag completion is triggered by the "#" symbol. In =org-mode=, if
+=ekg-linkify-inline-tags= is set to non-nil (which is the default), the tag will
+be turned into an org link to the tag. It is necessary to enclose the tag in
+square brackets to be detected as an inline tag.  In =markdown-mode=, the tag will
+be turned into a wiki link (denoted by double square brackets).  It is
+acceptable to finish the completion with a tag that is not currently defined, as
+the tag will be added when the note is saved. The detection of plaintext tags of
+various types can be turned off by setting =ekg-inline-populate-inline-text-tags=
+to =nil=. There are other customizable tag symbols available, indicating different
+prefixes. By default, in addition to the "#" symbol (representing a tag with
+that name), there is also the "@" symbol for tags prefixed with "person/", and
+the "!" symbol for tags prefixed with "idea/".  These other symbols and the
+prefixes they mean are controlled by
+=ekg-inline-custom-tag-completion-symbols=. By default, we have "@" which will
+denote a tag with the "person/" prefix, and "!" which will denote a tag with the
+"idea/" prefix.  So if, in either =org-mode= or =markdown-mode=, the text has the
+following:
+
+#+begin_example
+Everything related to #[emacs] should be colored #ffa500.  This is the opinion of @[rms].
+#+end_example
+
+the tags that will be detected are "emacs" and, because of the special "@"
+prefix that indicates a tag prefix, "person/rms". The color will not be picked
+up as a tag, because it is not enclosed in brackets. This helps us avoid false
+positives.
+
+In =org-mode= and =markdown-mode=, linkified links, which you get with tag
+completion if =ekg-linkify-inline-tags= is true, the links will be detected as
+tags, and the tags will be added to the list of note tags on saving and exiting
+the note.
+
+There is no functionality to remove inline tags that are deleted in the tag
+section. If an inline tag is not deleted in the note text, the tag will be
+re-added. 
+
+Another type of completion is for inline commands, the ">t" completion,
+mentioned in the [[#inlines][Inline commands]].
+
+The metadata section above the notes often can be problematic for some commands,
+especially org commands. Because of this, before commands are executed, we check
+the command name against the =ekg-command-regex-for-narrowing=, and if there is a
+match to one of the regexes, we narrow to the note section just when the command
+is running. It defaults to all org-insert commands and ~org-meta-return~, but if
+there are any weird behaviors caused by the metadata section, consider
+customizing this variable. Right now this just works for keybindings, and not
+using ~execute-extended-command~.
 ** Drafts
 Notes can be saved midway through editing, both for capturing and editing notes.
 The normal buffer-save keybinding (typically C-x C-s) will save a draft.  A
@@ -243,6 +341,9 @@ draft is like a normal note, but has a special tag, by default "draft".  (This
 can be customized in =ekg-draft-tag=.)  Having this tag means the note doesn't
 show up in most views, much like the notes in "trash".  Once a note is saved
 normally, it loses the draft tag.
+
+See also the section on the [[#autosave][auto save]], to see how to turn on and set up auto
+save, which can automatically save drafts for new notes.
 ** A warning about org-mode
 Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
 of funtionality, but much of it depends on the assumption that the buffer is all
@@ -309,7 +410,7 @@ a new note with whatever tags (if any) are associated with the notes buffer.
 
 #+texinfo: @noindent
 To save any note that is being captured, press =C-c C-c= or call
-=ekg-capture-finalize=.  To cancel, just kill the buffer.
+=ekg-capture-finalize=.  To cancel, just kill the buffer.  You can also abort with =C-c C-k=, or =ekg-capture-abort=, which will not only kill the buffer but delete any draft saved.
 ** Templates
 :PROPERTIES:
 :CUSTOM_ID: templates
@@ -326,9 +427,11 @@ of tags are also searched, so the same thing will happen if the tag you add is
 long as it exists.
 
 The adding of templates happens whether intially when setting up the capture
-buffer, or later when the user completes a tag.  Tags added without completion
-won't trigger this behavior, since at the moment ekg will not be able to
-understand that a tag has changed.
+buffer, or later when the user types a tag that is a valid tag.  Because of
+this, it's best to avoid adding templates to tags that are prefixes of other
+tags you'd like to use, but don't want the template on, because as soon as ekg
+sees the prefix that's a valid tag being typed, it will trigger that tag's
+templates.
 
 You can choose a tag other than "template" as the trigger for this templating
 behavior, by customizing ~ekg-template-tag~.
@@ -527,8 +630,8 @@ tags, you can enable this tag-based customization.
 This works in a similar manner to [[#templates][templates]], except that a template tag only
 takes effect when you add it, while a magic tag takes effect both when first
 adding it and when editing a note with the tag.  But they also share the same
-shortcoming: you must add the tag via completion to get its effects to run.  (It
-will still take effect when editing the note though.)
+shortcoming: if the tag is a prefix, it will trigger as soon as typed, even if
+you wanted to use a different tag that is prefixed with the tag.
 
 Creating magic tags is also like creating templates.  You create a note and use
 a special tag that indicates this tag is a magic tag.  That special tag is
@@ -563,20 +666,16 @@ there.
 :CUSTOM_ID: trash
 :END:
 
-Notes deleted from note lists (=ekg-notes-mode=) buffers are not deleted
-outright, but rather put in the trash.  There are two concepts here: trashed
-tags, and trashed note.  A trashed tag is a tag with the prefix "trash/" added.
-Such tags are ignored and not shown to users except when editing notes, at which
-point the user can choose to remove the trash prefix to un-trash them.  When you
-run =ekg-notes-delete= on a note, all its tags are trashed (i.e. prefixed with
-"trash/").
+Notes deleted from note lists (=ekg-notes-mode=) buffers are not deleted outright,
+but rather put in the trash, which is done by adding the =ekg-trash-tag=, by
+default, "trash", to the note. Any note with the "trash" tag will not be shown
+in normal tag buffers.
 
-If all of a note's tags are trashed, then the note itself is considered to be
-trashed.  Trashed notes can be seen by calling =ekg-show-notes-in-trash=.  If
-notes are deleted from this list via =ekg-notes-delete= again, they are deleted
-permanently.  The function =ekg-notes-delete= will only permanently delete a
-note if all its tags were previously trashed.  If you want to un-trash the note,
-you can edit the note and remove the trash prefix from one or more of the tags.
+Trashed notes can be seen by calling =ekg-show-notes-in-trash=. If notes are
+deleted from this list via =ekg-notes-delete= again, they are deleted permanently.
+The function =ekg-notes-delete= will always delete a note if the note is in the
+trash, and trash it otherwise. If you want to un-trash the note, you can remove
+the trash tag.
 * Links to ekg in org-mode
 Both notes in ekg and certain note list buffers can be stored and linked to in
 org-mode.  To store a link to a note, you have to edit that note and call
@@ -586,12 +685,12 @@ store their tags assuming the user wants a link to a list with any of the tags
 in the list.
 * Importing from org-roam
 You can import your notes from org-roam.  This will turn all titles into tags,
-and all links will become tags as well.  At the moment, this is done via
-executing elisp, since importing can be fairly idiosyncratic, and ekg and
-org-roam have different ways of expressing the same thing that you may want to
-change.  It's best if you looked over =ekg-org-roam.el= and see what is going
-on, but at least read the following description before manually executing
-~(ekg-org-roam-import)~.
+and all links will become tags as well, as well as any tags org-roam thought
+were in the document.  At the moment, the import is started via executing elisp,
+since importing can be fairly idiosyncratic, and ekg and org-roam have different
+ways of expressing the same thing that you may want to change.  It's best if you
+looked over =ekg-org-roam.el= and see what is going on, but at least read the
+following description before manually executing ~(ekg-org-roam-import)~.
 
 The import is idempotent, so it always will import to the same entities,
 overwriting older data with new data.  If you want to update what is in ekg, you
@@ -924,7 +1023,8 @@ description of how to do this, but an example would be the following:
 
 The embedding and LLM providers can be different.  The LLM provider can change
 at will, while the embedding provider must be the same for all embeddings in the
-database.
+database.  It is necessary to create both of these providers, because some LLM
+functionality depends on having embeddings.
 *** Augmenting notes with LLM output
 To send a note to an LLM and capture its response, call
 =ekg-llm-send-and-append-note=, which is by default bound to =[C-c .]=.  A
@@ -933,22 +1033,26 @@ The output from the LLM is appended at the end of the note, in a special
 section.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
-the LLM.  The default prompt is a fixed string you can configure in
-~ekg-llm-default-prompt~.  But alternatively, you can create alternative prompts
-for different ekg tags in the same way that [[#templates][templates]] work, by creating a note
-tagged with "prompt" and any other tag (the special "prompt" tag can be changed
-by customizing ~ekg-llm-prompt-tag~).  The alternate prompt is created by
+the LLM.  The prompt consists of context about previous notes that contain the
+tags of your note, and similar notes, which is what will generate high-quality
+content that is appropriate in the context of your notes.  It also contains
+instructions to the LLM to how to generate the note text to be added or
+replaced. The default instructions are a fixed string you can configure in
+~ekg-llm-default-instructions~.  But alternatively, you can create alternative
+prompts for different ekg tags in the same way that [[#templates][templates]] work, by creating
+a note tagged with "prompt" and any other tag (the special "prompt" tag can be
+changed by customizing ~ekg-llm-prompt-tag~).  The alternate prompt is created by
 appending all "prompt"-tagged notes.  Note that, as with templates, hierarchical
 tags can have prompts attached at any or all levels of the hierarchy.
 
-To take an example, imagine that you have a note tagged with =prompt= and
-=recipe=, containing a prompt saying the LLM should imagine itself an authority
-on cooking and provide you helpful tips to improve your recipes.  You then
-create a note with a child tag of =recipe=, let's say =recipe/monkfish=, with
-some details of your attempt to cook monkfish, and then hit =[C-c .]=.  Because
-=recipe= is a parent of =recipe/monkfish=, ekg-llm will use this prompt instead
-of the default one, and will also append your note, and place the LLM's response
-in a special section at the end of your note.  For example:
+To take an example, imagine that you have a note tagged with =prompt= and =recipe=,
+containing instructions saying the LLM should imagine itself an authority on
+cooking and provide you helpful tips to improve your recipes.  You then create a
+note with a child tag of =recipe=, let's say =recipe/monkfish=, with some details of
+your attempt to cook monkfish, and then hit =[C-c .]=.  Because =recipe= is a parent
+of =recipe/monkfish=, ekg-llm will use these instructions instead of the default
+one, and will also append your note, and place the LLM's response in a special
+section at the end of your note.  For example:
 
 #+begin_example
 Making monkfish again.  It is thick but tends to be wet and hard to get a good
@@ -967,11 +1071,13 @@ overcooking the inside.  Happy cooking!
 
 Instead of appending, the note can be replaced with the output of the LLM by
 using =ekg-llm-send-and-replace-note= which is bound to =[C-c ,]=.  As with the
-append command, using a prefix argument will let you edit the prompt before
-sending it.
+append command, using a prefix argument will let you edit the instructions
+before sending it.
 
 All prompts sent from a note in org or markdown modes have a prelude that notes
-the format of the input and expected output.
+the format of the input and expected output.  However, LLMs typically will
+produce markdown regardless of what you ask it to do, so if you want to use
+LLMs, you may want to use markdown as a default note format.
 *** Using ekg notes as prompts
 ekg notes are especially well suited for LLM prompting, both because of the
 ability to create prompts for different tags, and the ability to transclude one
@@ -1009,6 +1115,81 @@ to the query.
 Note that anything in your database could potentially be retrieved and sent to
 the LLM, so if you have notes that you consider too private to send for
 processing, you may not want to use this.
+** Auto save
+:PROPERTIES:
+:CUSTOM_ID: autosave
+:END:
+The =ekg-auto-save= module is useful for users who enter longer notes, so that the notes are protected against accidentally killing the buffer, or emacs crashing, or any similar problem.  It is designed to work similarly to the built-in auto-save functionality, and has it's own variables that default to the auto-save equivalent.  So, for example, there is ~ekg-auto-save-timeout~, which defaults to the value of ~auto-save-timeout~.
+
+To start using this, you need to require the module and turn on =ekg-auto-save-mode= in the =ekg-edit-mode` and =ekg-capture-mode=.  For example:
+#+begin_src emacs-lisp
+(require 'ekg-auto-save)
+(add-hook 'ekg-capture-mode-hook 'ekg-auto-save-mode)
+(add-hook 'ekg-edit-mode-hook 'ekg-auto-save-mode)
+#+end_src
+
+In the capture mode, this. is equivalent to saving periodically (to drafts).  In edit mode, it will save the latest version while editing.
+** Denote
+:PROPERTIES:
+:CUSTOM_ID: denote
+:END:
+ekg can export notes as denotes. Denote is a note taking and file
+naming tool. Primary reason for export is taking backup of your notes
+in a git backed repository. Import is in road map (PR is welcome). To
+export to denote, =ekg-denote= module is required.
+
+#+begin_src emacs-lisp
+  (use-package ekg-denote
+    :init
+    (setq ekg-denote-export-add-front-matter nil)
+    (setq ekg-denote-export-backup-on-conflict t)
+    (setq ekg-denote-export-title-max-len 50)
+    (setq ekg-denote-export-combined-keywords-len 150))
+#+end_src
+
+To export, call =ekg-denote-export= which will export any modified
+note after the last export as a denote in the =denote-directory=
+defined by =denote= package. If it is your first time exporting, all
+the notes will be exported to the =denote-directory=.
+
+=ekg-denote= keeps record of the last export time in the ekg db and
+use that to find the notes changed since last export. This way the
+exports are much faster. It is suggested to export your notes every
+day.
+
+User can optionally enable adding of denote front-matter to exported
+denotes by setting =ekg-denote-export-add-front-matter= to
+=t=. Denote front matter is added using =denote-add-front-matter=
+function defined by =denote= package which open note in an emacs
+buffer and requires manual execution of =save-buffer= by the user.
+
+Ekg and denote have differences, due to which following customization
+are made available:
+
+- =ekg-denote-export-title-max-len= to trim the title during export. Default
+  is 50 characters.
+- =ekg-denote-export-combined-keywords-len= to trim the combined length of
+  keywords. Default is 150 characters.
+- =ekg-denote-export-backup-on-conflict= to backup the denote if both
+  ekg and denote are found to be updated after last export. Default is
+  =t=.
+
+It is user responsibility to backup the denotes before and after
+export to protect against accidental deletes. This can be easily done
+by keeping denotes in a git repository and making sure to check-in any
+changes before and after export.
+
+If ekg and denote are both found to be updated after the last export
+which should ideally not happen, denote is updated with ekg. A backup
+is taken based on =ekg-denote-export-backup-on-conflict= setting.
+** Email
+The =ekg-email= module adds schema for storing the =to=, =from=, and =cc= email
+addresses associated with an email, and a way to import an email into notes from
+Gnus.  Other importing methods may be available in the future.
+
+While in a Gnus article buffer, you can execute the command =ekg-email-from-gnus=.
+
+Once mails are imported, you can search for email addresses associated with them with =ekg-email-show-notes-with-address=.
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.

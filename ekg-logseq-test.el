@@ -29,6 +29,13 @@
 
 (ert-deftest ekg-logseq-test-to-import-text ()
   (with-temp-buffer
+    (insert
+     "#+title:test\n#+ekg_export: true\n\n"
+     "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: abc\n:END:\n#[[test]]\ntest\n"
+     "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: bce\n:END:\n#[[test]]\ntest\n")
+    (org-mode)
+    (should (equal (ekg-logseq--to-import-text) nil)))
+  (with-temp-buffer
     (insert "* Heading\n** Subheading\n*** Subsubheading\n"
             "* Heading 2\n:PROPERTIES:\n:EKG_HASH: 123\n:END:\n"
             "* Heading 3\n:PROPERTIES:\n:ekg_hash: 456\n:END:\n"
@@ -37,7 +44,10 @@
     (should (equal '("* Heading\n** Subheading\n*** Subsubheading\n"
                      "* Heading 4\nText for another subheading")
                    (ekg-logseq--to-import-text))))
-
+  (with-temp-buffer
+    (insert ":PROPERTIES:\n:ID:123\n:END:#+title: My org file\nContents")
+    (org-mode)
+    (should (equal '("Contents") (ekg-logseq--to-import-text))))
   (with-temp-buffer
     (insert "- ## My markdown file\n" "Contents")
     (should (equal '("## My markdown file\nContents")
@@ -129,7 +139,7 @@
   (let ((note1 (ekg-note-create :text "note1" :mode 'org-mode :tags '("a" "b" "c")))
         (note2 (ekg-note-create :text "note2" :mode 'org-mode :tags '("b" "a" "c")))
         (note3 (ekg-note-create :text "" :mode 'org-mode :tags '("a" "b" "c")))
-        (note4 (ekg-note-create :text "note4" :mode 'org-mode :tags '("a" "b" "c" "trash/d"))))
+        (note4 (ekg-note-create :text "note4" :mode 'org-mode :tags '("a" "b" "c" "trash"))))
     (setf (ekg-note-id note1) 1)
     (setf (ekg-note-modified-time note1) 123456789)
     (setf (ekg-note-id note4) 4)
@@ -137,13 +147,11 @@
     (should
      (equal (concat
              "#+title: a\n#+ekg_export: true\n\n"
-             "* Untitled Note\n:PROPERTIES:\n:ID: 1\n:EKG_HASH: 829ab920fad6efe045caf218b813be4e42ac779a\n:END:\n#[[b]] #[[c]]\nnote1\n"
-             "* Untitled Note\n:PROPERTIES:\n:ID: 4\n:EKG_HASH: f42a5d9f0c36530e2dfaa16a30afa6bf0e00935e\n:END:\n#[[b]] #[[c]]\nnote4")
+             "* Untitled Note\n:PROPERTIES:\n:ID: 1\n:EKG_HASH: 829ab920fad6efe045caf218b813be4e42ac779a\n:END:\n#[[b]] #[[c]]\nnote1")
             (ekg-logseq-notes-to-logseq (list note1 note2 note3 note4) "a" t)))
     (should (equal (concat
                     "title:: a\nekg_export:: true\n\n"
-                    "- Untitled Note\n  id:: 1\n  ekg_hash:: 829ab920fad6efe045caf218b813be4e42ac779a\n  #[[b]] #[[c]]\n  note1\n"
-                    "- Untitled Note\n  id:: 4\n  ekg_hash:: f42a5d9f0c36530e2dfaa16a30afa6bf0e00935e\n  #[[b]] #[[c]]\n  note4")
+                    "- Untitled Note\n  id:: 1\n  ekg_hash:: 829ab920fad6efe045caf218b813be4e42ac779a\n  #[[b]] #[[c]]\n  note1")
                    (ekg-logseq-notes-to-logseq (list note1 note2 note3 note4) "a" nil)))))
 
 (ert-deftest ekg-logseq-test-filename-to-tag ()
@@ -151,6 +159,7 @@
   (should (equal "foo/bar" (ekg-logseq-filename-to-tag "foo$bar.org"))))
 
 (ekg-deftest ekg-logseq-test-last-import-export ()
+  (ekg-logseq-add-schema)
   (should (= 0 (ekg-logseq-get-last-export)))
   (should (= 0 (ekg-logseq-get-last-import)))
   (ekg-logseq-set-last-export 123)
@@ -161,6 +170,7 @@
   (should (= 456 (ekg-logseq-get-last-import))))
 
 (ekg-deftest ekg-logseq-test-tags-with-notes-modified-since ()
+  (ekg-logseq-add-schema)
   (cl-flet ((create (time tags)
               (let ((note (ekg-note-create :text "" :mode 'org-mode :tags tags)))
                 (cl-letf (((symbol-function 'time-convert)

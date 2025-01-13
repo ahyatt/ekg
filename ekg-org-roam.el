@@ -36,7 +36,7 @@
   "Tags which need to be prefixed to the title.
 For example, if you tag every idea with the `idea' tag, then I
 think it's best to not bring that tag to ekg, but instead to
-prefix the title with this tag name. This is a list of tags that
+prefix the title with this tag name.  This is a list of tags that
 should operate like that - so, if one is found (at max one should
 ever be found, these should be exclusionary), it turns into a
 prefix on the title instead.")
@@ -69,9 +69,9 @@ prefix on the title instead.")
                                       ekg-org-roam-import-tag-to-prefix))
           (if (= 1 (length diff))
               (format "%s/%s" (car diff) title)
-                                      (warn "Unexpectedly found more than one tag in `ekg-org-roam-import-tag-to-prefix' in tags for node %s.  Tags: %s."
-                                            title tags)
-                                      title)
+            (warn "Unexpectedly found more than one tag in `ekg-org-roam-import-tag-to-prefix' in tags for node %s.  Tags: %s."
+                  title tags)
+            title)
         title))))
 
 (defun ekg-org-roam-import--tags-from-links ()
@@ -100,35 +100,36 @@ However, we do pay attention to
   (dolist (node (org-roam-node-list))
     (save-excursion
       (org-roam-with-file (org-roam-node-file node) nil
-        (goto-char (org-roam-node-point node))
-        (when (> (org-roam-node-level node) 0)
-          (condition-case nil
-              (org-narrow-to-element)
-            (error nil)))
-        (let ((tags-from-links)
-              (text (buffer-substring (save-excursion
-                                        (goto-char (point-min))
-                                        (font-lock-ensure)
-                                        (point)) (point-max))))
-          (unless (triples-subjects-with-predicate-object ekg-db 'org-roam/id (org-roam-node-id node))
-            (setq tags-from-links (ekg-org-roam-import--tags-from-links))
-            (triples-with-transaction ekg-db
-              (let* ((note (ekg-note-create
-                            :text text
-                            :mode 'org-mode
-                            :tags (seq-difference (seq-uniq
-                                                   (cons
-                                                    (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node))
-                                                    tags-from-links))
-                                                  (seq-union ekg-org-roam-import-tag-to-ignore
-                                                             ekg-org-roam-import-tag-to-prefix
-                                                             #'equal)
-                                                  #'equal))))
-                (setf (ekg-note-id note) (org-roam-node-id node))
-                (when (org-roam-node-refs node)
-                  (setf (ekg-note-properties note) `(:reference/url ,(org-roam-node-refs node))))
-                (ekg-save-note note)
-                (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node)))))))))))
+                          (goto-char (org-roam-node-point node))
+                          (when (> (org-roam-node-level node) 0)
+                            (condition-case nil
+                                (org-narrow-to-element)
+                              (error nil)))
+                          (let ((tags-from-links)
+                                (text (buffer-substring (save-excursion
+                                                          (goto-char (point-min))
+                                                          (font-lock-ensure)
+                                                          (point)) (point-max))))
+                            (unless (triples-subjects-with-predicate-object ekg-db 'org-roam/id (org-roam-node-id node))
+                              (setq tags-from-links (ekg-org-roam-import--tags-from-links))
+                              (triples-with-transaction ekg-db
+                                                        (let* ((note (ekg-note-create
+                                                                      :text text
+                                                                      :mode 'org-mode
+                                                                      :tags (seq-difference (seq-uniq
+                                                                                             (append
+                                                                                              (list (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))
+                                                                                              tags-from-links
+                                                                                              (org-roam-node-tags node)))
+                                                                                            (seq-union ekg-org-roam-import-tag-to-ignore
+                                                                                                       ekg-org-roam-import-tag-to-prefix
+                                                                                                       #'equal)
+                                                                                            #'equal))))
+                                                          (setf (ekg-note-id note) (org-roam-node-id node))
+                                                          (when (org-roam-node-refs node)
+                                                            (setf (ekg-note-properties note) `(:reference/url ,(org-roam-node-refs node))))
+                                                          (ekg-save-note note)
+                                                          (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node)))))))))))
 
 (provide 'ekg-org-roam)
 

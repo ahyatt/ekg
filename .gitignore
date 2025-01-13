@@ -1,3 +1,4 @@
 *.elc
 doc/*info
 *-autoloads.el
+.eldev

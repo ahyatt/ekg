@@ -21,7 +21,7 @@
 ;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
-;; This is a module for creating, storing, and using embeddings in ekg. The
+;; This is a module for creating, storing, and using embeddings in ekg.  The
 ;; embeddings provide the capability of understanding note and tag similarity,
 ;; as well as searching via embedding.
 ;;
@@ -33,12 +33,27 @@
 
 ;;; Code:
 
+(defgroup ekg-embedding nil
+  "Embedding-based functionality for ekg."
+  :group 'ekg)
+
+(defcustom ekg-generate-all-buffer "*ekg embedding generation*"
+  "Buffer name used for messages related to generating embeddings."
+  :type 'string
+  :group 'ekg-embedding)
+
 (defcustom ekg-embedding-text-selector #'ekg-embedding-text-selector-initial
-  "Function to select the text of the embedding, which is necessary
-because there are usually token limits in the API calls. The
-function will be passed the full text and will return the text to
-pass to the embedding API."
+  "Function to select the text of the embedding.
+
+This is necessary because there are usually token limits in the
+API calls.  The function will be passed the full text and will
+return the text to pass to the embedding API."
   :type '(function)
+  :group 'ekg-embedding)
+
+(defcustom ekg-embedding-batch-size 100
+  "The number of embeddings to generate in a single batch."
+  :type 'integer
   :group 'ekg-embedding)
 
 (defconst ekg-embedding-provider nil
@@ -56,9 +71,9 @@ This is a struct representing a provider in the `llm' package.")
 
 (defun ekg-embedding-average (embeddings)
   "Compute the average of all of EMBEDDINGS, a list.
-Return the vector embedding. This assumes all embeddings are the
+Return the vector embedding.  This assumes all embeddings are the
 same size.  There must be at least one embedding passed in."
-(let* ((v (make-vector (length (car embeddings)) 0)))
+  (let* ((v (make-vector (length (car embeddings)) 0)))
     (cl-loop for e in (seq-filter (lambda (e) (= (length e) (length v))) embeddings) do
              (cl-loop for i below (length e) do
                       (aset v i (+ (aref v i) (aref e i)))))
@@ -66,10 +81,15 @@ same size.  There must be at least one embedding passed in."
              (aset v i (/ (aref v i) (length embeddings))))
     v))
 
-(defun ekg-embedding-generate-for-note-async (note)
+(defun ekg-embedding-generate-for-note-async (note &optional success-callback error-callback)
   "Calculate and set the embedding for NOTE.
 The embedding is calculated asynchronously and the data is
-updated afterwards."
+updated afterwards.
+
+If SUCCESS-CALLBACK is non-nil, call it after setting the value,
+with NOTE as the argument.
+
+If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
   (llm-embedding-async
    ekg-embedding-provider
    (funcall ekg-embedding-text-selector
@@ -78,9 +98,11 @@ updated afterwards."
    (lambda (embedding)
      (ekg-connect)
      (triples-set-type ekg-db (ekg-note-id note) 'embedding
-                       :embedding embedding))
-   (lambda (error-type msg)
-     (message "ekg-embedding: error %s: %s" error-type msg))))
+                       :embedding embedding)
+     (when success-callback (funcall success-callback note)))
+   (or error-callback
+       (lambda (error-type msg)
+         (message "ekg-embedding: error %s: %s" error-type msg)))))
 
 (defun ekg-embedding-generate-for-note-sync (note)
   "Calculate and set the embedding for NOTE.
@@ -98,10 +120,36 @@ wait for the embedding to return and be set."
       (lwarn 'ekg :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
              (ekg-note-id note) embedding))))
 
+(defun ekg-embedding-generate-batch-async (notes success-callback error-callback)
+  "Generate embeddings for NOTES in a batch.
+SUCCESS-CALLBACK is called with the size of the batch after the batch is
+finished.
+ERROR-CALLBACK is called with error-type and message on errors."
+  (let ((texts (mapcar (lambda (note)
+                         (funcall ekg-embedding-text-selector
+                                  (substring-no-properties
+                                   (ekg-display-note-text note))))
+                       notes)))
+    (llm-batch-embeddings-async
+     ekg-embedding-provider
+     texts
+     (lambda (embeddings)
+       (ekg-connect)
+       (cl-loop for note in notes
+                for embedding in embeddings
+                do (triples-set-type ekg-db (ekg-note-id note) 'embedding
+                                     :embedding embedding)
+                finally
+                (when success-callback (funcall success-callback (length notes)))))
+     error-callback)))
+
 (defun ekg-embedding-generate-for-note-tags-delayed (note)
   "Run `ekg-embedding-generate-for-note-tags' after a delay.
+
 The delay is necessary when notes have just been saved, because
-they may not have an embedding yet."
+they may not have an embedding yet.
+
+NOTE is the note to create an embedding for."
   (run-with-idle-timer (* 60 5) nil
                        (lambda ()
                          (ekg-embedding-generate-for-note-tags note))))
@@ -116,13 +164,13 @@ they may not have an embedding yet."
   (plist-get (ekg-note-properties note) :embedding/embedding))
 
 (defun ekg-embedding-valid-p (embedding)
-  "Return non-nil if the embedding is valid."
+  "Return non-nil if EMBEDDING is valid."
   ;; If there's a 0, it can't be a valid embedding - we assume we have to have a
   ;; non-zero value on every dimension of the embedding. This is likely true,
   ;; but more likely 0s tend to indicate issues with how the embedding was
   ;; obtained.
   (and (vectorp embedding) (> (length embedding) 0)
-       (not (seq-contains-p (lambda (e) (= 0 e)) embedding))))
+       (not (seq-contains-p embedding 0))))
 
 (defun ekg-embedding-refresh-tag-embedding (tag)
   "Refresh the embedding for TAG.
@@ -131,56 +179,90 @@ embeddings of notes with the given tag."
   (condition-case err
       (let ((embeddings
              (cl-loop for tagged in
-                  (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
-                  collect
-                  (let ((embedding (plist-get (triples-get-type ekg-db tagged 'embedding)
-                                              :embedding)))
-                    (unless (ekg-embedding-valid-p embedding)
-                      (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
-                      (let ((note (ekg-get-note-with-id tagged)))
-                        (ekg-embedding-generate-for-note-sync note)
-                        (if (ekg-embedding-valid-p note)
-                            (progn
-                              (ekg-save-note note)
-                              (setf embedding (ekg-embedding-note-get note)))
-                          (error "ekg-embedding: could not fix invalid embedding for note %s, can't refresh tag %s" tagged tag))))
-                    embedding))))
-    (let ((avg (ekg-embedding-average
-                (seq-filter #'ekg-embedding-valid-p embeddings))))
-      (if (ekg-embedding-valid-p avg)
-          (triples-set-type ekg-db tag 'embedding :embedding avg)
-        (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
+                      (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
+                      collect
+                      (let ((embedding (plist-get (triples-get-type ekg-db tagged 'embedding)
+                                                  :embedding)))
+                        (unless (ekg-embedding-valid-p embedding)
+                          (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
+                          (let ((note (ekg-get-note-with-id tagged)))
+                            (ekg-embedding-generate-for-note-sync note)
+                            (if (ekg-embedding-valid-p note)
+                                (progn
+                                  (ekg-save-note note)
+                                  (setf embedding (ekg-embedding-note-get note)))
+                              (error "In ekg-embedding: could not fix invalid embedding for note %s, can't refresh tag %s" tagged tag))))
+                        embedding))))
+        (let ((avg (ekg-embedding-average
+                    (seq-filter #'ekg-embedding-valid-p embeddings))))
+          (if (ekg-embedding-valid-p avg)
+              (triples-set-type ekg-db tag 'embedding :embedding avg)
+            (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
     (error (message "ekg-embedding: error when trying to refresh tag %s: %S" tag err))))
 
 (defun ekg-embedding-generate-all (&optional arg)
   "Generate and store embeddings for every entity that needs one.
-It is not necessary for the entity to contain a note. Tags will
-be calculated from the average of all tagged entities. Embeddings
-will not be calculated for objects with no text, except for tags.
-If called with a prefix arg, embeddings will be generated even if
-embeddings already exist. This is a fairly slow function, and may
-take minutes or hours depending on how much data there is.
+It is not necessary for the entity to contain a note.  Tags will
+be calculated from the average of all tagged entities.
+Embeddings will not be calculated for objects with no text,
+except for tags.  If called with prefix ARG, embeddings will be
+generated even if embeddings already exist.  This is a fairly
+slow function, and may take minutes or hours depending on how
+much data there is.
 
-Everything here is done asynchronously. A message will be printed
-when everything is finished."
+Everything here is done asynchronously.  A message will be
+printed when everything is finished."
   (interactive "P")
   (ekg-embedding-connect)
-  (let ((count 0))
-       (cl-loop for s in (ekg-active-note-ids) do
-                (let ((note (ekg-get-note-with-id s))
-                      (embedding (plist-get (triples-get-type ekg-db s 'embedding) :embedding)))
-                  (when (and (or arg (not (ekg-embedding-valid-p embedding)))
-                             (> (length (ekg-note-text note)) 0))
-                    (cl-incf count)
-                    (ekg-embedding-generate-for-note-async note))))
-       ;; At this point, a lot of async things are happening, so we need to wait
-       ;; on all of them. We don't want to bother with a ton of mutexes, so
-       ;; we'll just wait for a bit, until everything is idle again.
-       (run-with-idle-timer (* 60 5) nil
-                            (lambda ()
-                              (cl-loop for s in (ekg-tags) do
-                                       (ekg-embedding-refresh-tag-embedding s))
-                              (message "Generated %s embeddings" count)))))
+  (let* ((count 0)
+         (to-generate
+          (seq-filter (if arg #'identity (lambda (id)
+                                           (not (ekg-embedding-valid-p
+                                                 (plist-get
+                                                  (triples-get-type ekg-db id 'embedding) :embedding)))))
+                      (ekg-active-note-ids)))
+         (notes-to-generate
+          (seq-filter (lambda (note) (> (length (ekg-note-text note)) 0))
+                      (mapcar #'ekg-get-note-with-id to-generate))))
+    (cl-labels ((complete-id (num)
+                  (cl-incf count num)
+                  (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
+                    (goto-char (point-max))
+                    (insert (format "Generated %d/%d (%.0f%% done)\n"
+                                    count (length to-generate)
+                                    (/ (* count 100.0) (length to-generate)))))))
+      (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
+        (goto-char (point-max))
+        (insert (format "\nGenerating %d embeddings\n" (length to-generate)))
+        (display-buffer (current-buffer))
+
+        ;; Process notes in batches
+        (let ((batches (seq-partition notes-to-generate ekg-embedding-batch-size)))
+          (cl-loop for batch in batches do
+                   (ekg-embedding-generate-batch-async
+                    batch
+                    #'complete-id
+                    (lambda (error-type msg)
+                      (insert (format "Could not generate embedding batch: %s %s\n"
+                                      error-type msg))))
+                   ;; Add a small delay between batches
+                   (sit-for 1)))
+
+        ;; Process empty notes
+        (cl-loop for id in to-generate
+                 when (= (length (ekg-note-text (ekg-get-note-with-id id))) 0)
+                 collect id into ids
+                 finally
+                 do (complete-id (length ids)))
+
+        ;; At this point, async things are happening, wait for idle
+        (run-with-idle-timer (* 60 5) nil
+                             (lambda ()
+                               (let ((tags (ekg-tags)))
+                                 (cl-loop for s in tags do
+                                          (ekg-embedding-refresh-tag-embedding s))
+                                 (with-current-buffer (get-buffer-create ekg-generate-all-buffer)
+                                   (insert (format "Refreshed %d tags\n" (length tags)))))))))))
 
 (defun ekg-embedding-cosine-similarity (v1 v2)
   "Calculate the cosine similarity of V1 and V2.
@@ -255,11 +337,11 @@ The results are in order of most similar to least similar."
   (let* ((embeddings (ekg-embedding-get-all-notes)))
     (setq embeddings
           (sort
-                (mapcar (lambda (id-embedding)
-                          (cons (car id-embedding)
-                                (ekg-embedding-cosine-similarity e (cdr id-embedding))))
-                        embeddings)
-                (lambda (a b) (> (cdr a) (cdr b)))))
+           (mapcar (lambda (id-embedding)
+                     (cons (car id-embedding)
+                           (ekg-embedding-cosine-similarity e (cdr id-embedding))))
+                   embeddings)
+           (lambda (a b) (> (cdr a) (cdr b)))))
     (mapcar #'car (cl-subseq embeddings 0 (min n (length embeddings))))))
 
 (defun ekg-embedding-show-similar ()
@@ -276,29 +358,29 @@ The results are in order of most similar to least similar."
      (ekg-note-tags note))))
 
 (defun ekg-embedding-search (&optional text)
-  "Show similar notes to the current note in a new buffer."
+  "Show similar notes to the TEXT in a new buffer."
   (interactive "MSearch: ")
   (ekg-embedding-connect)
   (ekg-setup-notes-buffer
-     (format "similar to \"%s\"" text)
-     (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
-                                                (llm-embedding ekg-embedding-provider text)
-                                                ekg-notes-size)))
-     nil))
+   (format "similar to \"%s\"" text)
+   (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
+                                              (llm-embedding ekg-embedding-provider text)
+                                              ekg-notes-size)))
+   nil))
 
 (defun ekg-embedding-show-similar-to-current-buffer ()
   "Show similar notes to the text in the current buffer."
   (interactive)
   (ekg-embedding-connect)
   (ekg-setup-notes-buffer
-     (format "similar to buffer \"%s\"" (buffer-name (current-buffer)))
-     (lambda () (mapcar #'ekg-get-note-with-id
-                        (ekg-embedding-n-most-similar-notes
-                         (llm-embedding ekg-embedding-provider
-                                        (funcall ekg-embedding-text-selector
-                                                 (substring-no-properties (buffer-string))))
-                         ekg-notes-size)))
-     nil))
+   (format "similar to buffer \"%s\"" (buffer-name (current-buffer)))
+   (lambda () (mapcar #'ekg-get-note-with-id
+                      (ekg-embedding-n-most-similar-notes
+                       (llm-embedding ekg-embedding-provider
+                                      (funcall ekg-embedding-text-selector
+                                               (substring-no-properties (buffer-string))))
+                       ekg-notes-size)))
+   nil))
 
 (defun ekg-embedding-generate-on-save ()
   "Enable embedding generation for new notes.
@@ -321,4 +403,4 @@ notes."
 
 (provide 'ekg-embedding)
 
-;;; ekg-embedding.el ends
+;;; ekg-embedding.el ends here
