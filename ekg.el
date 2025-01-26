@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.4.0") (emacs "28.1") (llm "0.18.0"))
+;; Package-Requires: ((triples "0.5.0") (emacs "28.1") (llm "0.18.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.6.4
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -288,6 +288,11 @@ deleted as the single argument.")
 This includes new notes that start with tags.  All functions are
 called with the tag as the single argument, and run in the buffer
 editing the note.")
+
+(defvar ekg-query-pred-abbrevs '(("tag" . "tagged/tag")
+                                 ("title" . "titled/title")
+                                 ("text" . "text/text"))
+  "Abbreviations for predicates in queries.")
 
 (defconst ekg-version "0.6.4"
   "The version of ekg.
@@ -2077,7 +2082,7 @@ notes are created with additional tags TAGS."
   (ekg-connect)
   (ekg-setup-notes-buffer
    (format "query: %s" query)
-   (lambda () (seq-filter #'ekg-note-active-p (mapcar #'ekg-get-note-with-id (triples-fts-query ekg-db query)))) nil))
+   (lambda () (seq-filter #'ekg-note-active-p (mapcar #'ekg-get-note-with-id (triples-fts-query-subject ekg-db query ekg-query-pred-abbrevs)))) nil))
 
 ;;;###autoload
 (defun ekg-show-notes-in-trash ()
@@ -2301,7 +2306,10 @@ backup settings, and will not delete any backups, regardless of
 other settings.  FROM-VERSION is the version of the database
 before the upgrade, in list form.  TO-VERSION is the version of
 the database after the upgrade, in list form."
-  (let ((need-trash-upgrade
+  (let ((need-fts-upgrade
+         (or (null from-version)
+             (version-list-< from-version '(0 7 0))))
+        (need-trash-upgrade
          (or (null from-version)
              ;; Version 0.5.0 changed how trashed tags are handled.
              (version-list-< from-version '(0 5 0))))
@@ -2315,6 +2323,8 @@ the database after the upgrade, in list form."
          (or (null from-version)
              (version-list-< from-version '(0 6 3)))))
     (ekg-connect)
+    (when need-fts-upgrade
+      (triples-fts-setup ekg-db))
     ;; In the future, we can separate out the backup from the upgrades.
     (when need-type-removal-upgrade
       (ekg-backup t)
