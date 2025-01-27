@@ -75,6 +75,7 @@ triples library is already installed.
 * Changelog
 ** Version 0.7.0
 - Added =ekg-show-notes-for-query= using =triples-fts=.
+- Speed up for LLM calls with notes as context
 ** Version 0.6.4
 - Fix display of extended structured data in notes.
 - Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.

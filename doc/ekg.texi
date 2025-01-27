@@ -231,6 +231,8 @@ triples library is already installed.
 @itemize
 @item
 Added @samp{ekg-show-notes-for-query} using @samp{triples-fts}.
+@item
+Speed up for LLM calls with notes as context
 @end itemize
 
 @node Version 064

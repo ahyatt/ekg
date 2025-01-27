@@ -775,26 +775,33 @@ However, if FORCE is non-nil, it will be shown regardless."
        'face 'ekg-resource)
     ""))
 
-(defun ekg-display-note-text (note &optional numwords)
+(defun ekg-display-note-text (note &optional numwords plaintext)
   "Return text, with mode-specific properties, of NOTE.
 NUMWORDS is the max number of words to display in the note, or
-nil for all words."
+nil for all words.
+
+If PLAINTEXT is non-nil, return the text without any formatting."
   (with-temp-buffer
     (when (ekg-note-text note)
       (insert (ekg-insert-inlines-results
                (ekg-note-text note)
                (ekg-note-inlines note)
                note)))
-    (when (ekg-note-mode note)
+    (when (and (not plaintext) (ekg-note-mode note))
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
           (funcall (ekg-note-mode note)))))
     (mapc #'funcall ekg-format-funcs)
-    (font-lock-ensure)
-    (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
+    (unless plaintext
+      (font-lock-ensure)
+      (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note)))
     (concat (string-trim-right
-             (ekg-truncate-at (buffer-string)
-                              (or numwords ekg-note-inline-max-words))) "\n")))
+             (let ((buftext (if plaintext
+                                (buffer-substring-no-properties (point-min)(point-max))
+                              (buffer-string))))
+               (if numwords
+                   (ekg-truncate-at buftext (or numwords ekg-note-inline-max-words))
+                 buftext))) "\n")))
 
 (defun ekg-display-note-tagged (note)
   "Return text of the tags of NOTE."
