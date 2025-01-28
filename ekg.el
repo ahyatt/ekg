@@ -2084,7 +2084,17 @@ notes are created with additional tags TAGS."
 
 ;;;###autoload
 (defun ekg-show-notes-for-query (query)
-  "Show notes matching TEXT."
+  "Show notes matching QUERY.
+
+This does a token-based search, so single letters or word fragments and
+punctuation may not match.
+
+This uses `ekg-query-pred-abbrevs' to provide abbreviations for querying
+for special forms of note data.  For example, you can search for tags
+with `tag:<term>' or `title:<term>', or `text:<term>'.  Anything not
+prefixed will search any text associated with the subject.
+
+Text included in inline templates is not searched."
   (interactive "sQuery: ")
   (ekg-connect)
   (ekg-setup-notes-buffer

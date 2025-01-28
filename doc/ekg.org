@@ -546,7 +546,7 @@ This is a =ekg-notes-mode= buffer.
 
 =ekg-show-notes-with-all-tags= will show all notes that have all of the tags given.
 
-=ekg-show-notes-for-query= will do a ranked text search, showing all results.  The query is token-based so querying for individual characters and syntax will not work; the query has to be words.  Prefixes such as "tag", "title" and "text" can be used to restrict matches to tags, titles and text respectively.  For example, the query "tag:apartment sink" will show any article with "sink" in it (it could be anywhere, even a tag), but it also has to have a tag with "apartment" in it.  Every term is ANDed together.  Use quotes if you want to quote a phrase such as "tag:\"apartment problems\" sink".
+=ekg-show-notes-for-query= will do a ranked text search, showing all results.  The query is token-based so querying for individual characters and syntax will not work; the query has to be words.  Prefixes such as "tag", "title" and "text" can be used to restrict matches to tags, titles and text respectively.  For example, the query "tag:apartment sink" will show any article with "sink" in it (it could be anywhere, even a tag), but it also has to have a tag with "apartment" in it.  Every term is ANDed together.  Use quotes if you want to quote a phrase such as "tag:\"apartment problems\" sink".  This does not search anything included via inline commands.
 
 =ekg-show-notes-for-today= will show the notes taken today.
 
