@@ -4,9 +4,9 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.4.0") (emacs "28.1") (llm "0.18.0"))
+;; Package-Requires: ((triples "0.5.0") (emacs "28.1") (llm "0.18.0"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.6.4
+;; Version: 0.7.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 (require 'triples)
 (require 'triples-backups)
 (require 'triples-upgrade)
+(require 'triples-fts)
 (require 'seq)
 (require 'ewoc)
 (require 'cl-lib)
@@ -288,7 +289,12 @@ This includes new notes that start with tags.  All functions are
 called with the tag as the single argument, and run in the buffer
 editing the note.")
 
-(defconst ekg-version "0.6.4"
+(defvar ekg-query-pred-abbrevs '(("tag" . "tagged/tag")
+                                 ("title" . "titled/title")
+                                 ("text" . "text/text"))
+  "Abbreviations for predicates in queries.")
+
+(defconst ekg-version "0.7.0"
   "The version of ekg.
 
 This is used to understand when the database needs upgrading.")
@@ -1421,7 +1427,10 @@ If ID is given, force the triple subject to be that value."
     (insert text)
     (if (and (eq mode 'org-mode)
              ekg-notes-display-images)
-        (org-redisplay-inline-images))
+        (condition-case nil
+            (org-redisplay-inline-images)
+          (wrong-type-argument (message "Problem showing image for note ID %s (content: \"%s\")"
+                                        id (ekg-truncate-at text 10)))))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -2074,6 +2083,25 @@ notes are created with additional tags TAGS."
    (list tag)))
 
 ;;;###autoload
+(defun ekg-show-notes-for-query (query)
+  "Show notes matching QUERY.
+
+This does a token-based search, so single letters or word fragments and
+punctuation may not match.
+
+This uses `ekg-query-pred-abbrevs' to provide abbreviations for querying
+for special forms of note data.  For example, you can search for tags
+with `tag:<term>' or `title:<term>', or `text:<term>'.  Anything not
+prefixed will search any text associated with the subject.
+
+Text included in inline templates is not searched."
+  (interactive "sQuery: ")
+  (ekg-connect)
+  (ekg-setup-notes-buffer
+   (format "query: %s" query)
+   (lambda () (seq-filter #'ekg-note-active-p (mapcar #'ekg-get-note-with-id (triples-fts-query-subject ekg-db query ekg-query-pred-abbrevs)))) nil))
+
+;;;###autoload
 (defun ekg-show-notes-in-trash ()
   "Show notes that have only tags that are trashed."
   (interactive)
@@ -2295,7 +2323,10 @@ backup settings, and will not delete any backups, regardless of
 other settings.  FROM-VERSION is the version of the database
 before the upgrade, in list form.  TO-VERSION is the version of
 the database after the upgrade, in list form."
-  (let ((need-trash-upgrade
+  (let ((need-fts-upgrade
+         (or (null from-version)
+             (version-list-< from-version '(0 7 0))))
+        (need-trash-upgrade
          (or (null from-version)
              ;; Version 0.5.0 changed how trashed tags are handled.
              (version-list-< from-version '(0 5 0))))
@@ -2309,6 +2340,10 @@ the database after the upgrade, in list form."
          (or (null from-version)
              (version-list-< from-version '(0 6 3)))))
     (ekg-connect)
+    (when (and (eq 'builtin triples-sqlite-interface) need-fts-upgrade)
+      (triples-fts-setup ekg-db))
+    (when need-fts-upgrade
+      (triples-fts-setup ekg-db))
     ;; In the future, we can separate out the backup from the upgrades.
     (when need-type-removal-upgrade
       (ekg-backup t)
@@ -2327,12 +2362,7 @@ the database after the upgrade, in list form."
       ;; Also, we need to convert any text back to strings. We only need to do
       ;; this for the builtin sqlite, since that's the only case that
       ;; triples-upgrade-to-0.3 will do anything.
-      (when (eq 'builtin triples-sqlite-interface)
-        (if (fboundp 'sqlite-execute)
-            (sqlite-execute
-             ekg-db
-             "UPDATE OR IGNORE triples SET object = '\"' || CAST(object AS TEXT) || '\"' WHERE predicate = 'text/text' AND typeof(object) = 'integer'")
-          (error "The triples library incorrectly configured to use sqlite in 29.1, which is not available"))))
+      )
     (when need-trash-upgrade
       (ekg-backup t)
       (let* ((trash-ids (ekg-tags-with-prefix "trash/"))
