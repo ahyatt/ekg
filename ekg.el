@@ -2340,6 +2340,8 @@ the database after the upgrade, in list form."
          (or (null from-version)
              (version-list-< from-version '(0 6 3)))))
     (ekg-connect)
+    (when (and (eq 'builtin triples-sqlite-interface) need-fts-upgrade)
+      (triples-fts-setup ekg-db))
     (when need-fts-upgrade
       (triples-fts-setup ekg-db))
     ;; In the future, we can separate out the backup from the upgrades.
@@ -2360,34 +2362,31 @@ the database after the upgrade, in list form."
       ;; Also, we need to convert any text back to strings. We only need to do
       ;; this for the builtin sqlite, since that's the only case that
       ;; triples-upgrade-to-0.3 will do anything.
-      ))
-  (when (eq 'builtin triples-sqlite-interface)
-    (when need-fts-upgrade
-      (triples-fts-setup ekg-db)))
-  (when need-trash-upgrade
-    (ekg-backup t)
-    (let* ((trash-ids (ekg-tags-with-prefix "trash/"))
-           (note-ids (mapcan (lambda (tag) (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
-                             trash-ids)))
-      (triples-with-transaction
-        ekg-db
-        (cl-loop for id in note-ids do
-                 (let ((note (ekg-get-note-with-id id)))
-                   (cond
-                    ((null note)
-                     (message "ekg-upgrade-db: Note %s has a trashed tag but doesn't exist!  This is unusual and should not happen." id))
-                    ((seq-some (lambda (tag)
-                                 (not (string-match-p (rx (literal "trash/")) tag)))
-                               (ekg-note-tags note))
-                     (message "ekg-upgrade-db: Note %s has some trash tags but not all trash tags,  you can run ekg-show-notes-with-tag-prefix to find all notes with tags with the 'trash/' prefix."
-                              id))
-                    (t
-                     (message "ekg-upgrade-db: Moving note %s from trash tags to trash tag"
-                              id)
-                     (ekg-note-trash note)))))
-        (cl-loop for tag in trash-ids do
-                 (triples-remove-type ekg-db tag 'tag)
-                 (triples-set-type ekg-db ekg-trash-tag 'tag))))))
+      )
+    (when need-trash-upgrade
+      (ekg-backup t)
+      (let* ((trash-ids (ekg-tags-with-prefix "trash/"))
+             (note-ids (mapcan (lambda (tag) (plist-get (triples-get-type ekg-db tag 'tag) :tagged))
+                               trash-ids)))
+        (triples-with-transaction
+          ekg-db
+          (cl-loop for id in note-ids do
+                   (let ((note (ekg-get-note-with-id id)))
+                     (cond
+                      ((null note)
+                       (message "ekg-upgrade-db: Note %s has a trashed tag but doesn't exist!  This is unusual and should not happen." id))
+                      ((seq-some (lambda (tag)
+                                   (not (string-match-p (rx (literal "trash/")) tag)))
+                                 (ekg-note-tags note))
+                       (message "ekg-upgrade-db: Note %s has some trash tags but not all trash tags,  you can run ekg-show-notes-with-tag-prefix to find all notes with tags with the 'trash/' prefix."
+                                id))
+                      (t
+                       (message "ekg-upgrade-db: Moving note %s from trash tags to trash tag"
+                                id)
+                       (ekg-note-trash note)))))
+          (cl-loop for tag in trash-ids do
+                   (triples-remove-type ekg-db tag 'tag)
+                   (triples-set-type ekg-db ekg-trash-tag 'tag)))))))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
