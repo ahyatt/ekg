@@ -233,6 +233,10 @@ triples library is already installed.
 Added @samp{ekg-show-notes-for-query} using @samp{triples-fts}.
 @item
 Speed up for LLM calls with notes as context
+@item
+Support multiple values in @samp{ekg-llm-providers} so that they can be chosen from.
+@item
+Ensure SQL connection and schema for embedding calls.
 @end itemize
 
 @node Version 064
@@ -1276,14 +1280,15 @@ embedding.
 
 The embedding interfaces with your preferred LLM provider via the @samp{llm} package.
 This package allows the user to define their preferred llm backends, which will
-be stored in @code{ekg-llm-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for a
-complete description on how to do this, but an example would be the following:
+be stored in @code{ekg-embedding-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for
+a complete description on how to do this, but an example would be the following:
 
 @lisp
 (use-package ekg
   :init
   (require 'llm-openai)  ;; the specific LLM provider must be required
   (require 'ekg-embedding)
+  (require 'ekg-llm)
   (ekg-embedding-generate-on-save)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
@@ -1473,6 +1478,8 @@ description of how to do this, but an example would be the following:
 (use-package ekg
   :init
   (require 'llm-openai)  ;; the specific LLM provider must be required
+  (require 'ekg-llm)
+  (require 'ekg-embedding)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
@@ -1482,6 +1489,12 @@ The embedding and LLM providers can be different.  The LLM provider can change
 at will, while the embedding provider must be the same for all embeddings in the
 database.  It is necessary to create both of these providers, because some LLM
 functionality depends on having embeddings.
+
+The variable @code{ekg-llm-provider}, can be a single provider, similar to
+@code{ekg-embedding-provider}, or a list.  If it is a list, the first element will be
+used by default. However, when the user invokes @samp{ekg-llm-send-and-append-note} or
+@samp{ekg-llm-send-and-replace-note} with a prefix argument (normally via @samp{C-u M-x}), the
+user can select among the different providers.
 
 @menu
 * Augmenting notes with LLM output::
@@ -1493,10 +1506,10 @@ functionality depends on having embeddings.
 @subsection Augmenting notes with LLM output
 
 To send a note to an LLM and capture its response, call
-@samp{ekg-llm-send-and-append-note}, which is by default bound to @samp{[C-c .]}.  A
-prefix argument (@samp{[C-u C-c .]}) will let you edit the prompt before it is sent.
-The output from the LLM is appended at the end of the note, in a special
-section.
+@samp{ekg-llm-send-and-append-note}, which is by default bound to @samp{[C-c .]}.  A prefix
+argument (@samp{[C-u C-c .]}) will let you edit the prompt, temperature, and possibly
+the provider used before it is sent.  The output from the LLM is appended at the
+end of the note, in a special section.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM@.  The prompt consists of context about previous notes that contain the

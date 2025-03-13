@@ -76,6 +76,8 @@ triples library is already installed.
 ** Version 0.7.0
 - Added =ekg-show-notes-for-query= using =triples-fts=.
 - Speed up for LLM calls with notes as context
+- Support multiple values in =ekg-llm-providers= so that they can be chosen from.
+- Ensure SQL connection and schema for embedding calls.
 ** Version 0.6.4
 - Fix display of extended structured data in notes.
 - Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.
@@ -834,14 +836,15 @@ embedding.
 
 The embedding interfaces with your preferred LLM provider via the =llm= package.
 This package allows the user to define their preferred llm backends, which will
-be stored in ~ekg-llm-provider~.  Please see the [[https://github.com/ahyatt/llm][LLM module project page]] for a
-complete description on how to do this, but an example would be the following:
+be stored in ~ekg-embedding-provider~.  Please see the [[https://github.com/ahyatt/llm][LLM module project page]] for
+a complete description on how to do this, but an example would be the following:
 
 #+begin_src emacs-lisp
 (use-package ekg
   :init
   (require 'llm-openai)  ;; the specific LLM provider must be required
   (require 'ekg-embedding)
+  (require 'ekg-llm)
   (ekg-embedding-generate-on-save)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
@@ -1021,6 +1024,8 @@ description of how to do this, but an example would be the following:
 (use-package ekg
   :init
   (require 'llm-openai)  ;; the specific LLM provider must be required
+  (require 'ekg-llm)
+  (require 'ekg-embedding)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
@@ -1030,12 +1035,19 @@ The embedding and LLM providers can be different.  The LLM provider can change
 at will, while the embedding provider must be the same for all embeddings in the
 database.  It is necessary to create both of these providers, because some LLM
 functionality depends on having embeddings.
+
+The variable ~ekg-llm-provider~, can be a single provider, similar to
+~ekg-embedding-provider~, or a list.  If it is a list, the first element will be
+used by default. However, when the user invokes =ekg-llm-send-and-append-note= or
+=ekg-llm-send-and-replace-note= with a prefix argument (normally via =C-u M-x=), the
+user can select among the different providers.
+
 *** Augmenting notes with LLM output
 To send a note to an LLM and capture its response, call
-=ekg-llm-send-and-append-note=, which is by default bound to =[C-c .]=.  A
-prefix argument (=[C-u C-c .]=) will let you edit the prompt before it is sent.
-The output from the LLM is appended at the end of the note, in a special
-section.
+=ekg-llm-send-and-append-note=, which is by default bound to =[C-c .]=.  A prefix
+argument (=[C-u C-c .]=) will let you edit the prompt, temperature, and possibly
+the provider used before it is sent.  The output from the LLM is appended at the
+end of the note, in a special section.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM.  The prompt consists of context about previous notes that contain the

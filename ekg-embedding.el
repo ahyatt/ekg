@@ -90,6 +90,7 @@ If SUCCESS-CALLBACK is non-nil, call it after setting the value,
 with NOTE as the argument.
 
 If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
+  (ekg-embedding-connect)
   (llm-embedding-async
    ekg-embedding-provider
    (funcall ekg-embedding-text-selector
@@ -156,6 +157,7 @@ NOTE is the note to create an embedding for."
 
 (defun ekg-embedding-generate-for-note-tags (note)
   "Calculate and set the embedding for all the tags of NOTE."
+  (ekg-embedding-connect)
   (cl-loop for tag in (ekg-note-tags note) do
            (ekg-embedding-refresh-tag-embedding tag)))
 
