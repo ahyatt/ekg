@@ -2189,6 +2189,70 @@ If no corresponding URL is found, an error is thrown."
     (when (> (length subjects) 1) (warn "Multiple URLs with the same title exist: %s" title))
     (browse-url (car subjects))))
 
+;;;###autoload
+(defun ekg-search ()
+  "Search notes by text content with live updates.
+As you type, the list of matching notes is updated. Press RET to
+view the matching notes in the standard notes view."
+  (interactive)
+  (ekg-connect)
+  (let* ((minibuffer-setup-hook
+          (cons (lambda ()
+                  (add-hook 'post-command-hook #'ekg--search-update nil t))
+                minibuffer-setup-hook))
+         (query (read-string "Search notes: " nil 'ekg-search-history)))
+    (when (not (string-empty-p query))
+      (ekg-show-notes-with-search-results query))))
+
+(defun ekg--search-update ()
+  "Update the search results as the user types in the minibuffer."
+  (let* ((query (minibuffer-contents))
+         (results (when (not (string-empty-p query))
+                    (ekg--search-notes query))))
+    (with-current-buffer (get-buffer-create "*ekg search preview*")
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (when results
+          (insert (format "Matching notes for: %s\n\n" query))
+          (dolist (note results)
+            (insert (ekg--format-note-for-search note) "\n")))
+        (goto-char (point-min))
+        (setq buffer-read-only t))
+      (display-buffer (current-buffer)
+                      '((display-buffer-in-side-window)
+                        (side . bottom)
+                        (window-height . 10))))))
+
+(defun ekg--format-note-for-search (note)
+  "Format NOTE as a single line for search results preview."
+  (let* ((title (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
+         (tags (mapconcat #'identity (ekg-note-tags note) ", "))
+         (text-preview (string-trim (substring (ekg-note-text note) 0
+                                               (min (length (ekg-note-text note)) 50))))
+         (text-preview (replace-regexp-in-string "\n" " " text-preview)))
+    (format "%s %s [%s] %s%s"
+            (propertize (format "%s" (ekg-note-id note)) 'face 'font-lock-constant-face)
+            (if (string-empty-p title)
+                ""
+              (propertize (format "\"%s\"" title) 'face 'ekg-title))
+            (propertize tags 'face 'ekg-tag)
+            text-preview
+            (if (> (length (ekg-note-text note)) 50) "..." ""))))
+
+(defun ekg--search-notes (query)
+  "Find notes containing QUERY in their text content.
+Returns a list of matching notes."
+  (mapcar (lambda (result) (ekg-get-note-with-id (car result)))
+          (seq-union (triples-search ekg-db :text/text query)
+                     (triples-search ekg-db :titled/title query))))
+
+(defun ekg-show-notes-with-search-results (query)
+  "Show notes that match the search QUERY."
+  (ekg-setup-notes-buffer
+   (format "search: %s" query)
+   (lambda () (ekg--search-notes query))
+   nil))
+
 (defun ekg-date-tag-p (tag)
   "Return non-nil if TAG is a date tag."
   (let ((prefix "date/"))
