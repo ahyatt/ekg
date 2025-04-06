@@ -830,7 +830,8 @@ NUMWORDS and FORMAT are standard options, see
     (ekg-display--format (buffer-string) numwords format)))
 
 (defun ekg-display-note-tagged (note &optional numwords &rest format)
-  "Return text of the tags of NOTE."
+  "Return text of the tags of NOTE.
+NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
   (ekg-display--format
    (concat (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
                       (ekg-note-tags note) " ") "\n")
@@ -1885,7 +1886,7 @@ tags)."
              (sort (seq-copy tags) #'string<) ", "))
 
 (defun ekg-display-note (note template)
-  "Return TEMPLATE-formatted NOTE for display in a buffer."
+  "Return TEMPLATE formatted NOTE for display in a buffer."
   (ekg-connect)
   (let* ((ic (ekg-extract-inlines template))
          (template-types (mapcan (lambda (i)
@@ -2263,8 +2264,8 @@ If no corresponding URL is found, an error is thrown."
 
 ;;;###autoload
 (defun ekg-search ()
-  "Search notes by text content with live updates.
-As you type, the list of matching notes is updated. Press RET to
+  "Search notes by text content with live updating.
+As you type, the list of matching notes is updated.  Press RET to
 view the matching notes in the standard notes view."
   (interactive)
   (ekg-connect)
