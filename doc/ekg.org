@@ -631,7 +631,13 @@ to the user.  Each format function runs in turn on a temporary buffer with the
 note text in it, and can make whatever changes it needs to before the buffer's
 contents are displayed in a note list.
 * Searching for notes
-~ekg-search~ will perform an incrementally displaying list of notes where the text or title matches the query.  It is intended to be used as a quick way to find text.  After the notes have been narrow down to the extent you want, you can press the enter key to make a notes buffer out of the remaining items.
+There are a few different ways to search for notes, each with their own advantages and disadvantages.
+
+~ekg-search~ will perform an incrementally displaying list of notes where the text or title matches the query.  It is intended to be used as a quick way to find text.  After the notes have been narrow down to the extent you want, you can press the enter key to make a notes buffer out of the remaining items.  There is no ranking or any semantic sophistication here, it's a straight text match.
+
+~ekg-show-notes-for-query~ will display a notes buffer with entries matching the query, in order of relevance.  This searches for text and titles.  It has some sophistication due to the use of [[https://www.sqlite.org/fts5.html][SQLite's FTS5 extension]].  This should work essentially like a Google query, except it does not accept =AND=, =OR=, or any other search operators.  All terms are treated as required.
+
+In the optional =ekg-embedding= module, there is a third option: =ekg-embedding-search=, which displays a notes buffer similar to =ekg-show-notes-for-query=, but with everything ranked by semantic relevance according to their embeddings.  See the [[#embeddings][embeddings]] section for more details.
 * Magic tags
 :PROPERTIES:
 :CUSTOM_ID: magic-tags
@@ -816,6 +822,9 @@ The ekg module can have any number of functionality additions.  These may appear
 as other packages with other maintainers, but some are included as part of this
 package.
 ** Embeddings
+:PROPERTIES:
+:CUSTOM_ID: embeddings
+:END:
 The embeddings functionality, for integration with an LLM, can be turned on by
 requiring the ekg-embeddings file and enabling it, such as:
 
