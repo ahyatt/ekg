@@ -1,6 +1,6 @@
 ;;; ekg.el --- A system for recording and linking information -*- lexical-binding: t -*-
 
-;; Copyright (c) 2022-2024  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2022-2025  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
@@ -139,9 +139,20 @@ This follows normal templating rules, but it is most likely the
 user is interested in the various %n templates that correspond to
 the types that the note can have.  An exception is the %n(other)
 inline, which displays all other types that are displayable, but
-not in the template."
+not in the template.
+
+Most formatters can take a maximum number of words to output, and a
+format list, which is a list of desired output properties as symbols.
+Right now, this only has one possibility, `oneline', which signifies the
+results must be on one line only. For OTHER formatters, everything must
+be standardized to take just the number of words and output properties,
+which are applied to each non-standard property in turn."
   :type 'string
   :group 'ekg)
+
+(defcustom ekg-oneliner-note-template "%n(tagged 20 oneline) %n(titled 20 oneline) %n(text 40 oneline)"
+  "Template for displaying one-line notes in a note buffer.
+Otherwise the same format as `ekg-display-note-template'")
 
 (defcustom ekg-metadata-separator-text "--text follows this line--"
   "Separator between the metadata of the note and the note text."
@@ -769,10 +780,24 @@ However, if FORCE is non-nil, it will be shown regardless."
        'face 'ekg-resource)
     ""))
 
-(defun ekg-display-note-text (note &optional numwords)
+(defun ekg-display--format (text numwords format)
+  "Format TEXT, only displaying NUMWORDS.
+
+FORMAT is a list of formatting options.  See `ekg-display-note-template'
+for details."
+  (let ((unformatted (concat (string-trim-right
+                              (ekg-truncate-at text
+                                               (or numwords ekg-note-inline-max-words))) "\n")))
+    (dolist (f format)
+      (when (eq f 'oneline)
+        (setq unformatted (string-replace "\n" " " unformatted))))
+    unformatted))
+
+(defun ekg-display-note-text (note &optional numwords &rest format)
   "Return text, with mode-specific properties, of NOTE.
-NUMWORDS is the max number of words to display in the note, or
-nil for all words."
+
+NUMWORDS and FORMAT are standard options, see
+`ekg-display-note-template' for details."
   (with-temp-buffer
     (when (ekg-note-text note)
       (insert (ekg-insert-inlines-results
@@ -786,29 +811,38 @@ nil for all words."
     (mapc #'funcall ekg-format-funcs)
     (font-lock-ensure)
     (put-text-property (point-min) (point-max) 'ekg-note-id (ekg-note-id note))
-    (concat (string-trim-right
-             (ekg-truncate-at (buffer-string)
-                              (or numwords ekg-note-inline-max-words))) "\n")))
+    (ekg-display--format (buffer-string) numwords format)))
 
-(defun ekg-display-note-tagged (note)
+(defun ekg-display-note-tagged (note &optional numwords &rest format)
   "Return text of the tags of NOTE."
-  (concat (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
-                     (ekg-note-tags note) " ") "\n"))
+  (ekg-display--format
+   (concat (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
+                      (ekg-note-tags note) " ") "\n")
+   numwords format))
 
-(defun ekg-display-note-time-tracked (note &optional format-str)
+(defun ekg-display-note-time-tracked (note &optional format-str &rest format)
   "Return text of the times NOTE was created and modified.
-FORMAT-STR controls how the time is formatted."
-  (let ((format-str (or format-str "%Y-%m-%d")))
-    (format "Created: %s   Modified: %s\n"
-            (format-time-string format-str (ekg-note-creation-time note))
-            (format-time-string format-str (ekg-note-modified-time note)))))
 
-(defun ekg-display-note-titled (note)
-  "Return text of the title of NOTE."
-  (if-let (titles (plist-get (ekg-note-properties note) :titled/title))
-      (propertize (concat (mapconcat #'identity titles ", ") "\n")
-                  'face 'ekg-title)
-    ""))
+FORMAT-STR controls how the time is formatted.
+
+FORMAT is the list of
+desired output properties as described in `ekg-display-note-template'."
+  (let ((format-str (or format-str "%Y-%m-%d")))
+    (format "Created: %s   Modified: %s%s"
+            (format-time-string format-str (ekg-note-creation-time note))
+            (format-time-string format-str (ekg-note-modified-time note))
+            (if (member 'oneline format)
+                "" "\n"))))
+
+(defun ekg-display-note-titled (note &optional numwords &rest format)
+  "Return text of the title of NOTE.
+NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
+  (ekg-display--format (if-let (titles (plist-get (ekg-note-properties note)
+                                                  :titled/title))
+                           (propertize (concat (mapconcat #'identity titles ", ") "\n")
+                                       'face 'ekg-title)
+                         "")
+                       numwords format))
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID.
@@ -1831,10 +1865,10 @@ tags)."
   (mapconcat #'identity
              (sort (seq-copy tags) #'string<) ", "))
 
-(defun ekg-display-note (note)
-  "Return string form of NOTE for display in a buffer."
+(defun ekg-display-note (note template)
+  "Return TEMPLATE-formatted NOTE for display in a buffer."
   (ekg-connect)
-  (let* ((ic (ekg-extract-inlines ekg-display-note-template))
+  (let* ((ic (ekg-extract-inlines template))
          (template-types (mapcan (lambda (i)
                                    (when (eq 'note (ekg-inline-type i))
                                      (list (car (ekg-inline-command i)))))
@@ -1864,7 +1898,7 @@ tags)."
 
 (defun ekg-display-note-insert (note)
   "Insert the the display of NOTE into the buffer."
-  (insert (ekg-display-note note)))
+  (insert (ekg-display-note note ekg-display-note-template)))
 
 (defun ekg--note-highlight ()
   "In the buffer, highlight the current note."
@@ -2215,29 +2249,13 @@ view the matching notes in the standard notes view."
         (when results
           (insert (format "Matching notes for: %s\n\n" query))
           (dolist (note results)
-            (insert (ekg--format-note-for-search note) "\n")))
+            (insert (ekg-display-note note ekg-oneliner-note-template) "\n")))
         (goto-char (point-min))
         (setq buffer-read-only t))
       (display-buffer (current-buffer)
                       '((display-buffer-in-side-window)
                         (side . bottom)
                         (window-height . 10))))))
-
-(defun ekg--format-note-for-search (note)
-  "Format NOTE as a single line for search results preview."
-  (let* ((title (or (car (plist-get (ekg-note-properties note) :titled/title)) ""))
-         (tags (mapconcat #'identity (ekg-note-tags note) ", "))
-         (text-preview (string-trim (substring (ekg-note-text note) 0
-                                               (min (length (ekg-note-text note)) 50))))
-         (text-preview (replace-regexp-in-string "\n" " " text-preview)))
-    (format "%s %s [%s] %s%s"
-            (propertize (format "%s" (ekg-note-id note)) 'face 'font-lock-constant-face)
-            (if (string-empty-p title)
-                ""
-              (propertize (format "\"%s\"" title) 'face 'ekg-title))
-            (propertize tags 'face 'ekg-tag)
-            text-preview
-            (if (> (length (ekg-note-text note)) 50) "..." ""))))
 
 (defun ekg--search-notes (query)
   "Find notes containing QUERY in their text content.
