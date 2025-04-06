@@ -70,7 +70,10 @@ those other tags."
 (defconst ekg-llm-provider nil
   "The provider of the embedding.
 This is a struct representing a provider in the `llm' package.
-The type and contents of the struct vary by provider.")
+The type and contents of the struct vary by provider.
+
+It can also be a list of providers, in which case the first one is the
+default.")
 
 (defconst ekg-llm-trace-buffer "*ekg llm trace*"
   "Buffer to use for tracing the LLM interactions.")
@@ -160,7 +163,18 @@ ARG comes from the calling function's prefix arg."
                                    ;; instructions this way.
                                    (read-string "Prompt: " instructions-initial 'ekg-llm-prompt-history instructions-initial t)
                                  instructions-initial)))
-    (ekg-llm-send-and-use (ekg-llm-interaction-func interaction-type) instructions-for-use)))
+    (ekg-llm-send-and-use (ekg-llm-interaction-func interaction-type) instructions-for-use
+                          (if arg
+                              (read-number "Temperature: " 0.5)
+                            0.5)
+                          (when (and arg (listp ekg-llm-provider))
+                            (let ((provider-alist (mapcar (lambda (provider)
+                                                            (cons (llm-name provider)
+                                                                  provider))
+                                                          ekg-llm-provider)))
+                              (assoc-default (completing-read "Provider: "
+                                                              provider-alist
+                                                              nil t) provider-alist))))))
 
 (defun ekg-llm-send-and-append-note (&optional arg)
   "Send the note text to the LLM, appending the result.
@@ -242,8 +256,7 @@ structs."
   (let ((result `((tags . ,(ekg-note-tags note))
                   (created . ,(ekg-llm-format-time (ekg-note-creation-time note)))
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
-                  (text . ,(substring-no-properties (substring-no-properties
-                                                     (ekg-display-note-text note))))))
+                  (text . ,(substring-no-properties (ekg-display-note-text note nil t)))))
         (json-encoding-pretty-print t))
     (when (ekg-should-show-id-p note)
       (push (cons "id" (ekg-note-id note)) result))
@@ -262,28 +275,29 @@ structs."
     (dolist (note (ekg-get-notes-with-any-tags tags))
       (iter-yield (ekg-llm-note-to-text note)))))
 
-(defun ekg-llm-send-and-use (marker-func instructions &optional temperature)
+(defun ekg-llm-send-and-use (marker-func instructions &optional temperature provider)
   "Run the LLM and replace markers supplied by MARKER-FUNC.
 If PROMPT is nil, use `ekg-llm-default-prompt'.  TEMPERATURE is a
 float between 0 and 1, controlling the randomness and creativity
 of the response.  INSTRUCTIONS gives instructions for the
 LLM on what to generate, and will be used in the prompt."
-  (let ((prompt (make-llm-chat-prompt
-                 :temperature temperature
-                 :context (concat (ekg-llm-prompt-prelude) "\n"
-                                  (llm-prompt-fill
-                                   'ekg-llm-fill-prompt
-                                   ekg-llm-provider
-                                   :instructions instructions
-                                   :tags (mapconcat 'identity (ekg-note-tags ekg-note) ", ")
-                                   :tag-notes (ekg-llm-make-any-tag-generator (ekg-note-tags ekg-note))
-                                   :similar-notes (ekg-llm-make-similar-note-generator ekg-note)))
-                 :interactions (ekg-llm-note-interactions)))
-        (markers (funcall marker-func)))
+  (let* ((provider (or provider (ekg-llm--provider)))
+         (prompt (make-llm-chat-prompt
+                  :temperature temperature
+                  :context (concat (ekg-llm-prompt-prelude) "\n"
+                                   (llm-prompt-fill
+                                    'ekg-llm-fill-prompt
+                                    provider
+                                    :instructions instructions
+                                    :tags (mapconcat 'identity (ekg-note-tags ekg-note) ", ")
+                                    :tag-notes (ekg-llm-make-any-tag-generator (ekg-note-tags ekg-note))
+                                    :similar-notes (ekg-llm-make-similar-note-generator ekg-note)))
+                  :interactions (ekg-llm-note-interactions)))
+         (markers (funcall marker-func)))
     (delete-region (car markers) (cdr markers))
     (condition-case nil
         (llm-chat-streaming-to-point
-         ekg-llm-provider
+         provider
          prompt
          (marker-buffer (car markers))
          (marker-position (car markers))
@@ -332,6 +346,12 @@ newline."
                   (if modified (format "Modified: %s" (format-time-string "%Y-%m-%d" modified)) "")))
              ", "))))
 
+(defun ekg-llm--provider ()
+  "Return the provider for the LLM."
+  (if (listp ekg-llm-provider)
+      (car ekg-llm-provider)
+    ekg-llm-provider))
+
 (defun ekg-llm-query-with-notes (query)
   "Query the LLM with QUERY, including relevant notes in the prompt.
 The answer will appear in a new buffer"
@@ -344,10 +364,10 @@ The answer will appear in a new buffer"
                      query
                      :context
                      (llm-prompt-fill 'ekg-llm-note-query-prompt
-                                      ekg-llm-provider
+                                      (ekg-llm--provider)
                                       :notes (ekg-llm-make-similar-text-generator query)))))
         (condition-case nil
-            (llm-chat-streaming ekg-llm-provider
+            (llm-chat-streaming (ekg-llm--provider)
                                 prompt
                                 (lambda (text)
                                   (with-current-buffer buf
@@ -359,7 +379,7 @@ The answer will appear in a new buffer"
                                     (insert text)))
                                 (lambda (_ msg)
                                   (error "Could not call LLM: %s" msg)))
-          (not-implemented (llm-chat ekg-llm-provider prompt)))))
+          (not-implemented (llm-chat (ekg-llm--provider) prompt)))))
     (pop-to-buffer buf)))
 
 (provide 'ekg-llm)

@@ -176,6 +176,7 @@ Global commands, can be run everywhere, and most should be bound to useful keybi
 | =ekg-show-notes-with-tag=        | Open a buffer for notes matching the single tag given                     |
 | =ekg-show-notes-with-any-tags=   | Open a buffer for notes matching any of the given tags                    |
 | =ekg-show-notes-with-all-tags=   | Open a buffer for notes matching all of the given tags                    |
+| ekg-show-notes-for-query       | Open a buffer for notes with text matching query                          |
 | =ekg-show-notes-with-tag-prefix= | Open a buffer for notes matching any tag with a tag with the given prefix |
 | =ekg-show-notes-in-trash=        | Open a tag buffer that shows all notes in the trash                       |
 | =ekg-show-notes-in-drafts=       | Open a tag buffer that shows all draft notes (saved but not finalized)    |

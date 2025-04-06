@@ -234,6 +234,14 @@ triples library is already installed.
 Add incremental search with @samp{ekg-search}.
 @item
 Add formatting options for ekg note templates.
+@item
+Added @samp{ekg-show-notes-for-query} using @samp{triples-fts}.
+@item
+Speed up for LLM calls with notes as context
+@item
+Support multiple values in @samp{ekg-llm-providers} so that they can be chosen from.
+@item
+Ensure SQL connection and schema for embedding calls.
 @end itemize
 
 @node Version 064
@@ -913,7 +921,13 @@ substituted by @samp{%n(person)}.  However, if @samp{%n(person)} already appears
 command, it will not add it again in the @samp{other} command.
 @end itemize
 
-The formatting options can be left out, as can @samp{numwords}, for the default implementation.  However, if you want to control the formatting, there is a set of formatting options that exist.  That set is currently just one option: @samp{oneline}, which signifies the results must be on one line only.  To see an example of this in use, see @code{ekg-oneliner-note-template}.
+The formatting options can be left out, as can @samp{numwords}, for the default implementation.  However, if you want to control the formatting, there is a set of formatting options that exist.  That set is:
+@itemize
+@item
+@samp{oneline}, the results must be on one line only.  To see an example of this in use, see @code{ekg-oneliner-note-template}.
+@item
+@samp{plaintext}, the result must not have any string properties.
+@end itemize
 
 The @samp{%n(id <force>)} is implemented in @code{ekg-display-note-id}, @samp{%n(text
 <numwords>)} is implemented in @code{ekg-display-note-text}, and so on.  All these
@@ -945,6 +959,8 @@ This is a @samp{ekg-notes-mode} buffer.
 @samp{ekg-show-notes-with-any-tags} will show all notes that have any of the tags given.
 
 @samp{ekg-show-notes-with-all-tags} will show all notes that have all of the tags given.
+
+@samp{ekg-show-notes-for-query} will do a ranked text search, showing all results.  The query is token-based so querying for individual characters and syntax will not work; the query has to be words.  Prefixes such as "tag", "title" and "text" can be used to restrict matches to tags, titles and text respectively.  For example, the query "tag:apartment sink" will show any article with "sink" in it (it could be anywhere, even a tag), but it also has to have a tag with "apartment" in it.  Every term is ANDed together.  Use quotes if you want to quote a phrase such as "tag:\"apartment problems\" sink".  This does not search anything included via inline commands.  This is only possible for those using the built-in sqlite backend in Emacs 29.1 or later.
 
 @samp{ekg-show-notes-for-today} will show the notes taken today.
 
@@ -1282,14 +1298,15 @@ embedding.
 
 The embedding interfaces with your preferred LLM provider via the @samp{llm} package.
 This package allows the user to define their preferred llm backends, which will
-be stored in @code{ekg-llm-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for a
-complete description on how to do this, but an example would be the following:
+be stored in @code{ekg-embedding-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for
+a complete description on how to do this, but an example would be the following:
 
 @lisp
 (use-package ekg
   :init
   (require 'llm-openai)  ;; the specific LLM provider must be required
   (require 'ekg-embedding)
+  (require 'ekg-llm)
   (ekg-embedding-generate-on-save)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
@@ -1479,6 +1496,8 @@ description of how to do this, but an example would be the following:
 (use-package ekg
   :init
   (require 'llm-openai)  ;; the specific LLM provider must be required
+  (require 'ekg-llm)
+  (require 'ekg-embedding)
   (let ((my-provider (make-llm-openai :key "my-openai-api-key")))
     (setq ekg-llm-provider my-provider
           ekg-embedding-provider my-provider)))
@@ -1488,6 +1507,12 @@ The embedding and LLM providers can be different.  The LLM provider can change
 at will, while the embedding provider must be the same for all embeddings in the
 database.  It is necessary to create both of these providers, because some LLM
 functionality depends on having embeddings.
+
+The variable @code{ekg-llm-provider}, can be a single provider, similar to
+@code{ekg-embedding-provider}, or a list.  If it is a list, the first element will be
+used by default. However, when the user invokes @samp{ekg-llm-send-and-append-note} or
+@samp{ekg-llm-send-and-replace-note} with a prefix argument (normally via @samp{C-u M-x}), the
+user can select among the different providers.
 
 @menu
 * Augmenting notes with LLM output::
@@ -1499,10 +1524,10 @@ functionality depends on having embeddings.
 @subsection Augmenting notes with LLM output
 
 To send a note to an LLM and capture its response, call
-@samp{ekg-llm-send-and-append-note}, which is by default bound to @samp{[C-c .]}.  A
-prefix argument (@samp{[C-u C-c .]}) will let you edit the prompt before it is sent.
-The output from the LLM is appended at the end of the note, in a special
-section.
+@samp{ekg-llm-send-and-append-note}, which is by default bound to @samp{[C-c .]}.  A prefix
+argument (@samp{[C-u C-c .]}) will let you edit the prompt, temperature, and possibly
+the provider used before it is sent.  The output from the LLM is appended at the
+end of the note, in a special section.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM@.  The prompt consists of context about previous notes that contain the
