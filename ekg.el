@@ -169,6 +169,11 @@ Otherwise the same format as `ekg-display-note-template'")
   :type 'boolean
   :group 'ekg)
 
+(defcustom ekg-search-max-results 20
+  "Maximum number of results to show in the `ekg-search' preview."
+  :type 'integer
+  :group 'ekg)
+
 (defcustom ekg-confirm-on-buffer-kill nil
   "Non-nil if the user should confirm before killing a note buffer.
 The affects killing both the capture and edit buffer, only when
@@ -2242,7 +2247,7 @@ view the matching notes in the standard notes view."
   "Update the search results as the user types in the minibuffer."
   (let* ((query (minibuffer-contents))
          (results (when (not (string-empty-p query))
-                    (ekg--search-notes query))))
+                    (ekg--search-notes query ekg-search-max-results))))
     (with-current-buffer (get-buffer-create "*ekg search preview*")
       (let ((inhibit-read-only t))
         (erase-buffer)
@@ -2250,6 +2255,8 @@ view the matching notes in the standard notes view."
           (insert (format "Matching notes for: %s\n\n" query))
           (dolist (note results)
             (insert (ekg-display-note note ekg-oneliner-note-template) "\n")))
+        (when (> (length results) ekg-search-max-results)
+          (insert (format "\n...and %d more matches." (- (length results) ekg-search-max-results))))
         (goto-char (point-min))
         (setq buffer-read-only t))
       (display-buffer (current-buffer)
@@ -2257,12 +2264,12 @@ view the matching notes in the standard notes view."
                         (side . bottom)
                         (window-height . 10))))))
 
-(defun ekg--search-notes (query)
+(defun ekg--search-notes (query &optional limit)
   "Find notes containing QUERY in their text content.
-Returns a list of matching notes."
+Returns a list of matching notes, up to LIMIT if provided."
   (mapcar (lambda (result) (ekg-get-note-with-id (car result)))
-          (seq-union (triples-search ekg-db :text/text query)
-                     (triples-search ekg-db :titled/title query))))
+          (seq-union (triples-search ekg-db :text/text query limit)
+                     (triples-search ekg-db :titled/title query limit))))
 
 (defun ekg-show-notes-with-search-results (query)
   "Show notes that match the search QUERY."
