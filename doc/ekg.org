@@ -73,6 +73,9 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.7.0
+- Add incremental search with =ekg-search=.
+- Add formatting options for ekg note templates.
 ** Version 0.6.4
 - Fix display of extended structured data in notes.
 - Add contrib directory and =ekg-email= as a contribution to import emails to notes in a structured way.
@@ -501,19 +504,21 @@ following note commands exist:
   mainly means it isn't a random-seeming ID that we normally generate for notes,
   and is instead some sort of resource.  If =force= is true, then show it
   whether it is interesting or not.
-- =%n(text <numwords>)=: The text of a note (with any inline commands calculated
-  and their results displayed inline).  =numwords= functions as noted above.
-- =%n(tagged)=: The tags of a note.
-- =%n(time-tracked <format-str>)=: The created and modified time of a note.
+- =%n(text <numwords> <format1> <format2> ... <formatn>)=: The text of a note (with any inline commands calculated
+  and their results displayed inline).  =numwords= functions as noted above.  The =format= options are an optional set of formatting symbols which control how the text is formatted.  See below for details.
+- =%n(tagged <numwords> <format1> <format2> ... <formatn>)=: The tags of a note.
+- =%n(time-tracked <format-str> <format1> <format2> ... <formatn>)=: The created and modified time of a note.
   =format-str=, if passed, controls how the times are formatted (see
   documentation for ~format-time-string~, default is ~%Y-%m-%d~).
-- =%n(titled)=: The title of a note.
+- =%n(titled <numwords> <format1> <format2> ... <formatn>)=: The title of a note.
 - =%n(other)=: A special note command that will substitute itself with all
   type-relevant note commands that haven't already appeared.  So, for example,
   if there is a type such as =person=, and a note has information with this
   type, that information will be shown in the =other= command, as if it was
   substituted by =%n(person)=.  However, if =%n(person)= already appears as a
   command, it will not add it again in the =other= command.
+
+The formatting options can be left out, as can =numwords=, for the default implementation.  However, if you want to control the formatting, there is a set of formatting options that exist.  That set is currently just one option: =oneline=, which signifies the results must be on one line only.  To see an example of this in use, see ~ekg-oneliner-note-template~.
 
 The =%n(id <force>)= is implemented in ~ekg-display-note-id~, =%n(text
 <numwords>)= is implemented in ~ekg-display-note-text~, and so on.  All these
@@ -617,6 +622,8 @@ The variable ~ekg-format-funcs~ has functions to run to format what ekg displays
 to the user.  Each format function runs in turn on a temporary buffer with the
 note text in it, and can make whatever changes it needs to before the buffer's
 contents are displayed in a note list.
+* Searching for notes
+~ekg-search~ will perform an incrementally displaying list of notes where the text or title matches the query.  It is intended to be used as a quick way to find text.  After the notes have been narrow down to the extent you want, you can press the enter key to make a notes buffer out of the remaining items.
 * Magic tags
 :PROPERTIES:
 :CUSTOM_ID: magic-tags
