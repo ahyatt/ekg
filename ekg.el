@@ -819,7 +819,7 @@ NUMWORDS and FORMAT are standard options, see
                (ekg-note-text note)
                (ekg-note-inlines note)
                note)))
-    (when (and (not plaintext) (ekg-note-mode note))
+    (when (and (not 'plaintext) (ekg-note-mode note))
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
           (funcall (ekg-note-mode note)))))
