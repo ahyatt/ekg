@@ -290,7 +290,7 @@
                (setf (ekg-note-modified-time note) 1682139975)
                (setf (ekg-note-creation-time note) 1682053575)
                (should (string-equal "tag1 tag2\ntext\nTitle\nCreated: 2023-04-21   Modified: 2023-04-22\n"
-                                     (ekg-display-note note)))))
+                                     (ekg-display-note note ekg-display-note-template)))))
 
 (ert-deftest ekg-test-note-snippet ()
   (should (equal "" (ekg-note-snippet (ekg-note-create :text "" :mode 'text-mode :tags nil))))
