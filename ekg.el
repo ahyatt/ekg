@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.5.0") (emacs "28.1") (llm "0.18.0"))
+;; Package-Requires: ((triples "0.5.1") (emacs "28.1") (llm "0.18.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.7.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -2301,9 +2301,12 @@ view the matching notes in the standard notes view."
 (defun ekg--search-notes (query &optional limit)
   "Find notes containing QUERY in their text content.
 Returns a list of matching notes, up to LIMIT if provided."
-  (mapcar (lambda (result) (ekg-get-note-with-id (car result)))
-          (seq-union (triples-search ekg-db :text/text query limit)
-                     (triples-search ekg-db :titled/title query limit))))
+  (let ((plainquery (substring-no-properties query))
+        (limit (or limit ekg-search-max-results)))
+    (ekg-connect)
+    (mapcar (lambda (result) (ekg-get-note-with-id (car result)))
+            (seq-union (triples-search ekg-db :text/text plainquery limit)
+                       (triples-search ekg-db :titled/title plainquery limit)))))
 
 (defun ekg-show-notes-with-search-results (query)
   "Show notes that match the search QUERY."
