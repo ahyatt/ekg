@@ -2304,9 +2304,11 @@ Returns a list of matching notes, up to LIMIT if provided."
   (let ((plainquery (substring-no-properties query))
         (limit (or limit ekg-search-max-results)))
     (ekg-connect)
-    (mapcar (lambda (result) (ekg-get-note-with-id (car result)))
-            (seq-union (triples-search ekg-db :text/text plainquery limit)
-                       (triples-search ekg-db :titled/title plainquery limit)))))
+    (mapcar #'ekg-get-note-with-id
+            (seq-difference
+             (mapcar #'car (seq-union (triples-search ekg-db :text/text plainquery limit)
+                                      (triples-search ekg-db :titled/title plainquery limit)))
+             (ekg-inactive-note-ids)))))
 
 (defun ekg-show-notes-with-search-results (query)
   "Show notes that match the search QUERY."

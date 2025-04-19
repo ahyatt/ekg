@@ -73,6 +73,8 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.7.1
+- Don't show inactive notes with =ekg-search=.
 ** Version 0.7.0
 - Add incremental search with =ekg-search=.
 - Add formatting options for ekg note templates.
