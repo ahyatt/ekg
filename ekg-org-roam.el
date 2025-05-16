@@ -19,16 +19,16 @@
 ;;
 ;; These utilities provide a method for handling the import and (eventually) the
 ;; export of data from org-roam into ekg.
-
-(require 'ekg)
-(require 'triples)
-(require 'org nil t)
-(require 'org-roam nil t)
-(require 'org-roam-db nil t)
-(require 'org-roam-utils nil t)
-(require 'org-roam-dailies nil t)
-(require 'rx)
-(require 'url-handlers)
+(eval-and-compile
+  (require 'ekg)
+  (require 'triples)
+  (require 'org nil t)
+  (require 'org-roam nil t)
+  (require 'org-roam-db nil t)
+  (require 'org-roam-utils nil t)
+  (require 'org-roam-dailies nil t)
+  (require 'rx)
+  (require 'url-handlers))
 
 ;;; Code:
 
