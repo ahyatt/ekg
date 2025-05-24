@@ -73,6 +73,8 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.7.2
+- Add =ekg-truncation-method= variable to control how truncation happens.
 ** Version 0.7.1
 - Don't show inactive notes with =ekg-search=.
 ** Version 0.7.0
@@ -782,23 +784,37 @@ tags added to a new note, or tags added after completing a new tag in the note's
 property list.
 
 ** Text Truncation Method
-EKG provides a way to customize how text is truncated for display (e.g., in note lists or inline transclusions) and for generating embeddings. This is controlled by the `ekg-truncation-method` variable.
+EKG provides a way to customize how text is truncated for display (e.g., in note
+lists or inline transclusions) and for generating embeddings. This is controlled
+by the `ekg-truncation-method` variable.
 
 You can set `ekg-truncation-method` to one of the following values:
-- `'word` (default): Text is truncated based on word counts. This is suitable for languages that use spaces to separate words.
-- `'character`: Text is truncated based on character counts. This method is recommended for Asian languages (such as Chinese, Japanese, Korean) that do not rely on spaces for word segmentation.
+- `'word` (default): Text is truncated based on word counts. This is suitable
+  for languages that use spaces to separate words.
+- `'character`: Text is truncated based on character counts. This method is
+  recommended for Asian languages (such as Chinese, Japanese, Korean) that do
+  not rely on spaces for word segmentation.
 
 When `ekg-truncation-method` is set to `'character'`:
-- Functions like `ekg-truncate-at` will interpret their numerical argument (e.g., `numwords` or `num`) as a character limit.
-- Numbers used in display templates (e.g., `%n(text 500)`) will refer to character limits.
-- The `ekg-embedding-text-selector-initial` function (used by the =ekg-embedding= module) will select text for embeddings based on a character limit.
+- Functions like `ekg-truncate-at` will interpret their numerical argument
+  (e.g., `numwords` or `num`) as a character limit.
+- Numbers used in display templates (e.g., `%n(text 500)`) will refer to
+  character limits.
+- The `ekg-embedding-text-selector-initial` function (used by the =ekg-embedding=
+  module) will select text for embeddings based on a character limit.
 
-Users working with Asian languages, or those who prefer character-based limits for other reasons, should set `ekg-truncation-method` in their Emacs configuration:
+Users working with Asian languages, or those who prefer character-based limits
+for other reasons, should set `ekg-truncation-method` in their Emacs
+configuration:
 #+begin_src emacs-lisp
 (setq ekg-truncation-method 'character)
 #+end_src
 
-Be mindful that if you switch to `'character'` mode, numerical limits you might have previously set for word counts (e.g., in `ekg-display-note-template` or `ekg-note-inline-max-words`) will now be interpreted as character counts. This might require adjusting those numbers to achieve your desired display length. For example, a limit of 500 words is very different from 500 characters.
+Be mindful that if you switch to `'character'` mode, numerical limits you might
+have previously set for word counts (e.g., in `ekg-display-note-template` or
+`ekg-note-inline-max-words`) will now be interpreted as character counts. This
+might require adjusting those numbers to achieve your desired display
+length. For example, a limit of 500 words is very different from 500 characters.
 * Integration with ekg
 The ekg package is designed to be easy to integrate with.  For example, if you
 want to create a note automatically in one of your functions, you can write:
