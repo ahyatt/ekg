@@ -447,7 +447,7 @@
   (let ((ekg-truncation-method 'word)
         (english-text "This is a sample English text for testing truncation.")
         (chinese-text "这是一段用于测试截断的示例文本"))
-    (should (string= (ekg-truncate-at text 4) "This is a sample…"))
+    (should (string= (ekg-truncate-at english-text 4) "This is a sample…"))
     (should (string= (ekg-truncate-at english-text 9) english-text))
     (should (string= (ekg-truncate-at english-text 10) english-text))
     ;; forward-word treats the entire chinese-text as one word if no spaces
