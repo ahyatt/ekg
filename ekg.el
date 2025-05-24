@@ -134,6 +134,16 @@ take longer, as more processing will be run on it."
   :type 'integer
   :group 'ekg)
 
+(defcustom ekg-truncation-method 'word
+  "Method used for truncating text.
+Possible values are:
+- 'word: Truncate text based on word count (default).
+- 'character: Truncate text based on character count.
+This affects functions like `ekg-truncate-at` and text selection for embeddings."
+  :type '(choice (const :tag "Word-based" 'word)
+                 (const :tag "Character-based" 'character))
+  :group 'ekg)
+
 (defcustom ekg-display-note-template "%n(id)%n(tagged)%n(titled)%n(text 500)%n(other)"
   "Template for displaying notes in notes buffers.
 This follows normal templating rules, but it is most likely the
@@ -675,19 +685,32 @@ or, if unknown, `ekg-inline'."
              (setq newtext (replace-match "" nil nil newtext 1))))
     (cons newtext (nreverse inlines))))
 
-(defun ekg-truncate-at (s numwords)
-  "Return S with ellipses after NUMWORDS words.
-If NUMWORDS is greater than the number of words of S, return S
+(defun ekg-truncate-at (s num)
+  "Return S truncated, with ellipses.
+Truncation method depends on `ekg-truncation-method`.
+If `ekg-truncation-method` is 'word, NUM is the number of words.
+If `ekg-truncation-method` is 'character, NUM is the number of characters.
+If NUM is greater than the number of words/characters of S, return S
 unchanged."
   (with-temp-buffer
     (insert s)
-    (goto-char 0)
-    (cl-loop with i = 0 while (and (< i numwords)
-                                   (forward-word))
-             do (cl-incf i))
-    (when (< (point) (point-max))
-      (insert "…")
-      (delete-region (point) (point-max)))
+    (goto-char (point-min)) ; Changed from 0 to (point-min) for clarity
+    (cond
+     ((eq ekg-truncation-method 'word)
+      (cl-loop with i = 0 while (and (< i num)
+                                     (skip-syntax-forward "w")
+                                     (skip-syntax-forward "._-"))
+               do (cl-incf i))
+      ;; Move back to the end of the last word/character
+      (skip-syntax-backward "-"))
+     ((eq ekg-truncation-method 'character)
+      (goto-char (min (point-max) (+ (point-min) num)))))
+    (when (< (point) (save-excursion
+                       (goto-char (point-max))
+                       (skip-syntax-backward "-")
+                       (point)))
+      (insert "…"))
+    (delete-region (point) (point-max))
     (buffer-string)))
 
 

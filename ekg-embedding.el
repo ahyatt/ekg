@@ -294,21 +294,39 @@ closer it is to 1, the more similar it is."
 (defun ekg-embedding-text-selector-initial (text)
   "Return the TEXT to use for generating embeddings.
 This is shortened to abide by token limits, using a conservative
-approach, since it is difficult to predict the number of tokens
-exactly."
+approach.  The truncation method depends on `ekg-truncation-method`
+defined in `ekg.el`."
   (with-temp-buffer
     (insert text)
     (goto-char (point-min))
-    ;; The target number of words we want is 8191 (the open AI limit is 8192),
-    ;; divided by a factor of 1.5 to be conservative, since one word can be
-    ;; multiple tokens.
-    (let ((target-num-words (floor (/ 8191 1.5)))
-          (num-words 0))
-      (while (and (< num-words target-num-words)
-                  (not (eobp)))
-        (forward-word)
-        (cl-incf num-words))
-      (buffer-substring-no-properties (point-min) (point)))))
+    (cond
+     ((eq ekg-truncation-method 'word)
+      ;; The target number of words we want is 8191 (the open AI limit is 8192),
+      ;; divided by a factor of 1.5 to be conservative, since one word can be
+      ;; multiple tokens.
+      (let ((target-num-words (floor (/ 8191 1.5)))
+            (num-words 0))
+        (while (and (< num-words target-num-words)
+                    (not (eobp)))
+          (forward-word 1) ; Ensure forward-word moves by 1 word
+          (cl-incf num-words))
+        (buffer-substring-no-properties (point-min) (point))))
+     ((eq ekg-truncation-method 'character)
+      ;; For character-based selection, we'll use a direct character limit.
+      ;; Assuming a conservative 1 character per token for CJK languages,
+      ;; or a general heuristic. This might need further refinement or
+      ;; a separate configurable variable in the future.
+      ;; Let's use 8191 / 1.0 for now as a starting point.
+      (let ((target-num-chars (floor (/ 8191 1.0))))
+        (buffer-substring-no-properties (point-min) (min (point-max) (+ (point-min) target-num-chars)))))
+     (t ; Default to word-based if ekg-truncation-method is somehow not set or invalid
+      (let ((target-num-words (floor (/ 8191 1.5)))
+            (num-words 0))
+        (while (and (< num-words target-num-words)
+                    (not (eobp)))
+          (forward-word 1)
+          (cl-incf num-words))
+        (buffer-substring-no-properties (point-min) (point)))))))
 
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."

@@ -22,11 +22,16 @@
 
 ;;; Code:
 (require 'ekg)
+(require 'ekg-embedding)
 (require 'ert)
 (require 'ert-x)
 (require 'org)
 (require 'markdown-mode)
 (require 'ekg-test-utils)
+
+(defun ekg-test-count-words-in-string (text)
+  "Counts words in the given TEXT string using forward-word in a temp buffer."
+  (length (string-split text)))
 
 (ekg-deftest ekg-test-note-lifecycle ()
              (let ((note (ekg-note-create :text "Test text" :mode 'text-mode :tags '("tag1" "tag2"))))
@@ -437,6 +442,68 @@
     (ekg--convert-inline-tags-to-links note)
     (should (equal (ekg-note-text note) "foo #[[ekg-tag:🦜][🦜]]"))))
 
-(provide 'ekg-test)
+(ert-deftest test-ekg-truncate-at-word ()
+  "Test ekg-truncate-at with word-based truncation."
+  (let ((ekg-truncation-method 'word)
+        (english-text "This is a sample English text for testing truncation.")
+        (chinese-text "这是一段用于测试截断的示例文本"))
+    (should (string= (ekg-truncate-at english-text 4) "This is a sample…"))
+    (should (string= (ekg-truncate-at english-text 9) english-text))
+    (should (string= (ekg-truncate-at english-text 10) english-text))
+    ;; forward-word treats the entire chinese-text as one word if no spaces
+    (should (string= (ekg-truncate-at chinese-text 1) chinese-text))
+    (should (string= (ekg-truncate-at chinese-text 0) "…"))))
 
+(ert-deftest test-ekg-truncate-at-character ()
+  "Test ekg-truncate-at with character-based truncation."
+  (let ((ekg-truncation-method 'character)
+        (english-text "This is a sample English text for testing truncation.")
+        (chinese-text "这是一段用于测试截断的示例文本"))
+    (should (string= (ekg-truncate-at english-text 10) "This is a …"))
+    (should (string= (ekg-truncate-at english-text 54) english-text))
+    (should (string= (ekg-truncate-at english-text 53) english-text))
+    (should (string= (ekg-truncate-at chinese-text 5) "这是一段用…"))
+    (should (string= (ekg-truncate-at chinese-text 15) chinese-text))
+    (should (string= (ekg-truncate-at chinese-text 20) chinese-text))))
+
+(ert-deftest test-ekg-embedding-text-selector-initial ()
+  "Test ekg-embedding-text-selector-initial with both truncation methods."
+  (let ((short-english "Short English.") ;; 2 words, 15 chars
+        (short-chinese "简短中文测试")      ;; 4 chars (effectively 4 words for char mode, 1 for word mode)
+        ;; Target words for embedding: floor(8191/1.5) = 5460
+        ;; Target chars for embedding: floor(8191/1.0) = 8191
+        (long-english (apply #'concat (make-list 3000 "word "))) ;; 3000 words
+        (long-chinese (make-string 7000 ?中)))               ;; 7000 chars
+
+    ;; Test word-based selection
+    (setq ekg-truncation-method 'word)
+    (should (string= (ekg-embedding-text-selector-initial short-english) short-english))
+    (should (string= (ekg-embedding-text-selector-initial short-chinese) short-chinese)) ;; treated as 1 word
+    (should (string= (ekg-embedding-text-selector-initial long-english) long-english)) ;; 3000 words < 5460 words
+
+    ;; Test character-based selection
+    (setq ekg-truncation-method 'character)
+    (should (string= (ekg-embedding-text-selector-initial short-english) short-english))
+    (should (string= (ekg-embedding-text-selector-initial short-chinese) short-chinese))
+    (should (string= (ekg-embedding-text-selector-initial long-chinese) long-chinese)) ;; 7000 chars < 8191 chars
+
+    ;; Test actual truncation for embeddings by exceeding limits
+    (let ((very-long-chinese (make-string 9000 ?测))) ;; 9000 chars > 8191 chars
+      (setq ekg-truncation-method 'character)
+      (let ((selected-text (ekg-embedding-text-selector-initial very-long-chinese)))
+        ;; Check that it's truncated, and also that it's truncated to the target char count
+        (should (< (length selected-text) (length very-long-chinese)))
+        (should (= (length selected-text) 8191))))
+
+    (let ((very-long-english (apply #'concat (make-list 6000 "word ")))) ;; 6000 words > 5460 words
+      (setq ekg-truncation-method 'word)
+      (let ((selected-text (ekg-embedding-text-selector-initial very-long-english)))
+        (should (< (ekg-test-count-words-in-string selected-text) 6000))
+        ;; This assertion might be tricky due to how forward-word handles end of buffer
+        ;; and potential addition of "..." if that's part of the selector's behavior.
+        ;; The selector itself doesn't add "...", it just substrings.
+        ;; The primary check is that fewer words are returned than originally present.
+        (should (= (ekg-test-count-words-in-string selected-text) 5460))))))
+
+(provide 'ekg-test)
 ;;; ekg-test.el ends here
