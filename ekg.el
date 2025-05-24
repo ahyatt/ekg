@@ -698,13 +698,19 @@ unchanged."
     (cond
      ((eq ekg-truncation-method 'word)
       (cl-loop with i = 0 while (and (< i num)
-                                     (forward-word 1))
-               do (cl-incf i)))
+                                     (skip-syntax-forward "w")
+                                     (skip-syntax-forward "._-"))
+               do (cl-incf i))
+      ;; Move back to the end of the last word/character
+      (skip-syntax-backward "-"))
      ((eq ekg-truncation-method 'character)
       (goto-char (min (point-max) (+ (point-min) num)))))
-    (when (< (point) (point-max))
-      (insert "…")
-      (delete-region (point) (point-max)))
+    (when (< (point) (save-excursion
+                       (goto-char (point-max))
+                       (skip-syntax-backward "-")
+                       (point)))
+      (insert "…"))
+    (delete-region (point) (point-max))
     (buffer-string)))
 
 

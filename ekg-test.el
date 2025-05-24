@@ -31,21 +31,7 @@
 
 (defun ekg-test-count-words-in-string (text)
   "Counts words in the given TEXT string using forward-word in a temp buffer."
-  (with-temp-buffer
-    (insert text)
-    (goto-char (point-min))
-    (let ((num-words 0))
-      ;; If buffer is empty or only whitespace, forward-word might error or loop.
-      ;; Add a check for actual content.
-      (unless (string-match-p "^\s-*$" (buffer-string))
-        (while (not (eobp))
-          ;; Check if forward-word actually moved. If not, break to avoid infinite loop.
-          (let ((start-pos (point)))
-            (forward-word 1)
-            (cl-incf num-words)
-            (if (eq (point) start-pos) (cl-return)) ; Break if stuck
-            (when (eobp) (cl-return)))))
-      num-words)))
+  (length (string-split text)))
 
 (ekg-deftest ekg-test-note-lifecycle ()
              (let ((note (ekg-note-create :text "Test text" :mode 'text-mode :tags '("tag1" "tag2"))))
@@ -461,10 +447,10 @@
   (let ((ekg-truncation-method 'word)
         (english-text "This is a sample English text for testing truncation.")
         (chinese-text "这是一段用于测试截断的示例文本"))
-    (should (string= (ekg-truncate-at english-text 4) "This is a sample…"))
+    (should (string= (ekg-truncate-at text 4) "This is a sample…"))
     (should (string= (ekg-truncate-at english-text 9) english-text))
     (should (string= (ekg-truncate-at english-text 10) english-text))
-    ;; forward-word treats the entire chinese_text as one word if no spaces
+    ;; forward-word treats the entire chinese-text as one word if no spaces
     (should (string= (ekg-truncate-at chinese-text 1) chinese-text))
     (should (string= (ekg-truncate-at chinese-text 0) "…"))))
 
@@ -487,7 +473,7 @@
         ;; Target words for embedding: floor(8191/1.5) = 5460
         ;; Target chars for embedding: floor(8191/1.0) = 8191
         (long-english (apply #'concat (make-list 3000 "word "))) ;; 3000 words
-        (long-chinese (make-string 7000 '(?中))))               ;; 7000 chars
+        (long-chinese (make-string 7000 ?中)))               ;; 7000 chars
 
     ;; Test word-based selection
     (setq ekg-truncation-method 'word)
@@ -502,7 +488,7 @@
     (should (string= (ekg-embedding-text-selector-initial long-chinese) long-chinese)) ;; 7000 chars < 8191 chars
 
     ;; Test actual truncation for embeddings by exceeding limits
-    (let ((very-long-chinese (make-string 9000 '(?测)))) ;; 9000 chars > 8191 chars
+    (let ((very-long-chinese (make-string 9000 ?测))) ;; 9000 chars > 8191 chars
       (setq ekg-truncation-method 'character)
       (let ((selected-text (ekg-embedding-text-selector-initial very-long-chinese)))
         ;; Check that it's truncated, and also that it's truncated to the target char count
