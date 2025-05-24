@@ -294,8 +294,8 @@ closer it is to 1, the more similar it is."
 (defun ekg-embedding-text-selector-initial (text)
   "Return the TEXT to use for generating embeddings.
 This is shortened to abide by token limits, using a conservative
-approach. The truncation method depends on `ekg-truncation-method`
-(defined in `ekg.el`)."
+approach.  The truncation method depends on `ekg-truncation-method`
+defined in `ekg.el`."
   (with-temp-buffer
     (insert text)
     (goto-char (point-min))
