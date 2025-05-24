@@ -698,7 +698,7 @@ unchanged."
     (cond
      ((eq ekg-truncation-method 'word)
       (cl-loop with i = 0 while (and (< i num)
-                                     (forward-word 1)) ; Ensure forward-word moves by 1 word
+                                     (forward-word 1))
                do (cl-incf i)))
      ((eq ekg-truncation-method 'character)
       (goto-char (min (point-max) (+ (point-min) num)))))

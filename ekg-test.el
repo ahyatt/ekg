@@ -44,8 +44,7 @@
             (forward-word 1)
             (cl-incf num-words)
             (if (eq (point) start-pos) (cl-return)) ; Break if stuck
-            (when (eobp) (cl-return)))
-            )))
+            (when (eobp) (cl-return)))))
       num-words)))
 
 (ekg-deftest ekg-test-note-lifecycle ()
@@ -457,8 +456,6 @@
     (ekg--convert-inline-tags-to-links note)
     (should (equal (ekg-note-text note) "foo #[[ekg-tag:🦜][🦜]]"))))
 
-(provide 'ekg-test)
-
 (ert-deftest test-ekg-truncate-at-word ()
   "Test ekg-truncate-at with word-based truncation."
   (let ((ekg-truncation-method 'word)
@@ -477,8 +474,8 @@
         (english-text "This is a sample English text for testing truncation.")
         (chinese-text "这是一段用于测试截断的示例文本"))
     (should (string= (ekg-truncate-at english-text 10) "This is a …"))
-    (should (string= (ekg-truncate-at english-text 46) english-text))
-    (should (string= (ekg-truncate-at english-text 50) english-text))
+    (should (string= (ekg-truncate-at english-text 54) english-text))
+    (should (string= (ekg-truncate-at english-text 53) english-text))
     (should (string= (ekg-truncate-at chinese-text 5) "这是一段用…"))
     (should (string= (ekg-truncate-at chinese-text 15) chinese-text))
     (should (string= (ekg-truncate-at chinese-text 20) chinese-text))))
@@ -513,14 +510,14 @@
         (should (= (length selected-text) 8191))))
 
     (let ((very-long-english (apply #'concat (make-list 6000 "word ")))) ;; 6000 words > 5460 words
-       (setq ekg-truncation-method 'word)
-       (let ((selected-text (ekg-embedding-text-selector-initial very-long-english)))
-         (should (< (ekg-test-count-words-in-string selected-text) 6000))
-         ;; This assertion might be tricky due to how forward-word handles end of buffer
-         ;; and potential addition of "..." if that's part of the selector's behavior.
-         ;; The selector itself doesn't add "...", it just substrings.
-         ;; The primary check is that fewer words are returned than originally present.
-         (should (= (ekg-test-count-words-in-string selected-text) 5460))))
-))
+      (setq ekg-truncation-method 'word)
+      (let ((selected-text (ekg-embedding-text-selector-initial very-long-english)))
+        (should (< (ekg-test-count-words-in-string selected-text) 6000))
+        ;; This assertion might be tricky due to how forward-word handles end of buffer
+        ;; and potential addition of "..." if that's part of the selector's behavior.
+        ;; The selector itself doesn't add "...", it just substrings.
+        ;; The primary check is that fewer words are returned than originally present.
+        (should (= (ekg-test-count-words-in-string selected-text) 5460))))))
 
+(provide 'ekg-test)
 ;;; ekg-test.el ends here
