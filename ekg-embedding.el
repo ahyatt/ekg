@@ -30,6 +30,7 @@
 
 (require 'ekg)
 (require 'llm)
+(require 'embed-db nil t)
 
 ;;; Code:
 
@@ -60,14 +61,24 @@ return the text to pass to the embedding API."
   "The provider of the embedding.
 This is a struct representing a provider in the `llm' package.")
 
+(defvar ekg-embedding-db-provider nil
+  "The embed-db provider for the `ekg-embedding' module.
+This is a CONS of an `embed-db-provider' and a `embed-db-collection'.
+If `nil', then we fallback to the default `ekg-db'.")
+
 (defun ekg-embedding-connect ()
   "Ensure the database is connected and ekg-embedding schema exists."
   (ekg-connect)
-  (ekg-embedding-add-schema))
+  (ekg-embedding-add-schema)
+  (when (and ekg-embedding-db-provider (not (embed-db-exists (car ekg-embedding-db-provider)
+                                                             (cdr ekg-embedding-db-provider))))
+    (embed-db-create (car ekg-embedding-db-provider)
+                     (cdr ekg-embedding-db-provider))))
 
 (defun ekg-embedding-add-schema ()
-  "Add the triples schema for storing embeddings."
-  (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector)))
+  "Add the triples schema for storing embeddings, if we are using the sqlite db."
+  (unless ekg-embedding-db-provider
+    (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector))))
 
 (defun ekg-embedding-average (embeddings)
   "Compute the average of all of EMBEDDINGS, a list.
@@ -80,6 +91,26 @@ same size.  There must be at least one embedding passed in."
     (cl-loop for i below (length v) do
              (aset v i (/ (aref v i) (length embeddings))))
     v))
+
+(defun ekg-embedding-id-to-embed-id (input)
+  "Hash the INPUT id to a uint64 id that will be maximally unique."
+  (let* ((string-input (format "%S" input))
+         ;; Get binary string of SHA256 digest
+         (hash-binary (secure-hash 'sha256 string-input nil nil t))
+         ;; Convert string to list of bytes (integers 0–255)
+         (hash-bytes (string-to-list hash-binary))
+         ;; Take first 8 bytes
+         (first-8-bytes (seq-subseq hash-bytes 0 8))
+         (uint64 0))
+    ;; Fold bytes into a single uint64 value
+    (dolist (byte first-8-bytes uint64)
+      (setq uint64 (+ (ash uint64 8) byte)))))
+
+(defun ekg-embedding--note-to-embed-item (note embedding)
+  "Convert NOTE to an embed-db item with EMBEDDING."
+  (make-embed-db-item :id (ekg-embedding-id-to-embed-id (ekg-note-id note))
+                      :payload `(:ekg-id ,(format "%S" (ekg-note-id note)))
+                      :vector embedding))
 
 (defun ekg-embedding-generate-for-note-async (note &optional success-callback error-callback)
   "Calculate and set the embedding for NOTE.
@@ -98,8 +129,8 @@ If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
              (ekg-display-note-text note)))
    (lambda (embedding)
      (ekg-connect)
-     (triples-set-type ekg-db (ekg-note-id note) 'embedding
-                       :embedding embedding)
+     (ekg-embedding-batch-store
+      (list (ekg-embedding--note-to-embed-item note embedding)))
      (when success-callback (funcall success-callback note)))
    (or error-callback
        (lambda (error-type msg)
@@ -121,6 +152,16 @@ wait for the embedding to return and be set."
       (lwarn 'ekg :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
              (ekg-note-id note) embedding))))
 
+(defun ekg-embedding-batch-store (items)
+  "Store a batch of ITEMS in the embedding database."
+  (if ekg-embedding-db-provider
+      (let ((provider (car ekg-embedding-db-provider))
+            (collection (cdr ekg-embedding-db-provider)))
+        (embed-db-upsert provider collection items))
+    (cl-loop for item in items do
+             (triples-set-type ekg-db (plist-get item :id) 'embedding
+                               :embedding (plist-get item :vector)))))
+
 (defun ekg-embedding-generate-batch-async (notes success-callback error-callback)
   "Generate embeddings for NOTES in a batch.
 SUCCESS-CALLBACK is called with the size of the batch after the batch is
@@ -138,9 +179,9 @@ ERROR-CALLBACK is called with error-type and message on errors."
        (ekg-connect)
        (cl-loop for note in notes
                 for embedding in embeddings
-                do (triples-set-type ekg-db (ekg-note-id note) 'embedding
-                                     :embedding embedding)
+                collect (ekg-embedding--note-to-embed-item note embedding) into items
                 finally
+                (ekg-embedding-batch-store items)
                 (when success-callback (funcall success-callback (length notes)))))
      error-callback)))
 
@@ -161,9 +202,10 @@ NOTE is the note to create an embedding for."
   (cl-loop for tag in (ekg-note-tags note) do
            (ekg-embedding-refresh-tag-embedding tag)))
 
+
 (defun ekg-embedding-note-get (note)
   "Get the already store embedding for NOTE."
-  (plist-get (ekg-note-properties note) :embedding/embedding))
+  (ekg-embedding-get (ekg-note-id note)))
 
 (defun ekg-embedding-valid-p (embedding)
   "Return non-nil if EMBEDDING is valid."
@@ -183,8 +225,7 @@ embeddings of notes with the given tag."
              (cl-loop for tagged in
                       (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
                       collect
-                      (let ((embedding (plist-get (triples-get-type ekg-db tagged 'embedding)
-                                                  :embedding)))
+                      (let ((embedding (ekg-embedding-get tagged)))
                         (unless (ekg-embedding-valid-p embedding)
                           (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
                           (let ((note (ekg-get-note-with-id tagged)))
@@ -198,7 +239,8 @@ embeddings of notes with the given tag."
         (let ((avg (ekg-embedding-average
                     (seq-filter #'ekg-embedding-valid-p embeddings))))
           (if (ekg-embedding-valid-p avg)
-              (triples-set-type ekg-db tag 'embedding :embedding avg)
+              (ekg-embedding-batch-store (ekg-embedding--note-to-embed-item
+                                          (ekg-get-note-with-id tag) avg))
             (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
     (error (message "ekg-embedding: error when trying to refresh tag %s: %S" tag err))))
 
@@ -220,8 +262,7 @@ printed when everything is finished."
          (to-generate
           (seq-filter (if arg #'identity (lambda (id)
                                            (not (ekg-embedding-valid-p
-                                                 (plist-get
-                                                  (triples-get-type ekg-db id 'embedding) :embedding)))))
+                                                 (ekg-embedding-get id)))))
                       (ekg-active-note-ids)))
          (notes-to-generate
           (seq-filter (lambda (note) (> (length (ekg-note-text note)) 0))
@@ -331,12 +372,19 @@ defined in `ekg.el`."
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."
   (ekg-embedding-connect)
-  (triples-remove-type ekg-db id 'embedding))
+  (if ekg-embedding-db-provider
+      (embed-db-delete (car ekg-embedding-db-provider)
+                       (cdr ekg-embedding-db-provider)
+                       (list (ekg-embedding-id-to-embed-id id)))
+    (triples-remove-type ekg-db id 'embedding)))
 
 (defun ekg-embedding-get (id)
   "Return the embedding of entity with ID.
 If there is no embedding, return nil."
-  (plist-get (triples-get-type ekg-db id 'embedding) :embedding))
+  (if ekg-embedding-db-provider
+      (embed-db-get (car ekg-embedding-db-provider)
+                    (cdr ekg-embedding-db-provider) (ekg-embedding-id-to-embed-id id))
+    (plist-get (triples-get-type ekg-db id 'embedding) :embedding)))
 
 (defun ekg-embedding-get-all-notes ()
   "Return an alist of id to embedding.
@@ -354,15 +402,23 @@ The results are in order of most similar to least similar."
 (defun ekg-embedding-n-most-similar-notes (e n)
   "From an embedding E, return a list of the N most similar ids.
 The results are in order of most similar to least similar."
-  (let* ((embeddings (ekg-embedding-get-all-notes)))
-    (setq embeddings
-          (sort
-           (mapcar (lambda (id-embedding)
-                     (cons (car id-embedding)
-                           (ekg-embedding-cosine-similarity e (cdr id-embedding))))
-                   embeddings)
-           (lambda (a b) (> (cdr a) (cdr b)))))
-    (mapcar #'car (cl-subseq embeddings 0 (min n (length embeddings))))))
+  (if ekg-embedding-db-provider
+      (let ((provider (car ekg-embedding-db-provider))
+            (collection (cdr ekg-embedding-db-provider)))
+        (mapcar
+         (lambda (item) (read (plist-get (embed-db-item-payload item) :ekg-id)))
+         (embed-db-search provider collection e n)))
+    ;; Fallback to the triples database if no embed-db-provider is set.
+    ;; This is less efficient, but works for smaller datasets.
+    (let* ((embeddings (ekg-embedding-get-all-notes)))
+      (setq embeddings
+            (sort
+             (mapcar (lambda (id-embedding)
+                       (cons (car id-embedding)
+                             (ekg-embedding-cosine-similarity e (cdr id-embedding))))
+                     embeddings)
+             (lambda (a b) (> (cdr a) (cdr b)))))
+      (mapcar #'car (cl-subseq embeddings 0 (min n (length embeddings)))))))
 
 (defun ekg-embedding-show-similar ()
   "Show similar notes to the current note in a new buffer."
