@@ -157,7 +157,7 @@ wait for the embedding to return and be set."
   (if ekg-embedding-db-provider
       (let ((provider (car ekg-embedding-db-provider))
             (collection (cdr ekg-embedding-db-provider)))
-        (embed-db-upsert provider collection items))
+        (embed-db-upsert-items provider collection items))
     (cl-loop for item in items do
              (triples-set-type ekg-db (plist-get item :id) 'embedding
                                :embedding (plist-get item :vector)))))
@@ -373,17 +373,17 @@ defined in `ekg.el`."
   "Delete embedding for ID."
   (ekg-embedding-connect)
   (if ekg-embedding-db-provider
-      (embed-db-delete (car ekg-embedding-db-provider)
-                       (cdr ekg-embedding-db-provider)
-                       (list (ekg-embedding-id-to-embed-id id)))
+      (embed-db-delete-items (car ekg-embedding-db-provider)
+                             (cdr ekg-embedding-db-provider)
+                             (list (ekg-embedding-id-to-embed-id id)))
     (triples-remove-type ekg-db id 'embedding)))
 
 (defun ekg-embedding-get (id)
   "Return the embedding of entity with ID.
 If there is no embedding, return nil."
   (if ekg-embedding-db-provider
-      (embed-db-get (car ekg-embedding-db-provider)
-                    (cdr ekg-embedding-db-provider) (ekg-embedding-id-to-embed-id id))
+      (embed-db-get-item (car ekg-embedding-db-provider)
+                         (cdr ekg-embedding-db-provider) (ekg-embedding-id-to-embed-id id))
     (plist-get (triples-get-type ekg-db id 'embedding) :embedding)))
 
 (defun ekg-embedding-get-all-notes ()
@@ -407,7 +407,7 @@ The results are in order of most similar to least similar."
             (collection (cdr ekg-embedding-db-provider)))
         (mapcar
          (lambda (item) (read (plist-get (embed-db-item-payload item) :ekg-id)))
-         (embed-db-search provider collection e n)))
+         (embed-db-search-by-vector provider collection e n)))
     ;; Fallback to the triples database if no embed-db-provider is set.
     ;; This is less efficient, but works for smaller datasets.
     (let* ((embeddings (ekg-embedding-get-all-notes)))
