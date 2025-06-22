@@ -1,6 +1,6 @@
 ;;; ekg-embeddings.el --- Create and use embeddings for ekg -*- lexical-binding: t -*-
 
-;; Copyright (c) 2023  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2023-2025  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
@@ -30,7 +30,7 @@
 
 (require 'ekg)
 (require 'llm)
-(require 'embed-db nil t)
+(require 'vecdb nil t)
 
 ;;; Code:
 
@@ -61,23 +61,23 @@ return the text to pass to the embedding API."
   "The provider of the embedding.
 This is a struct representing a provider in the `llm' package.")
 
-(defvar ekg-embedding-db-provider nil
-  "The embed-db provider for the `ekg-embedding' module.
-This is a CONS of an `embed-db-provider' and a `embed-db-collection'.
+(defvar ekg-vecdb-provider nil
+  "The vecdb provider for the `ekg-embedding' module.
+This is a CONS of an `vecdb-provider' and a `embed-db-collection'.
 If `nil', then we fallback to the default `ekg-db'.")
 
 (defun ekg-embedding-connect ()
   "Ensure the database is connected and ekg-embedding schema exists."
   (ekg-connect)
   (ekg-embedding-add-schema)
-  (when (and ekg-embedding-db-provider (not (embed-db-exists (car ekg-embedding-db-provider)
-                                                             (cdr ekg-embedding-db-provider))))
-    (embed-db-create (car ekg-embedding-db-provider)
-                     (cdr ekg-embedding-db-provider))))
+  (when (and ekg-vecdb-provider (not (vecdb-exists (car ekg-vecdb-provider)
+                                                   (cdr ekg-vecdb-provider))))
+    (vecdb-create (car ekg-vecdb-provider)
+                  (cdr ekg-vecdb-provider))))
 
 (defun ekg-embedding-add-schema ()
   "Add the triples schema for storing embeddings, if we are using the sqlite db."
-  (unless ekg-embedding-db-provider
+  (unless ekg-vecdb-provider
     (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector))))
 
 (defun ekg-embedding-average (embeddings)
@@ -107,10 +107,10 @@ same size.  There must be at least one embedding passed in."
       (setq uint64 (+ (ash uint64 8) byte)))))
 
 (defun ekg-embedding--note-to-embed-item (note embedding)
-  "Convert NOTE to an embed-db item with EMBEDDING."
-  (make-embed-db-item :id (ekg-embedding-id-to-embed-id (ekg-note-id note))
-                      :payload `(:ekg-id ,(format "%S" (ekg-note-id note)))
-                      :vector embedding))
+  "Convert NOTE to an vecdb item with EMBEDDING."
+  (make-vecdb-item :id (ekg-embedding-id-to-embed-id (ekg-note-id note))
+                   :payload `(:ekg-id ,(format "%S" (ekg-note-id note)))
+                   :vector embedding))
 
 (defun ekg-embedding-generate-for-note-async (note &optional success-callback error-callback)
   "Calculate and set the embedding for NOTE.
@@ -154,10 +154,10 @@ wait for the embedding to return and be set."
 
 (defun ekg-embedding-batch-store (items)
   "Store a batch of ITEMS in the embedding database."
-  (if ekg-embedding-db-provider
-      (let ((provider (car ekg-embedding-db-provider))
-            (collection (cdr ekg-embedding-db-provider)))
-        (embed-db-upsert-items provider collection items))
+  (if ekg-vecdb-provider
+      (let ((provider (car ekg-vecdb-provider))
+            (collection (cdr ekg-vecdb-provider)))
+        (vecdb-upsert-items provider collection items))
     (cl-loop for item in items do
              (triples-set-type ekg-db (plist-get item :id) 'embedding
                                :embedding (plist-get item :vector)))))
@@ -372,18 +372,18 @@ defined in `ekg.el`."
 (defun ekg-embedding-delete (id)
   "Delete embedding for ID."
   (ekg-embedding-connect)
-  (if ekg-embedding-db-provider
-      (embed-db-delete-items (car ekg-embedding-db-provider)
-                             (cdr ekg-embedding-db-provider)
-                             (list (ekg-embedding-id-to-embed-id id)))
+  (if ekg-vecdb-provider
+      (vecdb-delete-items (car ekg-vecdb-provider)
+                          (cdr ekg-vecdb-provider)
+                          (list (ekg-embedding-id-to-embed-id id)))
     (triples-remove-type ekg-db id 'embedding)))
 
 (defun ekg-embedding-get (id)
   "Return the embedding of entity with ID.
 If there is no embedding, return nil."
-  (if ekg-embedding-db-provider
-      (embed-db-get-item (car ekg-embedding-db-provider)
-                         (cdr ekg-embedding-db-provider) (ekg-embedding-id-to-embed-id id))
+  (if ekg-vecdb-provider
+      (vecdb-get-item (car ekg-vecdb-provider)
+                      (cdr ekg-vecdb-provider) (ekg-embedding-id-to-embed-id id))
     (plist-get (triples-get-type ekg-db id 'embedding) :embedding)))
 
 (defun ekg-embedding-get-all-notes ()
@@ -402,13 +402,13 @@ The results are in order of most similar to least similar."
 (defun ekg-embedding-n-most-similar-notes (e n)
   "From an embedding E, return a list of the N most similar ids.
 The results are in order of most similar to least similar."
-  (if ekg-embedding-db-provider
-      (let ((provider (car ekg-embedding-db-provider))
-            (collection (cdr ekg-embedding-db-provider)))
+  (if ekg-vecdb-provider
+      (let ((provider (car ekg-vecdb-provider))
+            (collection (cdr ekg-vecdb-provider)))
         (mapcar
-         (lambda (item) (read (plist-get (embed-db-item-payload item) :ekg-id)))
-         (embed-db-search-by-vector provider collection e n)))
-    ;; Fallback to the triples database if no embed-db-provider is set.
+         (lambda (item) (read (plist-get (vecdb-item-payload item) :ekg-id)))
+         (vecdb-search-by-vector provider collection e n)))
+    ;; Fallback to the triples database if no vecdb-provider is set.
     ;; This is less efficient, but works for smaller datasets.
     (let* ((embeddings (ekg-embedding-get-all-notes)))
       (setq embeddings
