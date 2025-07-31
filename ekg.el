@@ -690,7 +690,6 @@ unchanged."
       (delete-region (point) (point-max)))
     (buffer-string)))
 
-
 (defun ekg-insert-inlines-and-process (text inlines func)
   "Return the result of inserting INLINES into TEXT.
 FUNC is executed with the cdr of each inline command and its
@@ -819,7 +818,7 @@ NUMWORDS and FORMAT are standard options, see
                (ekg-note-text note)
                (ekg-note-inlines note)
                note)))
-    (when (and (not 'plaintext) (ekg-note-mode note))
+    (when (and (not (member 'plaintext format)) (ekg-note-mode note))
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
           (funcall (ekg-note-mode note)))))
