@@ -240,6 +240,8 @@ triples library is already installed.
 @itemize
 @item
 Add @samp{ekg-truncation-method} variable to control how truncation happens.
+@item
+Fix various truncation issues with quotes, underscores and all sorts of other symbols.
 @end itemize
 
 @node Version 071

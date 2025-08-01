@@ -452,7 +452,10 @@
     (should (string= (ekg-truncate-at english-text 10) english-text))
     ;; forward-word treats the entire chinese-text as one word if no spaces
     (should (string= (ekg-truncate-at chinese-text 1) chinese-text))
-    (should (string= (ekg-truncate-at chinese-text 0) "…"))))
+    (should (string= (ekg-truncate-at chinese-text 0) "…"))
+    (dolist (char '("\"" "“" "”" "‘" "’" "[" "]" "{" "}" "(" ")" "，" "。" "_" "-"))
+      (let ((test-string (format "Should be %swill%s not trigger truncation" char char)))
+        (should (string= (ekg-truncate-at test-string 50) test-string))))))
 
 (ert-deftest test-ekg-truncate-at-character ()
   "Test ekg-truncate-at with character-based truncation."
