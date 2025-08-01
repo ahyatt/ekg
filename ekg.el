@@ -699,7 +699,7 @@ unchanged."
      ((eq ekg-truncation-method 'word)
       (cl-loop with i = 0 while (and (< i num)
                                      (skip-syntax-forward "w")
-                                     (skip-syntax-forward "._-"))
+                                     (skip-syntax-forward "._-()\"\\"))
                do (cl-incf i))
       ;; Move back to the end of the last word/character
       (skip-syntax-backward "-"))

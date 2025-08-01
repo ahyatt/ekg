@@ -75,6 +75,7 @@ triples library is already installed.
 * Changelog
 ** Version 0.7.2
 - Add =ekg-truncation-method= variable to control how truncation happens.
+- Fix various truncation issues with quotes, underscores and all sorts of other symbols.
 ** Version 0.7.1
 - Don't show inactive notes with =ekg-search=.
 ** Version 0.7.0
