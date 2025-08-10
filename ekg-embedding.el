@@ -64,16 +64,16 @@ This is a struct representing a provider in the `llm' package.")
 (defvar ekg-vecdb-provider nil
   "The vecdb provider for the `ekg-embedding' module.
 This is a CONS of an `vecdb-provider' and a `embed-db-collection'.
-If `nil', then we fallback to the default `ekg-db'.")
+If nil, then we fallback to the default `ekg-db'.")
 
 (defun ekg-embedding-connect ()
   "Ensure the database is connected and ekg-embedding schema exists."
   (ekg-connect)
-  (ekg-embedding-add-schema)
-  (when (and ekg-vecdb-provider (not (vecdb-exists (car ekg-vecdb-provider)
-                                                   (cdr ekg-vecdb-provider))))
-    (vecdb-create (car ekg-vecdb-provider)
-                  (cdr ekg-vecdb-provider))))
+  (if (and ekg-vecdb-provider (not (vecdb-exists (car ekg-vecdb-provider)
+                                                 (cdr ekg-vecdb-provider))))
+      (vecdb-create (car ekg-vecdb-provider)
+                    (cdr ekg-vecdb-provider))
+    (ekg-embedding-add-schema)))
 
 (defun ekg-embedding-add-schema ()
   "Add the triples schema for storing embeddings, if we are using the sqlite db."
