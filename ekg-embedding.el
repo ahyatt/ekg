@@ -80,6 +80,18 @@ If nil, then we fallback to the default `ekg-db'.")
   (unless ekg-vecdb-provider
     (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector))))
 
+(defun ekg-remove-sqlite-embeddings ()
+  "Remove all embeddings from the SQLite database.
+This should be used when you either decide not to use embeddings, or
+switch from the native sqlite to a vecdb provider."
+  (interactive)
+  (ekg-embedding-connect)
+  (triples-remove-schema-type ekg-db 'embedding)
+  ;; Now that the embeddings are removed, we should compact the database, which
+  ;; can happen in the builtin sqlite.
+  (when (and (eq triples-sqlite-interface 'builtin) (fboundp 'sqlite-execute))
+    (sqlite-execute ekg-db "VACUUM")))
+
 (defun ekg-embedding-average (embeddings)
   "Compute the average of all of EMBEDDINGS, a list.
 Return the vector embedding.  This assumes all embeddings are the
