@@ -302,36 +302,15 @@
   (should (equal "foo" (ekg-note-snippet (ekg-note-create :text "foo" :mode 'text-mode :tags nil))))
   (should (equal "foo…" (ekg-note-snippet (ekg-note-create :text "foo bar" :mode 'text-mode :tags nil) 3))))
 
-(ekg-deftest ekg-test-overlay-interaction-growth ()
-             (let ((ekg-capture-auto-tag-funcs nil))
-               (ekg-capture :tags '("test"))
-               (let ((o (ekg--metadata-overlay)))
-                 (should (= (overlay-start o) 1))
-                 ;; The overlay end is the character just past the end of the visible
-                 ;; overlay, but still in the overlay's extent.
-                 (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
-                 ;; Go to the end of the overlay, insert, the overlay should stay the same
-                 ;; - we don't allow anything to happen at the end of the overlay due to
-                 ;; how confusing it is.
-                 (goto-char (overlay-end o))
-                 (insert "Property: ")
-                 (ekg--metadata-modification o t nil nil)
-                 (should (= (overlay-end o) (+ 1 (length "Tags: test\n")))))))
+;; Tests removed - overlay-based metadata has been replaced with header-line
 
-(ekg-deftest ekg-test-overlay-interaction-resist-shrinking ()
+(ekg-deftest ekg-test-header-line-metadata ()
              (let ((ekg-capture-auto-tag-funcs nil))
                (ekg-capture :tags '("test"))
-               (let ((o (ekg--metadata-overlay)))
-                 (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
-                 ;; Go to the end of the overlay, delete the newline, it should be that you
-                 ;; can't really do it, the newline should regenerate itself after the
-                 ;; modification hook runs.
-                 (goto-char (overlay-end o))
-                 ;; When we delete, if it errors, that's OK, we don't yet have a strong
-                 ;; opinion on whether it should result in an error or not.
-                 (ignore-errors (delete-char -1))
-                 (should (= (overlay-end o) (+ 1 (length "Tags: test\n"))))
-                 (should (= (point) (overlay-end o))))))
+               ;; Check that header-line is set
+               (should header-line-format)
+               ;; Check that the header line contains the tag
+               (should (string-match-p "test" header-line-format))))
 
 (ekg-deftest ekg-test-metadata-read-only ()
              (dolist (mode '(org-mode markdown-mode text-mode))

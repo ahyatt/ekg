@@ -138,7 +138,6 @@ note.
 
 If there are no prompts on any of the note tags, use
 `ekg-llm-default-instructions'."
-  (ekg--update-from-metadata)  ;; so we can get the latest tags
   (let ((prompt-notes (ekg-get-notes-cotagged-with-tags
                        (ekg-note-tags note) ekg-llm-prompt-tag)))
     (if prompt-notes
