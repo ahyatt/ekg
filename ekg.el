@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.5.1") (emacs "28.1") (llm "0.18.0"))
+;; Package-Requires: ((triples "0.7.0") (emacs "28.1") (llm "0.18.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.8.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -377,6 +377,11 @@ callers have already called this function")
   ;; something that can be used to select the subject via completion.
   (triples-add-schema ekg-db 'titled '(title :base/type string))
   (triples-add-schema ekg-db 'ekg '(version :base/type cons :base/unique t))
+
+  (triples-add-schema ekg-db 'ekg-property '(name :base/type string :base/unique t))
+
+  (triples-set-type ekg-db 'tagged/tag 'ekg-property :name "Tags")
+  (triples-set-type ekg-db 'titled/title 'ekg-property :name "Title")
   (run-hooks 'ekg-add-schema-hook))
 
 (defvar ekg-schema-text-cotypes '(text tagged time-tracked titled)
@@ -386,6 +391,13 @@ Any type here in considered owned by ekg and will be removed
 during note deletion.
 
 These are not guaranteed to be only on text entities, however.")
+
+(defun ekg-property-name-for (prop)
+  "Return the human-readable name for property PROP (such as :tagged/tag).
+If there is no name, return the symbol converted to a string (without the colon)."
+  (let ((decoloned-prop (triples--decolon prop)))
+    (or (plist-get (triples-get-type ekg-db decoloned-prop 'ekg-property) :name)
+        (symbol-name decoloned-prop))))
 
 (defun ekg--generate-id ()
   "Return a unique ID for a note.
@@ -1023,8 +1035,6 @@ This is used when editing existing notes.")
   "Holds the original ID (subject) for this note.
 This is needed to identify references to refresh when the subject is changed.")
 
-
-
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))
     (suppress-keymap map t)
@@ -1054,30 +1064,38 @@ This is needed to identify references to refresh when the subject is changed.")
         (define-key ekg-notes-mode-map "\C-c\C-o" #'org-open-at-point))))
 
 (defun ekg--header-line-format ()
-  "Generate header line format showing note metadata."
+  "Generate header line format showing note metadata, constrained by window width."
   (when ekg-note
-    (let ((parts '()))
-      ;; Add tags
+    (let ((window-width (window-width (get-buffer-window (current-buffer))))
+          (parts '())
+          (commands-part (concat " | "
+                                 (substitute-command-keys
+                                  "\\<ekg-edit-mode-map>\\[ekg-edit-finalize] finish"))))
+      ;; Always add commands part
+      (push commands-part parts)
+      (setq remaining-width (- window-width (length commands-part)))
+
+      ;; Add tags if present
       (when (ekg-note-tags ekg-note)
-        (push (concat (propertize "Tags: " 'face 'bold)
-                      (mapconcat #'identity (ekg-note-tags ekg-note) ", "))
-              parts))
+        (let ((tags-part (concat (propertize "Tags: " 'face 'bold)
+                                 (mapconcat #'identity (ekg-note-tags ekg-note) ", "))))
+          (push (ekg-truncate-at tags-part remaining-width) parts)
+          (cl-decf remaining-width (length tags-part))))
+
       ;; Add title if present
       (when-let ((titles (plist-get (ekg-note-properties ekg-note) :titled/title)))
-        (push (concat (propertize "Title: " 'face 'bold)
-                      (mapconcat #'identity titles ", "))
-              parts))
-      ;; Add resource if it's meaningful
+        (let ((title-part (concat (propertize "Title: " 'face 'bold)
+                                  (mapconcat #'identity titles ", "))))
+          (push (ekg-truncate-at title-part remaining-width) parts)
+          (cl-decf remaining-width (length title-part))))
+
+      ;; Add resource if meaningful
       (when (ekg-should-show-id-p (ekg-note-id ekg-note))
-        (push (concat (propertize "Resource: " 'face 'bold)
-                      (format "%s" (ekg-note-id ekg-note)))
-              parts))
-      ;; Add mode indicator and commands
-      (push (concat " | "
-                    (substitute-command-keys
-                     "\\<ekg-edit-mode-map>\\[ekg-edit-finalize] finish \\[ekg-edit-save] save"))
-            parts)
-      (mapconcat #'identity (nreverse parts) "  "))))
+        (let ((resource-part (concat (propertize "Resource: " 'face 'bold)
+                                     (format "%s" (ekg-note-id ekg-note)))))
+          (push (ekg-truncate-at resource-part remaining-width) parts)))
+
+      (mapconcat #'identity parts "  "))))
 
 (defun ekg--possible-inline-tags-prefix-regexp ()
   "Return a regexp of the possible inline tag prefixes."
@@ -1148,7 +1166,7 @@ non-nil."
       (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max))))))
 
 (defun ekg--populate-inline-tags (note)
-  "Populate tags found in text of NOTE.
+  "Populae tags found in text of NOTE.
 Tags are prefixed by a hash symbol or a symbol in
 `ekg-inline-custom-tag-completion-symbols', and are enclosed in brackets
 if they have more than one word.  They aso can be org or markdown links,
@@ -1450,7 +1468,6 @@ file.  If not, an error will be thrown."
       (when (ekg-note-mode note)
         (funcall (ekg-note-mode note)))
       (ekg-edit-mode 1)
-      (ekg--set-local-variables)
       (setq-local ekg-note (copy-ekg-note note)       ; shallow copy
                   ekg-note-orig-note (copy-tree note) ; deep copy to avoid later change
                   ekg-note-orig-id (ekg-note-id note))
@@ -1460,12 +1477,14 @@ file.  If not, an error will be thrown."
             (seq-difference (ekg-note-tags ekg-note) (list ekg-draft-tag)))
       (insert (ekg-insert-inlines-representation
                (ekg-note-text note) (ekg-note-inlines note)))
+      (ekg--set-local-variables)
       (goto-char (point-min))
       (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
       (if (and (eq (ekg-note-mode note) 'org-mode)
                ekg-notes-display-images)
           (org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
+    (goto-char (point-min))
     (pop-to-buffer buf)))
 
 (defun ekg--save-note-in-buffer ()

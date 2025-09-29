@@ -261,7 +261,7 @@ structs."
       (push (cons "id" (ekg-note-id note)) result))
     (map-do
      (lambda (prop value)
-       (when-let ((label (assoc-default prop ekg-metadata-labels)))
+       (when-let ((label (ekg-property-name-for prop)))
          (push (cons (downcase label) value) result)))
      (ekg-note-properties note))
     ;; Sort the result so JSON is deterministic and we can test it.
