@@ -168,8 +168,6 @@ which are applied to each non-standard property in turn."
   "Template for displaying one-line notes in a note buffer.
 Otherwise the same format as `ekg-display-note-template'")
 
-
-
 (defcustom ekg-notes-display-images t
   "Whether images are displayed by default."
   :type 'boolean
@@ -211,8 +209,6 @@ links out of them, as well as adding them to the note text."
   :type 'boolean
   :group 'ekg)
 
-
-
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
 
@@ -251,8 +247,6 @@ backups in your database after it has been created, run
 
 (defvar ekg-db nil
   "Live sqlite database connection.")
-
-
 
 (defvar ekg-add-schema-hook nil
   "Hook run when ensuring schema for ekg.
@@ -1082,12 +1076,16 @@ This is needed to identify references to refresh when the subject is changed.")
           (push (ekg-truncate-at tags-part remaining-width) parts)
           (cl-decf remaining-width (length tags-part))))
 
-      ;; Add title if present
-      (when-let ((titles (plist-get (ekg-note-properties ekg-note) :titled/title)))
-        (let ((title-part (concat (propertize "Title: " 'face 'bold)
-                                  (mapconcat #'identity titles ", "))))
-          (push (ekg-truncate-at title-part remaining-width) parts)
-          (cl-decf remaining-width (length title-part))))
+      ;; Add all other properties
+      (map-do (lambda (prop value)
+                (push (ekg-truncate-at
+                       (concat (propertize (ekg-property-name-for prop) 'face 'bold)
+                               ": "
+                               (if (listp value)
+                                   (mapconcat #'identity value ", ")
+                                 (format "%s" value)))
+                       remaining-width) parts))
+              (ekg-note-properties ekg-note))
 
       ;; Add resource if meaningful
       (when (ekg-should-show-id-p (ekg-note-id ekg-note))
@@ -1375,30 +1373,59 @@ file.  If not, an error will be thrown."
     (ekg--set-local-variables)
     (setq ekg-note note)))
 
+(defun ekg-note-available-properties (note)
+  "Given an ekg NOTE, return a list of all applicable properties."
+
+  ;; For now, we don't use the information in NOTE to decide what properties it
+  ;; has, but we probably will need to do this in the future.
+  (triples-subjects-of-type ekg-db 'ekg-property))
+
 (defun ekg-note-edit-property ()
-  "Edit a single-valued property of the current note."
+  "Edit a property of the current note.
+If the property is a multiple-value property, the user will be able to
+edit it as a comma separated list."
   (interactive nil ekg-capture-mode ekg-edit-mode)
   (unless ekg-note
     (error "No note to edit"))
-  (let* ((property (completing-read "Property to edit: "
-                                    '("Resource" "Mode") nil t))
-         (current-value (pcase property
-                          ("Resource" (format "%s" (ekg-note-id ekg-note)))
-                          ("Mode" (symbol-name (ekg-note-mode ekg-note)))))
-         (new-value (read-string (format "%s [%s]: " property current-value)
-                                 current-value)))
-    (pcase property
-      ("Resource"
+  (let* ((property-alist (cons (cons "Resource" 'resource)
+                               (mapcar (lambda (prop)
+                                         (cons (ekg-property-name-for prop)
+                                               prop))
+                                       (ekg-note-available-properties ekg-note))))
+         (property (assoc (completing-read "Property to edit: " property-alist nil t)
+                          property-alist))
+         (property-single-valued (plist-get (triples-get-type ekg-db (cdr property) 'base) :unique))
+         (current-value (pcase (cdr property)
+                          ('resource (format "%s" (ekg-note-id ekg-note)))
+                          ('tagged/tag (ekg-note-tags ekg-note))
+                          (_ (plist-get (ekg-note-properties ekg-note) (cdr property)))))
+         (new-value (read-string (format "%s: " (car property))
+                                 (if (listp current-value)
+                                     (mapconcat #'identity current-value ", ")
+                                   current-value))))
+    (unless (eq (not property-single-valued)
+                (listp current-value))
+      (error "Property %s must be %s-valued" (car property)
+             (if property-single-valued "single" "multi")))
+    (pcase (cdr property)
+      ('resource
        (setf (ekg-note-id ekg-note)
              (if (string-empty-p new-value)
                  (ekg--generate-id)
                new-value)))
-      ("Mode"
-       (let ((new-mode (intern new-value)))
-         (when (memq new-mode ekg-acceptable-modes)
-           (ekg-change-mode new-mode)))))
+      ('tagged/tag
+       (setf (ekg-note-tags ekg-note)
+             (if (string-empty-p new-value)
+                 nil
+               (seq-uniq (string-split new-value ", " t "[[:space:]]*")))))
+      (_ (setf (ekg-note-properties ekg-note)
+               (plist-put (ekg-note-properties ekg-note)
+                          (cdr property)
+                          (if property-single-valued
+                              new-value
+                            (string-split new-value ", " t "[[:space:]]*"))))))
     (setq header-line-format (ekg--header-line-format))
-    (message "Property %s updated" property)))
+    (message "Property %s updated" (car property))))
 
 (defun ekg-note-add-tag ()
   "Add a tag to the current note."
