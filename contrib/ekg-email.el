@@ -36,27 +36,17 @@
   (triples-add-schema ekg-db 'email-address
                       '(emails-to :base/virtual-reversed email/to)
                       '(emails-from :base/virtual-reversed email/from)
-                      '(emails-cc :base/virtual-reversed email/cc)))
+                      '(emails-cc :base/virtual-reversed email/cc))
+  (triples-set-type ekg-db 'email/to :name "To")
+  (triples-set-type ekg-db 'email/from :name "From")
+  (triples-set-type ekg-db 'email/cc :name "CC")
+  (triples-set-type ekg-db 'email 'ekg-note-type))
 
 ;; Add the email schema to the database now, since the ekg-add-schema-hook is
 ;; not always run at the right time.
 (when ekg-db
   (ekg-email-add-schema))
 (add-hook 'ekg-add-schema-hook 'ekg-email-add-schema)
-
-(add-to-list 'ekg-metadata-parsers
-             (cons "Email-To" 'ekg-email--metadata-update-to))
-(add-to-list 'ekg-metadata-parsers
-             (cons "Email-From" 'ekg-email--metadata-update-from))
-(add-to-list 'ekg-metadata-parsers
-             (cons "Email-CC" 'ekg-email--metadata-update-cc))
-
-(add-to-list 'ekg-property-multivalue-type (cons "Email-To" 'comma))
-(add-to-list 'ekg-property-multivalue-type (cons "Email-CC" 'comma))
-
-(add-to-list 'ekg-metadata-labels (cons :email/to "Email-To"))
-(add-to-list 'ekg-metadata-labels (cons :email/from "Email-From"))
-(add-to-list 'ekg-metadata-labels (cons :email/cc "Email-CC"))
 
 (defun ekg-email--metadata-update-to (val)
   "Update the email-to metadata with VAL."
@@ -96,35 +86,14 @@
       (plist-put prop-plist :email/cc cc))
     (ekg-capture
      :text (gnus-with-article-buffer
-             (buffer-substring-no-properties
-              (save-excursion
-                (article-goto-body)
-                (point))
-              (point-max)))
+            (buffer-substring-no-properties
+             (save-excursion
+               (article-goto-body)
+               (point))
+             (point-max)))
      :properties prop-plist)))
 
-(defun ekg-email-save (note)
-  "On a save, for any email addresses, type them with email-address.
-
-NOTE is the note being saved."
-  (dolist (addr (seq-uniq
-                 (append
-                  (plist-get (ekg-note-properties note)
-                             :email/to)
-                  (list (plist-get (ekg-note-properties note) :email/from))
-                  (plist-get (ekg-note-properties note)
-                             :email/cc))))
-    (triples-set-type ekg-db addr 'email-address)))
-
 (add-hook 'ekg-note-save-hook #'ekg-email-save)
-
-(defun ekg-email-delete (note-id)
-  "Delete email information associated with a note being deleted.
-
-NOTE-ID is the id of the note that will be deleted."
-  (triples-remove-type ekg-db note-id 'email))
-
-(add-hook 'ekg-note-delete-hook #'ekg-email-delete)
 
 (defun ekg-email-addresses ()
   "Return all addresses found in email."

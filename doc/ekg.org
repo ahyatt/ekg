@@ -73,6 +73,9 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.9.0
+- Changed how note metadata is represented in the note editing UI.
+- Pushed more configuration into the triple database itself.
 ** Version 0.8.0
 - Add support for the =vecdb= package, for embedding storing and retrieval.
 - Add =ekg-truncation-method= variable to control how truncation happens.
@@ -117,8 +120,8 @@ triples library is already installed.
 ** Version 0.5
 - Simplified trashed tags from using tag prefixes to using a simple trash tag (=ekg-trash-tag=).
 - Added =ekg-show-notes-with-tag-prefix=.
-- Add tags while writing the body of notes by completing with "#".  See [[#note-text][Note text]] section for details.
-- Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See [[#note-text][Note text]] section for details.
+- Add tags while writing the body of notes by completing with "#".  See [[#note-buffer][Note text]] section for details.
+- Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See [[#note-buffer][Note text]] section for details.
 - =ekg-auto-save=, a new module by [[https://github.com/qingshuizheng][Qingshui Zheng]].
 - Added canceling a note as an actual command, also by  [[https://github.com/qingshuizheng][Qingshui Zheng]].
 - Fix issue with trashing notes with tags that are partially trashed.
@@ -238,58 +241,26 @@ themselves just have type markers indicating they are tags, and can dynamically
 query for all notes with their tag, so tags always have a current list of notes
 with their tag.
 * Understanding and editing the note buffer
-When capturing or creating a note, the note buffer has two areas important to
-understand.  The first is the area for note properties, which has a different
-background color.  The second is the area for the note text.
-** Note properties
+:PROPERTIES:
+:CUSTOM_ID: note-buffer
+:END:
+
+The note buffer is a buffer of the particular mode for the node, which can change based off the setting, and can be different for different notes.  It acts mosty just like that mode, but has a header that displays some of the properties of the note, and lets you edit those properties.
+
 The properties shown in the note property area come from the data stored in the
 database for the entity.  At a minimum, there will be tags.
 
-#+texinfo: @noindent
-A property is displayed with a label, and the value, such as
-#+begin_quote
-Tags: emacs, ekg
-#+end_quote
+For the common cases, there are special commands, with default keybindinds:
 
-#+texinfo: @noindent
-Changing these values, when saving the note, will change the values that will be
-stored in the database.
+- =ekg-note-add-tag= to add a tag (=C-c +=).
+- =ekg-note-remove-tag= to remove a tag (=C-c -=).
+- =ekg-note-add-title= to add a title (=C-c C-t +=).
+- =ekg-note-remove-title= to remove a title (=C-c C-t -=).
+- =ekg-note-edit-property= to edit any property (=C-c C-p=), including the "resource" of the note, which is its ID.  For editing, multi-values properties are editable as a list with values separated by =", "=.  Maintain the space after the comma when editing.
 
-#+texinfo: @noindent
-New properties can be added manually, so if you wanted a title, you can add it
-to the property list.
-#+begin_quote
-Title: This is my title
-#+end_quote
+  When altering properties, nothing is saved until the note is saved.
 
-#+texinfo: @noindent
-It's important to note that everything in the section with the different
-background color is a property and will be treated as such.  Text that doesn't
-look like a property there will cause problems, and properties outside this area
-will instead be treated as note text.  The end of the property section ends with
-an uneditable "--text follows this line--", below which the text of the note
-starts.
-
-#+texinfo: @noindent
-Not every property has a representation in the property list, only the
-properties which users may want to change manually.
-
-#+texinfo: @noindent
-Tag properties have completion to tags built-in, so when adding tags to a note
-you can choose from available tags.  Or you may add a new tag that has not yet
-been used.
-
-#+texinfo: @noindent
-Ekg makes some effort to make sure that the user doesn't accidentally extend the
-property section without adding actual properties, since this will likely result
-in a confusing experience for the user.
-** Note text
-:PROPERTIES:
-:CUSTOM_ID: note-text
-:END:
-Below is the property section is the note section. The text could be anything
-(or nothing). This is the body text of the note, where you write down whatever
-you want to note about, that is relevant to the tags for the note.
+The buffer has the text of the note.
 
 There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=.
 More can be added by customizing the variable ~ekg-acceptable-modes~, just make

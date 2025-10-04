@@ -370,21 +370,20 @@ callers have already called this function")
   ;; A URL can be a subject too, and has data, including the title. The title is
   ;; something that can be used to select the subject via completion.
   (triples-add-schema ekg-db 'titled '(title :base/type string))
-  (triples-add-schema ekg-db 'ekg '(version :base/type cons :base/unique t))
 
   (triples-add-schema ekg-db 'ekg-property '(name :base/type string :base/unique t))
-
   (triples-set-type ekg-db 'tagged/tag 'ekg-property :name "Tags")
   (triples-set-type ekg-db 'titled/title 'ekg-property :name "Title")
+
+  ;; The `ekg-note-type' type is a signifier that the type is safe to delete
+  ;; when a note is deleted.
+  (triples-add-schema ekg-db 'ekg-note-type)
+  (dolist (type '(text time-tracked inline titled tagged))
+    (triples-set-type ekg-db type 'ekg-note-type))
+
+  (triples-add-schema ekg-db 'ekg '(version :base/type cons :base/unique t))
+
   (run-hooks 'ekg-add-schema-hook))
-
-(defvar ekg-schema-text-cotypes '(text tagged time-tracked titled)
-  "All the types that are used in the ekg schema on text entities.
-Extensions can add to this list, but should not remove from it.
-Any type here in considered owned by ekg and will be removed
-during note deletion.
-
-These are not guaranteed to be only on text entities, however.")
 
 (defun ekg-property-name-for (prop)
   "Return the human-readable name for property PROP (such as :tagged/tag).
@@ -579,13 +578,17 @@ If the ID does not exist, create a new note with that ID."
   "Delete NOTE from the database."
   (ekg-note-delete-by-id (ekg-note-id note)))
 
+(defun ekg-note-cotypes ()
+  "Return the list of triple types that are owned by notes."
+  (triples-subjects-of-type ekg-db 'ekg-note-type))
+
 (defun ekg-note-delete-by-id (id)
   "Delete all note data associated with ID."
   (ekg-connect)
   (run-hook-with-args 'ekg-note-pre-delete-hook id)
   (triples-with-transaction
     ekg-db
-    (cl-loop for type in ekg-schema-text-cotypes do
+    (cl-loop for type in (ekg-note-cotypes) do
              (triples-remove-type ekg-db id type))
     (cl-loop for inline-id in (triples-subjects-with-predicate-object
                                ekg-db 'inline/for-text id)
@@ -1653,7 +1656,7 @@ executing a write if there is a problem."
   (ekg-connect)
   (let ((cleaned)
         (notes (triples-subjects-of-type ekg-db 'text)))
-    (cl-loop for type in ekg-schema-text-cotypes do
+    (cl-loop for type in (ekg-note-cotypes) do
              (cl-loop for s in (seq-difference (triples-subjects-of-type ekg-db type) notes) do
                       (push s cleaned)
                       (triples-remove-type ekg-db s type)))
