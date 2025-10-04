@@ -116,6 +116,13 @@ Your instructions on what content to add to the note:
 (defvar ekg-llm-prompt-history nil
   "History of prompts used in the LLM.")
 
+(defvar ekg-llm-ignored-props-for-json '(:embedding/embedding))
+
+(defvar ekg-llm-note-numwords 500000
+  "The maximum number of words to include from the note in the prompt.
+This is a safeguard against sending too much data to the LLM, however,
+we want to try to include as much information as possible.")
+
 (defun ekg-llm-prompt-prelude ()
   "Output a prelude to the prompt that mentions the mode."
   ;; Text mode doesn't really need anything.
@@ -199,10 +206,53 @@ The note text will be replaced by the result of the LLM."
   (interactive "P")
   (ekg-llm--send-and-process-note arg 'replace))
 
+(defun ekg-llm-preview-prompt (&optional arg)
+  "Preview the complete prompt that would be sent to the LLM.
+This includes both the context/system prompt and the user message.
+The prompt text is defined by the set of tags and their
+co-occurence with a prompt tag.
+
+ARG, if nonzero and nonnil, will let the user edit the prompt
+instructions before previewing.
+
+This is for debugging purposes."
+  (interactive "P")
+  (let* ((instructions-initial (ekg-llm-instructions-for-note ekg-note))
+         (instructions-for-use (if arg
+                                   (read-string "Prompt: " instructions-initial 'ekg-llm-prompt-history instructions-initial t)
+                                 instructions-initial))
+         (provider (ekg-llm--provider))
+         (context-prompt (concat (ekg-llm-prompt-prelude) "\n"
+                                 (llm-prompt-fill
+                                  'ekg-llm-fill-prompt
+                                  provider
+                                  :instructions instructions-for-use
+                                  :tags (mapconcat 'identity (ekg-note-tags ekg-note) ", ")
+                                  :tag-notes (ekg-llm-make-any-tag-generator (ekg-note-tags ekg-note)
+                                                                             (ekg-note-id ekg-note))
+                                  :similar-notes (ekg-llm-make-similar-note-generator ekg-note))))
+         (interactions (ekg-llm-note-interactions))
+         (buf (get-buffer-create "*ekg llm prompt preview*")))
+    (with-current-buffer buf
+      (erase-buffer)
+      (insert "=== COMPLETE LLM PROMPT PREVIEW ===\n\n")
+      (insert "=== CONTEXT/SYSTEM PROMPT ===\n")
+      (insert context-prompt)
+      (insert "\n\n=== USER INTERACTIONS ===\n")
+      (dolist (interaction interactions)
+        (insert (format "Role: %s\n" (llm-chat-prompt-interaction-role interaction)))
+        (insert (format "Content:\n%s\n\n" (llm-chat-prompt-interaction-content interaction))))
+      (insert "=== END PROMPT PREVIEW ===\n")
+      (goto-char (point-min))
+      (text-mode))
+    (pop-to-buffer buf)))
+
 (define-key ekg-capture-mode-map (kbd "C-c .") #'ekg-llm-send-and-append-note)
 (define-key ekg-edit-mode-map (kbd "C-c .") #'ekg-llm-send-and-append-note)
 (define-key ekg-capture-mode-map (kbd "C-c ,") #'ekg-llm-send-and-replace-note)
 (define-key ekg-edit-mode-map (kbd "C-c ,") #'ekg-llm-send-and-replace-note)
+(define-key ekg-capture-mode-map (kbd "C-c ?") #'ekg-llm-preview-prompt)
+(define-key ekg-edit-mode-map (kbd "C-c ?") #'ekg-llm-preview-prompt)
 
 (defun ekg-llm-create-output-holder (prefix suffix)
   "Create a marker pair for the output of the LLM.
@@ -255,24 +305,28 @@ structs."
   (let ((result `((tags . ,(ekg-note-tags note))
                   (created . ,(ekg-llm-format-time (ekg-note-creation-time note)))
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
-                  (text . ,(substring-no-properties (ekg-display-note-text note nil t)))))
+                  (text . ,(substring-no-properties (ekg-display-note-text
+                                                     note
+                                                     ekg-llm-note-numwords t)))))
         (json-encoding-pretty-print t))
     (when (ekg-should-show-id-p note)
       (push (cons "id" (ekg-note-id note)) result))
     (map-do
      (lambda (prop value)
        (when-let ((label (ekg-property-name-for prop)))
-         (push (cons (downcase label) value) result)))
+         (unless (member prop ekg-llm-ignored-props-for-json)
+           (push (cons (downcase label) value) result))))
      (ekg-note-properties note))
     ;; Sort the result so JSON is deterministic and we can test it.
     (sort result (lambda (a b) (string< (car a) (car b))))
     (json-encode result)))
 
-(defun ekg-llm-make-any-tag-generator (tags)
-  "Return a generator for notes with any of TAGS."
+(defun ekg-llm-make-any-tag-generator (tags except-id)
+  "Return a generator for notes with any of TAGS, not include EXCEPT_ID."
   (iter-lambda ()
     (dolist (note (ekg-get-notes-with-any-tags tags))
-      (iter-yield (ekg-llm-note-to-text note)))))
+      (when (not (equal except-id (ekg-note-id note)))
+        (iter-yield (ekg-llm-note-to-text note))))))
 
 (defun ekg-llm-send-and-use (marker-func instructions &optional temperature provider)
   "Run the LLM and replace markers supplied by MARKER-FUNC.
@@ -289,7 +343,8 @@ LLM on what to generate, and will be used in the prompt."
                                     provider
                                     :instructions instructions
                                     :tags (mapconcat 'identity (ekg-note-tags ekg-note) ", ")
-                                    :tag-notes (ekg-llm-make-any-tag-generator (ekg-note-tags ekg-note))
+                                    :tag-notes (ekg-llm-make-any-tag-generator (ekg-note-tags ekg-note)
+                                                                               (ekg-note-id ekg-note))
                                     :similar-notes (ekg-llm-make-similar-note-generator ekg-note)))
                   :interactions (ekg-llm-note-interactions)))
          (markers (funcall marker-func)))
