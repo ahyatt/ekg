@@ -322,7 +322,7 @@ structs."
     (json-encode result)))
 
 (defun ekg-llm-make-any-tag-generator (tags except-id)
-  "Return a generator for notes with any of TAGS, not include EXCEPT_ID."
+  "Return a generator for notes with any of TAGS, not include EXCEPT-ID."
   (iter-lambda ()
     (dolist (note (ekg-get-notes-with-any-tags tags))
       (when (not (equal except-id (ekg-note-id note)))

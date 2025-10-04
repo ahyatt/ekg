@@ -1420,13 +1420,13 @@ edit it as a comma separated list."
        (setf (ekg-note-tags ekg-note)
              (if (string-empty-p new-value)
                  nil
-               (seq-uniq (string-split new-value ", " t "[[:space:]]*")))))
+               (seq-uniq (split-string new-value ", " t "[[:space:]]*")))))
       (_ (setf (ekg-note-properties ekg-note)
                (plist-put (ekg-note-properties ekg-note)
                           (cdr property)
                           (if property-single-valued
                               new-value
-                            (string-split new-value ", " t "[[:space:]]*"))))))
+                            (split-string new-value ", " t "[[:space:]]*"))))))
     (setq header-line-format (ekg--header-line-format))
     (message "Property %s updated" (car property))))
 
