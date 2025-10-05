@@ -388,6 +388,7 @@ callers have already called this function")
 (defun ekg-property-name-for (prop)
   "Return the human-readable name for property PROP (such as :tagged/tag).
 If there is no name, return the symbol converted to a string (without the colon)."
+  (ekg-connect)
   (let ((decoloned-prop (triples--decolon prop)))
     (or (plist-get (triples-get-type ekg-db decoloned-prop 'ekg-property) :name)
         (symbol-name decoloned-prop))))
@@ -1430,14 +1431,16 @@ edit it as a comma separated list."
     (setq header-line-format (ekg--header-line-format))
     (message "Property %s updated" (car property))))
 
-(defun ekg-note-add-tag ()
-  "Add a tag to the current note."
+(defun ekg-note-add-tag (tag)
+  "Add TAG to the current note.
+TAG can be nil, and the user will be prompted for the tag."
   (interactive nil ekg-capture-mode ekg-edit-mode)
   (unless ekg-note
     (error "No note to edit"))
-  (let ((new-tag (completing-read "Add tag: "
-                                  (seq-difference (ekg-tags)
-                                                  (ekg-note-tags ekg-note)))))
+  (let ((new-tag (or tag
+                     (completing-read "Add tag: "
+                                      (seq-difference (ekg-tags)
+                                                      (ekg-note-tags ekg-note))))))
     (when (and new-tag (not (string-empty-p new-tag)))
       (push (ekg--normalize-tag new-tag) (ekg-note-tags ekg-note))
       (setf (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note)))
@@ -1446,14 +1449,16 @@ edit it as a comma separated list."
       (setq header-line-format (ekg--header-line-format))
       (message "Tag '%s' added" new-tag))))
 
-(defun ekg-note-remove-tag ()
-  "Remove a tag from the current note."
+(defun ekg-note-remove-tag (tag)
+  "Remove TAG from the current note.
+
+TAG can be nil and the user will be prompted for the tag."
   (interactive nil ekg-capture-mode ekg-edit-mode)
   (unless ekg-note
     (error "No note to edit"))
   (when (ekg-note-tags ekg-note)
-    (let ((tag-to-remove (completing-read "Remove tag: "
-                                          (ekg-note-tags ekg-note) nil t)))
+    (let ((tag-to-remove (or tag (completing-read "Remove tag: "
+                                                  (ekg-note-tags ekg-note) nil t))))
       (setf (ekg-note-tags ekg-note)
             (seq-difference (ekg-note-tags ekg-note) (list tag-to-remove)))
       (setq header-line-format (ekg--header-line-format))
@@ -1548,10 +1553,6 @@ Return the latest `ekg-note' object."
     (ekg-save-note ekg-note))
   ekg-note)
 
-
-
-
-
 (defun ekg-save-draft ()
   "Save the current note as a draft."
   (interactive nil ekg-edit-mode ekg-capture-mode)
@@ -1586,8 +1587,6 @@ Return the latest `ekg-note' object."
   (interactive nil ekg-edit-mode)
   (ekg-edit-save)
   (kill-buffer))
-
-
 
 (defun ekg-capture-finalize ()
   "Save the current note."
@@ -2194,8 +2193,7 @@ found, insert, one by one, into the current note."
                             ;; sometimes possible when templates have more than
                             ;; one tag overlapping with the current note.
                             (unless (string-match (rx (literal (ekg-note-text template)))
-                                                  (buffer-substring-no-properties (+ 1 (overlay-end (ekg--metadata-overlay)))
-                                                                                  (point-max)))
+                                                  (buffer-substring-no-properties (point-min) (point-max)))
                               (unless (looking-at (rx (seq line-start line-end)))
                                 (insert "\n"))
                               (insert (ekg-note-text template)))))
