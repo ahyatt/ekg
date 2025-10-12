@@ -1080,15 +1080,16 @@ This is needed to identify references to refresh when the subject is changed.")
           (push (ekg-truncate-at tags-part remaining-width) parts)
           (cl-decf remaining-width (length tags-part))))
 
-      ;; Add all other properties
+      ;; Add all other properties except vectors
       (map-do (lambda (prop value)
-                (push (ekg-truncate-at
-                       (concat (propertize (ekg-property-name-for prop) 'face 'bold)
-                               ": "
-                               (if (listp value)
-                                   (mapconcat #'identity value ", ")
-                                 (format "%s" value)))
-                       remaining-width) parts))
+                (unless (vectorp value)
+                  (push (ekg-truncate-at
+                         (concat (propertize (ekg-property-name-for prop) 'face 'bold)
+                                 ": "
+                                 (if (listp value)
+                                     (mapconcat #'identity value ", ")
+                                   (format "%s" value)))
+                         remaining-width) parts)))
               (ekg-note-properties ekg-note))
 
       ;; Add resource if meaningful
