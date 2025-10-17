@@ -1520,7 +1520,6 @@ TAG can be nil and the user will be prompted for the tag."
                ekg-notes-display-images)
           (org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
-    (goto-char (point-min))
     (pop-to-buffer buf)))
 
 (defun ekg--save-note-in-buffer ()
