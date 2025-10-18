@@ -1375,8 +1375,8 @@ file.  If not, an error will be thrown."
         (minor-mode (if ekg-capture-mode 'ekg-capture-mode 'ekg-edit-mode)))
     (funcall mode)
     (funcall minor-mode)
-    (ekg--set-local-variables)
-    (setq ekg-note note)))
+    (setq ekg-note note)
+    (ekg--set-local-variables)))
 
 (defun ekg-note-available-properties (note)
   "Given an ekg NOTE, return a list of all applicable properties."

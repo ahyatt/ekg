@@ -458,5 +458,14 @@
         ;; The primary check is that fewer words are returned than originally present.
         (should (= (ekg-test-count-words-in-string selected-text) 5460))))))
 
+(ekg-deftest ekg-test-always-have-header-line ()
+  (ekg-capture)
+  (should header-line-format)
+  (ekg-change-mode 'text-mode)
+  (should header-line-format)
+  (let* ((note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
+         (note-buf (ekg-edit note)))
+    (should header-line-format)))
+
 (provide 'ekg-test)
 ;;; ekg-test.el ends here
