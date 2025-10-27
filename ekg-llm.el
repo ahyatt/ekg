@@ -151,7 +151,7 @@ If there are no prompts on any of the note tags, use
         (mapconcat
          (lambda (prompt-note)
            (string-trim
-            (substring-no-properties (ekg-display-note-text prompt-note))))
+            (substring-no-properties (ekg-display-note-text prompt-note ekg-llm-note-numwords))))
          prompt-notes "\n")
       ekg-llm-default-instructions)))
 
