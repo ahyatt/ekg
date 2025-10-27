@@ -1326,7 +1326,9 @@ If ID is given, force the triple subject to be that value."
           (ekg-note-tags ekg-note))
     (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
     (insert text)
-    (goto-char (point-min))
+    ;; It makes sense after inserting text to position the cursor at the end of
+    ;; it.
+    (goto-char (point-max))
     (if (and (eq mode 'org-mode)
              ekg-notes-display-images)
         (condition-case nil
