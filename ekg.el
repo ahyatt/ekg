@@ -1324,11 +1324,11 @@ If ID is given, force the triple subject to be that value."
     (ekg-capture-mode 1)
     (mapc (lambda (tag) (run-hook-with-args 'ekg-note-add-tag-hook tag))
           (ekg-note-tags ekg-note))
+    ;; It makes sense after inserting text to position the cursor at the end of
+    ;; it.  But we'll allow function tags to change the cursor afterwards.
+    (goto-char (point-max))
     (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
     (insert text)
-    ;; It makes sense after inserting text to position the cursor at the end of
-    ;; it.
-    (goto-char (point-max))
     (if (and (eq mode 'org-mode)
              ekg-notes-display-images)
         (condition-case nil
