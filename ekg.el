@@ -977,16 +977,22 @@ ARG is the prefix argument, if used it opens in another window."
                 [remap markdown-follow-thing-at-point]
                 #'ekg--markdown-follow-thing-at-point)))
 
+(defvar ekg-edit-commands-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "a" #'ekg-note-add-tag)
+    (define-key map "d" #'ekg-note-remove-tag)
+    (define-key map "t" #'ekg-note-add-title)
+    (define-key map "T" #'ekg-note-remove-title)
+    (define-key map "p" #'ekg-note-edit-property)
+    (define-key map "i" #'ekg-edit-add-inline)
+    map)
+  "Keymap for ekg note editing commands.")
+
 (defvar ekg-capture-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-capture-finalize)
     (define-key map "\C-c\C-k" #'ekg-capture-abort)
-    (define-key map "\C-c#" #'ekg-edit-add-inline)
-    (define-key map "\C-c\C-p" #'ekg-note-edit-property)
-    (define-key map "\C-c+" #'ekg-note-add-tag)
-    (define-key map "\C-c-" #'ekg-note-remove-tag)
-    (define-key map "\C-c\C-t+" #'ekg-note-add-title)
-    (define-key map "\C-c\C-t-" #'ekg-note-remove-title)
+    (define-key map "\C-c/" ekg-edit-commands-map)
     (substitute-key-definition #'save-buffer #'ekg-save-draft map global-map)
     map)
   "Key map for `ekg-capture-mode', a minor mode.
@@ -1005,12 +1011,7 @@ This is used when capturing new notes.")
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
-    (define-key map "\C-c#" #'ekg-edit-add-inline)
-    (define-key map "\C-c\C-p" #'ekg-note-edit-property)
-    (define-key map "\C-c+" #'ekg-note-add-tag)
-    (define-key map "\C-c-" #'ekg-note-remove-tag)
-    (define-key map "\C-c\C-t+" #'ekg-note-add-title)
-    (define-key map "\C-c\C-t-" #'ekg-note-remove-title)
+    (define-key map "\C-c/" ekg-edit-commands-map)
     (substitute-key-definition #'save-buffer #'ekg-edit-save map global-map)
     map)
   "Key map for `ekg-edit-mode', a minor mode.
