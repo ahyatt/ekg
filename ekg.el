@@ -2050,6 +2050,18 @@ notes to show.  But with a prefix ARG, ask the user."
               finally return selected))
    nil))
 
+(defun ekg-get-latest-modified (&optional num)
+  "Return the last NUM notes modified."
+  (cl-loop for id in (mapcar #'car (sort (triples-with-predicate
+                                          ekg-db
+                                          'time-tracked/modified-time)
+                                         (lambda (trip1 trip2) (> (nth 2 trip1)
+                                                                  (nth 2 trip2)))))
+           until (= (length selected) (or num ekg-notes-size))
+           when (ekg-active-id-p id)
+           collect (ekg-get-note-with-id id) into selected
+           finally return selected))
+
 ;;;###autoload
 (defun ekg-show-notes-latest-modified (&optional num)
   "Show the last several notes modified.
@@ -2059,19 +2071,7 @@ notes to show.  But with a prefix ARG, ask the user."
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
   (ekg-connect)
-  (ekg-setup-notes-buffer
-   "Latest modified notes"
-   (lambda ()
-     (cl-loop for id in (mapcar #'car (sort (triples-with-predicate
-                                             ekg-db
-                                             'time-tracked/modified-time)
-                                            (lambda (trip1 trip2) (> (nth 2 trip1)
-                                                                     (nth 2 trip2)))))
-              until (= (length selected) (or num ekg-notes-size))
-              when (ekg-active-id-p id)
-              collect (ekg-get-note-with-id id) into selected
-              finally return selected))
-   nil))
+  (ekg-setup-notes-buffer "Latest modified notes" #'ekg-get-latest-modified nil))
 
 (defun ekg-document-titles ()
   "Return an alist of all titles.

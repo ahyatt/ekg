@@ -74,6 +74,7 @@ triples library is already installed.
 #+end_src
 * Changelog
 ** Version 0.9.0
+- Added =ekg-agent=, an autonomous agent that can help you with your notes.
 - Changed how note metadata is represented in the note editing UI.
 - Pushed more configuration into the triple database itself.
 ** Version 0.8.0
@@ -1251,6 +1252,42 @@ Gnus.  Other importing methods may be available in the future.
 While in a Gnus article buffer, you can execute the command =ekg-email-from-gnus=.
 
 Once mails are imported, you can search for email addresses associated with them with =ekg-email-show-notes-with-address=.
+** Agent
+:PROPERTIES:
+:CUSTOM_ID: agent
+:END:
+The =ekg-agent= module provides an autonomous agent that can help you with your
+notes.  This agent can review your recent notes and org-mode agenda, and
+proactively create new notes to help you, such as offering advice, pointing out
+connections, or suggesting resources.
+
+To use this module, you must have an LLM provider configured as described in the
+[[#llm][LLM]] section.  You can then load the agent:
+
+#+begin_src emacs-lisp
+(require 'ekg-agent)
+#+end_src
+
+The primary command is =ekg-agent-evaluate-status=, which runs a single session
+where the agent reviews your recent activity and decides if it can be of
+assistance.  It can create notes to you, or to itself, to help it work.
+
+You can also have the agent run automatically every day.  To do this, customize
+~ekg-agent-daily-time~ to your preferred time (default is "09:00"), and then run:
+
+#+begin_src emacs-lisp
+(ekg-agent-schedule-daily)
+#+end_src
+
+This will set up a timer to run the agent daily.  You can cancel this schedule
+with =ekg-agent-cancel-daily=.
+
+The agent uses specific tags to organize its work:
+- ~ekg-agent-author-tag~ (default "agent"): All notes created by the agent will have this tag.
+- ~ekg-agent-self-info-tag~ (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
+- ~ekg-agent-self-instruct-tag~ (default "agent/status-instruct"): The agent uses this tag to leave instructions for its future self.
+
+You can customize these tags if you prefer different names.
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.
