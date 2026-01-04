@@ -123,10 +123,14 @@ Changes to this variable will take effect the next time you call
   (make-llm-tool :function (lambda (tags content mode)
                              (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
                                (error "Unsupported mode: %s" mode))
-                             (let ((note (ekg-note-create :tags (seq-union (append tags nil)
-                                                                           (list ekg-agent-author-tag))
-                                                          :text content
-                                                          :mode (intern mode))))
+                             (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                                    (note (ekg-note-create :tags (seq-union (append tags nil)
+                                                                            (list ekg-agent-author-tag))
+                                                           :text (concat
+                                                                  (car enclosure)
+                                                                  text
+                                                                  (cdr enclosure))
+                                                           :mode (intern mode))))
                                (ekg-save-note note)))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
@@ -214,7 +218,12 @@ for your future self.  The `%s` is for instructions for your future
 self (which you may want to use when you see how the user is interacting
 with your text), so that you can behave more usefully in the future.
 Write notes with these tags if you feel you have discovered something
-that will make future runs better, and want to record this."
+that will make future runs better, and want to record this.
+
+When creating a note, text that you add will automatically have the tags
+surrounding it to indicate that it was written by an LLM.  Do not add
+these tags manually.
+"
    ekg-agent-self-info-tag ekg-agent-self-instruct-tag))
 
 (defun ekg-agent-evaluate-status ()
