@@ -108,7 +108,7 @@ Changes to this variable will take effect the next time you call
                                                    (llm-embedding ekg-embedding-provider query)
                                                    num))
                                           "\n\n")))
-                 :name "search-notes"
+                 :name "search_notes"
                  :description "Search notes by a query string, retrieving by semantic similarity."
                  :args '((:name "query" :type string :description "The search query string.")
                          (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
