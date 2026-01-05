@@ -261,7 +261,7 @@ session."
            (message "Iteration %d: Ran tools: %s" (+ 1 iteration-num)
                     (mapcar #'car result-alist))
            (ekg-agent--iterate prompt (+ 1 iteration-num)))))
-     (lambda (_ err) (error err))
+     (lambda (_ err) (error "%s" err))
      t)))
 
 (defun ekg-agent-evaluate-status-daily ()
