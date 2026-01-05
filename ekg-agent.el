@@ -197,7 +197,7 @@ items (if any).  If you need to explore the notes, you can do that with
 the tools available to you.  After each tool call you will be given a
 chance to make more tool calls, one of which is to create a new note.
 When you are done, you can call the end tool to indicate that you are
-finished.  Try to make no more then 4 tool calls before calling the end
+finished.  Try to make no more than 4 tool calls before calling the end
 tool to finish your work.
 
 Following these steps:
