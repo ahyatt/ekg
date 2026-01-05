@@ -149,7 +149,7 @@ Changes to this variable will take effect the next time you call
 (defun ekg-agent-starting-context ()
   "Return the context for an agent for new sessions.
 
-This includes the laset 10 notes and the org agenda, and the last 10
+This includes the latest 10 notes and the org agenda, and the last 10
 self info and self-instruct notes."
   (concat
    "The last 10 notes:\n"
