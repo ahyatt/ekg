@@ -27,6 +27,7 @@
 ;;; Code:
 
 (require 'llm)
+(require 'llm-vertex)
 (require 'ekg-llm)
 (require 'ekg-embedding)
 (require 'seq)
@@ -128,7 +129,7 @@ Changes to this variable will take effect the next time you call
                                                                             (list ekg-agent-author-tag))
                                                            :text (concat
                                                                   (car enclosure)
-                                                                  text
+                                                                  content
                                                                   (cdr enclosure))
                                                            :mode (intern mode))))
                                (ekg-save-note note)))
@@ -234,14 +235,21 @@ to create new notes or perform other actions to help the user."
   (ekg-agent--iterate (llm-make-chat-prompt
                        (concat ekg-agent-instructions-intro (ekg-agent-instructions-evaluate-status)
                                (ekg-agent-starting-context))
-                       :tools (list
-                               ekg-agent-tool-all-tags
-                               ekg-agent-tool-any-tags
-                               ekg-agent-tool-get-note-by-id
-                               ekg-agent-tool-search-notes
-                               ekg-agent-tool-list-tags
-                               ekg-agent-tool-create-note
-                               ekg-agent-tool-end))
+                       :tools (append
+                               (list
+                                ekg-agent-tool-all-tags
+                                ekg-agent-tool-any-tags
+                                ekg-agent-tool-get-note-by-id
+                                ekg-agent-tool-search-notes
+                                ekg-agent-tool-list-tags
+                                ekg-agent-tool-create-note
+                                ekg-agent-tool-end)
+                               ;; Use Google Search as well, if possible.
+                               (when (llm-google-p (ekg-llm--provider))
+                                 (list (make-llm-tool :function #'ignore
+                                                      :name "google_search"
+                                                      :description "Google Search built-in tool"
+                                                      :args nil)))))
                       0))
 
 (defun ekg-agent--iterate (prompt iteration-num)
