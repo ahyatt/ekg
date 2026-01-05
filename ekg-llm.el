@@ -307,7 +307,7 @@ structs."
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
                   (text . ,(substring-no-properties (ekg-display-note-text
                                                      note
-                                                     ekg-llm-note-numwords t)))))
+                                                     ekg-llm-note-numwords 'plaintext)))))
         (json-encoding-pretty-print t))
     (when (ekg-should-show-id-p note)
       (push (cons "id" (ekg-note-id note)) result))

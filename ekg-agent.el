@@ -109,7 +109,7 @@ Changes to this variable will take effect the next time you call
                                                    (llm-embedding ekg-embedding-provider query)
                                                    num))
                                           "\n\n")))
-                 :name "search-notes"
+                 :name "search_notes"
                  :description "Search notes by a query string, retrieving by semantic similarity."
                  :args '((:name "query" :type string :description "The search query string.")
                          (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
@@ -150,7 +150,7 @@ Changes to this variable will take effect the next time you call
 (defun ekg-agent-starting-context ()
   "Return the context for an agent for new sessions.
 
-This includes the laset 10 notes and the org agenda, and the last 10
+This includes the latest 10 notes and the org agenda, and the last 10
 self info and self-instruct notes."
   (concat
    "The last 10 notes:\n"
@@ -198,14 +198,14 @@ items (if any).  If you need to explore the notes, you can do that with
 the tools available to you.  After each tool call you will be given a
 chance to make more tool calls, one of which is to create a new note.
 When you are done, you can call the end tool to indicate that you are
-finished.  Try to make no more then 4 tool calls before calling the end
+finished.  Try to make no more than 4 tool calls before calling the end
 tool to finish your work.
 
 Following these steps:
 
 1. Based on the recent messages and org-mode tasks, see if there's
 something obvious to follow up on.  If not, call the end tool.
-2. If necesary to get more information, look at relevant tags or search.
+2. If necessary to get more information, look at relevant tags or search.
 This can be one or two tool calls but no more.
 3. After getting more information, you may want to write a note to
 yourself with relevant findings.
@@ -269,7 +269,7 @@ session."
            (message "Iteration %d: Ran tools: %s" (+ 1 iteration-num)
                     (mapcar #'car result-alist))
            (ekg-agent--iterate prompt (+ 1 iteration-num)))))
-     (lambda (_ err) (error err))
+     (lambda (_ err) (error "%s" err))
      t)))
 
 (defun ekg-agent-evaluate-status-daily ()
