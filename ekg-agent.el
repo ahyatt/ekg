@@ -204,7 +204,7 @@ Following these steps:
 
 1. Based on the recent messages and org-mode tasks, see if there's
 something obvious to follow up on.  If not, call the end tool.
-2. If necesary to get more information, look at relevant tags or search.
+2. If necessary to get more information, look at relevant tags or search.
 This can be one or two tool calls but no more.
 3. After getting more information, you may want to write a note to
 yourself with relevant findings.
