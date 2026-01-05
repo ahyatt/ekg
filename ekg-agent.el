@@ -136,7 +136,7 @@ Changes to this variable will take effect the next time you call
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
                  :args '((:name "tags" :type array :items (:type string)
-                                :description "List of tags to assign to the new note.  The tags should preferrably be preexisting tags, but new tags can be created as well.")
+                                :description "List of tags to assign to the new note.  The tags should preferably be preexisting tags, but new tags can be created as well.")
                          (:name "content" :type string :description "The content of the new note.")
                          (:name "mode" :type string :enum ["markdown-mode" "org-mode" "text-mode"]
                                 :description "The emacs mode of the note content (e.g., 'org-mode', 'markdown-mode', 'text-mode')."))))
