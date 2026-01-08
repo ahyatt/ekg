@@ -51,6 +51,9 @@
   :type 'string
   :group 'ekg-agent)
 
+(add-to-list 'ekg-hidden-tags ekg-agent-self-info-tag)
+(add-to-list 'ekg-hidden-tags ekg-agent-self-instruct-tag)
+
 (defcustom ekg-agent-context-func #'ekg-agent-starting-context
   "Function that returns the starting information for an ekg agent.
 
@@ -397,6 +400,11 @@ Context (current note and last 10 notes with same tags):\n"
 ;; Redefine the keys, take the binding over from ekg-llm.
 (define-key ekg-capture-mode-map (kbd "C-c .") #'ekg-agent-note-response)
 (define-key ekg-edit-mode-map (kbd "C-c .") #'ekg-agent-note-response)
+
+(defun ekg-show-agent-notes ()
+  "Show notes with agent internal tags."
+  (interactive)
+  (ekg-show-notes-with-any-tags (list ekg-agent-self-info-tag ekg-agent-self-instruct-tag)))
 
 (provide 'ekg-agent)
 

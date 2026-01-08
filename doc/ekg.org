@@ -737,7 +737,7 @@ command =ekg-global-rename-tag= can quickly rename one tag to another globally
 across the database, so all tags with the old tag now have the new tag.  (Note
 that the new tag may already exist, in which case this operation cannot be
 easily undone.)
-* Customizing ekg with hooks
+* Customizing ekg
 You can customize the behavior of ekg in a number of ways.
 
 First, you can create your own schema to store your own data.  The hook
@@ -758,10 +758,19 @@ The ~ekg-note-add-tag-hook~ is called when adding a tag, either via the initial
 tags added to a new note, or tags added after completing a new tag in the note's
 property list.
 
+** Hidden Tags
+EKG allows modules or users to hide certain tags from normal view by adding them
+to the =ekg-hidden-tags= list. Notes containing any of these tags will not appear
+in standard note lists unless that specific tag is explicitly searched for.
+
+By default, tags like =ekg-draft-tag= and =ekg-trash-tag= are already treated as
+hidden. Other modules, such as `ekg-agent`, use this list to hide internal
+metadata notes.
+
 ** Text Truncation Method
 EKG provides a way to customize how text is truncated for display (e.g., in note
 lists or inline transclusions) and for generating embeddings. This is controlled
-by the `ekg-truncation-method` variable.
+by the =ekg-truncation-method= variable.
 
 You can set =ekg-truncation-method= to one of the following values:
 - ='word= (default): Text is truncated based on word counts. This is suitable
@@ -1280,6 +1289,10 @@ current note. This is an agentic version of =ekg-llm-send-and-append-note=. The
 agent can use tools to research your other notes and decide whether to append
 information to your note or replace it entirely. As with other LLM commands, a
 prefix argument allows you to edit the instructions sent to the agent.
+
+Internal agent notes (using the =agent/self-info= and =agent/status-instruct=
+tags) are hidden from normal view by being added to =ekg-hidden-tags=. You can
+view these notes specifically with =ekg-show-agent-notes=.
 
 You can also have the agent run automatically every day.  To do this, customize
 ~ekg-agent-daily-time~ to your preferred time (default is "09:00"), and then run:

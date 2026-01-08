@@ -129,6 +129,16 @@ take longer, as more processing will be run on it."
   :type '(string :tag "tag")
   :group 'ekg)
 
+(defcustom ekg-hidden-tags (list ekg-trash-tag ekg-draft-tag)
+  "List of tags that are hidden from normal view.
+These tags are treated similarly to the draft and trash tags, in
+that notes with these tags are filtered out of most views unless
+specifically requested.
+
+Modules can add to this list to hide their internal tags."
+  :type '(repeat string)
+  :group 'ekg)
+
 (defcustom ekg-note-inline-max-words 500
   "How many words to display for inlines if the caller does not specify."
   :type 'integer
@@ -501,9 +511,8 @@ The notes returtned are sorted in reverse chronological order."
   (ekg-connect)
   (sort
    (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag))
-                     (seq-difference tags (list ekg-draft-tag
-                                                ekg-trash-tag
-                                                ekg-function-tag))))
+                     (seq-difference tags (append (list ekg-function-tag)
+                                                  ekg-hidden-tags))))
    #'ekg-sort-by-creation-time))
 
 (defun ekg-get-notes-with-tags (tags)
@@ -517,12 +526,12 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                  tags)))
     (seq-filter
      (lambda (note)
-       ;; Remove draft and trash notes unless they are specifically requested.
+       ;; Remove hidden notes unless they are specifically requested.
        (not
-        (or (and (not (member ekg-draft-tag tags))
-                 (member ekg-draft-tag (ekg-note-tags note)))
-            (and (not (member ekg-trash-tag tags))
-                 (member ekg-trash-tag (ekg-note-tags note))))))
+        (seq-some (lambda (hidden-tag)
+                    (and (not (member hidden-tag tags))
+                         (member hidden-tag (ekg-note-tags note))))
+                  ekg-hidden-tags)))
      (mapcar #'ekg-get-note-with-id
              (seq-reduce #'seq-intersection
                          ids-by-tag
@@ -616,14 +625,14 @@ If the ID does not exist, create a new note with that ID."
   "Return non-nil if TAG represents user content.
 This is opposed to tags that are used for internal purposes."
   (not (member tag
-               (list ekg-draft-tag ekg-template-tag ekg-function-tag ekg-trash-tag))))
+               (append (list ekg-template-tag ekg-function-tag)
+                       ekg-hidden-tags))))
 
 (defun ekg-note-active-p (note)
   "Return non-nil if NOTE is active.
 This is similar to `ekg-active-id-p', but takes a note, which may
 be unsaved."
-  (not (seq-intersection (list ekg-draft-tag ekg-trash-tag)
-                         (ekg-note-tags note))))
+  (not (seq-intersection ekg-hidden-tags (ekg-note-tags note))))
 
 (defun ekg-note-is-content-p (note)
   "Return non-nil if NOTE has no control-type tags.
@@ -1704,7 +1713,7 @@ Does not include any tags with special uses (e.g. trash and draft
 tags)."
   (ekg-connect)
   (seq-difference (triples-subjects-of-type ekg-db 'tag)
-                  (list ekg-draft-tag ekg-trash-tag)))
+                  ekg-hidden-tags))
 
 (defun ekg-tags-including (substring)
   "Return all tags including SUBSTRING."

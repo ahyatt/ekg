@@ -53,7 +53,7 @@ and in the git repository, which is at @uref{https://github.com/ahyatt/ekg}.
 * Importing from org-roam::
 * Backups::
 * Database maintenance::
-* Customizing ekg with hooks::
+* Customizing ekg::
 * Integration with ekg::
 * Extras::
 * Design::
@@ -107,8 +107,9 @@ Viewing tags or notes
 * Commands in the notes buffer::
 * Customizing note display in @samp{ekg-notes-mode}::
 
-Customizing ekg with hooks
+Customizing ekg
 
+* Hidden Tags::
 * Text Truncation Method::
 
 Extras
@@ -1200,8 +1201,8 @@ across the database, so all tags with the old tag now have the new tag.  (Note
 that the new tag may already exist, in which case this operation cannot be
 easily undone.)
 
-@node Customizing ekg with hooks
-@chapter Customizing ekg with hooks
+@node Customizing ekg
+@chapter Customizing ekg
 
 You can customize the behavior of ekg in a number of ways.
 
@@ -1224,15 +1225,27 @@ tags added to a new note, or tags added after completing a new tag in the note's
 property list.
 
 @menu
+* Hidden Tags::
 * Text Truncation Method::
 @end menu
+
+@node Hidden Tags
+@section Hidden Tags
+
+EKG allows modules or users to hide certain tags from normal view by adding them
+to the @samp{ekg-hidden-tags} list. Notes containing any of these tags will not appear
+in standard note lists unless that specific tag is explicitly searched for.
+
+By default, tags like @samp{ekg-draft-tag} and @samp{ekg-trash-tag} are already treated as
+hidden. Other modules, such as `ekg-agent`, use this list to hide internal
+metadata notes.
 
 @node Text Truncation Method
 @section Text Truncation Method
 
 EKG provides a way to customize how text is truncated for display (e.g., in note
 lists or inline transclusions) and for generating embeddings. This is controlled
-by the `ekg-truncation-method` variable.
+by the @samp{ekg-truncation-method} variable.
 
 You can set @samp{ekg-truncation-method} to one of the following values:
 @itemize
@@ -1808,6 +1821,10 @@ current note. This is an agentic version of @samp{ekg-llm-send-and-append-note}.
 agent can use tools to research your other notes and decide whether to append
 information to your note or replace it entirely. As with other LLM commands, a
 prefix argument allows you to edit the instructions sent to the agent.
+
+Internal agent notes (using the @samp{agent/self-info} and @samp{agent/status-instruct}
+tags) are hidden from normal view by being added to @samp{ekg-hidden-tags}. You can
+view these notes specifically with @samp{ekg-show-agent-notes}.
 
 You can also have the agent run automatically every day.  To do this, customize
 @code{ekg-agent-daily-time} to your preferred time (default is "09:00"), and then run:
