@@ -640,7 +640,7 @@ For the common cases, there are special commands, available under the @samp{C-c 
 @item
 @samp{a}: @samp{ekg-note-add-tag}, to add a tag.
 @item
-@samp{d}: @samp{ekg-note-remove-tag}, to remove a tag.
+@samp{r}: @samp{ekg-note-remove-tag}, to remove a tag.
 @item
 @samp{t}: @samp{ekg-note-add-title}, to add a title.
 @item

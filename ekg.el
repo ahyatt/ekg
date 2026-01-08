@@ -980,7 +980,7 @@ ARG is the prefix argument, if used it opens in another window."
 (defvar ekg-edit-commands-map
   (let ((map (make-sparse-keymap)))
     (define-key map "a" #'ekg-note-add-tag)
-    (define-key map "d" #'ekg-note-remove-tag)
+    (define-key map "r" #'ekg-note-remove-tag)
     (define-key map "t" #'ekg-note-add-title)
     (define-key map "T" #'ekg-note-remove-title)
     (define-key map "p" #'ekg-note-edit-property)

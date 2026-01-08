@@ -255,7 +255,7 @@ database for the entity.  At a minimum, there will be tags.
 For the common cases, there are special commands, available under the =C-c /= prefix keymap:
 
 - =a=: =ekg-note-add-tag=, to add a tag.
-- =d=: =ekg-note-remove-tag=, to remove a tag.
+- =r=: =ekg-note-remove-tag=, to remove a tag.
 - =t=: =ekg-note-add-title=, to add a title.
 - =T=: =ekg-note-remove-title=, to remove a title.
 - =p=: =ekg-note-edit-property=, to edit any property, including the "resource" of the note, which is its ID.  For editing, multi-values properties are editable as a list with values separated by =", "=.  Maintain the space after the comma when editing.
