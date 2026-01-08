@@ -275,6 +275,7 @@ session."
 (defun ekg-agent-evaluate-status-daily ()
   "Run the ekg agent to evaluate status as a daily routine."
   (interactive)
+  (message "Running the daily ekg agent...")
   (ekg-agent-evaluate-status))
 
 (defun ekg-agent--parse-time (time-string)
@@ -312,6 +313,90 @@ If already scheduled, cancels the existing timer and creates a new one."
     (cancel-timer ekg-agent--daily-timer)
     (setq ekg-agent--daily-timer nil)
     (message "EKG agent daily schedule cancelled")))
+
+(defun ekg-agent-note-response (&optional arg)
+  "Respond to the current note using the agent.
+This is similar to `ekg-llm-send-and-append-note', but runs an
+agent loop with tools, instead of just appending text.
+
+The agent is given the context of the last 10 notes with similar
+tags.
+
+ARG, if non-nil, allows editing the instructions."
+  (interactive "P")
+  (unless ekg-note
+    (error "No note in current buffer"))
+  (let* ((ekg-agent-tool-append-response
+          (make-llm-tool
+           :function (lambda (content)
+                       (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                              (new-text (concat
+                                         (car enclosure)
+                                         content
+                                         (cdr enclosure))))
+                         (setf (ekg-note-text ekg-note)
+                               (concat (ekg-note-text ekg-note)
+                                       "\n\n"
+                                       new-text))))
+           :name "append_to_current_note"
+           :description "Append content to the current note."
+           :args '((:name "content" :type string :description "The content to append to the current note."))))
+         (ekg-agent-tool-replace-response
+          (make-llm-tool
+           :function (lambda (content)
+                       (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                              (new-text (concat
+                                         (car enclosure)
+                                         content
+                                         (cdr enclosure))))
+                         (setf (ekg-note-text ekg-note) new-text)))
+           :name "replace_current_note"
+           :description "Replace the content of the current note."
+           :args '((:name "content" :type string :description "The new content for the current note."))))
+         (instructions (ekg-llm-instructions-for-note ekg-note))
+         (instructions-for-use (if arg
+                                   (read-string "Instructions: " instructions)
+                                 instructions))
+         (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id ekg-note)))
+                                              (ekg-get-notes-with-any-tags (ekg-note-tags ekg-note)))
+                                  10))
+         (context-str (let ((ekg-llm-note-numwords 10000))
+                        (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
+         (prompt (concat ekg-agent-instructions-intro
+                         "\n\nYour instructions:\n"
+                         instructions-for-use
+                         "\n\nYou have access to tools to help you.
+After each tool call you will be given a chance to make more tool calls.
+When you are done, you can call the end tool to indicate that you are
+finished.  Try to make no more than 4 tool calls before calling the end
+tool to finish your work.
+
+Context (current note and last 10 notes with same tags):\n"
+                         (ekg-llm-note-to-text ekg-note)
+                         "\n\n"
+                         context-str)))
+    (ekg-agent--iterate (llm-make-chat-prompt
+                         prompt
+                         :tools (append
+                                 (list
+                                  ekg-agent-tool-all-tags
+                                  ekg-agent-tool-any-tags
+                                  ekg-agent-tool-get-note-by-id
+                                  ekg-agent-tool-search-notes
+                                  ekg-agent-tool-list-tags
+                                  ekg-agent-tool-append-response
+                                  ekg-agent-tool-replace-response
+                                  ekg-agent-tool-end)
+                                 (when (llm-google-p (ekg-llm--provider))
+                                   (list (make-llm-tool :function #'ignore
+                                                        :name "google_search"
+                                                        :description "Google Search built-in tool"
+                                                        :args nil)))))
+                        0)))
+
+;; Redefine the keys, take the binding over from ekg-llm.
+(define-key ekg-capture-mode-map (kbd "C-c .") #'ekg-agent-note-response)
+(define-key ekg-edit-mode-map (kbd "C-c .") #'ekg-agent-note-response)
 
 (provide 'ekg-agent)
 

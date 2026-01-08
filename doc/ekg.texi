@@ -119,6 +119,7 @@ Extras
 * Auto save::
 * Denote::
 * Email::
+* Agent::
 
 Logseq
 
@@ -238,6 +239,10 @@ triples library is already installed.
 @section Version 0.9.0
 
 @itemize
+@item
+Added @samp{ekg-agent}, an autonomous agent that can help you with your notes.
+@item
+Added @samp{ekg-agent-note-response} to allow the agent to help with individual notes.
 @item
 Changed how note metadata is represented in the note editing UI@.
 @item
@@ -1322,6 +1327,7 @@ package.
 * Auto save::
 * Denote::
 * Email::
+* Agent::
 @end menu
 
 @node Embeddings
@@ -1775,6 +1781,55 @@ Gnus.  Other importing methods may be available in the future.
 While in a Gnus article buffer, you can execute the command @samp{ekg-email-from-gnus}.
 
 Once mails are imported, you can search for email addresses associated with them with @samp{ekg-email-show-notes-with-address}.
+
+@node Agent
+@section Agent
+
+The @samp{ekg-agent} module provides an autonomous agent that can help you with your
+notes.  This agent can review your recent notes and org-mode agenda, and
+proactively create new notes to help you, such as offering advice, pointing out
+connections, or suggesting resources.
+
+To use this module, you must have an LLM provider configured as described in the
+@ref{LLM} section.  You can then load the agent:
+
+@lisp
+(require 'ekg-agent)
+@end lisp
+
+The primary command is @samp{ekg-agent-evaluate-status}, which runs a single session
+where the agent reviews your recent activity and decides if it can be of
+assistance.  It can create notes to you, or to itself, to help it work.
+
+You can also ask the agent to help you with a specific note you are writing or
+editing. The command @samp{ekg-agent-note-response} (bound to @samp{C-c .} by default,
+overriding the @samp{ekg-llm} binding) will start an agent loop focused on your
+current note. This is an agentic version of @samp{ekg-llm-send-and-append-note}. The
+agent can use tools to research your other notes and decide whether to append
+information to your note or replace it entirely. As with other LLM commands, a
+prefix argument allows you to edit the instructions sent to the agent.
+
+You can also have the agent run automatically every day.  To do this, customize
+@code{ekg-agent-daily-time} to your preferred time (default is "09:00"), and then run:
+
+@lisp
+(ekg-agent-schedule-daily)
+@end lisp
+
+This will set up a timer to run the agent daily.  You can cancel this schedule
+with @samp{ekg-agent-cancel-daily}.
+
+The agent uses specific tags to organize its work:
+@itemize
+@item
+@code{ekg-agent-author-tag} (default "agent"): All notes created by the agent will have this tag.
+@item
+@code{ekg-agent-self-info-tag} (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
+@item
+@code{ekg-agent-self-instruct-tag} (default "agent/status-instruct"): The agent uses this tag to leave instructions for its future self.
+@end itemize
+
+You can customize these tags if you prefer different names.
 
 @node Design
 @chapter Design
