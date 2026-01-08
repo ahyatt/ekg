@@ -1237,7 +1237,7 @@ to the @samp{ekg-hidden-tags} list. Notes containing any of these tags will not 
 in standard note lists unless that specific tag is explicitly searched for.
 
 By default, tags like @samp{ekg-draft-tag} and @samp{ekg-trash-tag} are already treated as
-hidden. Other modules, such as `ekg-agent`, use this list to hide internal
+hidden. Other modules, such as @samp{ekg-agent}, use this list to hide internal
 metadata notes.
 
 @node Text Truncation Method
@@ -1717,7 +1717,7 @@ processing, you may not want to use this.
 
 The @samp{ekg-auto-save} module is useful for users who enter longer notes, so that the notes are protected against accidentally killing the buffer, or emacs crashing, or any similar problem.  It is designed to work similarly to the built-in auto-save functionality, and has it's own variables that default to the auto-save equivalent.  So, for example, there is @code{ekg-auto-save-timeout}, which defaults to the value of @code{auto-save-timeout}.
 
-To start using this, you need to require the module and turn on @samp{ekg-auto-save-mode} in the @samp{ekg-edit-mode` and =ekg-capture-mode}.  For example:
+To start using this, you need to require the module and turn on @samp{ekg-auto-save-mode} in the @samp{ekg-edit-mode} and @samp{ekg-capture-mode}.  For example:
 @lisp
 (require 'ekg-auto-save)
 (add-hook 'ekg-capture-mode-hook 'ekg-auto-save-mode)

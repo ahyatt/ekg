@@ -764,7 +764,7 @@ to the =ekg-hidden-tags= list. Notes containing any of these tags will not appea
 in standard note lists unless that specific tag is explicitly searched for.
 
 By default, tags like =ekg-draft-tag= and =ekg-trash-tag= are already treated as
-hidden. Other modules, such as `ekg-agent`, use this list to hide internal
+hidden. Other modules, such as =ekg-agent=, use this list to hide internal
 metadata notes.
 
 ** Text Truncation Method
@@ -1193,7 +1193,7 @@ processing, you may not want to use this.
 :END:
 The =ekg-auto-save= module is useful for users who enter longer notes, so that the notes are protected against accidentally killing the buffer, or emacs crashing, or any similar problem.  It is designed to work similarly to the built-in auto-save functionality, and has it's own variables that default to the auto-save equivalent.  So, for example, there is ~ekg-auto-save-timeout~, which defaults to the value of ~auto-save-timeout~.
 
-To start using this, you need to require the module and turn on =ekg-auto-save-mode= in the =ekg-edit-mode` and =ekg-capture-mode=.  For example:
+To start using this, you need to require the module and turn on =ekg-auto-save-mode= in the =ekg-edit-mode= and =ekg-capture-mode=.  For example:
 #+begin_src emacs-lisp
 (require 'ekg-auto-save)
 (add-hook 'ekg-capture-mode-hook 'ekg-auto-save-mode)
