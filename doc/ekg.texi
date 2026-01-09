@@ -1848,6 +1848,10 @@ The agent uses specific tags to organize its work:
 
 You can customize these tags if you prefer different names.
 
+You can also customize the tools available to the agent by modifying
+@code{ekg-agent-extra-tools}.  This allows you to add your own tools to the
+standard set of tools provided by the agent.
+
 @node Design
 @chapter Design
 

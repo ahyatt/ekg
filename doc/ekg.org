@@ -1310,6 +1310,10 @@ The agent uses specific tags to organize its work:
 - ~ekg-agent-self-instruct-tag~ (default "agent/status-instruct"): The agent uses this tag to leave instructions for its future self.
 
 You can customize these tags if you prefer different names.
+
+You can also customize the tools available to the agent by modifying
+~ekg-agent-extra-tools~.  This allows you to add your own tools to the
+standard set of tools provided by the agent.
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.

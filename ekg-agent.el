@@ -150,6 +150,25 @@ Changes to this variable will take effect the next time you call
                  :description "Indicate that no further actions need to be taken."
                  :args '()))
 
+(defconst ekg-agent-base-tools
+  (list
+   ekg-agent-tool-all-tags
+   ekg-agent-tool-any-tags
+   ekg-agent-tool-get-note-by-id
+   ekg-agent-tool-search-notes
+   ekg-agent-tool-list-tags
+   ekg-agent-tool-create-note
+   ekg-agent-tool-end)
+  "List of base tools available to the agent.
+These tools are necessary for basic agent functionality.")
+
+(defcustom ekg-agent-extra-tools nil
+  "List of additional tools available to the agent.
+These tools are used in addition to `ekg-agent-base-tools` in
+`ekg-agent-evaluate-status` and `ekg-agent-note-response`."
+  :type '(repeat (sexp :tag "Tool"))
+  :group 'ekg-agent)
+
 (defun ekg-agent-starting-context ()
   "Return the context for an agent for new sessions.
 
@@ -239,14 +258,8 @@ to create new notes or perform other actions to help the user."
                        (concat ekg-agent-instructions-intro (ekg-agent-instructions-evaluate-status)
                                (ekg-agent-starting-context))
                        :tools (append
-                               (list
-                                ekg-agent-tool-all-tags
-                                ekg-agent-tool-any-tags
-                                ekg-agent-tool-get-note-by-id
-                                ekg-agent-tool-search-notes
-                                ekg-agent-tool-list-tags
-                                ekg-agent-tool-create-note
-                                ekg-agent-tool-end)
+                               ekg-agent-base-tools
+                               ekg-agent-extra-tools
                                ;; Use Google Search as well, if possible.
                                (when (llm-google-p (ekg-llm--provider))
                                  (list (make-llm-tool :function #'ignore
@@ -385,15 +398,11 @@ Context (current note and last 10 notes with same tags):\n"
     (ekg-agent--iterate (llm-make-chat-prompt
                          prompt
                          :tools (append
+                                 ekg-agent-base-tools
+                                 ekg-agent-extra-tools
                                  (list
-                                  ekg-agent-tool-all-tags
-                                  ekg-agent-tool-any-tags
-                                  ekg-agent-tool-get-note-by-id
-                                  ekg-agent-tool-search-notes
-                                  ekg-agent-tool-list-tags
                                   ekg-agent-tool-append-response
-                                  ekg-agent-tool-replace-response
-                                  ekg-agent-tool-end)
+                                  ekg-agent-tool-replace-response)
                                  (when (llm-google-p (ekg-llm--provider))
                                    (list (make-llm-tool :function #'ignore
                                                         :name "google_search"

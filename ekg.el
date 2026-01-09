@@ -507,7 +507,7 @@ if it is time for one, according to the settings in
 This returns notes that have any of the tags in TAGS.  Special
 tags are not returned.
 
-The notes returtned are sorted in reverse chronological order."
+The notes returned are sorted in reverse chronological order."
   (ekg-connect)
   (sort
    (seq-uniq (mapcan (lambda (tag) (ekg-get-notes-with-tag tag))
