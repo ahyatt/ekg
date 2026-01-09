@@ -118,7 +118,7 @@ Changes to this variable will take effect the next time you call
                          (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
 
 (defconst ekg-agent-tool-list-tags
-  (make-llm-tool :function (lambda () (ekg-tags))
+  (make-llm-tool :function (lambda () (apply #'vector (ekg-tags)))
                  :name "list_all_tags"
                  :description "List all existing tags in the ekg database."
                  :args '()))
@@ -334,13 +334,12 @@ ARG, if non-nil, allows editing the instructions."
            :function (lambda (content)
                        (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
                               (new-text (concat
-                                         (car enclosure)
-                                         content
+                                         (car enclosure) "\n"
+                                         content "\n"
                                          (cdr enclosure))))
-                         (setf (ekg-note-text ekg-note)
-                               (concat (ekg-note-text ekg-note)
-                                       "\n\n"
-                                       new-text))))
+                         (save-excursion
+                           (goto-char (point-max))
+                           (insert new-text))))
            :name "append_to_current_note"
            :description "Append content to the current note."
            :args '((:name "content" :type string :description "The content to append to the current note."))))
@@ -349,10 +348,11 @@ ARG, if non-nil, allows editing the instructions."
            :function (lambda (content)
                        (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
                               (new-text (concat
-                                         (car enclosure)
-                                         content
+                                         (car enclosure) "\n"
+                                         content "\n"
                                          (cdr enclosure))))
-                         (setf (ekg-note-text ekg-note) new-text)))
+                         (erase-buffer)
+                         (insert new-text)))
            :name "replace_current_note"
            :description "Replace the content of the current note."
            :args '((:name "content" :type string :description "The new content for the current note."))))
@@ -361,7 +361,11 @@ ARG, if non-nil, allows editing the instructions."
                                    (read-string "Instructions: " instructions)
                                  instructions))
          (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id ekg-note)))
-                                              (ekg-get-notes-with-any-tags (ekg-note-tags ekg-note)))
+                                              (ekg-get-notes-with-any-tags
+                                               (append
+                                                (ekg-note-tags ekg-note)
+                                                (list ekg-agent-self-info-tag
+                                                      ekg-agent-self-instruct-tag))))
                                   10))
          (context-str (let ((ekg-llm-note-numwords 10000))
                         (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
