@@ -127,22 +127,25 @@ Changes to this variable will take effect the next time you call
   (make-llm-tool :function (lambda (tags content mode)
                              (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
                                (error "Unsupported mode: %s" mode))
-                             (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                             (let* ((enclosure (assoc-default (intern mode) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
                                     (note (ekg-note-create :tags (seq-union (append tags nil)
                                                                             (list ekg-agent-author-tag))
                                                            :text (concat
-                                                                  (car enclosure)
-                                                                  content
+                                                                  (car enclosure) "\n"
+                                                                  content "\n"
                                                                   (cdr enclosure))
                                                            :mode (intern mode))))
                                (ekg-save-note note)))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
-                 :args '((:name "tags" :type array :items (:type string)
+                 :args `((:name "tags" :type array :items (:type string)
                                 :description "List of tags to assign to the new note.  The tags should preferably be preexisting tags, but new tags can be created as well.")
                          (:name "content" :type string :description "The content of the new note.")
                          (:name "mode" :type string :enum ["markdown-mode" "org-mode" "text-mode"]
-                                :description "The emacs mode of the note content (e.g., 'org-mode', 'markdown-mode', 'text-mode')."))))
+                                :description
+                                ,(concat "The emacs mode of the note content (e.g., 'org-mode', 'markdown-mode', 'text-mode'). "
+                                         "Prefer org-mode to markdown-mode, and either to text-mode.  Use existing notes as "
+                                         "a guide to what the user prefers.")))))
 
 (defconst ekg-agent-tool-end
   (make-llm-tool :function (lambda () 'done)
@@ -246,8 +249,11 @@ that will make future runs better, and want to record this.
 When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
 these tags manually.
+
+The date and time is %s.
 "
-   ekg-agent-self-info-tag ekg-agent-self-instruct-tag))
+   ekg-agent-self-info-tag ekg-agent-self-instruct-tag
+   (format-time-string "%F %R")))
 
 (defun ekg-agent-evaluate-status ()
   "Run the ekg agent to evaluate status and help the user.
@@ -255,7 +261,8 @@ The agent will review recent notes and TODO items, then decide whether
 to create new notes or perform other actions to help the user."
   (interactive)
   (ekg-agent--iterate (llm-make-chat-prompt
-                       (concat ekg-agent-instructions-intro (ekg-agent-instructions-evaluate-status)
+                       (concat ekg-agent-instructions-intro
+                               (ekg-agent-instructions-evaluate-status)
                                (ekg-agent-starting-context))
                        :tools (append
                                ekg-agent-base-tools
@@ -389,14 +396,18 @@ ARG, if non-nil, allows editing the instructions."
 After each tool call you will be given a chance to make more tool calls.
 When you are done, you can call the end tool to indicate that you are
 finished.  Try to make no more than 4 tool calls before calling the end
-tool to finish your work.
+tool to finish your work.  Although you can create a note or rewrite the
+note, prefer to append to the note by default, unless the user is asking
+for a rewritten or new note.
 
-Context (current note and last 10 notes with same tags):\n"
-                         (ekg-llm-note-to-text ekg-note)
+Context (last 10 notes with same tags):\n"
+                         (format "The current date and time is %s."
+                                 (format-time-string "%F %R"))
                          "\n\n"
                          context-str)))
     (ekg-agent--iterate (llm-make-chat-prompt
-                         prompt
+                         (buffer-substring-no-properties (point-min) (point-max))
+                         :context prompt
                          :tools (append
                                  ekg-agent-base-tools
                                  ekg-agent-extra-tools
