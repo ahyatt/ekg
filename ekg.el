@@ -1636,7 +1636,7 @@ Notes saved as drafts will be deleted."
 (defun ekg-note-active-tags (note)
   "Return the tags of NOTE that are considered normal tags."
   (seq-difference (ekg-note-tags note)
-                  (list ekg-draft-tag ekg-trash-tag)))
+                  ekg-hidden-tags))
 
 (defun ekg-fix-renamed-dup-tags (id)
   "Fix duplicate tags in note with ID.

@@ -187,3 +187,21 @@ Enforces single match."
   (should (= 0 (ekg-denote-get-last-export)))
   (ekg-denote-set-last-export 123)
   (should (= 123 (ekg-denote-get-last-export))))
+
+(ert-deftest ekg-denote-test-create-hidden-tags ()
+  "Verify that hidden tags are filtered out during denote creation."
+  (let* ((time (time-convert (current-time) 'integer))
+         (denote-directory "/tmp")
+         (denote-id (format-time-string denote-id-format time))
+         (ekg-default-capture-mode 'org-mode)
+         (ekg-hidden-tags '("hidden"))
+         (note (make-ekg-note :id "ID1"
+                              :creation-time time
+                              :tags '("visible" "hidden" "date/20230101")))
+         (denote (make-ekg-denote :id denote-id
+                                  :note-id "ID1"
+                                  :title ""
+                                  :text ""
+                                  :path (format "/tmp/%s__visible.org" denote-id)
+                                  :kws '("visible"))))
+    (should (equal denote (ekg-denote-create note)))))

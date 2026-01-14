@@ -112,24 +112,31 @@ However, we do pay attention to
                                                           (point)) (point-max))))
                             (unless (triples-subjects-with-predicate-object ekg-db 'org-roam/id (org-roam-node-id node))
                               (setq tags-from-links (ekg-org-roam-import--tags-from-links))
-                              (triples-with-transaction ekg-db
-                                                        (let* ((note (ekg-note-create
-                                                                      :text text
-                                                                      :mode 'org-mode
-                                                                      :tags (seq-difference (seq-uniq
-                                                                                             (append
-                                                                                              (list (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)))
-                                                                                              tags-from-links
-                                                                                              (org-roam-node-tags node)))
-                                                                                            (seq-union ekg-org-roam-import-tag-to-ignore
-                                                                                                       ekg-org-roam-import-tag-to-prefix
-                                                                                                       #'equal)
-                                                                                            #'equal))))
-                                                          (setf (ekg-note-id note) (org-roam-node-id node))
-                                                          (when (org-roam-node-refs node)
-                                                            (setf (ekg-note-properties note) `(:reference/url ,(org-roam-node-refs node))))
-                                                          (ekg-save-note note)
-                                                          (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node)))))))))))
+                              (triples-with-transaction
+                                ekg-db
+                                (let* ((note
+                                        (ekg-note-create
+                                         :text text
+                                         :mode 'org-mode
+                                         :tags
+                                         (seq-difference
+                                          (seq-uniq
+                                           (append
+                                            (list
+                                             (ekg-org-roam-import-title-to-tag
+                                              (org-roam-node-title node)
+                                              (org-roam-node-tags node)))
+                                            tags-from-links
+                                            (org-roam-node-tags node)))
+                                          (append ekg-hidden-tags
+                                                  ekg-org-roam-import-tag-to-ignore
+                                                  ekg-org-roam-import-tag-to-prefix)
+                                          #'equal))))
+                                  (setf (ekg-note-id note) (org-roam-node-id node))
+                                  (when (org-roam-node-refs node)
+                                    (setf (ekg-note-properties note) `(:reference/url ,(org-roam-node-refs node))))
+                                  (ekg-save-note note)
+                                  (triples-set-type ekg-db (ekg-note-id note) 'org-roam `(:id ,(org-roam-node-id node)))))))))))
 
 (provide 'ekg-org-roam)
 
