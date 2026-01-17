@@ -400,8 +400,8 @@ ARG, if non-nil, allows editing the instructions."
                                                   (list ekg-agent-self-info-tag
                                                         ekg-agent-self-instruct-tag))))
                                     10))
-           (context-str (let ((ekg-llm-note-numwords 10000))
-                          (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
+           (current-note-json (let ((ekg-llm-note-numwords 10000))
+                                (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
            (prompt (concat ekg-agent-instructions-intro
                            "\n\nYour instructions:\n"
                            instructions-for-use
@@ -412,13 +412,13 @@ finished.  Try to make no more than 4 tool calls before calling the end
 tool to finish your work.  Although you can create a note or rewrite the
 note, prefer to append to the note by default, unless the user is asking
 for a rewritten or new note.\nThe user input will be the note they are
-current editing.\n\n"
+currently editing.\n\n"
                            (format "The current date and time is %s."
                                    (format-time-string "%F %R")))))
       (let ((overlay (make-overlay (point-max) (point-max) nil t t)))
         (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
         (ekg-agent--iterate (llm-make-chat-prompt
-                             context-str
+                             current-note-json
                              :context prompt
                              :tools (append
                                      ekg-agent-base-tools

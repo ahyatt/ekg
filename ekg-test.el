@@ -41,7 +41,7 @@
                (should (= 1 (length (ekg-get-notes-with-tags '("tag1")))))
                ;; Just one note, even if it has both of the tags.
                (should (= 1 (length (ekg-get-notes-with-tags '("tag1" "tag2")))))
-               ;; WHen we get notes with tags, it's an AND, so it shouldn't get anything.
+               ;; When we get notes with tags, it's an AND, so it shouldn't get anything.
                (should (= 0 (length (ekg-get-notes-with-tags '("tag1" "tag2" "nonexistent")))))
                (should (equal note (car (ekg-get-notes-with-tags '("tag1")))))
                (should (ekg-live-id-p (ekg-note-id note)))
