@@ -155,6 +155,21 @@ Changes to this variable will take effect the next time you call
                  :description "Indicate that no further actions need to be taken."
                  :args '()))
 
+(defun ekg-agent--popup-result-in-buffer (result)
+  "Display RESULT in a new buffer and pop up to it."
+  (let ((buf (get-buffer-create "*ekg agent result*")))
+    (with-current-buffer buf
+      (erase-buffer)
+      (insert result)
+      (goto-char (point-min)))
+    (pop-to-buffer buf)))
+
+(defconst ekg-agent-tool-popup-result
+  (make-llm-tool :function #'ekg-agent--popup-result-in-buffer
+                 :name "display_result_in_popup"
+                 :description "Display the result of a query in a popup buffer."
+                 :args '((:name "result" :type string :description "The result to display."))))
+
 (defconst ekg-agent-base-tools
   (list
    ekg-agent-tool-all-tags
@@ -173,6 +188,44 @@ These tools are used in addition to `ekg-agent-base-tools` in
 `ekg-agent-evaluate-status` and `ekg-agent-note-response`."
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
+
+(defun ekg-agent-ask (question)
+  "Ask the ekg agent a QUESTION and display the result.
+The agent has access to all the ekg tools, and can create notes
+or display results in a popup buffer.  The agent will decide
+which is best."
+  (interactive "sQuestion: ")
+  (let* ((prompt (concat ekg-agent-instructions-intro
+                         "\n\nYour instructions are to answer the user's question, given below."
+                         "You have access to tools to help you."
+                         "After each tool call you will be given a chance to make more tool calls."
+                         "When you have the answer, you MUST present it to the user by calling either"
+                         "`display_result_in_popup` or `create_note`.  Calling one of these tools"
+                         "will complete your task.  Do not call any other tools after you have"
+                         "presented the answer."
+                         "\n\n"
+                         (format "The current date and time is %s."
+                                 (format-time-string "%F %R"))))
+         (context-notes (mapconcat #'ekg-llm-note-to-text
+                                   (ekg-get-latest-modified 10) "\n\n"))
+         (question-with-context (concat question "\n\n"
+                                        "Here are the last 10 notes for context:\n"
+                                        context-notes)))
+    (ekg-agent--iterate (llm-make-chat-prompt
+                         question-with-context
+                         :context prompt
+                         :tools (append (seq-remove (lambda (tool) (equal (llm-tool-name tool) "end"))
+                                                    ekg-agent-base-tools)
+                                        ekg-agent-extra-tools
+                                        (list #'ekg-agent-tool-popup-result)
+                                        (when (llm-google-p (ekg-llm--provider))
+                                          (list (make-llm-tool :function #'ignore
+                                                               :name "google_search"
+                                                               :description "Google Search built-in tool"
+                                                               :args nil)))))
+                        0
+                        nil
+                        '("display_result_in_popup" "create_note"))))
 
 (defun ekg-agent-starting-context ()
   "Return the context for an agent for new sessions.
@@ -277,13 +330,14 @@ to create new notes or perform other actions to help the user."
                                                       :args nil)))))
                       0))
 
-(defun ekg-agent--iterate (prompt iteration-num &optional status-callback)
+(defun ekg-agent--iterate (prompt iteration-num &optional status-callback end-tools)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 PROMPT is the chat prompt for the LLM.
 ITERATION-NUM is the current iteration count.
 STATUS-CALLBACK is a function that takes a string argument, which is the
 status of the agent.  If the status is \\='done or \\='error, the agent has
 finished.
+END-TOOLS is a list of tool names that will end the iteration.
 
 This is to start, and after every tool call to continue the agent
 session."
@@ -294,14 +348,15 @@ session."
     (llm-chat-async
      (ekg-llm--provider) prompt
      (lambda (result)
-       (let ((result-alist (plist-get result :tool-results)))
-         (if (assoc-default "end" result-alist)
+       (let ((result-alist (plist-get result :tool-results))
+             (end-tools (or end-tools '("end"))))
+         (if (seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
              (when status-callback (funcall status-callback 'done))
            (let ((tools-ran (mapconcat #'car result-alist ", ")))
              (message "Iteration %d: Ran tools: %s" (+ 1 iteration-num) tools-ran)
              (if status-callback
                  (funcall status-callback tools-ran))
-             (ekg-agent--iterate prompt (+ 1 iteration-num) status-callback)))))
+             (ekg-agent--iterate prompt (+ 1 iteration-num) status-callback end-tools)))))
      (lambda (_ err)
        (when status-callback (funcall status-callback 'error))
        (error "%s" err))

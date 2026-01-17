@@ -1799,9 +1799,10 @@ Once mails are imported, you can search for email addresses associated with them
 @section Agent
 
 The @samp{ekg-agent} module provides an autonomous agent that can help you with your
-notes.  This agent can review your recent notes and org-mode agenda, and
-proactively create new notes to help you, such as offering advice, pointing out
-connections, or suggesting resources.
+notes.  This agent can review your notes, and org-mode agenda, searching across
+notes by embeddings or tags as appropriate, and proactively create new notes to
+help you, such as offering advice, pointing out connections, or suggesting
+resources.
 
 To use this module, you must have an LLM provider configured as described in the
 @ref{LLM} section.  You can then load the agent:
@@ -1821,6 +1822,20 @@ current note. This is an agentic version of @samp{ekg-llm-send-and-append-note}.
 agent can use tools to research your other notes and decide whether to append
 information to your note or replace it entirely. As with other LLM commands, a
 prefix argument allows you to edit the instructions sent to the agent.
+
+You can also ask the agent a direct question at any time with the command
+@samp{ekg-agent-ask}. This will prompt you for a question, which is then sent to the
+agent. The agent will be able to search your notes and use any other tools
+available. It will then provide its response either by displaying it in a popup
+buffer or by creating a new note, choosing the method it deems most appropriate.
+Once the agent has provided a response, its task for that question is complete.
+For example:
+
+@lisp
+(ekg-agent-ask "What are the main themes in my recent notes on 'systems thinking'?")
+@end lisp
+
+This allows for quick, ad-hoc interactions with the agent without needing to be in a specific note buffer.
 
 Internal agent notes (using the @samp{agent/self-info} and @samp{agent/status-instruct}
 tags) are hidden from normal view by being added to @samp{ekg-hidden-tags}. You can
