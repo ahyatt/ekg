@@ -196,12 +196,12 @@ or display results in a popup buffer.  The agent will decide
 which is best."
   (interactive "sQuestion: ")
   (let* ((prompt (concat ekg-agent-instructions-intro
-                         "\n\nYour instructions are to answer the user's question, given below."
-                         "You have access to tools to help you."
-                         "After each tool call you will be given a chance to make more tool calls."
-                         "When you have the answer, you MUST present it to the user by calling either"
-                         "`display_result_in_popup` or `create_note`.  Calling one of these tools"
-                         "will complete your task.  Do not call any other tools after you have"
+                         "\n\nYour instructions are to answer the user's question, given below. "
+                         "You have access to tools to help you. "
+                         "After each tool call you will be given a chance to make more tool calls. "
+                         "When you have the answer, you MUST present it to the user by calling either "
+                         "`display_result_in_popup` or `create_note`.  Calling one of these tools "
+                         "will complete your task.  Do not call any other tools after you have "
                          "presented the answer."
                          "\n\n"
                          (format "The current date and time is %s."

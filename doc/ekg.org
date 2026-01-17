@@ -1267,7 +1267,7 @@ Once mails are imported, you can search for email addresses associated with them
 :CUSTOM_ID: agent
 :END:
 The =ekg-agent= module provides an autonomous agent that can help you with your
-notes.  This agent can review your notes, and org-mode agenda, searching across
+notes.  This agent can review your notes and org-mode agenda, searching across
 notes by embeddings or tags as appropriate, and proactively create new notes to
 help you, such as offering advice, pointing out connections, or suggesting
 resources.
