@@ -303,6 +303,7 @@ structs."
 (defun ekg-llm-note-to-text (note)
   "Return a representation of NOTE in an LLM-friendly format."
   (let ((result `((tags . ,(ekg-note-tags note))
+                  (mode . ,(symbol-name (ekg-note-mode note)))
                   (created . ,(ekg-llm-format-time (ekg-note-creation-time note)))
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
                   (text . ,(substring-no-properties (ekg-display-note-text

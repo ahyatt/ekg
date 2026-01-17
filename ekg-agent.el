@@ -140,7 +140,9 @@ Changes to this variable will take effect the next time you call
                  :description "Create a new note with specified tags and content."
                  :args `((:name "tags" :type array :items (:type string)
                                 :description "List of tags to assign to the new note.  The tags should preferably be preexisting tags, but new tags can be created as well.")
-                         (:name "content" :type string :description "The content of the new note.")
+                         (:name "content"
+                                :type string
+                                :description "The content of the new note.  This must be written in the format specified by the 'mode' parameter.  Do not include the tags in the content; they will be added automatically.")
                          (:name "mode" :type string :enum ["markdown-mode" "org-mode" "text-mode"]
                                 :description
                                 ,(concat "The emacs mode of the note content (e.g., 'org-mode', 'markdown-mode', 'text-mode'). "
@@ -275,24 +277,34 @@ to create new notes or perform other actions to help the user."
                                                       :args nil)))))
                       0))
 
-(defun ekg-agent--iterate (prompt iteration-num)
+(defun ekg-agent--iterate (prompt iteration-num &optional status-callback)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 PROMPT is the chat prompt for the LLM.
 ITERATION-NUM is the current iteration count.
+STATUS-CALLBACK is a function that takes a string argument, which is the
+status of the agent.  If the status is \\='done or \\='error, the agent has
+finished.
 
 This is to start, and after every tool call to continue the agent
 session."
   (if (> iteration-num 6)
-      (message "ekg agent exceeded maximum number of iterations")
+      (progn
+        (message "ekg agent exceeded maximum number of iterations")
+        (when status-callback (funcall status-callback 'done)))
     (llm-chat-async
      (ekg-llm--provider) prompt
      (lambda (result)
        (let ((result-alist (plist-get result :tool-results)))
-         (unless (assoc-default "end" result-alist)
-           (message "Iteration %d: Ran tools: %s" (+ 1 iteration-num)
-                    (mapcar #'car result-alist))
-           (ekg-agent--iterate prompt (+ 1 iteration-num)))))
-     (lambda (_ err) (error "%s" err))
+         (if (assoc-default "end" result-alist)
+             (when status-callback (funcall status-callback 'done))
+           (let ((tools-ran (mapconcat #'car result-alist ", ")))
+             (message "Iteration %d: Ran tools: %s" (+ 1 iteration-num) tools-ran)
+             (if status-callback
+                 (funcall status-callback tools-ran))
+             (ekg-agent--iterate prompt (+ 1 iteration-num) status-callback)))))
+     (lambda (_ err)
+       (when status-callback (funcall status-callback 'error))
+       (error "%s" err))
      t)))
 
 (defun ekg-agent-evaluate-status-daily ()
@@ -349,77 +361,84 @@ ARG, if non-nil, allows editing the instructions."
   (interactive "P")
   (unless ekg-note
     (error "No note in current buffer"))
-  (let* ((ekg-agent-tool-append-response
-          (make-llm-tool
-           :function (lambda (content)
-                       (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                              (new-text (concat
-                                         (car enclosure) "\n"
-                                         content "\n"
-                                         (cdr enclosure))))
-                         (save-excursion
-                           (goto-char (point-max))
-                           (insert new-text))))
-           :name "append_to_current_note"
-           :description "Append content to the current note."
-           :args '((:name "content" :type string :description "The content to append to the current note."))))
-         (ekg-agent-tool-replace-response
-          (make-llm-tool
-           :function (lambda (content)
-                       (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                              (new-text (concat
-                                         (car enclosure) "\n"
-                                         content "\n"
-                                         (cdr enclosure))))
-                         (erase-buffer)
-                         (insert new-text)))
-           :name "replace_current_note"
-           :description "Replace the content of the current note."
-           :args '((:name "content" :type string :description "The new content for the current note."))))
-         (instructions (ekg-llm-instructions-for-note ekg-note))
-         (instructions-for-use (if arg
-                                   (read-string "Instructions: " instructions)
-                                 instructions))
-         (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id ekg-note)))
-                                              (ekg-get-notes-with-any-tags
-                                               (append
-                                                (ekg-note-tags ekg-note)
-                                                (list ekg-agent-self-info-tag
-                                                      ekg-agent-self-instruct-tag))))
-                                  10))
-         (context-str (let ((ekg-llm-note-numwords 10000))
-                        (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
-         (prompt (concat ekg-agent-instructions-intro
-                         "\n\nYour instructions:\n"
-                         instructions-for-use
-                         "\n\nYou have access to tools to help you.
+  (save-excursion
+    (let* ((ekg-agent-tool-append-response
+            (make-llm-tool
+             :function (lambda (content)
+                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                                (new-text (concat
+                                           (car enclosure) "\n"
+                                           content "\n"
+                                           (cdr enclosure))))
+                           (save-excursion
+                             (goto-char (point-max))
+                             (insert new-text))))
+             :name "append_to_current_note"
+             :description "Append content to the current note."
+             :args '((:name "content" :type string :description "The content to append to the current note."))))
+           (ekg-agent-tool-replace-response
+            (make-llm-tool
+             :function (lambda (content)
+                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                                (new-text (concat
+                                           (car enclosure) "\n"
+                                           content "\n"
+                                           (cdr enclosure))))
+                           (erase-buffer)
+                           (insert new-text)))
+             :name "replace_current_note"
+             :description "Replace the content of the current note."
+             :args '((:name "content" :type string :description "The new content for the current note."))))
+           (instructions (ekg-llm-instructions-for-note ekg-note))
+           (instructions-for-use (if arg
+                                     (read-string "Instructions: " instructions)
+                                   instructions))
+           (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id ekg-note)))
+                                                (ekg-get-notes-with-any-tags
+                                                 (append
+                                                  (ekg-note-tags ekg-note)
+                                                  (list ekg-agent-self-info-tag
+                                                        ekg-agent-self-instruct-tag))))
+                                    10))
+           (context-str (let ((ekg-llm-note-numwords 10000))
+                          (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
+           (prompt (concat ekg-agent-instructions-intro
+                           "\n\nYour instructions:\n"
+                           instructions-for-use
+                           "\n\nYou have access to tools to help you.
 After each tool call you will be given a chance to make more tool calls.
 When you are done, you can call the end tool to indicate that you are
 finished.  Try to make no more than 4 tool calls before calling the end
 tool to finish your work.  Although you can create a note or rewrite the
 note, prefer to append to the note by default, unless the user is asking
-for a rewritten or new note.
-
-Context (last 10 notes with same tags):\n"
-                         (format "The current date and time is %s."
-                                 (format-time-string "%F %R"))
-                         "\n\n"
-                         context-str)))
-    (ekg-agent--iterate (llm-make-chat-prompt
-                         (buffer-substring-no-properties (point-min) (point-max))
-                         :context prompt
-                         :tools (append
-                                 ekg-agent-base-tools
-                                 ekg-agent-extra-tools
-                                 (list
-                                  ekg-agent-tool-append-response
-                                  ekg-agent-tool-replace-response)
-                                 (when (llm-google-p (ekg-llm--provider))
-                                   (list (make-llm-tool :function #'ignore
-                                                        :name "google_search"
-                                                        :description "Google Search built-in tool"
-                                                        :args nil)))))
-                        0)))
+for a rewritten or new note.\nThe user input will be the note they are
+current editing.\n\n"
+                           (format "The current date and time is %s."
+                                   (format-time-string "%F %R")))))
+      (let ((overlay (make-overlay (point-max) (point-max) nil t t)))
+        (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
+        (ekg-agent--iterate (llm-make-chat-prompt
+                             context-str
+                             :context prompt
+                             :tools (append
+                                     ekg-agent-base-tools
+                                     ekg-agent-extra-tools
+                                     (list
+                                      ekg-agent-tool-append-response
+                                      ekg-agent-tool-replace-response)
+                                     (when (llm-google-p (ekg-llm--provider))
+                                       (list (make-llm-tool :function #'ignore
+                                                            :name "google_search"
+                                                            :description "Google Search built-in tool"
+                                                            :args nil))))
+                             :tool-options (make-llm-tool-options :tool-choice 'any))
+                            0
+                            (lambda (status)
+                              (if (memq status '(done error))
+                                  (delete-overlay overlay)
+                                (overlay-put overlay 'after-string
+                                             (propertize (format " [LLM response: %s]" status)
+                                                         'face 'shadow)))))))))
 
 ;; Redefine the keys, take the binding over from ekg-llm.
 (define-key ekg-capture-mode-map (kbd "C-c .") #'ekg-agent-note-response)

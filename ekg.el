@@ -686,22 +686,26 @@ If NUM is greater than the number of words/characters of S, return S
 unchanged."
   (with-temp-buffer
     (insert s)
-    (goto-char (point-min)) ; Changed from 0 to (point-min) for clarity
+    (goto-char (point-max))
     (cond
      ((eq ekg-truncation-method 'word)
-      (cl-loop with i = 0 while (and (< i num)
-                                     (skip-syntax-forward "w")
-                                     (skip-syntax-forward "._-()\"\\"))
-               do (cl-incf i))
-      ;; Move back to the end of the last word/character
-      (skip-syntax-backward "-"))
+      (when (> (count-words (point-min) (point-max)) num)
+        (goto-char (point-min))
+        (cl-loop with i = 0 while (and (< i num)
+                                       (skip-syntax-forward "w")
+                                       (skip-syntax-forward "._-()\"\\"))
+                 do (cl-incf i))
+        ;; Move back to the end of the last word/character
+        (skip-syntax-backward "-")))
      ((eq ekg-truncation-method 'character)
-      (goto-char (min (point-max) (+ (point-min) num)))))
-    (when (< (point) (save-excursion
-                       (goto-char (point-max))
-                       (skip-syntax-backward "-")
-                       (point)))
-      (insert "…"))
+      (when (> (- (point-max) (point-min)) num)
+        (goto-char (min (point-max) (+ (point-min) num))))))
+    (when (< (point)
+             (save-excursion
+               (goto-char (point-max))
+               (skip-syntax-backward "-")
+               (point)))
+      (insert "… [truncated]"))
     (delete-region (point) (point-max))
     (buffer-string)))
 
