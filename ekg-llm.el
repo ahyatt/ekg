@@ -300,18 +300,40 @@ structs."
   "Return a string representation of TIME in a format suitable for LLMs."
   (format-time-string "%Y-%m-%dT%H:%M:%S" time))
 
+(defun ekg-llm-display-note-text (note &optional numwords)
+  "Return text of NOTE for LLM consumption, with LLM-specific truncation.
+This is similar to `ekg-display-note-text' but uses [truncated]
+instead of … for clearer LLM understanding.
+
+NUMWORDS specifies the maximum number of words to include."
+  (with-temp-buffer
+    (when (ekg-note-text note)
+      (insert (ekg-insert-inlines-results
+               (ekg-note-text note)
+               (ekg-note-inlines note)
+               note)))
+    ;; Don't apply mode formatting for LLM output (like plaintext format)
+    (mapc #'funcall ekg-format-funcs)
+    (let ((text (concat (string-trim-right (ekg-truncate-at
+                                            (buffer-string)
+                                            (or numwords ekg-note-inline-max-words)
+                                            " [truncated]"))
+                        "\n")))
+      text)))
+
 (defun ekg-llm-note-to-text (note)
   "Return a representation of NOTE in an LLM-friendly format."
   (let ((result `((tags . ,(ekg-note-tags note))
-                  (mode . ,(symbol-name (ekg-note-mode note)))
                   (created . ,(ekg-llm-format-time (ekg-note-creation-time note)))
                   (modified . ,(ekg-llm-format-time (ekg-note-modified-time note)))
-                  (text . ,(substring-no-properties (ekg-display-note-text
+                  (text . ,(substring-no-properties (ekg-llm-display-note-text
                                                      note
-                                                     ekg-llm-note-numwords 'plaintext)))))
+                                                     ekg-llm-note-numwords)))))
         (json-encoding-pretty-print t))
     (when (ekg-should-show-id-p note)
       (push (cons "id" (ekg-note-id note)) result))
+    (when (ekg-note-mode note)
+      (push (cons "mode" (symbol-name (ekg-note-mode note))) result))
     (map-do
      (lambda (prop value)
        (when-let ((label (ekg-property-name-for prop)))

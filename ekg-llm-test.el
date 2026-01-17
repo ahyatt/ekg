@@ -58,12 +58,14 @@
                    ("modified" . ,time-str)
                    ("title" . ["Title"])
                    ("text" . "Contentinline\n")
+                   ("mode" . "text-mode")
                    ("id" . "http://example.com/1"))
                  (lambda (a b) (string< (car a) (car b)))))
                (ekg-llm-note-to-text
                 (make-ekg-note :id "http://example.com/1"
                                :properties '(:titled/title ("Title"))
                                :text "Content"
+                               :mode 'text-mode
                                :creation-time time
                                :modified-time time
                                :tags '("tag1" "tag2")

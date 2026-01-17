@@ -677,13 +677,16 @@ or, if unknown, `ekg-inline'."
              (setq newtext (replace-match "" nil nil newtext 1))))
     (cons newtext (nreverse inlines))))
 
-(defun ekg-truncate-at (s num)
-  "Return S truncated, with ellipses.
+(defun ekg-truncate-at (s num &optional truncation-indicator)
+  "Return S truncated, with TRUNCATION-INDICATOR.
 Truncation method depends on `ekg-truncation-method`.
 If `ekg-truncation-method` is 'word, NUM is the number of words.
 If `ekg-truncation-method` is 'character, NUM is the number of characters.
 If NUM is greater than the number of words/characters of S, return S
-unchanged."
+unchanged.
+
+TRUNCATION-INDICATOR is the string to append when truncation occurs.
+If nil, defaults to \"…\" (ellipsis)."
   (with-temp-buffer
     (insert s)
     (goto-char (point-max))
@@ -705,7 +708,7 @@ unchanged."
                (goto-char (point-max))
                (skip-syntax-backward "-")
                (point)))
-      (insert "… [truncated]"))
+      (insert (or truncation-indicator "…")))
     (delete-region (point) (point-max))
     (buffer-string)))
 
