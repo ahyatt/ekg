@@ -353,9 +353,9 @@ session."
          (if (seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
              (when status-callback (funcall status-callback 'done))
            (let ((tools-ran (mapconcat #'car result-alist ", ")))
-             (message "Iteration %d: Ran tools: %s" (+ 1 iteration-num) tools-ran)
              (if status-callback
-                 (funcall status-callback tools-ran))
+                 (funcall status-callback tools-ran)
+               (message "Iteration %d: Ran tools: %s" (+ 1 iteration-num) tools-ran))
              (ekg-agent--iterate prompt (+ 1 iteration-num) status-callback end-tools)))))
      (lambda (_ err)
        (when status-callback (funcall status-callback 'error))
