@@ -222,7 +222,8 @@ which is best."
                                           (list (make-llm-tool :function #'ignore
                                                                :name "google_search"
                                                                :description "Google Search built-in tool"
-                                                               :args nil)))))
+                                                               :args nil))))
+                         :tool-options (make-llm-tool-options :tool-choice 'any))
                         0
                         nil
                         '("display_result_in_popup" "create_note"))))
