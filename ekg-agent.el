@@ -217,7 +217,7 @@ which is best."
                          :tools (append (seq-remove (lambda (tool) (equal (llm-tool-name tool) "end"))
                                                     ekg-agent-base-tools)
                                         ekg-agent-extra-tools
-                                        (list #'ekg-agent-tool-popup-result)
+                                        (list ekg-agent-tool-popup-result)
                                         (when (llm-google-p (ekg-llm--provider))
                                           (list (make-llm-tool :function #'ignore
                                                                :name "google_search"
