@@ -317,9 +317,10 @@ The agent will review recent notes and TODO items, then decide whether
 to create new notes or perform other actions to help the user."
   (interactive)
   (ekg-agent--iterate (llm-make-chat-prompt
-                       (concat ekg-agent-instructions-intro
-                               (ekg-agent-instructions-evaluate-status)
-                               (ekg-agent-starting-context))
+                       (ekg-agent-starting-context)
+                       :context
+                       (concat ekg-agent-instructions-intro "\n"
+                               (ekg-agent-instructions-evaluate-status))
                        :tools (append
                                ekg-agent-base-tools
                                ekg-agent-extra-tools
@@ -456,8 +457,10 @@ ARG, if non-nil, allows editing the instructions."
                                                   (list ekg-agent-self-info-tag
                                                         ekg-agent-self-instruct-tag))))
                                     10))
+           (context-notes-json (let ((ekg-llm-note-numwords 100))
+                                 (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
            (current-note-json (let ((ekg-llm-note-numwords 10000))
-                                (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
+                                (ekg-llm-note-to-text ekg-note)))
            (prompt (concat ekg-agent-instructions-intro
                            "\n\nYour instructions:\n"
                            instructions-for-use
@@ -469,8 +472,10 @@ tool to finish your work.  Although you can create a note or rewrite the
 note, prefer to append to the note by default, unless the user is asking
 for a rewritten or new note.\nThe user input will be the note they are
 currently editing.\n\n"
-                           (format "The current date and time is %s."
-                                   (format-time-string "%F %R")))))
+                           (format "The current date and time is %s.\n"
+                                   (format-time-string "%F %R"))
+                           (format "Some notes matching the tags or context: %s\n"
+                                   context-notes-json))))
       (let ((overlay (make-overlay (point-max) (point-max) nil t t)))
         (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
         (ekg-agent--iterate (llm-make-chat-prompt
