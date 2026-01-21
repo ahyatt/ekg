@@ -133,6 +133,10 @@ LLM
 * Using ekg notes as prompts::
 * Querying your ekg database::
 
+Agent
+
+* Command-line interface for agents::
+
 Design
 
 * The triple database::
@@ -1866,6 +1870,124 @@ You can customize these tags if you prefer different names.
 You can also customize the tools available to the agent by modifying
 @code{ekg-agent-extra-tools}.  This allows you to add your own tools to the
 standard set of tools provided by the agent.
+
+@menu
+* Command-line interface for agents::
+@end menu
+
+@node Command-line interface for agents
+@subsection Command-line interface for agents
+
+The @samp{ekg-agent} module provides a command-line interface for external agents
+(such as AI assistants or scripts) to add notes to ekg.  This allows agents
+to store information in your ekg database from outside of Emacs.
+
+@enumerate
+@item
+@anchor{The @samp{ekg-agent-add-note} function}The @samp{ekg-agent-add-note} function
+
+
+The function @samp{ekg-agent-add-note} is designed specifically for use by agents
+from the command line.  It takes three parameters:
+
+@itemize
+@item
+@samp{text}: The content of the note
+@item
+@samp{tags}: A list of tag strings
+@item
+@samp{mode}: The major mode (@samp{'org-mode}, @samp{'markdown-mode}, or @samp{'text-mode})
+@end itemize
+
+This function automatically:
+@itemize
+@item
+Adds the @samp{ekg-agent-author-tag} (default: "agent") to all notes
+@item
+Wraps the text in appropriate LLM output markers based on the mode:
+@itemize
+@item
+@samp{org-mode}: @samp{#+BEGIN_LLM_OUTPUT} / @samp{#+END_LLM_OUTPUT}
+@item
+@samp{markdown-mode}: @samp{<!-- BEGIN_LLM_OUTPUT -->} / @samp{<!-- END_LLM_OUTPUT -->}
+@item
+@samp{text-mode}: @samp{BEGIN_LLM_OUTPUT} / @samp{END_LLM_OUTPUT}
+@end itemize
+@end itemize
+
+This ensures that all agent-created notes are properly formatted and attributed.
+
+@item
+@anchor{The @samp{ekg-add-note} shell script}The @samp{ekg-add-note} shell script
+
+
+The @samp{ekg-add-note} shell script provides a convenient command-line interface
+to @samp{ekg-agent-add-note}.  It is located in the ekg project root directory.
+
+The script uses @samp{emacsclient} to communicate with a running Emacs daemon,
+providing fast note creation (approximately 0.1 seconds per note) without
+the overhead of starting Emacs.
+
+@enumerate
+@item
+@anchor{Usage}Usage
+
+
+@example
+ekg-add-note --tag tag1 --tag tag2 --note "note text" --mode org-mode
+@end example
+
+@item
+@anchor{Options}Options
+
+
+@itemize
+@item
+@samp{--tag TAG}: Add a tag to the note (can be specified multiple times)
+@item
+@samp{--note TEXT}: The text content of the note (required)
+@item
+@samp{--mode MODE}: The major mode for the note (default: org-mode)
+@item
+@samp{--daemon NAME}: Name of the Emacs daemon to use (optional)
+@item
+@samp{--help}: Show help message
+@end itemize
+
+@item
+@anchor{Example}Example
+
+
+@example
+ekg-add-note \
+  --tag "project/my-project" \
+  --tag "status" \
+  --note "Completed the first milestone successfully." \
+  --mode org-mode
+@end example
+
+This will create a note with the text wrapped in @samp{#+BEGIN_LLM_OUTPUT} /
+@samp{#+END_LLM_OUTPUT} markers, tagged with "project/my-project", "status", and
+"agent" (automatically added).
+
+@item
+@anchor{Requirements}Requirements
+
+
+An Emacs daemon must be running for the script to work:
+
+@example
+emacs --daemon
+@end example
+
+Or with a named daemon:
+
+@example
+emacs --daemon=my-daemon
+ekg-add-note --daemon my-daemon --tag "test" --note "Test note"
+@end example
+@end enumerate
+@end enumerate
 
 @node Design
 @chapter Design

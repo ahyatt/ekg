@@ -1329,6 +1329,82 @@ You can customize these tags if you prefer different names.
 You can also customize the tools available to the agent by modifying
 ~ekg-agent-extra-tools~.  This allows you to add your own tools to the
 standard set of tools provided by the agent.
+
+*** Command-line interface for agents
+
+The =ekg-agent= module provides a command-line interface for external agents
+(such as AI assistants or scripts) to add notes to ekg.  This allows agents
+to store information in your ekg database from outside of Emacs.
+
+**** The =ekg-agent-add-note= function
+
+The function =ekg-agent-add-note= is designed specifically for use by agents
+from the command line.  It takes three parameters:
+
+- =text=: The content of the note
+- =tags=: A list of tag strings
+- =mode=: The major mode (='org-mode=, ='markdown-mode=, or ='text-mode=)
+
+This function automatically:
+- Adds the =ekg-agent-author-tag= (default: "agent") to all notes
+- Wraps the text in appropriate LLM output markers based on the mode:
+  - =org-mode=: =#+BEGIN_LLM_OUTPUT= / =#+END_LLM_OUTPUT=
+  - =markdown-mode=: =<!-- BEGIN_LLM_OUTPUT -->= / =<!-- END_LLM_OUTPUT -->=
+  - =text-mode=: =BEGIN_LLM_OUTPUT= / =END_LLM_OUTPUT=
+
+This ensures that all agent-created notes are properly formatted and attributed.
+
+**** The =ekg-add-note= shell script
+
+The =ekg-add-note= shell script provides a convenient command-line interface
+to =ekg-agent-add-note=.  It is located in the ekg project root directory.
+
+The script uses =emacsclient= to communicate with a running Emacs daemon,
+providing fast note creation (approximately 0.1 seconds per note) without
+the overhead of starting Emacs.
+
+***** Usage
+
+#+begin_src bash
+ekg-add-note --tag tag1 --tag tag2 --note "note text" --mode org-mode
+#+end_src
+
+***** Options
+
+- =--tag TAG=: Add a tag to the note (can be specified multiple times)
+- =--note TEXT=: The text content of the note (required)
+- =--mode MODE=: The major mode for the note (default: org-mode)
+- =--daemon NAME=: Name of the Emacs daemon to use (optional)
+- =--help=: Show help message
+
+***** Example
+
+#+begin_src bash
+ekg-add-note \
+  --tag "project/my-project" \
+  --tag "status" \
+  --note "Completed the first milestone successfully." \
+  --mode org-mode
+#+end_src
+
+This will create a note with the text wrapped in =#+BEGIN_LLM_OUTPUT= /
+=#+END_LLM_OUTPUT= markers, tagged with "project/my-project", "status", and
+"agent" (automatically added).
+
+***** Requirements
+
+An Emacs daemon must be running for the script to work:
+
+#+begin_src bash
+emacs --daemon
+#+end_src
+
+Or with a named daemon:
+
+#+begin_src bash
+emacs --daemon=my-daemon
+ekg-add-note --daemon my-daemon --tag "test" --note "Test note"
+#+end_src
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.

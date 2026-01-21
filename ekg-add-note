@@ -1,0 +1,102 @@
+#!/bin/bash
+# ekg-add-note - Command-line interface for adding notes to ekg
+# 
+# Usage: ekg-add-note --tag tag1 --tag tag2 --note "note text" --mode org-mode
+#
+# This script uses emacsclient to communicate with a running Emacs daemon,
+# providing fast note creation for agents and scripts.
+
+set -e
+
+# Default values
+TAGS=()
+NOTE_TEXT=""
+MODE="org-mode"
+DAEMON_NAME=""
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --tag)
+            TAGS+=("$2")
+            shift 2
+            ;;
+        --note)
+            NOTE_TEXT="$2"
+            shift 2
+            ;;
+        --mode)
+            MODE="$2"
+            shift 2
+            ;;
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-add-note --tag tag1 --tag tag2 --note \"note text\" --mode org-mode [--daemon name]"
+            echo ""
+            echo "Options:"
+            echo "  --tag TAG       Add a tag to the note (can be specified multiple times)"
+            echo "  --note TEXT     The text content of the note (required)"
+            echo "  --mode MODE     The major mode for the note (default: org-mode)"
+            echo "  --daemon NAME   Name of the Emacs daemon to use (optional)"
+            echo "  --help          Show this help message"
+            echo ""
+            echo "Example:"
+            echo "  ekg-add-note --tag 'project/ekg' --tag 'agent' --note 'Implementation notes' --mode org-mode"
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate required arguments
+if [[ -z "$NOTE_TEXT" ]]; then
+    echo "Error: --note is required"
+    echo "Use --help for usage information"
+    exit 1
+fi
+
+if [[ ${#TAGS[@]} -eq 0 ]]; then
+    echo "Error: At least one --tag is required"
+    echo "Use --help for usage information"
+    exit 1
+fi
+
+# Build the tags list for elisp
+TAGS_ELISP="("
+for tag in "${TAGS[@]}"; do
+    # Escape quotes in tags
+    escaped_tag="${tag//\"/\\\"}"
+    TAGS_ELISP+="\"$escaped_tag\" "
+done
+TAGS_ELISP="${TAGS_ELISP% })"
+
+# Escape the note text for elisp
+# Replace backslashes first, then quotes, then newlines
+NOTE_ELISP="${NOTE_TEXT//\\/\\\\}"
+NOTE_ELISP="${NOTE_ELISP//\"/\\\"}"
+NOTE_ELISP="${NOTE_ELISP//$'\n'/\\n}"
+
+# Build the elisp expression
+ELISP_EXPR="(progn
+  (require 'ekg-agent)
+  (ekg-agent-add-note \"$NOTE_ELISP\" '$TAGS_ELISP '$MODE))"
+
+# Build emacsclient command
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+# Execute via emacsclient
+if ! $EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1; then
+    echo "Error: Failed to add note. Is the Emacs daemon running?"
+    echo "Start a daemon with: emacs --daemon${DAEMON_NAME:+=$DAEMON_NAME}"
+    exit 1
+fi

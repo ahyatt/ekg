@@ -510,6 +510,33 @@ currently editing.\n\n"
   (interactive)
   (ekg-show-notes-with-any-tags (list ekg-agent-self-info-tag ekg-agent-self-instruct-tag)))
 
+;;;###autoload
+(defun ekg-agent-add-note (text tags mode)
+  "Add a note from an agent with TEXT, TAGS, and MODE.
+
+TAGS should be a list of tag strings.  MODE should be a symbol like
+'org-mode, 'markdown-mode, or 'text-mode.  Returns the note ID on
+success, signals an error on failure.
+
+This function automatically:
+- Adds the `ekg-agent-author-tag` to the tags
+- Wraps the text in the appropriate LLM output format based on MODE
+
+This is intended to be used from the command-line so agents can easily
+add properly formatted notes to ekg."
+  (let* ((mode-sym (if (stringp mode) (intern mode) mode))
+         (enclosure (assoc-default mode-sym ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+         (formatted-text (concat (car enclosure) "\n"
+                                 text "\n"
+                                 (cdr enclosure)))
+         (all-tags (seq-union tags (list ekg-agent-author-tag)))
+         (note (ekg-note-create :text formatted-text
+                                :mode mode-sym
+                                :tags all-tags)))
+    (ekg-save-note note)
+    (message "Agent note created with ID: %s" (ekg-note-id note))
+    (ekg-note-id note)))
+
 (provide 'ekg-agent)
 
 ;;; ekg-agent.el ends here
