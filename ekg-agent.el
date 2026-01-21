@@ -537,6 +537,84 @@ add properly formatted notes to ekg."
     (message "Agent note created with ID: %s" (ekg-note-id note))
     (ekg-note-id note)))
 
+(defun ekg-agent--note-to-alist (note &optional max-words)
+  "Convert NOTE to an alist suitable for JSON encoding.
+If MAX-WORDS is specified, truncate the text to that many words."
+  (let* ((text (or (ekg-note-text note) ""))
+         (truncated-text (if (and max-words (> (length text) 0))
+                             (ekg-truncate-at text max-words "…")
+                           text)))
+    `((id . ,(ekg-note-id note))
+      (text . ,truncated-text)
+      (mode . ,(symbol-name (ekg-note-mode note)))
+      (tags . ,(ekg-note-tags note))
+      (creation_time . ,(ekg-note-creation-time note))
+      (modified_time . ,(ekg-note-modified-time note)))))
+
+(defun ekg-agent--notes-to-json (notes &optional max-words)
+  "Convert list of NOTES to a JSON array string.
+If MAX-WORDS is specified, truncate each note's text to that many words."
+  (require 'json)
+  (json-encode (mapcar (lambda (note)
+                         (ekg-agent--note-to-alist note max-words))
+                       notes)))
+
+;;;###autoload
+(cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search (num 10) (max-words 100))
+  "Read notes from ekg and return as JSON.
+
+This function supports multiple modes of operation:
+
+1. By tags (AND): Provide TAGS as a list of tag strings.
+2. By note ID: Provide NOTE-ID as a number or string.
+3. By semantic search: Provide SEMANTIC-SEARCH as a query string.
+4. By text search: Provide TEXT-SEARCH as a query string.
+
+NUM is the maximum number of notes to return (default 10).
+MAX-WORDS is the maximum number of words per note text (default 100).
+
+Returns a JSON string containing an array of note objects.
+Each note object contains: id, text, mode, tags, creation_time, modified_time.
+
+This is intended to be used from the command-line so agents can read
+notes from ekg."
+  (let (notes)
+    (cond
+     ;; Read by note ID
+     (note-id
+      (let ((note (ekg-get-note-with-id (if (stringp note-id)
+                                            (string-to-number note-id)
+                                          note-id))))
+        (if note
+            (setq notes (list note))
+          (error "Note with ID %s not found" note-id))))
+
+     ;; Semantic search (requires embeddings)
+     (semantic-search
+      (unless ekg-embedding-provider
+        (error "Semantic search requires ekg-embedding-provider to be configured"))
+      (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
+        (setq notes (mapcar #'ekg-get-note-with-id
+                            (ekg-embedding-n-most-similar-notes embedding num)))))
+
+     ;; Text search (full-text search)
+     (text-search
+      (setq notes (seq-take
+                   (seq-filter #'ekg-note-active-p
+                               (mapcar #'ekg-get-note-with-id
+                                       (triples-fts-query-subject ekg-db text-search ekg-query-pred-abbrevs)))
+                   num)))
+
+     ;; Tag-based search (AND logic)
+     (tags
+      (setq notes (seq-take (ekg-get-notes-with-tags tags) num)))
+
+     ;; No search criteria
+     (t
+      (error "Must provide tags, note-id, semantic-search, or text-search")))
+
+    (ekg-agent--notes-to-json notes max-words)))
+
 (provide 'ekg-agent)
 
 ;;; ekg-agent.el ends here

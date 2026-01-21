@@ -1405,6 +1405,116 @@ Or with a named daemon:
 emacs --daemon=my-daemon
 ekg-add-note --daemon my-daemon --tag "test" --note "Test note"
 #+end_src
+
+**** The =ekg-agent-read-notes= function
+
+The function =ekg-agent-read-notes= allows agents to read notes from ekg via
+the command line.  It returns results as JSON for easy parsing by external
+programs.
+
+This function supports multiple modes of operation:
+
+1. By tags (AND logic): =:tags= parameter with a list of tag strings
+2. By note ID: =:note-id= parameter with a note ID
+3. By semantic search: =:semantic-search= parameter with a query string (requires embeddings)
+4. By text search: =:text-search= parameter with a query string (uses full-text search)
+
+Optional parameters:
+- =:num= - Maximum number of notes to return (default: 10)
+- =:max-words= - Maximum words per note text (default: 100)
+
+The function returns a JSON string containing an array of note objects.  Each
+note object contains: =id=, =text=, =mode=, =tags=, =creation_time=, =modified_time=.
+
+**** The =ekg-read= shell script
+
+The =ekg-read= shell script provides a convenient command-line interface to
+=ekg-agent-read-notes=.  It is located in the ekg project root directory.
+
+Like =ekg-add-note=, it uses =emacsclient= to communicate with a running Emacs
+daemon, providing fast note reading (approximately 0.1 seconds per query).
+
+***** Usage
+
+#+begin_src bash
+# Read notes with multiple tags (AND logic)
+ekg-read --tag tag1 --tag tag2 -n 5 -w 100
+
+# Read a specific note by ID
+ekg-read 12345678
+
+# Semantic search (requires embeddings configured)
+ekg-read --semantic-search "machine learning concepts"
+
+# Full-text search
+ekg-read --search "important deadline"
+#+end_src
+
+***** Options
+
+- =--tag TAG=: Filter by tag (can be specified multiple times for AND logic)
+- =-n, --num NUM=: Maximum number of notes to return (default: 10)
+- =-w, --words NUM=: Maximum words per note (default: 100)
+- =--semantic-search Q=: Semantic search using embeddings
+- =--search QUERY=: Full-text search
+- =--daemon NAME=: Name of the Emacs daemon to use (optional)
+- =--help=: Show help message
+
+***** JSON Output Format
+
+All modes return JSON arrays of note objects:
+
+#+begin_src json
+[
+  {
+    "id": 12345678,
+    "text": "Note content here...",
+    "mode": "org-mode",
+    "tags": ["tag1", "tag2"],
+    "creation_time": 1768889121,
+    "modified_time": 1768889121
+  }
+]
+#+end_src
+
+***** Examples
+
+#+begin_src bash
+# Read recent notes about a project
+ekg-read --tag "project/my-project" --tag "status" -n 5
+
+# Get full text of a specific note
+ekg-read 30925512446
+
+# Search for notes mentioning "deadline"
+ekg-read --search "deadline" -n 10 -w 200
+
+# Find similar notes using semantics
+ekg-read --semantic-search "python machine learning examples" -n 5
+#+end_src
+
+***** Requirements
+
+An Emacs daemon must be running, just like for =ekg-add-note=:
+
+#+begin_src bash
+emacs --daemon
+#+end_src
+
+***** Integration Example
+
+The read and write scripts work together to provide full memory capabilities
+for agents:
+
+#+begin_src bash
+# Agent reads context
+CONTEXT=$(ekg-read --tag "project/my-project" -n 10 -w 100)
+
+# Agent processes and adds new note
+ekg-add-note --tag "project/my-project" --tag "agent" \\
+  --note "Based on recent progress, I recommend..."
+#+end_src
+
 * Design
 ** The triple database
 The ekg package uses the triples package to interface with a sqlite database.

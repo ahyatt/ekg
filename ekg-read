@@ -1,0 +1,169 @@
+#!/bin/bash
+# ekg-read - Command-line interface for reading notes from ekg
+# 
+# Usage: 
+#   ekg-read --tag tag1 --tag tag2 -n 10 -w 100
+#   ekg-read <note-id>
+#   ekg-read --semantic-search "query string"
+#   ekg-read --search "query string"
+#
+# This script uses emacsclient to communicate with a running Emacs daemon,
+# providing fast note reading for agents and scripts.
+
+set -e
+
+# Default values
+TAGS=()
+NOTE_ID=""
+SEMANTIC_SEARCH=""
+TEXT_SEARCH=""
+NUM=10
+MAX_WORDS=100
+DAEMON_NAME=""
+MODE=""
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --tag)
+            TAGS+=("$2")
+            shift 2
+            ;;
+        -n|--num)
+            NUM="$2"
+            shift 2
+            ;;
+        -w|--words)
+            MAX_WORDS="$2"
+            shift 2
+            ;;
+        --semantic-search)
+            SEMANTIC_SEARCH="$2"
+            MODE="semantic"
+            shift 2
+            ;;
+        --search)
+            TEXT_SEARCH="$2"
+            MODE="text"
+            shift 2
+            ;;
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-read [OPTIONS]"
+            echo ""
+            echo "Read notes from ekg and output as JSON."
+            echo ""
+            echo "Options:"
+            echo "  --tag TAG           Filter by tag (can be specified multiple times, AND logic)"
+            echo "  -n, --num NUM       Maximum number of notes to return (default: 10)"
+            echo "  -w, --words NUM     Maximum words per note (default: 100)"
+            echo "  --semantic-search Q Semantic search using embeddings"
+            echo "  --search QUERY      Full-text search"
+            echo "  --daemon NAME       Name of the Emacs daemon to use (optional)"
+            echo "  --help              Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  # Read notes with multiple tags"
+            echo "  ekg-read --tag 'project/my-project' --tag 'status' -n 5"
+            echo ""
+            echo "  # Read a specific note by ID"
+            echo "  ekg-read 12345678"
+            echo ""
+            echo "  # Semantic search"
+            echo "  ekg-read --semantic-search 'machine learning concepts'"
+            echo ""
+            echo "  # Text search"
+            echo "  ekg-read --search 'important deadline'"
+            exit 0
+            ;;
+        *)
+            # If it's a number, treat it as a note ID
+            if [[ "$1" =~ ^[0-9]+$ ]]; then
+                NOTE_ID="$1"
+                MODE="id"
+                shift
+            else
+                echo "Error: Unknown option $1"
+                echo "Use --help for usage information"
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+# Determine mode if not set
+if [[ -z "$MODE" ]]; then
+    if [[ ${#TAGS[@]} -gt 0 ]]; then
+        MODE="tags"
+    else
+        echo "Error: Must provide either tags, note ID, --semantic-search, or --search"
+        echo "Use --help for usage information"
+        exit 1
+    fi
+fi
+
+# Build the elisp expression based on mode
+case $MODE in
+    tags)
+        # Build tags list for elisp
+        TAGS_ELISP="("
+        for tag in "${TAGS[@]}"; do
+            escaped_tag="${tag//\"/\\\"}"
+            TAGS_ELISP+="\"$escaped_tag\" "
+        done
+        TAGS_ELISP="${TAGS_ELISP% })"
+        
+        ELISP_EXPR="(princ (progn
+          (require 'ekg-agent)
+          (ekg-agent-read-notes :tags '$TAGS_ELISP :num $NUM :max-words $MAX_WORDS)))"
+        ;;
+    
+    id)
+        ELISP_EXPR="(princ (progn
+          (require 'ekg-agent)
+          (ekg-agent-read-notes :note-id $NOTE_ID)))"
+        ;;
+    
+    semantic)
+        # Escape the search query
+        SEARCH_ELISP="${SEMANTIC_SEARCH//\\/\\\\}"
+        SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
+        
+        ELISP_EXPR="(princ (progn
+          (require 'ekg-agent)
+          (ekg-agent-read-notes :semantic-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)))"
+        ;;
+    
+    text)
+        # Escape the search query
+        SEARCH_ELISP="${TEXT_SEARCH//\\/\\\\}"
+        SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
+        
+        ELISP_EXPR="(princ (progn
+          (require 'ekg-agent)
+          (ekg-agent-read-notes :text-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)))"
+        ;;
+esac
+
+# Build emacsclient command
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+# Execute via emacsclient
+OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1)
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to read notes. Is the Emacs daemon running?" >&2
+    echo "Start a daemon with: emacs --daemon${DAEMON_NAME:+=$DAEMON_NAME}" >&2
+    echo "$OUTPUT" >&2
+    exit 1
+fi
+
+# Output the JSON - strip outer quotes and unescape
+# emacsclient --eval returns elisp strings quoted, so we need to unescape
+# Process in correct order: \\\\ -> \\, then \" -> ", keep \\n as-is for JSON
+echo "$OUTPUT" | sed 's/^"//; s/"$//' | sed 's/\\\\\\\\/\\\\/g' | sed 's/\\"/"/g'

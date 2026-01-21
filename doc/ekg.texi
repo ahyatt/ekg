@@ -1987,6 +1987,152 @@ emacs --daemon=my-daemon
 ekg-add-note --daemon my-daemon --tag "test" --note "Test note"
 @end example
 @end enumerate
+
+@item
+@anchor{The @samp{ekg-agent-read-notes} function}The @samp{ekg-agent-read-notes} function
+
+
+The function @samp{ekg-agent-read-notes} allows agents to read notes from ekg via
+the command line.  It returns results as JSON for easy parsing by external
+programs.
+
+This function supports multiple modes of operation:
+
+@enumerate
+@item
+By tags (AND logic): @samp{:tags} parameter with a list of tag strings
+@item
+By note ID: @samp{:note-id} parameter with a note ID
+@item
+By semantic search: @samp{:semantic-search} parameter with a query string (requires embeddings)
+@item
+By text search: @samp{:text-search} parameter with a query string (uses full-text search)
+@end enumerate
+
+Optional parameters:
+@itemize
+@item
+@samp{:num} - Maximum number of notes to return (default: 10)
+@item
+@samp{:max-words} - Maximum words per note text (default: 100)
+@end itemize
+
+The function returns a JSON string containing an array of note objects.  Each
+note object contains: @samp{id}, @samp{text}, @samp{mode}, @samp{tags}, @samp{creation_time}, @samp{modified_time}.
+
+@item
+@anchor{The @samp{ekg-read} shell script}The @samp{ekg-read} shell script
+
+
+The @samp{ekg-read} shell script provides a convenient command-line interface to
+@samp{ekg-agent-read-notes}.  It is located in the ekg project root directory.
+
+Like @samp{ekg-add-note}, it uses @samp{emacsclient} to communicate with a running Emacs
+daemon, providing fast note reading (approximately 0.1 seconds per query).
+
+@enumerate
+@item
+@anchor{Usage (1)}Usage
+
+
+@example
+# Read notes with multiple tags (AND logic)
+ekg-read --tag tag1 --tag tag2 -n 5 -w 100
+
+# Read a specific note by ID
+ekg-read 12345678
+
+# Semantic search (requires embeddings configured)
+ekg-read --semantic-search "machine learning concepts"
+
+# Full-text search
+ekg-read --search "important deadline"
+@end example
+
+@item
+@anchor{Options (1)}Options
+
+
+@itemize
+@item
+@samp{--tag TAG}: Filter by tag (can be specified multiple times for AND logic)
+@item
+@samp{-n, --num NUM}: Maximum number of notes to return (default: 10)
+@item
+@samp{-w, --words NUM}: Maximum words per note (default: 100)
+@item
+@samp{--semantic-search Q}: Semantic search using embeddings
+@item
+@samp{--search QUERY}: Full-text search
+@item
+@samp{--daemon NAME}: Name of the Emacs daemon to use (optional)
+@item
+@samp{--help}: Show help message
+@end itemize
+
+@item
+@anchor{JSON Output Format}JSON Output Format
+
+
+All modes return JSON arrays of note objects:
+
+@example
+[
+  @{
+    "id": 12345678,
+    "text": "Note content here...",
+    "mode": "org-mode",
+    "tags": ["tag1", "tag2"],
+    "creation_time": 1768889121,
+    "modified_time": 1768889121
+  @}
+]
+@end example
+
+@item
+@anchor{Examples}Examples
+
+
+@example
+# Read recent notes about a project
+ekg-read --tag "project/my-project" --tag "status" -n 5
+
+# Get full text of a specific note
+ekg-read 30925512446
+
+# Search for notes mentioning "deadline"
+ekg-read --search "deadline" -n 10 -w 200
+
+# Find similar notes using semantics
+ekg-read --semantic-search "python machine learning examples" -n 5
+@end example
+
+@item
+@anchor{Requirements (1)}Requirements
+
+
+An Emacs daemon must be running, just like for @samp{ekg-add-note}:
+
+@example
+emacs --daemon
+@end example
+
+@item
+@anchor{Integration Example}Integration Example
+
+
+The read and write scripts work together to provide full memory capabilities
+for agents:
+
+@example
+# Agent reads context
+CONTEXT=$(ekg-read --tag "project/my-project" -n 10 -w 100)
+
+# Agent processes and adds new note
+ekg-add-note --tag "project/my-project" --tag "agent" \\
+  --note "Based on recent progress, I recommend..."
+@end example
+@end enumerate
 @end enumerate
 
 @node Design
