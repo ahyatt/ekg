@@ -135,7 +135,7 @@ LLM
 
 Agent
 
-* Command-line interface for agents::
+* Command-line tools for agent integration::
 
 Design
 
@@ -1872,266 +1872,260 @@ You can also customize the tools available to the agent by modifying
 standard set of tools provided by the agent.
 
 @menu
-* Command-line interface for agents::
+* Command-line tools for agent integration::
 @end menu
 
-@node Command-line interface for agents
-@subsection Command-line interface for agents
+@node Command-line tools for agent integration
+@subsection Command-line tools for agent integration
 
-The @samp{ekg-agent} module provides a command-line interface for external agents
-(such as AI assistants or scripts) to add notes to ekg.  This allows agents
-to store information in your ekg database from outside of Emacs.
-
-@enumerate
-@item
-@anchor{The @samp{ekg-agent-add-note} function}The @samp{ekg-agent-add-note} function
-
-
-The function @samp{ekg-agent-add-note} is designed specifically for use by agents
-from the command line.  It takes three parameters:
-
-@itemize
-@item
-@samp{text}: The content of the note
-@item
-@samp{tags}: A list of tag strings
-@item
-@samp{mode}: The major mode (@samp{'org-mode}, @samp{'markdown-mode}, or @samp{'text-mode})
-@end itemize
-
-This function automatically:
-@itemize
-@item
-Adds the @samp{ekg-agent-author-tag} (default: "agent") to all notes
-@item
-Wraps the text in appropriate LLM output markers based on the mode:
-@itemize
-@item
-@samp{org-mode}: @samp{#+BEGIN_LLM_OUTPUT} / @samp{#+END_LLM_OUTPUT}
-@item
-@samp{markdown-mode}: @samp{<!-- BEGIN_LLM_OUTPUT -->} / @samp{<!-- END_LLM_OUTPUT -->}
-@item
-@samp{text-mode}: @samp{BEGIN_LLM_OUTPUT} / @samp{END_LLM_OUTPUT}
-@end itemize
-@end itemize
-
-This ensures that all agent-created notes are properly formatted and attributed.
-
-@item
-@anchor{The @samp{ekg-add-note} shell script}The @samp{ekg-add-note} shell script
-
-
-The @samp{ekg-add-note} shell script provides a convenient command-line interface
-to @samp{ekg-agent-add-note}.  It is located in the ekg project root directory.
-
-The script uses @samp{emacsclient} to communicate with a running Emacs daemon,
-providing fast note creation (approximately 0.1 seconds per note) without
-the overhead of starting Emacs.
+The @samp{ekg-agent} module provides command-line tools that enable external AI
+agents to use ekg as persistent memory storage.  These tools are designed for
+programmatic use by agents, not for end users.
 
 @enumerate
 @item
-@anchor{Usage}Usage
+@anchor{Agent tool location}Agent tool location
 
 
-@example
-ekg-add-note --tag tag1 --tag tag2 --note "note text" --mode org-mode
-@end example
-
-@item
-@anchor{Options}Options
-
+The command-line tools are located in the @samp{agent_tools/} subdirectory of the
+ekg installation:
 
 @itemize
 @item
-@samp{--tag TAG}: Add a tag to the note (can be specified multiple times)
+@samp{agent_tools/ekg-add-note} - Write notes to ekg
 @item
-@samp{--note TEXT}: The text content of the note (required)
-@item
-@samp{--mode MODE}: The major mode for the note (default: org-mode)
-@item
-@samp{--daemon NAME}: Name of the Emacs daemon to use (optional)
-@item
-@samp{--help}: Show help message
+@samp{agent_tools/ekg-read} - Read notes from ekg
 @end itemize
 
-@item
-@anchor{Example}Example
-
-
-@example
-ekg-add-note \
-  --tag "project/my-project" \
-  --tag "status" \
-  --note "Completed the first milestone successfully." \
-  --mode org-mode
-@end example
-
-This will create a note with the text wrapped in @samp{#+BEGIN_LLM_OUTPUT} /
-@samp{#+END_LLM_OUTPUT} markers, tagged with "project/my-project", "status", and
-"agent" (automatically added).
+To use these tools, agents should locate the ekg installation directory and
+reference the scripts with their full path, for example:
+@samp{$EKG_DIR/agent_tools/ekg-add-note}
 
 @item
-@anchor{Requirements}Requirements
+@anchor{Instructions for configuring agents}Instructions for configuring agents
 
 
-An Emacs daemon must be running for the script to work:
-
-@example
-emacs --daemon
-@end example
-
-Or with a named daemon:
-
-@example
-emacs --daemon=my-daemon
-ekg-add-note --daemon my-daemon --tag "test" --note "Test note"
-@end example
-@end enumerate
-
-@item
-@anchor{The @samp{ekg-agent-read-notes} function}The @samp{ekg-agent-read-notes} function
-
-
-The function @samp{ekg-agent-read-notes} allows agents to read notes from ekg via
-the command line.  It returns results as JSON for easy parsing by external
-programs.
-
-This function supports multiple modes of operation:
+When setting up an AI agent to use ekg for memory, provide these instructions
+to the agent:
 
 @enumerate
 @item
-By tags (AND logic): @samp{:tags} parameter with a list of tag strings
-@item
-By note ID: @samp{:note-id} parameter with a note ID
-@item
-By semantic search: @samp{:semantic-search} parameter with a query string (requires embeddings)
-@item
-By text search: @samp{:text-search} parameter with a query string (uses full-text search)
-@end enumerate
-
-Optional parameters:
-@itemize
-@item
-@samp{:num} - Maximum number of notes to return (default: 10)
-@item
-@samp{:max-words} - Maximum words per note text (default: 100)
-@end itemize
-
-The function returns a JSON string containing an array of note objects.  Each
-note object contains: @samp{id}, @samp{text}, @samp{mode}, @samp{tags}, @samp{creation_time}, @samp{modified_time}.
-
-@item
-@anchor{The @samp{ekg-read} shell script}The @samp{ekg-read} shell script
-
-
-The @samp{ekg-read} shell script provides a convenient command-line interface to
-@samp{ekg-agent-read-notes}.  It is located in the ekg project root directory.
-
-Like @samp{ekg-add-note}, it uses @samp{emacsclient} to communicate with a running Emacs
-daemon, providing fast note reading (approximately 0.1 seconds per query).
-
-@enumerate
-@item
-@anchor{Usage (1)}Usage
+@anchor{Long version}Long version
 
 
 @example
-# Read notes with multiple tags (AND logic)
-ekg-read --tag tag1 --tag tag2 -n 5 -w 100
+You have access to an emacs-based external memory system called ekg.  It may contain
+both notes the user has written, but is also accessible for you to read and write to.
+To store information for later retrieval, use the ekg-add-note tool located at:
+<ekg-installation-path>/agent_tools/ekg-add-note.  It requires a running emacs
+with the daemon running (via the emacs `server-start` command), if there is an issue
+connecting, alert the user and ask them to run `server-start`.
 
-# Read a specific note by ID
-ekg-read 12345678
+Usage:
+  ekg-add-note --tag <tag1> --tag <tag2> --note "<note text>" --mode org-mode
 
-# Semantic search (requires embeddings configured)
-ekg-read --semantic-search "machine learning concepts"
+Parameters:
+  --tag TAG    : Categorize the note (can be used multiple times)
+  --note TEXT  : The content to store (required)
+  --mode MODE  : Format (org-mode, markdown-mode, or text-mode; default: org-mode)
 
-# Full-text search
-ekg-read --search "important deadline"
-@end example
+The system will automatically:
+- Mark the note as agent-created (adds "agent" tag)
+- Apply automatic tagging functions (e.g., adds current date as "date/YYYY-MM-DD")
+- Format the content with appropriate markers
+- Store timestamps for creation and modification
 
-@item
-@anchor{Options (1)}Options
+Tags may contain spaces or other special characters.  Tags can be hiearchical, some are standard, such as "project/revise event processing/design"
 
+Example usage:
+  ekg-add-note --tag "project/revise event processing" --tag "progress" \\
+    --note "Completed database optimization. 40% performance improvement."
 
-@itemize
-@item
-@samp{--tag TAG}: Filter by tag (can be specified multiple times for AND logic)
-@item
-@samp{-n, --num NUM}: Maximum number of notes to return (default: 10)
-@item
-@samp{-w, --words NUM}: Maximum words per note (default: 100)
-@item
-@samp{--semantic-search Q}: Semantic search using embeddings
-@item
-@samp{--search QUERY}: Full-text search
-@item
-@samp{--daemon NAME}: Name of the Emacs daemon to use (optional)
-@item
-@samp{--help}: Show help message
-@end itemize
+Use tags strategically:
+- Use tag `project/<name>` for project-specific information.
+- Use descriptive tags for easy retrieval.
+- Multiple tags and nested tags help organize related information.
+- Use `agent/instruct` to tag and retrieve information to change the agent behavior.
 
-@item
-@anchor{JSON Output Format}JSON Output Format
+To retrieve information from your ekg memory, use the ekg-read tool located at:
+<ekg-installation-path>/agent_tools/ekg-read
 
+The tool returns JSON-formatted results for easy parsing.
 
-All modes return JSON arrays of note objects:
+Usage modes:
 
-@example
+1. Search by tags (AND logic - notes must have all specified tags):
+   ekg-read --tag <tag1> --tag <tag2> -n 10 -w 100
+
+2. Retrieve specific note by ID:
+   ekg-read <note-id>
+
+3. Semantic search (finds conceptually similar notes):
+   ekg-read --semantic-search "machine learning optimization"
+
+4. Text search (keyword matching):
+   ekg-read --search "deadline"
+
+Parameters:
+  --tag TAG            : Filter by tag (can be used multiple times for AND logic)
+  -n, --num NUM        : Max notes to return (default: 10)
+  -w, --words NUM      : Max words per note (default: 100)
+  --semantic-search Q  : Find conceptually related notes
+  --search QUERY       : Find notes containing keywords
+
+Output format (JSON):
 [
   @{
     "id": 12345678,
-    "text": "Note content here...",
+    "text": "Note content...",
     "mode": "org-mode",
     "tags": ["tag1", "tag2"],
     "creation_time": 1768889121,
     "modified_time": 1768889121
   @}
 ]
+
+Example workflow:
+  # Retrieve recent project notes
+  ekg-read --tag "project/current-work" -n 5
+  
+  # Find notes about specific topic
+  ekg-read --search "optimization" -n 10
+  
+  # Get exact note by ID
+  ekg-read 12345678
+
+You should use ekg memory to:
+1. Record important findings, decisions, and progress
+2. Build up context across multiple interactions
+3. Remember user preferences and past discussions
+4. Track long-running projects and goals
+
+Workflow:
+- At the end of significant interactions, store key information
+- Before starting new tasks, retrieve relevant context
+- Use tags to organize information hierarchically
+- Prefer specific, actionable notes over vague summaries
+
+Example:
+  # Store a finding
+  ekg-add-note --tag "user-preferences" --tag "coding-style" \\
+    --note "User prefers descriptive variable names over short abbreviations"
+  
+  # Later, retrieve preferences
+  ekg-read --tag "user-preferences" -n 10
+  
 @end example
 
 @item
-@anchor{Examples}Examples
+@anchor{Shorter version}Shorter version
 
 
 @example
-# Read recent notes about a project
-ekg-read --tag "project/my-project" --tag "status" -n 5
+You have access to an emacs-based external memory system called ekg, which stores notes from users and agents with tags.  Use it as a memory when working.  It requires a running emacs
+with the daemon running (via the emacs `server-start` command), if there is an issue
+connecting, alert the user and ask them to run `server-start`.
 
-# Get full text of a specific note
-ekg-read 30925512446
+To store information for later retrieval, use the ekg-add-note tool located at:
+<ekg-installation-path>/agent_tools/ekg-add-note
 
-# Search for notes mentioning "deadline"
-ekg-read --search "deadline" -n 10 -w 200
+Usage:
+  ekg-add-note --tag <tag1> --tag <tag2> --note "<note text>" --mode org-mode
 
-# Find similar notes using semantics
-ekg-read --semantic-search "python machine learning examples" -n 5
+Tags may contain spaces or other special characters.  Use tags with the "project/" prefix to store information about projects.  Use the `agent/instruct` tag to change future behavior of the agent.
+
+To retrieve information from your ekg memory, use the ekg-read tool located at:
+<ekg-installation-path>/agent_tools/ekg-read
+
+The tool returns JSON-formatted results.
+
+Usage modes:
+
+1. Search by tags (AND logic - notes must have all specified tags):
+   ekg-read --tag <tag1> --tag <tag2> -n 10 -w 100
+
+2. Retrieve specific note by ID:
+   ekg-read <note-id>
+
+3. Semantic search (finds conceptually similar notes):
+   ekg-read --semantic-search "machine learning optimization"
+
+4. Text search (keyword matching):
+   ekg-read --search "deadline"
+
+You should use ekg memory to:
+1. Record important findings, decisions, and progress
+2. Build up context across multiple interactions
+3. Remember user preferences and past discussions
+4. Track long-running projects and goals
+
+Workflow:
+- At the end of significant interactions, store key information
+- Before starting new tasks, retrieve relevant context
+- Use tags to organize information hierarchically
+- Prefer specific, actionable notes over vague summaries  
 @end example
+@end enumerate
 
 @item
-@anchor{Requirements (1)}Requirements
+@anchor{Technical details}Technical details
 
 
-An Emacs daemon must be running, just like for @samp{ekg-add-note}:
+For system administrators configuring agent access:
 
-@example
-emacs --daemon
-@end example
+@enumerate
+@item
+@anchor{Requirements}Requirements
+
+
+@itemize
+@item
+An Emacs daemon must be running for the tools to function
+@item
+Start daemon: @samp{emacs --daemon}
+@item
+For named daemons: @samp{emacs --daemon=<name>} and use @samp{--daemon <name>} option
+@end itemize
 
 @item
-@anchor{Integration Example}Integration Example
+@anchor{Implementation}Implementation
 
 
-The read and write scripts work together to provide full memory capabilities
-for agents:
+@itemize
+@item
+Tools use @samp{ekg-agent-add-note} and @samp{ekg-agent-read-notes} elisp functions
+@item
+Communication via @samp{emacsclient} for fast execution (~0.1 seconds per operation)
+@item
+Notes automatically tagged with @samp{ekg-agent-author-tag} (default: "agent")
+@item
+Text automatically wrapped in LLM output markers for proper attribution
+@item
+JSON encoding via Emacs @samp{json-encode} function
+@end itemize
 
-@example
-# Agent reads context
-CONTEXT=$(ekg-read --tag "project/my-project" -n 10 -w 100)
+@item
+@anchor{Elisp API}Elisp API
 
-# Agent processes and adds new note
-ekg-add-note --tag "project/my-project" --tag "agent" \\
-  --note "Based on recent progress, I recommend..."
-@end example
+
+For direct elisp integration:
+
+@lisp
+;; Add a note
+(ekg-agent-add-note "Note content" '("tag1" "tag2") 'org-mode)
+
+;; Read notes by tags
+(ekg-agent-read-notes :tags '("tag1" "tag2") :num 10 :max-words 100)
+
+;; Read by note ID
+(ekg-agent-read-notes :note-id 12345678)
+
+;; Semantic search
+(ekg-agent-read-notes :semantic-search "query" :num 10)
+
+;; Text search
+(ekg-agent-read-notes :text-search "query" :num 10)
+@end lisp
 @end enumerate
 @end enumerate
 

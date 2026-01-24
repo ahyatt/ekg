@@ -46,7 +46,7 @@
   :type 'string
   :group 'ekg-agent)
 
-(defcustom ekg-agent-self-instruct-tag "agent/status-instruct"
+(defcustom ekg-agent-self-instruct-tag "agent/instruct"
   "The tag used to identify notes with instructions for the agent."
   :type 'string
   :group 'ekg-agent)
@@ -520,6 +520,7 @@ success, signals an error on failure.
 
 This function automatically:
 - Adds the `ekg-agent-author-tag` to the tags
+- Applies all functions from `ekg-capture-auto-tag-funcs` (e.g., date tags)
 - Wraps the text in the appropriate LLM output format based on MODE
 
 This is intended to be used from the command-line so agents can easily
@@ -529,7 +530,9 @@ add properly formatted notes to ekg."
          (formatted-text (concat (car enclosure) "\n"
                                  text "\n"
                                  (cdr enclosure)))
-         (all-tags (seq-union tags (list ekg-agent-author-tag)))
+         ;; Apply auto-tag functions (e.g., date tags)
+         (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
+         (all-tags (seq-uniq (append tags auto-tags (list ekg-agent-author-tag))))
          (note (ekg-note-create :text formatted-text
                                 :mode mode-sym
                                 :tags all-tags)))
