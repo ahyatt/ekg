@@ -1841,7 +1841,7 @@ For example:
 
 This allows for quick, ad-hoc interactions with the agent without needing to be in a specific note buffer.
 
-Internal agent notes (using the @samp{agent/self-info} and @samp{agent/status-instruct}
+Internal agent notes (using the @samp{agent/self-info} and @samp{agent/instruct}
 tags) are hidden from normal view by being added to @samp{ekg-hidden-tags}. You can
 view these notes specifically with @samp{ekg-agent-show-internal-notes}.
 
@@ -1862,7 +1862,7 @@ The agent uses specific tags to organize its work:
 @item
 @code{ekg-agent-self-info-tag} (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
 @item
-@code{ekg-agent-self-instruct-tag} (default "agent/status-instruct"): The agent uses this tag to leave instructions for its future self.
+@code{ekg-agent-self-instruct-tag} (default "agent/instruct"): The agent uses this tag to leave instructions for its future self.
 @end itemize
 
 You can customize these tags if you prefer different names.

@@ -26,6 +26,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'llm)
 (require 'llm-vertex)
 (require 'ekg-llm)
@@ -533,7 +534,8 @@ add properly formatted notes to ekg."
 (defun ekg-agent--note-to-alist (note &optional max-words)
   "Convert NOTE to an alist suitable for JSON encoding.
 If MAX-WORDS is specified, truncate the text to that many words."
-  (let* ((text (or (ekg-note-text note) ""))
+  (let* ((ekg-truncation-method 'word)
+         (text (or (ekg-note-text note) ""))
          (truncated-text (if (and max-words (> (length text) 0))
                              (ekg-truncate-at text max-words "…")
                            text)))
