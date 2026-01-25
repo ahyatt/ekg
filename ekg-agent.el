@@ -31,6 +31,7 @@
 (require 'ekg-llm)
 (require 'ekg-embedding)
 (require 'seq)
+(require 'json)
 
 (defgroup ekg-agent nil
   "Agentic actions for ekg."
@@ -75,10 +76,9 @@ Changes to this variable will take effect the next time you call
 
 (defconst ekg-agent-tool-all-tags
   (make-llm-tool :function (lambda (tags num)
-                             (let ((ekg-llm-note-numwords 500))
-                               (mapconcat #'ekg-llm-note-to-text
-                                          (seq-take (ekg-get-notes-with-tags (append tags nil)) num)
-                                          "\n\n")))
+                             (let ((ekg-llm-note-numwords 500)
+                                   (notes (ekg-agent--get-notes :tags (append tags nil) :num num)))
+                               (mapconcat #'ekg-llm-note-to-text notes "\n\n")))
                  :name "get_notes_with_all_tags"
                  :description "Retrieve notes that have all the specified tags."
                  :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.")
@@ -86,11 +86,9 @@ Changes to this variable will take effect the next time you call
 
 (defconst ekg-agent-tool-any-tags
   (make-llm-tool :function (lambda (tags num)
-                             (let ((ekg-llm-note-numwords 500))
-                               (mapconcat #'ekg-llm-note-to-text
-                                          (seq-take (ekg-get-notes-with-any-tags
-                                                     (append tags nil)) num)
-                                          "\n\n")))
+                             (let ((ekg-llm-note-numwords 500)
+                                   (notes (ekg-agent--get-notes :any-tags (append tags nil) :num num)))
+                               (mapconcat #'ekg-llm-note-to-text notes "\n\n")))
                  :name "get_notes_with_any_tags"
                  :description "Retrieve notes that have any of the specified tags."
                  :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.")
@@ -98,20 +96,19 @@ Changes to this variable will take effect the next time you call
 
 (defconst ekg-agent-tool-get-note-by-id
   (make-llm-tool :function (lambda (id)
-                             (ekg-llm-note-to-text (ekg-get-note-with-id id)))
+                             (let ((notes (ekg-agent--get-notes :note-id id)))
+                               (if notes
+                                   (ekg-llm-note-to-text (car notes))
+                                 (error "Note with ID %s not found" id))))
                  :name "get_note_by_id"
                  :description "Retrieve a note by its unique identifier."
                  :args '((:name "id" :type string :description "The unique identifier of the note."))))
 
 (defconst ekg-agent-tool-search-notes
   (make-llm-tool :function (lambda (query num)
-                             (let ((ekg-llm-note-numwords 500))
-                               (mapconcat #'ekg-llm-note-to-text
-                                          (mapcar #'ekg-get-note-with-id
-                                                  (ekg-embedding-n-most-similar-notes
-                                                   (llm-embedding ekg-embedding-provider query)
-                                                   num))
-                                          "\n\n")))
+                             (let ((ekg-llm-note-numwords 500)
+                                   (notes (ekg-agent--get-notes :semantic-search query :num num)))
+                               (mapconcat #'ekg-llm-note-to-text notes "\n\n")))
                  :name "search_notes"
                  :description "Search notes by a query string, retrieving by semantic similarity."
                  :args '((:name "query" :type string :description "The search query string.")
@@ -127,15 +124,8 @@ Changes to this variable will take effect the next time you call
   (make-llm-tool :function (lambda (tags content mode)
                              (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
                                (error "Unsupported mode: %s" mode))
-                             (let* ((enclosure (assoc-default (intern mode) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                    (note (ekg-note-create :tags (seq-union (append tags nil)
-                                                                            (list ekg-agent-author-tag))
-                                                           :text (concat
-                                                                  (car enclosure) "\n"
-                                                                  content "\n"
-                                                                  (cdr enclosure))
-                                                           :mode (intern mode))))
-                               (ekg-save-note note)))
+                             ;; Use ekg-agent-add-note for consistency (includes auto-tags)
+                             (ekg-agent-add-note content (append tags nil) mode))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
                  :args `((:name "tags" :type array :items (:type string)
@@ -557,10 +547,64 @@ If MAX-WORDS is specified, truncate the text to that many words."
 (defun ekg-agent--notes-to-json (notes &optional max-words)
   "Convert list of NOTES to a JSON array string.
 If MAX-WORDS is specified, truncate each note's text to that many words."
-  (require 'json)
   (json-encode (mapcar (lambda (note)
                          (ekg-agent--note-to-alist note max-words))
                        notes)))
+
+(cl-defun ekg-agent--get-notes (&key tags any-tags note-id semantic-search text-search (num 10))
+  "Get notes from ekg based on search criteria.
+
+This is a helper function that returns a list of note objects.
+Use `ekg-agent-read-notes` for CLI access with JSON output.
+
+This function supports multiple modes of operation:
+
+1. By tags (AND): Provide TAGS as a list of tag strings.
+2. By tags (OR): Provide ANY-TAGS as a list of tag strings.
+3. By note ID: Provide NOTE-ID as a number or string.
+4. By semantic search: Provide SEMANTIC-SEARCH as a query string.
+5. By text search: Provide TEXT-SEARCH as a query string.
+
+NUM is the maximum number of notes to return (default 10).
+
+Returns a list of note objects."
+  (cond
+   ;; Read by note ID
+   (note-id
+    (let ((note (ekg-get-note-with-id (if (stringp note-id)
+                                          (string-to-number note-id)
+                                        note-id))))
+      (if note
+          (list note)
+        (error "Note with ID %s not found" note-id))))
+
+   ;; Semantic search (requires embeddings)
+   (semantic-search
+    (unless ekg-embedding-provider
+      (error "Semantic search requires ekg-embedding-provider to be configured"))
+    (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
+      (mapcar #'ekg-get-note-with-id
+              (ekg-embedding-n-most-similar-notes embedding num))))
+
+   ;; Text search (full-text search)
+   (text-search
+    (seq-take
+     (seq-filter #'ekg-note-active-p
+                 (mapcar #'ekg-get-note-with-id
+                         (triples-fts-query-subject ekg-db text-search ekg-query-pred-abbrevs)))
+     num))
+
+   ;; Tag-based search with OR logic
+   (any-tags
+    (seq-take (ekg-get-notes-with-any-tags any-tags) num))
+
+   ;; Tag-based search (AND logic)
+   (tags
+    (seq-take (ekg-get-notes-with-tags tags) num))
+
+   ;; No search criteria
+   (t
+    (error "Must provide tags, any-tags, note-id, semantic-search, or text-search"))))
 
 ;;;###autoload
 (cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search (num 10) (max-words 100))
@@ -581,41 +625,11 @@ Each note object contains: id, text, mode, tags, creation_time, modified_time.
 
 This is intended to be used from the command-line so agents can read
 notes from ekg."
-  (let (notes)
-    (cond
-     ;; Read by note ID
-     (note-id
-      (let ((note (ekg-get-note-with-id (if (stringp note-id)
-                                            (string-to-number note-id)
-                                          note-id))))
-        (if note
-            (setq notes (list note))
-          (error "Note with ID %s not found" note-id))))
-
-     ;; Semantic search (requires embeddings)
-     (semantic-search
-      (unless ekg-embedding-provider
-        (error "Semantic search requires ekg-embedding-provider to be configured"))
-      (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
-        (setq notes (mapcar #'ekg-get-note-with-id
-                            (ekg-embedding-n-most-similar-notes embedding num)))))
-
-     ;; Text search (full-text search)
-     (text-search
-      (setq notes (seq-take
-                   (seq-filter #'ekg-note-active-p
-                               (mapcar #'ekg-get-note-with-id
-                                       (triples-fts-query-subject ekg-db text-search ekg-query-pred-abbrevs)))
-                   num)))
-
-     ;; Tag-based search (AND logic)
-     (tags
-      (setq notes (seq-take (ekg-get-notes-with-tags tags) num)))
-
-     ;; No search criteria
-     (t
-      (error "Must provide tags, note-id, semantic-search, or text-search")))
-
+  (let ((notes (ekg-agent--get-notes :tags tags
+                                     :note-id note-id
+                                     :semantic-search semantic-search
+                                     :text-search text-search
+                                     :num num)))
     (ekg-agent--notes-to-json notes max-words)))
 
 (provide 'ekg-agent)
