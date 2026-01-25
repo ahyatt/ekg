@@ -1,7 +1,7 @@
 #!/bin/bash
 # ekg-read - Command-line interface for reading notes from ekg
-# 
-# Usage: 
+#
+# Usage:
 #   ekg-read --tag tag1 --tag tag2 -n 10 -w 100
 #   ekg-read <note-id>
 #   ekg-read --semantic-search "query string"
@@ -105,6 +105,17 @@ if [[ -z "$MODE" ]]; then
     fi
 fi
 
+# Validate numeric arguments
+if ! [[ "$NUM" =~ ^[0-9]+$ ]]; then
+    echo "Error: --num must be a positive integer, got: $NUM"
+    exit 1
+fi
+
+if ! [[ "$MAX_WORDS" =~ ^[0-9]+$ ]]; then
+    echo "Error: --words must be a positive integer, got: $MAX_WORDS"
+    exit 1
+fi
+
 # Build the elisp expression based on mode
 case $MODE in
     tags)
@@ -115,33 +126,33 @@ case $MODE in
             TAGS_ELISP+="\"$escaped_tag\" "
         done
         TAGS_ELISP="${TAGS_ELISP% })"
-        
+
         ELISP_EXPR="(princ (progn
           (require 'ekg-agent)
           (ekg-agent-read-notes :tags '$TAGS_ELISP :num $NUM :max-words $MAX_WORDS)))"
         ;;
-    
+
     id)
         ELISP_EXPR="(princ (progn
           (require 'ekg-agent)
           (ekg-agent-read-notes :note-id $NOTE_ID)))"
         ;;
-    
+
     semantic)
         # Escape the search query
         SEARCH_ELISP="${SEMANTIC_SEARCH//\\/\\\\}"
         SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
-        
+
         ELISP_EXPR="(princ (progn
           (require 'ekg-agent)
           (ekg-agent-read-notes :semantic-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)))"
         ;;
-    
+
     text)
         # Escape the search query
         SEARCH_ELISP="${TEXT_SEARCH//\\/\\\\}"
         SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
-        
+
         ELISP_EXPR="(princ (progn
           (require 'ekg-agent)
           (ekg-agent-read-notes :text-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)))"
@@ -155,15 +166,17 @@ if [[ -n "$DAEMON_NAME" ]]; then
 fi
 
 # Execute via emacsclient
-OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1)
-if [ $? -ne 0 ]; then
+if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
     echo "Error: Failed to read notes. Is the Emacs daemon running?" >&2
     echo "Start a daemon with: emacs --daemon${DAEMON_NAME:+=$DAEMON_NAME}" >&2
     echo "$OUTPUT" >&2
     exit 1
 fi
 
-# Output the JSON - strip outer quotes and unescape
-# emacsclient --eval returns elisp strings quoted, so we need to unescape
-# Process in correct order: \\\\ -> \\, then \" -> ", keep \\n as-is for JSON
-echo "$OUTPUT" | sed 's/^"//; s/"$//' | sed 's/\\\\\\\\/\\\\/g' | sed 's/\\"/"/g'
+# Output the JSON
+# emacsclient --eval always returns the Elisp printed representation, which means:
+# - The string is wrapped in double quotes
+# - Internal quotes are escaped as \"
+# - Backslashes are escaped as \\
+# We need to strip the outer quotes and unescape: \\\\ -> \\ and \" -> "
+echo "$OUTPUT" | sed 's/^"//; s/"$//' | sed 's/\\\\\\\\/\\\\/g; s/\\"/"/g'

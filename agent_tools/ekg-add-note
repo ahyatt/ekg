@@ -1,6 +1,6 @@
 #!/bin/bash
 # ekg-add-note - Command-line interface for adding notes to ekg
-# 
+#
 # Usage: ekg-add-note --tag tag1 --tag tag2 --note "note text" --mode org-mode
 #
 # This script uses emacsclient to communicate with a running Emacs daemon,
@@ -64,6 +64,22 @@ fi
 
 if [[ ${#TAGS[@]} -eq 0 ]]; then
     echo "Error: At least one --tag is required"
+    echo "Use --help for usage information"
+    exit 1
+fi
+
+# Validate MODE against allowed values
+ALLOWED_MODES=("org-mode" "markdown-mode" "text-mode")
+MODE_VALID=false
+for allowed_mode in "${ALLOWED_MODES[@]}"; do
+    if [[ "$MODE" == "$allowed_mode" ]]; then
+        MODE_VALID=true
+        break
+    fi
+done
+
+if [[ "$MODE_VALID" != "true" ]]; then
+    echo "Error: Invalid mode '$MODE'. Must be one of: ${ALLOWED_MODES[*]}"
     echo "Use --help for usage information"
     exit 1
 fi
