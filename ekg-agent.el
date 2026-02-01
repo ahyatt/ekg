@@ -115,6 +115,13 @@ Changes to this variable will take effect the next time you call
                  :args '((:name "query" :type string :description "The search query string.")
                          (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
 
+(defconst ekg-agent-tool-ask-user
+  (make-llm-tool :function (lambda (question)
+                             (read-string (format "Question from ekg-agent: %s\nResponse: " question)))
+                 :name "ask_user"
+                 :description "Ask the user a question and get their response."
+                 :args '((:name "question" :type string :description "The question to ask the user."))))
+
 (defconst ekg-agent-tool-list-tags
   (make-llm-tool :function (lambda () (apply #'vector (ekg-tags)))
                  :name "list_all_tags"
@@ -152,13 +159,15 @@ Changes to this variable will take effect the next time you call
     (with-current-buffer buf
       (erase-buffer)
       (insert result)
+      (when (featurep'markdown-mode)
+        (markdown-mode))
       (goto-char (point-min)))
     (pop-to-buffer buf)))
 
 (defconst ekg-agent-tool-popup-result
   (make-llm-tool :function #'ekg-agent--popup-result-in-buffer
                  :name "display_result_in_popup"
-                 :description "Display the result of a query in a popup buffer."
+                 :description "Display the result of a query in a popup buffer.  Use markdown mode for formatting"
                  :args '((:name "result" :type string :description "The result to display."))))
 
 (defconst ekg-agent-base-tools
@@ -169,6 +178,7 @@ Changes to this variable will take effect the next time you call
    ekg-agent-tool-search-notes
    ekg-agent-tool-list-tags
    ekg-agent-tool-create-note
+   ekg-agent-tool-ask-user
    ekg-agent-tool-end)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
@@ -180,13 +190,16 @@ These tools are used in addition to `ekg-agent-base-tools` in
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
 
-(defun ekg-agent-ask (question)
+(defun ekg-agent--ask (question context)
   "Ask the ekg agent a QUESTION and display the result.
-The agent has access to all the ekg tools, and can create notes
-or display results in a popup buffer.  The agent will decide
-which is best."
-  (interactive "sQuestion: ")
-  (let* ((prompt (concat ekg-agent-instructions-intro
+
+CONTEXT is what we'll display to the agent as context.  If nil no
+additional context is added.
+
+The agent has access to all the defined tools, and can create notes or
+display results in a popup buffer, or ask the user a question.  The
+agent will decide which is best."
+  (let* ((prompt (concat (ekg-agent-instructions-intro)
                          "\n\nYour instructions are to answer the user's question, given below. "
                          "You have access to tools to help you. "
                          "After each tool call you will be given a chance to make more tool calls. "
@@ -194,16 +207,14 @@ which is best."
                          "`display_result_in_popup` or `create_note`.  Calling one of these tools "
                          "will complete your task.  Do not call any other tools after you have "
                          "presented the answer."
+                         (when context
+                           "\n\nHere is some additional context to help you:\n")
+                         context
                          "\n\n"
                          (format "The current date and time is %s."
-                                 (format-time-string "%F %R"))))
-         (context-notes (mapconcat #'ekg-llm-note-to-text
-                                   (ekg-get-latest-modified 10) "\n\n"))
-         (question-with-context (concat question "\n\n"
-                                        "Here are the last 10 notes for context:\n"
-                                        context-notes)))
+                                 (format-time-string "%F %R")))))
     (ekg-agent--iterate (llm-make-chat-prompt
-                         question-with-context
+                         question
                          :context prompt
                          :tools (append (seq-remove (lambda (tool) (equal (llm-tool-name tool) "end"))
                                                     ekg-agent-base-tools)
@@ -218,6 +229,31 @@ which is best."
                         0
                         nil
                         '("display_result_in_popup" "create_note"))))
+
+(defun ekg-agent-ask (question)
+  "Ask the ekg agent a QUESTION and display the result.
+The agent has access to all the ekg tools, and can create notes
+or display results in a popup buffer.  The agent will decide
+which is best."
+  (interactive "sQuestion: ")
+  (ekg-agent--ask question
+                  (concat
+                   "The last 10 notes:"
+                   (mapconcat #'ekg-llm-note-to-text
+                              (ekg-get-latest-modified 10) "\n\n"))))
+
+(defun ekg-agent-ask-with-buffer (instructions)
+  "Issue INSTRUCTIONS to the agent, with the current buffer as context."
+  (interactive "sInstructions: ")
+  (ekg-agent--ask instructions
+                  (concat
+                   (format "The current buffer is named %s%s, the major mode is %s.  The content is:\n"
+                           (buffer-name)
+                           (if buffer-file-name
+                               (format " (file: %s)" buffer-file-name)
+                             "")
+                           major-mode)
+                   (buffer-substring-no-properties (point-min) (point-max)))))
 
 (defun ekg-agent-starting-context ()
   "Return the context for an agent for new sessions.
@@ -240,8 +276,10 @@ self info and self-instruct notes."
                         10)
               "\n\n")))
 
-(defconst ekg-agent-instructions-intro
-  "You are an agent that works with a user through a note taking system in
+(defun ekg-agent-instructions-intro ()
+  "Introductory instructions for the ekg agent."
+  (format
+   "You are an agent that works with a user through a note taking system in
 Emacs, called ekg.  In ekg, notes have tags and content, and can be
 written in markdown, org-mode or plain text.  ekg is backed by a
 database, and the way to interact with it is with the tools provided.
@@ -251,7 +289,23 @@ text>]]`.  Tags can be linked with `[[ekg-tag:<tag>][<link display
 text>]]`.
 
 In markdown mode, there's no way to link directly to notes, but you can
-use [[tag]] to link to a tag.")
+use [[tag]] to link to a tag.
+
+These notes should act as memory for subjects and tasks that that both users
+and agents can read and write.
+
+To write a note to your future self so that you remember important
+information the next time you are run, use the `%s` tag for information
+for your future self.  The `%s` is for instructions for your future
+self (which you may want to use when you see how the user is interacting
+with your text), so that you can behave more usefully in the future.
+Write notes with these tags if you feel you have discovered something
+that will make future runs better, and want to record this.
+
+When creating a note, text that you add will automatically have the tags
+surrounding it to indicate that it was written by an LLM.  Do not add
+these tags manually."
+   ekg-agent-self-info-tag ekg-agent-self-instruct-tag))
 
 (defun ekg-agent-instructions-evaluate-status ()
   "Return instructions for the agent to evaluate user status and help them."
@@ -285,21 +339,7 @@ yourself with relevant findings.
 you think is appropriate.
 5. Call the end tool to finish your work.
 
-To write a note to your future self so that you remember important
-information the next time you are run, use the `%s` tag for information
-for your future self.  The `%s` is for instructions for your future
-self (which you may want to use when you see how the user is interacting
-with your text), so that you can behave more usefully in the future.
-Write notes with these tags if you feel you have discovered something
-that will make future runs better, and want to record this.
-
-When creating a note, text that you add will automatically have the tags
-surrounding it to indicate that it was written by an LLM.  Do not add
-these tags manually.
-
-The date and time is %s.
-"
-   ekg-agent-self-info-tag ekg-agent-self-instruct-tag
+The date and time is %s.\n"
    (format-time-string "%F %R")))
 
 (defun ekg-agent-evaluate-status ()
@@ -310,7 +350,7 @@ to create new notes or perform other actions to help the user."
   (ekg-agent--iterate (llm-make-chat-prompt
                        (ekg-agent-starting-context)
                        :context
-                       (concat ekg-agent-instructions-intro "\n"
+                       (concat (ekg-agent-instructions-intro) "\n"
                                (ekg-agent-instructions-evaluate-status))
                        :tools (append
                                ekg-agent-base-tools
@@ -334,10 +374,10 @@ END-TOOLS is a list of tool names that will end the iteration.
 
 This is to start, and after every tool call to continue the agent
 session."
-  (if (> iteration-num 6)
+  (if (> iteration-num 15)
       (progn
         (message "ekg agent exceeded maximum number of iterations")
-        (when status-callback (funcall status-callback 'done)))
+        (when status-callback (funcall status-callback "Agent iterations exhausted, stopping.")))
     (llm-chat-async
      (ekg-llm--provider) prompt
      (lambda (result)
@@ -452,7 +492,7 @@ ARG, if non-nil, allows editing the instructions."
                                  (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
            (current-note-json (let ((ekg-llm-note-numwords 10000))
                                 (ekg-llm-note-to-text ekg-note)))
-           (prompt (concat ekg-agent-instructions-intro
+           (prompt (concat (ekg-agent-instructions-intro)
                            "\n\nYour instructions:\n"
                            instructions-for-use
                            "\n\nYou have access to tools to help you.
