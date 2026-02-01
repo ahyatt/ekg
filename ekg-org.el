@@ -40,7 +40,7 @@
   "Tag used to identify EKG notes that should be treated as archived Org tasks.")
 
 (defun ekg-org-add-schema ()
-  "Add schema for org-mode integration."
+  "Add schema for integration with `org-mode'."
   (triples-add-schema ekg-db 'org
                       '(deadline :base/type integer :base/unique t)
                       '(scheduled :base/type integer :base/unique t)
@@ -53,7 +53,7 @@
 (defun ekg-org-get-tasks (&optional archive)
   "Fetch top-level tasks from ekg, as ekg-note structs.
 
-If ARCHIVE is non-nil, fetch archived tasks instead. If nil, fetch
+If ARCHIVE is non-nil, fetch archived tasks instead.  If nil, fetch
 active, unarchived, tasks."
   (seq-filter
    (lambda (note)
@@ -124,7 +124,7 @@ PARENT is the parent org-element node."
       element)))
 
 (defun ekg-org-task-to-string (note)
-  "Turn NOTE and all its children into an org-mode string."
+  "Turn NOTE and all its children into an `org-mode' string."
   (org-element-interpret-data
    (ekg-org-task-to-element note nil)))
 
@@ -303,10 +303,13 @@ Returns a list of items with ID, Title, Status, and Parent ID."
      (:name "include_archived" :type boolean
             :description "Whether to include archived tasks"))))
 
-(with-eval-after-load 'ekg-agent
-  (add-to-list 'ekg-agent-extra-tools ekg-org-tool-add-task)
-  (add-to-list 'ekg-agent-extra-tools ekg-org-tool-set-status)
-  (add-to-list 'ekg-agent-extra-tools ekg-org-tool-list-items))
+(defun ekg-org-initialize ()
+  "Initialize the ekg-org integration."
+  (ekg-org-add-schema)
+  (when (featurep 'ekg-agent)
+    (add-to-list 'ekg-agent-extra-tools ekg-org-tool-add-task)
+    (add-to-list 'ekg-agent-extra-tools ekg-org-tool-set-status)
+    (add-to-list 'ekg-agent-extra-tools ekg-org-tool-list-items)))
 
 (provide 'ekg-org)
 ;;; ekg-org.el ends here
