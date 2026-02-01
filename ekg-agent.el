@@ -159,7 +159,7 @@ Changes to this variable will take effect the next time you call
     (with-current-buffer buf
       (erase-buffer)
       (insert result)
-      (when (featurep'markdown-mode)
+      (when (featurep 'markdown-mode)
         (markdown-mode))
       (goto-char (point-min)))
     (pop-to-buffer buf)))
@@ -167,7 +167,7 @@ Changes to this variable will take effect the next time you call
 (defconst ekg-agent-tool-popup-result
   (make-llm-tool :function #'ekg-agent--popup-result-in-buffer
                  :name "display_result_in_popup"
-                 :description "Display the result of a query in a popup buffer.  Use markdown mode for formatting"
+                 :description "Display the result of a query in a popup buffer.  Use markdown mode for formatting."
                  :args '((:name "result" :type string :description "The result to display."))))
 
 (defconst ekg-agent-base-tools
@@ -238,7 +238,7 @@ which is best."
   (interactive "sQuestion: ")
   (ekg-agent--ask question
                   (concat
-                   "The last 10 notes:"
+                   "The last 10 notes:\n\n"
                    (mapconcat #'ekg-llm-note-to-text
                               (ekg-get-latest-modified 10) "\n\n"))))
 
@@ -291,7 +291,7 @@ text>]]`.
 In markdown mode, there's no way to link directly to notes, but you can
 use [[tag]] to link to a tag.
 
-These notes should act as memory for subjects and tasks that that both users
+These notes should act as memory for subjects and tasks that both users
 and agents can read and write.
 
 To write a note to your future self so that you remember important
