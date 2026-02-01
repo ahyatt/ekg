@@ -74,8 +74,7 @@ triples library is already installed.
 #+end_src
 * Changelog
 ** Version 0.9.0
-- Added =ekg-agent=, an autonomous agent that can help you with your notes.
-- Added =ekg-agent-note-response= to allow the agent to help with individual notes.
+- Added =ekg-agent=, an autonomous agent that can help you with your notes, and =ekg-agent-note-response= to allow the agent to help with individual notes.
 - Changed how note metadata is represented in the note editing UI.
 - Pushed more configuration into the triple database itself.
 ** Version 0.8.0
@@ -1293,14 +1292,26 @@ prefix argument allows you to edit the instructions sent to the agent.
 
 You can also ask the agent a direct question at any time with the command
 =ekg-agent-ask=. This will prompt you for a question, which is then sent to the
-agent. The agent will be able to search your notes and use any other tools
-available. It will then provide its response either by displaying it in a popup
-buffer or by creating a new note, choosing the method it deems most appropriate.
-Once the agent has provided a response, its task for that question is complete.
-For example:
+agent.  To provide context, ekg will automatically include your last 10 notes in
+the information sent to the agent. The agent will be able to search your notes and
+use any other tools available. It will then provide its response either by
+displaying it in a popup buffer or by creating a new note, choosing the method
+it deems most appropriate. Once the agent has provided a response, its task for
+that question is complete.  For example:
 
 #+begin_src emacs-lisp
 (ekg-agent-ask "What are the main themes in my recent notes on 'systems thinking'?")
+#+end_src
+
+This allows for quick, ad-hoc interactions with the agent without needing to be
+in a specific note buffer.
+
+If you want to ask a question about the current buffer you are in, you can use
+the command =ekg-agent-ask-with-buffer=. This will send the entire buffer's
+content as context to the agent, along with your question.  For example:
+
+#+begin_src emacs-lisp
+(ekg-agent-ask-with-buffer "Summarize this for me.")
 #+end_src
 
 This allows for quick, ad-hoc interactions with the agent without needing to be in a specific note buffer.
