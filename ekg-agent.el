@@ -193,34 +193,6 @@ but we'll only get strings from the LLM."
                                          "Prefer org-mode to markdown-mode, and either to text-mode.  Use existing notes as "
                                          "a guide to what the user prefers.")))))
 
-(defconst ekg-agent-tool-subagent
-  (make-llm-tool :function (lambda (callback instructions context)
-                             (let ((prompt (llm-make-chat-prompt
-                                            context
-                                            :context instructions
-                                            :tools (append ekg-agent-base-tools
-                                                           ekg-agent-extra-tools
-                                                           (when (llm-google-p (ekg-llm--provider))
-                                                             (list (make-llm-tool :function #'ignore
-                                                                                  :name "google_search"
-                                                                                  :description "Google Search built-in tool"
-                                                                                  :args nil)))
-                                                           (list ekg-agent-tool-subagent-report))
-                                            :tool-options (make-llm-tool-options :tool-choice 'any))))
-                               (ekg-agent--iterate prompt 0 callback '("subagent_report"))))
-                 :name "run_subagent"
-                 :description "Run a sub-agent with specific instructions and context."
-                 :args '((:name "instructions" :type string :description "The instructions for the sub-agent.")
-                         (:name "context" :type string :description "The context to provide to the sub-agent."))
-                 :async t))
-
-(defconst ekg-agent-tool-subagent-report
-  (make-llm-tool :function (lambda (report)
-                             report)
-                 :name "subagent_report"
-                 :description "Report the results of this agent to the parent agent."
-                 :args '((:name "report" :type string :description "The report to deliver to the parent agent."))))
-
 (defconst ekg-agent-tool-end
   (make-llm-tool :function (lambda () 'done)
                  :name "end"
@@ -251,7 +223,6 @@ but we'll only get strings from the LLM."
    ekg-agent-tool-get-note-by-id
    ekg-agent-tool-search-notes
    ekg-agent-tool-list-tags
-   ekg-agent-tool-subagent
    ekg-agent-tool-append-to-note
    ekg-agent-tool-replace-note
    ekg-agent-tool-create-note

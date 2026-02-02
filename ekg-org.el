@@ -305,7 +305,7 @@ STATUS is the new status (will be converted to uppercase)."
 
 STATE if non-nil, filter by status (e.g., \"TODO\", \"DONE\").
 INCLUDE-ARCHIVED if non-nil, include archived tasks.
-Returns a list of items with ID, Title, Status, and Parent ID."
+Returns text in Org format, as if they were in an Org file."
   (ekg-org-generate-org-content nil (when state
                                       (lambda (note)
                                         (string-equal

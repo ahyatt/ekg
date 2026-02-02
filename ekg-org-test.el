@@ -179,6 +179,15 @@
       ;; Verify old TODO tag is removed
       (should-not (member (concat ekg-org-state-tag-prefix "todo") (ekg-note-tags note))))))
 
+(defun ekg-org-test-count-tasks (content)
+  "Helper to count number of tasks in CONTENT string."
+  (let ((count 0)
+        (start 0))
+    (while (string-match "^\\* " content start)
+      (setq count (1+ count))
+      (setq start (match-end 0)))
+    count))
+
 (ekg-deftest ekg-org-test-list-items ()
   "Test listing tasks."
   (ekg-org-add-schema)
@@ -189,8 +198,8 @@
   (let ((all (ekg-org--agent-tool-list-items))
         (todos (ekg-org--agent-tool-list-items "TODO")))
     ;; Normal listing should not include archived
-    (should (= (s-count-matches-all "Task " all) 2))
-    (should (= (s-count-matches-all "Task " todos) 1))
+    (should (= (ekg-org-test-count-tasks all) 2))
+    (should (= (ekg-org-test-count-tasks todos) 1))
     (should (string-match-p "Task 1" todos))))
 
 (ekg-deftest ekg-org-test-tag-handling ()
