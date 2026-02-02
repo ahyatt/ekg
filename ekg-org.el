@@ -308,9 +308,9 @@ INCLUDE-ARCHIVED if non-nil, include archived tasks.
 Returns a list of items with ID, Title, Status, and Parent ID."
   (ekg-org-generate-org-content nil (when state
                                       (lambda (note)
-                                        (string-equal-ignore-case
-                                         state
-                                         (ekg-org--state note))))))
+                                        (string-equal
+                                         (downcase state)
+                                         (downcase (ekg-org--state note)))))))
 
 (defconst ekg-org-tool-add-task
   (llm-make-tool
