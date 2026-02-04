@@ -57,7 +57,9 @@ return the text to pass to the embedding API."
   :type 'integer
   :group 'ekg-embedding)
 
-(defconst ekg-embedding-provider nil
+(defconst ekg-embedding-max-words 800 "The maximum number of words to use for generating embeddings.")
+
+(defvar ekg-embedding-provider nil
   "The provider of the embedding.
 This is a struct representing a provider in the `llm' package.")
 
@@ -138,7 +140,7 @@ If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
    ekg-embedding-provider
    (funcall ekg-embedding-text-selector
             (substring-no-properties
-             (ekg-display-note-text note)))
+             (ekg-display-note-text note ekg-embedding-max-words 'plaintext)))
    (lambda (embedding)
      (ekg-connect)
      (ekg-embedding-batch-store
@@ -157,7 +159,7 @@ wait for the embedding to return and be set."
                     ekg-embedding-provider
                     (funcall ekg-embedding-text-selector
                              (substring-no-properties
-                              (ekg-display-note-text note))))))
+                              (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))))
     (if (ekg-embedding-valid-p embedding)
         (triples-set-type ekg-db (ekg-note-id note) 'embedding
                           :embedding embedding)
@@ -182,7 +184,7 @@ ERROR-CALLBACK is called with error-type and message on errors."
   (let ((texts (mapcar (lambda (note)
                          (funcall ekg-embedding-text-selector
                                   (substring-no-properties
-                                   (ekg-display-note-text note))))
+                                   (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))
                        notes)))
     (llm-batch-embeddings-async
      ekg-embedding-provider
