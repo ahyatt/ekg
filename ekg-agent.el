@@ -34,6 +34,7 @@
 (require 'seq)
 (require 'json)
 (require 'subr-x)
+(require 'async)
 
 (defgroup ekg-agent nil
   "Agentic actions for ekg."
@@ -274,16 +275,25 @@ but we'll only get strings from the LLM."
                  (string-trim-right (buffer-string))))))))
 
 (defconst ekg-agent-tool-run-elisp
-  (make-llm-tool :function (lambda (callback elisp)
-                             (condition-case err
-                                 (let ((result (eval (read elisp))))
-                                   (funcall callback (prin1-to-string result)))
-                               (error
-                                (funcall callback (format "Error evaluating elisp: %s"
-                                                          (error-message-string err))))))
+  (make-llm-tool :function (lambda (callback elisp return)
+                             (funcall callback
+                                      (format "%s"
+                                              (condition-case err
+                                                  (with-temp-buffer
+                                                    (save-excursion
+                                                      (let ((result (eval (read elisp))))
+                                                        (if (equal return "buffer")
+                                                            (buffer-substring-no-properties (point-min) (point-max))
+                                                          result))))
+                                                (error
+                                                 (format "Error evaluating elisp: %s"
+                                                         (error-message-string err)))))))
                  :name "run_elisp"
                  :description "Evaluate arbitrary Emacs Lisp and return the printed result of the final form."
-                 :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate."))
+                 :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate." :required t)
+                         (:name "return" :type string :enum ["result" "buffer"]
+                                :description "Whether to return the result of the evaluated elisp, or the buffer after the elisp has been evaluated. If there is an error, it will be returned regardless of this value.  The elisp will be executed in a temporary buffer.  Never modify the user's actual buffers."
+                                :required t))
                  :async t))
 
 (defconst ekg-agent-tool-code
