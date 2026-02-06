@@ -299,7 +299,7 @@ but we'll only get strings from the LLM."
 (defconst ekg-agent-tool-code
   (make-llm-tool :function #'ekg-agent--run-code
                  :name "run_code_tool"
-                 :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result"
+                 :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to make changes to code, use this tool and ask it to make the changes."
                  :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))))
 
 (defun ekg-agent--log-buffer ()
@@ -500,6 +500,19 @@ which is best."
                              "")
                            major-mode)
                    (buffer-substring-no-properties (point-min) (point-max)))))
+
+(defun ekg-agent-ask-with-region (instructions start end)
+  "Issue INSTRUCTIONS to the agent, with the current region as context."
+  (interactive "sInstructions: \\nr")
+  (ekg-agent--ask instructions
+                  (concat
+                   (format "The current buffer is named %s%s, the major mode is %s.  The content is the selected region:\\n"
+                           (buffer-name)
+                           (if buffer-file-name
+                               (format " (file: %s)" buffer-file-name)
+                             "")
+                           major-mode)
+                   (buffer-substring-no-properties start end))))
 
 (defun ekg-agent-starting-context ()
   "Return the context for an agent for new sessions.
