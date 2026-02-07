@@ -74,8 +74,11 @@ Changes to this variable will take effect the next time you call
   :type 'string
   :group 'ekg-agent)
 
-(defcustom ekg-agent-log-buffer-name "*ekg agent log*"
-  "Name of the buffer used for logging ekg agent progress."
+(defcustom ekg-agent-log-buffer-name-format "*ekg agent log: %s*"
+  "Name of the buffer used for logging ekg agent progress.
+
+The string var will be filled in with the name of the buffer, so
+this MUST have a %s in it."
   :type 'string
   :group 'ekg-agent)
 
@@ -102,10 +105,14 @@ If non-positive, no timeout is applied."
 (defcustom ekg-agent-code-command nil
   "Command to run for the coding tool.
 
-This should be a shell-style command string (for example, \"claude\").
-The prompt will be provided on stdin; stdout will be returned."
+This should be a shell-style command string (for example, \"claude -p
+--dangerously_skip_permissions\"). The prompt will be provided on stdin;
+stdout will be returned."
   :type '(choice (const :tag "Unset" nil) string)
   :group 'ekg-agent)
+
+(defvar-local ekg-agent--prompt nil
+  "The prompt for the agent section in the current buffer.")
 
 (defvar ekg-agent--daily-timer nil
   "Timer object for the daily agent evaluation.")
@@ -255,7 +262,7 @@ but we'll only get strings from the LLM."
   "Run the configured `ekg-agent-code-command` with PROMPT on stdin."
   (unless (and (stringp ekg-agent-code-command)
                (string-match-p "\\S-" ekg-agent-code-command))
-    (error "ekg-agent-code-command is not configured"))
+    (error "Ekg-agent-code-command is not configured"))
   (let* ((args (split-string-and-unquote ekg-agent-code-command))
          (program (car args))
          (program-args (cdr args)))
@@ -276,18 +283,12 @@ but we'll only get strings from the LLM."
 
 (defconst ekg-agent-tool-run-elisp
   (make-llm-tool :function (lambda (callback elisp return)
-                             (funcall callback
-                                      (format "%s"
-                                              (condition-case err
-                                                  (with-temp-buffer
-                                                    (save-excursion
-                                                      (let ((result (eval (read elisp))))
-                                                        (if (equal return "buffer")
-                                                            (buffer-substring-no-properties (point-min) (point-max))
-                                                          result))))
-                                                (error
-                                                 (format "Error evaluating elisp: %s"
-                                                         (error-message-string err)))))))
+                             (async-start (lambda ()
+                                            (let ((result (eval (read elisp))))
+                                              (if (equal return "result")
+                                                  result
+                                                (buffer-substring-no-properties (point-min) (point-max)))))
+                                          callback))
                  :name "run_elisp"
                  :description "Evaluate arbitrary Emacs Lisp and return the printed result of the final form."
                  :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate." :required t)
@@ -299,21 +300,12 @@ but we'll only get strings from the LLM."
 (defconst ekg-agent-tool-code
   (make-llm-tool :function #'ekg-agent--run-code
                  :name "run_code_tool"
-                 :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to make changes to code, use this tool and ask it to make the changes."
+                 :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to make changes to code, use this tool and ask it to make the changes.  Assume that it can do almost anything, including reading files and webpages."
                  :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))))
-
-(defun ekg-agent--log-buffer ()
-  "Return the agent log buffer, creating it if needed."
-  (let ((buf (get-buffer-create ekg-agent-log-buffer-name)))
-    (with-current-buffer buf
-      (unless (derived-mode-p 'special-mode)
-        (special-mode))
-      (setq-local truncate-lines t))
-    buf))
 
 (defun ekg-agent--ensure-log-window ()
   "Ensure the agent log buffer is displayed in a side window."
-  (let* ((buf (ekg-agent--log-buffer))
+  (let* ((buf (current-buffer))
          (params (append
                   `((side . ,ekg-agent-log-window-side)
                     (slot . 1))
@@ -336,33 +328,31 @@ but we'll only get strings from the LLM."
           (set-window-point win (point-max)))))))
 
 (defun ekg-agent--log (format-string &rest args)
-  "Append a log line to the agent log buffer."
-  (let ((buf (ekg-agent--log-buffer)))
-    (with-current-buffer buf
-      (let ((inhibit-read-only t))
-        (goto-char (point-max))
-        (insert (format-time-string "%F %T "))
-        (insert (apply #'format format-string args))
-        (insert "\n"))
-      (let ((win (get-buffer-window buf t)))
-        (when win
-          (set-window-point win (point-max)))))))
+  "Append a log line built from FORMAT-STRING and ARGS to the agent log buffer."
+  (let ((inhibit-read-only t))
+    (goto-char (point-max))
+    (insert (format-time-string "%F %T "))
+    (insert (apply #'format format-string args))
+    (insert "\n"))
+  (let ((win (get-buffer-window buf t)))
+    (when win
+      (set-window-point win (point-max)))))
 
 (defun ekg-agent--log-session-start (label &optional detail)
-  "Start a new session in the agent log."
+  "Start a new session in the agent log with LABEL and optional DETAIL."
   (ekg-agent--ensure-log-window)
   (ekg-agent--log-raw (make-string 72 ?-))
   (ekg-agent--log "%s%s" label (if detail (format ": %s" detail) "")))
 
 (defun ekg-agent--log-status (status)
-  "Log STATUS updates from the agent."
+  "Log STATUS update from the agent."
   (pcase status
     ('done (ekg-agent--log "Done"))
     ('error (ekg-agent--log "Error"))
     (_ (ekg-agent--log "Status: %s" status))))
 
 (defun ekg-agent--make-status-callback (&optional extra-callback)
-  "Return a status callback that logs, then calls EXTRA-CALLBACK."
+  "Return a status callback that logs, then call EXTRA-CALLBACK."
   (lambda (status)
     (ekg-agent--log-status status)
     (when extra-callback
@@ -404,7 +394,7 @@ but we'll only get strings from the LLM."
 (defconst ekg-agent-tool-summarize-state
   (make-llm-tool :function #'ekg-agent--summarize-state
                  :name "summarize_state"
-                 :description "Summarize the current state in the agent log window."
+                 :description "Summarize the current state in the agent log window.  This should be called often to keep the user up to date on what is happening."
                  :args '((:name "state" :type string :description "Short summary of current progress, plan, or blockers."))))
 
 (defconst ekg-agent-base-tools
@@ -425,11 +415,11 @@ These tools are necessary for basic agent functionality.")
 
 (defcustom ekg-agent-extra-tools nil
   "List of additional tools available to the agent.
-These tools are used in addition to `ekg-agent-base-tools` in
-`ekg-agent-evaluate-status` and `ekg-agent-note-response`.
+These tools are used in addition to `ekg-agent-base-tools' in
+`ekg-agent-evaluate-status' and `ekg-agent-note-response'.
 
-This is the place to opt into tools like `ekg-agent-tool-run-elisp` or
-`ekg-agent-tool-code`."
+This is the place to opt into tools like `ekg-agent-tool-run-elisp' or
+`ekg-agent-tool-code'."
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
 
@@ -502,11 +492,11 @@ which is best."
                    (buffer-substring-no-properties (point-min) (point-max)))))
 
 (defun ekg-agent-ask-with-region (instructions start end)
-  "Issue INSTRUCTIONS to the agent, with the current region as context."
-  (interactive "sInstructions: \\nr")
+  "Issue INSTRUCTIONS to the agent, with the region from START to END as context."
+  (interactive "sInstructions: \nr")
   (ekg-agent--ask instructions
                   (concat
-                   (format "The current buffer is named %s%s, the major mode is %s.  The content is the selected region:\\n"
+                   (format "The current buffer is named %s%s, the major mode is %s.  The content is the selected region:\n"
                            (buffer-name)
                            (if buffer-file-name
                                (format " (file: %s)" buffer-file-name)
@@ -643,19 +633,64 @@ to create new notes or perform other actions to help the user."
                       nil
                       (ekg-agent--timeout-deadline)))
 
+(defun ekg-agent--prompt-id (prompt)
+  "From llm PROMPT, call an LLM to get a short identifier.  "
+  (let (id)
+    (llm-chat (ekg-llm--provider)
+              (llm-make-chat-prompt
+               (llm-chat-prompt-interaction-content
+                (car (seq-filter (lambda (interaction)
+                                   (eq (llm-chat-prompt-interaction-role interaction) 'user))
+                                 (llm-chat-prompt-interactions prompt))))
+               :context "From user input of the what they are instruction an agent to do, call the tool to report a short name.  "
+               :tools (list
+                       (make-llm-tool :function (lambda (result) (setq id result))
+                                      :name "report_id"
+                                      :description "Report on the decided id so that the agent can use this id to name an emacs buffer that will hold the status of the agent.  "
+                                      :args '((:name "id" :type string
+                                                     :description "This id will be for naming an emacs buffer, so use lowercase and dashes.  This should be about 3-5 words.  Example name: 'check-gnus-email-and-respond'.  "))))
+               :tool-options (make-llm-tool-options :tool-choice 'any)))
+    id))
+
 (defun ekg-agent--iterate (prompt iteration-num &optional status-callback end-tools deadline timeout-final)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
+
 PROMPT is the chat prompt for the LLM.
-ITERATION-NUM is the current iteration count.
+
+ITERATION-NUM is the current iteration count. 0 is the setup iteration,
+1 is the first iteration in which we call start the agentic loop.
+
 STATUS-CALLBACK is a function that takes a string argument, which is the
-status of the agent.  If the status is \\='done or \\='error, the agent has
-finished.
+status of the agent. If the status is \\='done or \\='error, the agent
+has finished.
+
 END-TOOLS is a list of tool names that will end the iteration.
+
 DEADLINE is a float time when the agent should stop.
-If TIMEOUT-FINAL is non-nil, this is the final iteration before stopping.
+
+If TIMEOUT-FINAL is non-nil, this is the final iteration before
+stopping.
 
 This is to start, and after every tool call to continue the agent
-session."
+session.  "
+  (when (= iteration-num 0)
+    ;; Set up everything
+    (let* ((id (ekg-agent--prompt-id prompt))
+           (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
+      (with-current-buffer buf
+        (erase-buffer)
+        (message "Starting agent session at buffer %s" (buffer-name))
+        (insert (format "Agent session for: %s\n\n" id))
+        (setq ekg-agent--prompt prompt)
+        (when (featurep 'markdown-mode)
+          (markdown-mode))
+        (goto-char (point-min))
+        (ekg-agent--iterate prompt 1
+                            status-callback
+                            end-tools
+                            deadline
+                            timeout-final))))
+
   (let ((expired (and deadline (> (float-time) deadline))))
     (when (and expired (not timeout-final))
       (ekg-agent--log "Timeout reached; requesting final state note.")
@@ -669,7 +704,7 @@ session."
              (end-tools (or end-tools '("end"))))
          (let ((tools-ran (mapconcat #'car result-alist ", ")))
            (if status-callback
-               (funcall status-callback tools-ran)
+               (funcall status-callback (format "tools ran: %s" tools-ran))
              (message "Ran tools: %s" tools-ran)))
          (cond
           (timeout-final
@@ -712,8 +747,8 @@ If the time has already passed today, return seconds until that time tomorrow."
         seconds-until))))
 
 (defun ekg-agent-schedule-daily ()
-  "Schedule the daily agent evaluation to run at `ekg-agent-daily-time`.
-If already scheduled, cancels the existing timer and creates a new one."
+  "Schedule the daily agent evaluation to run at `ekg-agent-daily-time'.
+If already scheduled, cancel the existing timer and create a new one."
   (interactive)
   (ekg-agent-cancel-daily)
   (let ((seconds-until (ekg-agent--parse-time ekg-agent-daily-time)))
@@ -848,8 +883,8 @@ TAGS should be a list of tag strings.  MODE should be a symbol like
 success, signals an error on failure.
 
 This function automatically:
-- Adds the `ekg-agent-author-tag` to the tags
-- Applies all functions from `ekg-capture-auto-tag-funcs` (e.g., date tags)
+- Adds the `ekg-agent-author-tag' to the tags
+- Applies all functions from `ekg-capture-auto-tag-funcs' (e.g., date tags)
 - Wraps the text in the appropriate LLM output format based on MODE
 
 This is intended to be used from the command-line so agents can easily
@@ -895,7 +930,7 @@ If MAX-WORDS is specified, truncate each note's text to that many words."
   "Get notes from ekg based on search criteria.
 
 This is a helper function that returns a list of note objects.
-Use `ekg-agent-read-notes` for CLI access with JSON output.
+Use `ekg-agent-read-notes' for CLI access with JSON output.
 
 This function supports multiple modes of operation:
 
