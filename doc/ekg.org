@@ -1314,7 +1314,8 @@ content as context to the agent, along with your question.  For example:
 (ekg-agent-ask-with-buffer "Summarize this for me.")
 #+end_src
 
-This allows for quick, ad-hoc interactions with the agent without needing to be in a specific note buffer.
+This allows for quick, ad-hoc interactions with the agent without needing to be
+in a specific note buffer.  There's a similar =ekg-agent-ask-with-region=.
 
 Internal agent notes (using the =agent/self-info= and =agent/instruct=
 tags) are hidden from normal view by being added to =ekg-hidden-tags=. You can
@@ -1338,9 +1339,18 @@ The agent uses specific tags to organize its work:
 You can customize these tags if you prefer different names.
 
 You can also customize the tools available to the agent by modifying
-~ekg-agent-extra-tools~.  This allows you to add your own tools to the
-standard set of tools provided by the agent.
+~ekg-agent-extra-tools~. This allows you to add your own tools to the standard set
+of tools provided by the agent. We provide two tools that are dangerous but
+greatly improve the power of the agent: =ekg-agent-tool-run-elisp=, which enables
+the agent to run arbitrary elisp commands, and =ekg-agent-tool-code=, which
+enables the agent to integrate with coding tools (Claude Code, Codex, Goose,
+etc). To use these tools effectively it's important to run without permissions.
+Here's an example:
 
+#+begin_src emacs-lisp
+(setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
+(setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp ekg-agent-tool-code))
+#+end_src
 *** Command-line tools for agent integration
 
 The =ekg-agent= module provides command-line tools that enable external AI
@@ -1637,3 +1647,4 @@ the user might select or bury one of them, and more.  There isn't an obvious
 ideal solution.  It's possible that the design of the capture/edit buffer may
 change in the future to fix some of the issues we see with the current
 implementation.
+
