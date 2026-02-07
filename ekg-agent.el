@@ -318,14 +318,12 @@ but we'll only get strings from the LLM."
 
 (defun ekg-agent--log-raw (line)
   "Append LINE to the agent log buffer without a timestamp."
-  (let ((buf (ekg-agent--log-buffer)))
-    (with-current-buffer buf
-      (let ((inhibit-read-only t))
-        (goto-char (point-max))
-        (insert line "\n"))
-      (let ((win (get-buffer-window buf t)))
-        (when win
-          (set-window-point win (point-max)))))))
+  (let ((inhibit-read-only t))
+    (goto-char (point-max))
+    (insert line "\n"))
+  (let ((win (get-buffer-window nil t)))
+    (when win
+      (set-window-point win (point-max)))))
 
 (defun ekg-agent--log (format-string &rest args)
   "Append a log line built from FORMAT-STRING and ARGS to the agent log buffer."
@@ -334,7 +332,7 @@ but we'll only get strings from the LLM."
     (insert (format-time-string "%F %T "))
     (insert (apply #'format format-string args))
     (insert "\n"))
-  (let ((win (get-buffer-window buf t)))
+  (let ((win (get-buffer-window nil t)))
     (when win
       (set-window-point win (point-max)))))
 
@@ -432,8 +430,6 @@ additional context is added.
 The agent has access to all the defined tools, and can create notes or
 display results in a popup buffer, or ask the user a question.  The
 agent will decide which is best."
-  (ekg-agent--log-session-start "ekg-agent-ask"
-                                (truncate-string-to-width question 120 nil nil "…"))
   (let* ((prompt (concat (ekg-agent-instructions-intro)
                          "\n\nYour instructions are to answer the user's question, given below. "
                          "You have access to tools to help you. "
@@ -613,7 +609,6 @@ The date and time is %s.\n"
 The agent will review recent notes and TODO items, then decide whether
 to create new notes or perform other actions to help the user."
   (interactive)
-  (ekg-agent--log-session-start "ekg-agent-evaluate-status")
   (ekg-agent--iterate (llm-make-chat-prompt
                        (ekg-agent-starting-context)
                        :context
@@ -634,7 +629,7 @@ to create new notes or perform other actions to help the user."
                       (ekg-agent--timeout-deadline)))
 
 (defun ekg-agent--prompt-id (prompt)
-  "From llm PROMPT, call an LLM to get a short identifier.  "
+  "From llm PROMPT, call an LLM to get a short identifier."
   (let (id)
     (llm-chat (ekg-llm--provider)
               (llm-make-chat-prompt
@@ -657,11 +652,11 @@ to create new notes or perform other actions to help the user."
 
 PROMPT is the chat prompt for the LLM.
 
-ITERATION-NUM is the current iteration count. 0 is the setup iteration,
+ITERATION-NUM is the current iteration count.  0 is the setup iteration,
 1 is the first iteration in which we call start the agentic loop.
 
 STATUS-CALLBACK is a function that takes a string argument, which is the
-status of the agent. If the status is \\='done or \\='error, the agent
+status of the agent.  If the status is \\='done or \\='error, the agent
 has finished.
 
 END-TOOLS is a list of tool names that will end the iteration.
@@ -672,55 +667,55 @@ If TIMEOUT-FINAL is non-nil, this is the final iteration before
 stopping.
 
 This is to start, and after every tool call to continue the agent
-session.  "
-  (when (= iteration-num 0)
-    ;; Set up everything
-    (let* ((id (ekg-agent--prompt-id prompt))
-           (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
-      (with-current-buffer buf
-        (erase-buffer)
-        (message "Starting agent session at buffer %s" (buffer-name))
-        (insert (format "Agent session for: %s\n\n" id))
-        (setq ekg-agent--prompt prompt)
-        (when (featurep 'markdown-mode)
-          (markdown-mode))
-        (goto-char (point-min))
-        (ekg-agent--iterate prompt 1
-                            status-callback
-                            end-tools
-                            deadline
-                            timeout-final))))
-
-  (let ((expired (and deadline (> (float-time) deadline))))
-    (when (and expired (not timeout-final))
-      (ekg-agent--log "Timeout reached; requesting final state note.")
-      (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
-      (setq timeout-final t))
-    (llm-chat-async
-     (ekg-llm--provider)
-     prompt
-     (lambda (result)
-       (let ((result-alist (plist-get result :tool-results))
-             (end-tools (or end-tools '("end"))))
-         (let ((tools-ran (mapconcat #'car result-alist ", ")))
-           (if status-callback
-               (funcall status-callback (format "tools ran: %s" tools-ran))
-             (message "Ran tools: %s" tools-ran)))
-         (cond
-          (timeout-final
-           (when status-callback (funcall status-callback 'done)))
-          ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
-           (when status-callback (funcall status-callback 'done)))
-          (t
-           (ekg-agent--iterate prompt
-                               (+ 1 iteration-num)
-                               status-callback
-                               end-tools
-                               deadline)))))
-     (lambda (_ err)
-       (when status-callback (funcall status-callback 'error))
-       (error "%s" err))
-     t)))
+session."
+  (if (= iteration-num 0)
+      ;; Set up everything
+      (let* ((id (ekg-agent--prompt-id prompt))
+             (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
+        (with-current-buffer buf
+          (erase-buffer)
+          (message "Starting agent session at buffer %s" (buffer-name))
+          (insert (format "Agent session for: %s\n\n" id))
+          (setq ekg-agent--prompt prompt)
+          (when (featurep 'markdown-mode)
+            (markdown-mode))
+          (goto-char (point-min))
+          (ekg-agent--iterate prompt 1
+                              status-callback
+                              end-tools
+                              deadline
+                              timeout-final)))
+    ;; iteration > 0: run the agent loop
+    (let ((expired (and deadline (> (float-time) deadline))))
+      (when (and expired (not timeout-final))
+        (ekg-agent--log "Timeout reached; requesting final state note.")
+        (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
+        (setq timeout-final t))
+      (llm-chat-async
+       (ekg-llm--provider)
+       prompt
+       (lambda (result)
+         (let ((result-alist (plist-get result :tool-results))
+               (end-tools (or end-tools '("end"))))
+           (let ((tools-ran (mapconcat #'car result-alist ", ")))
+             (if status-callback
+                 (funcall status-callback (format "tools ran: %s" tools-ran))
+               (message "Ran tools: %s" tools-ran)))
+           (cond
+            (timeout-final
+             (when status-callback (funcall status-callback 'done)))
+            ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
+             (when status-callback (funcall status-callback 'done)))
+            (t
+             (ekg-agent--iterate prompt
+                                 (+ 1 iteration-num)
+                                 status-callback
+                                 end-tools
+                                 deadline)))))
+       (lambda (_ err)
+         (when status-callback (funcall status-callback 'error))
+         (error "%s" err))
+       t))))
 
 (defun ekg-agent-evaluate-status-daily ()
   "Run the ekg agent to evaluate status as a daily routine."
@@ -776,9 +771,6 @@ ARG, if non-nil, allows editing the instructions."
   (interactive "P")
   (unless ekg-note
     (error "No note in current buffer"))
-  (ekg-agent--log-session-start
-   "ekg-agent-note-response"
-   (truncate-string-to-width (buffer-name) 120 nil nil "…"))
   (save-excursion
     (let* ((ekg-agent-tool-append-response
             (make-llm-tool
