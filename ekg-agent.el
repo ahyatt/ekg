@@ -674,7 +674,8 @@ session."
              (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
         (with-current-buffer buf
           (erase-buffer)
-          (message "Starting agent session at buffer %s" (buffer-name))
+          (ekg-agent--log "Starting agent session at buffer %s" (buffer-name))
+
           (insert (format "Agent session for: %s\n\n" id))
           (setq ekg-agent--prompt prompt)
           (when (featurep 'markdown-mode)
