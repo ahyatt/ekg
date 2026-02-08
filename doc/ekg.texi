@@ -135,6 +135,8 @@ LLM
 
 Agent
 
+* Agent log mode continuing and cancelling::
+* AGENTS.md support: AGENTSmd support. 
 * Command-line tools for agent integration::
 
 Design
@@ -1852,6 +1854,11 @@ content as context to the agent, along with your question.  For example:
 This allows for quick, ad-hoc interactions with the agent without needing to be
 in a specific note buffer.  There's a similar @samp{ekg-agent-ask-with-region}.
 
+You can also ask a question about a specific note with @samp{ekg-agent-ask-with-note}.
+When called from an @samp{ekg-notes-mode} buffer, it uses the note at point; when
+called from a note editing buffer, it uses that note.  You can also pass a note
+ID programmatically.
+
 Internal agent notes (using the @samp{agent/self-info} and @samp{agent/instruct}
 tags) are hidden from normal view by being added to @samp{ekg-hidden-tags}. You can
 view these notes specifically with @samp{ekg-agent-show-internal-notes}.
@@ -1893,8 +1900,64 @@ Here's an example:
 @end lisp
 
 @menu
+* Agent log mode continuing and cancelling::
+* AGENTS.md support: AGENTSmd support. 
 * Command-line tools for agent integration::
 @end menu
+
+@node Agent log mode continuing and cancelling
+@subsection Agent log mode: continuing and cancelling
+
+When the agent starts a session, it creates a log buffer (named according to
+@code{ekg-agent-log-buffer-name-format}) and enables @samp{ekg-agent-log-mode}, a minor
+mode that provides commands for controlling the agent.  The mode-line lighter
+shows @samp{Agent:run} while the agent is active and @samp{Agent:idle} when it has stopped.
+
+The following commands are available in the log buffer:
+
+@itemize
+@item
+@samp{C-c C-c} (@samp{ekg-agent-continue}): Continue the agent from where it left off.
+The agent's full conversation history is preserved, so continuing resumes
+exactly where the previous session stopped---whether it completed normally,
+timed out, or was cancelled.  With a prefix argument (@samp{C-u C-c C-c}), you are
+prompted for a message to send to the agent, which lets you give it new
+instructions or redirect its work.
+
+@item
+@samp{C-c C-k} (@samp{ekg-agent-cancel}): Cancel the current agent run.  The agent will
+stop after the current in-flight LLM call completes (it does not interrupt a
+call in progress).  The conversation prompt is preserved in the buffer, so you
+can resume later with @samp{C-c C-c}.
+@end itemize
+
+This makes it easy to supervise long-running agent sessions: you can cancel if
+the agent is going in the wrong direction, give it new guidance, and continue.
+
+@node AGENTSmd support
+@subsection AGENTS.md support
+
+The agent automatically reads @samp{AGENTS.md} files to pick up user-specific
+instructions and preferences.  Two locations are checked when the agent's
+context is built:
+
+@enumerate
+@item
+@samp{~/AGENTS.md} --- your home directory, for global preferences that apply to
+all projects.
+@item
+@samp{<default-directory>/AGENTS.md} --- the current directory when the agent is
+started, for project-specific instructions.
+@end enumerate
+
+If either file exists, its contents are appended to the agent's system prompt.
+If both exist (and are in different directories), both are included.
+
+In addition, the agent has access to the @samp{read_agents_md} tool, which lets it
+read the @samp{AGENTS.md} file from any directory.  This is part of the standard tool
+set and requires no configuration.  It allows the agent to discover instructions
+for a project directory it encounters during its work, even if that directory
+was not the starting directory.
 
 @node Command-line tools for agent integration
 @subsection Command-line tools for agent integration
