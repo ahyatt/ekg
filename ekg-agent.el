@@ -241,6 +241,12 @@ but we'll only get strings from the LLM."
                  :description "Indicate that no further actions need to be taken."
                  :args '()))
 
+(defconst ekg-agent-tool-subagent-end
+  (make-llm-tool :function #'identity
+                 :name "subagent_end"
+                 :description "Indicate that a sub-agent has completed its task and is returning control to the parent agent.  The return value will be passed back to the parent agent as the result of the sub-agent's `run_subagent` call."
+                 :args '((:name "result" :type string :description "The result to return to the parent agent."))))
+
 (defun ekg-agent--popup-result-in-buffer (result)
   "Display RESULT in a new buffer and pop up to it."
   (let ((buf (get-buffer-create "*ekg agent result*")))
@@ -284,16 +290,21 @@ but we'll only get strings from the LLM."
 (defconst ekg-agent-tool-run-elisp
   (make-llm-tool :function (lambda (callback elisp return)
                              (async-start (lambda ()
-                                            (let ((result (eval (read elisp))))
-                                              (if (equal return "result")
-                                                  result
-                                                (buffer-substring-no-properties (point-min) (point-max)))))
+                                            (let* (e
+                                                   (result
+                                                    (condition-case err
+                                                        (eval (read elisp))
+                                                      (error (set e err)))))
+                                              (or e
+                                                  (if (equal return "result")
+                                                      result
+                                                    (buffer-substring-no-properties (point-min) (point-max))))))
                                           callback))
                  :name "run_elisp"
                  :description "Evaluate arbitrary Emacs Lisp and return the printed result of the final form."
                  :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate." :required t)
                          (:name "return" :type string :enum ["result" "buffer"]
-                                :description "Whether to return the result of the evaluated elisp, or the buffer after the elisp has been evaluated. If there is an error, it will be returned regardless of this value.  The elisp will be executed in a temporary buffer.  Never modify the user's actual buffers."
+                                :description "Whether to return the result of the evaluated elisp, or the buffer after the elisp has been evaluated. If there is an error, it will be returned regardless of this value."
                                 :required t))
                  :async t))
 
@@ -302,6 +313,40 @@ but we'll only get strings from the LLM."
                  :name "run_code_tool"
                  :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to make changes to code, use this tool and ask it to make the changes.  Assume that it can do almost anything, including reading files and webpages."
                  :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))))
+
+(defconst ekg-agent-tool-subagent
+  (make-llm-tool
+   :function (lambda (callback instructions)
+               (ekg-agent--log "Sub-agent started: %s"
+                               (truncate-string-to-width instructions 80))
+               (let ((prompt (llm-make-chat-prompt
+                              instructions
+                              :context (concat
+                                        (ekg-agent-instructions-intro)
+                                        "\n\nYou are a sub-agent working on a specific task. "
+                                        "Complete the given task using the tools available to you. "
+                                        "When you are done, call the end tool.\n\n"
+                                        (format "The current date and time is %s."
+                                                (format-time-string "%F %R")))
+                              :tools (append
+                                      ekg-agent-base-tools
+                                      (list ekg-agent-tool-subagent-end)
+                                      ekg-agent-extra-tools
+                                      (when (llm-google-p (ekg-llm--provider))
+                                        (list (make-llm-tool :function #'ignore
+                                                             :name "google_search"
+                                                             :description "Google Search built-in tool"
+                                                             :args nil))))
+                              :tool-options (make-llm-tool-options :tool-choice 'any))))
+                 (ekg-agent--iterate prompt
+                                     1
+                                     (lambda (status) (funcall callback status))
+                                     '("subagent_end")
+                                     (ekg-agent--timeout-deadline))))
+   :name "run_subagent"
+   :description "Run a sub-agent with the given instructions. The sub-agent has its own conversation with access to all the standard ekg tools, and runs until it calls end. Use this for tasks that require multiple steps or complex tool use."
+   :args '((:name "instructions" :type string :description "Detailed instructions for the sub-agent to follow."))
+   :async t))
 
 (defun ekg-agent--ensure-log-window ()
   "Ensure the agent log buffer is displayed in a side window."
@@ -406,8 +451,8 @@ but we'll only get strings from the LLM."
    ekg-agent-tool-replace-note
    ekg-agent-tool-create-note
    ekg-agent-tool-summarize-state
-   ekg-agent-tool-ask-user
-   ekg-agent-tool-end)
+   ekg-agent-tool-subagent
+   ekg-agent-tool-ask-user)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 
@@ -416,8 +461,8 @@ These tools are necessary for basic agent functionality.")
 These tools are used in addition to `ekg-agent-base-tools' in
 `ekg-agent-evaluate-status' and `ekg-agent-note-response'.
 
-This is the place to opt into tools like `ekg-agent-tool-run-elisp' or
-`ekg-agent-tool-code'."
+This is the place to opt into tools like `ekg-agent-tool-run-elisp',
+`ekg-agent-tool-code', or `ekg-agent-tool-subagent'."
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
 
@@ -447,8 +492,7 @@ agent will decide which is best."
     (ekg-agent--iterate (llm-make-chat-prompt
                          question
                          :context prompt
-                         :tools (append (seq-remove (lambda (tool) (equal (llm-tool-name tool) "end"))
-                                                    ekg-agent-base-tools)
+                         :tools (append ekg-agent-base-tools
                                         ekg-agent-extra-tools
                                         (list ekg-agent-tool-popup-result)
                                         (when (llm-google-p (ekg-llm--provider))
@@ -616,6 +660,7 @@ to create new notes or perform other actions to help the user."
                                (ekg-agent-instructions-evaluate-status))
                        :tools (append
                                ekg-agent-base-tools
+                               (list (ekg-agent-tool-end))
                                ekg-agent-extra-tools
                                ;; Use Google Search as well, if possible.
                                (when (llm-google-p (ekg-llm--provider))
@@ -625,7 +670,7 @@ to create new notes or perform other actions to help the user."
                                                       :args nil)))))
                       0
                       (ekg-agent--make-status-callback)
-                      nil
+                      '("end")
                       (ekg-agent--timeout-deadline)))
 
 (defun ekg-agent--prompt-id (prompt)
@@ -674,7 +719,7 @@ session."
              (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
         (with-current-buffer buf
           (erase-buffer)
-          (ekg-agent--log "Starting agent session at buffer %s" (buffer-name))
+          (ekg-agent--log-session-start (buffer-name))
 
           (insert (format "Agent session for: %s\n\n" id))
           (setq ekg-agent--prompt prompt)
@@ -855,7 +900,7 @@ currently editing.\n\n"
                                  (overlay-put overlay 'after-string
                                               (propertize (format " [LLM response: %s]" status)
                                                           'face 'shadow)))))
-                            nil
+                            '("append_to_current_note" "replace_current_note")
                             (ekg-agent--timeout-deadline))))))
 
 ;; Redefine the keys, take the binding over from ekg-llm.
