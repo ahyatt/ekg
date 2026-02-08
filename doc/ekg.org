@@ -1317,6 +1317,11 @@ content as context to the agent, along with your question.  For example:
 This allows for quick, ad-hoc interactions with the agent without needing to be
 in a specific note buffer.  There's a similar =ekg-agent-ask-with-region=.
 
+You can also ask a question about a specific note with =ekg-agent-ask-with-note=.
+When called from an =ekg-notes-mode= buffer, it uses the note at point; when
+called from a note editing buffer, it uses that note.  You can also pass a note
+ID programmatically.
+
 Internal agent notes (using the =agent/self-info= and =agent/instruct=
 tags) are hidden from normal view by being added to =ekg-hidden-tags=. You can
 view these notes specifically with =ekg-agent-show-internal-notes=.
@@ -1351,6 +1356,50 @@ Here's an example:
 (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
 (setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp ekg-agent-tool-code))
 #+end_src
+*** Agent log mode: continuing and cancelling
+
+When the agent starts a session, it creates a log buffer (named according to
+~ekg-agent-log-buffer-name-format~) and enables =ekg-agent-log-mode=, a minor
+mode that provides commands for controlling the agent.  The mode-line lighter
+shows =Agent:run= while the agent is active and =Agent:idle= when it has stopped.
+
+The following commands are available in the log buffer:
+
+- =C-c C-c= (=ekg-agent-continue=): Continue the agent from where it left off.
+  The agent's full conversation history is preserved, so continuing resumes
+  exactly where the previous session stopped---whether it completed normally,
+  timed out, or was cancelled.  With a prefix argument (=C-u C-c C-c=), you are
+  prompted for a message to send to the agent, which lets you give it new
+  instructions or redirect its work.
+
+- =C-c C-k= (=ekg-agent-cancel=): Cancel the current agent run.  The agent will
+  stop after the current in-flight LLM call completes (it does not interrupt a
+  call in progress).  The conversation prompt is preserved in the buffer, so you
+  can resume later with =C-c C-c=.
+
+This makes it easy to supervise long-running agent sessions: you can cancel if
+the agent is going in the wrong direction, give it new guidance, and continue.
+
+*** AGENTS.md support
+
+The agent automatically reads =AGENTS.md= files to pick up user-specific
+instructions and preferences.  Two locations are checked when the agent's
+context is built:
+
+1. =~/AGENTS.md= --- your home directory, for global preferences that apply to
+   all projects.
+2. =<default-directory>/AGENTS.md= --- the current directory when the agent is
+   started, for project-specific instructions.
+
+If either file exists, its contents are appended to the agent's system prompt.
+If both exist (and are in different directories), both are included.
+
+In addition, the agent has access to the =read_agents_md= tool, which lets it
+read the =AGENTS.md= file from any directory.  This is part of the standard tool
+set and requires no configuration.  It allows the agent to discover instructions
+for a project directory it encounters during its work, even if that directory
+was not the starting directory.
+
 *** Command-line tools for agent integration
 
 The =ekg-agent= module provides command-line tools that enable external AI

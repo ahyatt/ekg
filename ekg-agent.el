@@ -95,7 +95,7 @@ this MUST have a %s in it."
   :type 'integer
   :group 'ekg-agent)
 
-(defcustom ekg-agent-timeout-seconds 180
+(defcustom ekg-agent-timeout-seconds -1
   "Maximum time in seconds for an agent run before it is stopped.
 
 If non-positive, no timeout is applied."
@@ -113,6 +113,15 @@ stdout will be returned."
 
 (defvar-local ekg-agent--prompt nil
   "The prompt for the agent section in the current buffer.")
+
+(defvar-local ekg-agent--end-tools nil
+  "The end tools for the current agent run in this buffer.")
+
+(defvar-local ekg-agent--running-p nil
+  "Non-nil when the agent is actively running in this buffer.")
+
+(defvar-local ekg-agent--cancelled-p nil
+  "Non-nil when the user has requested cancellation of the agent.")
 
 (defvar ekg-agent--daily-timer nil
   "Timer object for the daily agent evaluation.")
@@ -440,6 +449,14 @@ but we'll only get strings from the LLM."
                  :description "Summarize the current state in the agent log window.  This should be called often to keep the user up to date on what is happening."
                  :args '((:name "state" :type string :description "Short summary of current progress, plan, or blockers."))))
 
+(defconst ekg-agent-tool-read-agents-md
+  (make-llm-tool :function (lambda (dir)
+                             (or (ekg-agent--read-agents-md dir)
+                                 (format "No AGENTS.md found in %s" dir)))
+                 :name "read_agents_md"
+                 :description "Read the AGENTS.md file from a specified directory.  AGENTS.md files contain user instructions and preferences for agents."
+                 :args '((:name "dir" :type string :description "The directory path to read AGENTS.md from."))))
+
 (defconst ekg-agent-base-tools
   (list
    ekg-agent-tool-all-tags
@@ -452,7 +469,8 @@ but we'll only get strings from the LLM."
    ekg-agent-tool-create-note
    ekg-agent-tool-summarize-state
    ekg-agent-tool-subagent
-   ekg-agent-tool-ask-user)
+   ekg-agent-tool-ask-user
+   ekg-agent-tool-read-agents-md)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 
@@ -518,6 +536,25 @@ which is best."
                    (mapconcat #'ekg-llm-note-to-text
                               (ekg-get-latest-modified 10) "\n\n"))))
 
+(defun ekg-agent-ask-with-note (question &optional id)
+  "Ask the agent QUESTION with the note with ID as context.
+
+ID is nil, we will use the current buffer's associated note, or the note
+at point if in a `ekg-notes-mode` buffer.'"
+  (interactive "sQuestion: \n")
+  (let* ((note (or (and id (ekg-agent--get-note-with-id id))
+                   (and (derived-mode-p 'ekg-notes-mode)
+                        (ekg-current-note-or-error))
+                   (and (derived-mode-p 'ekg-note-mode)
+                        ekg-note)))
+         (note-text (if note
+                        (ekg-llm-note-to-text note)
+                      (error "No current note found"))))
+    (ekg-agent--ask question
+                    (concat
+                     "The user is issuing instructions with a note as context. This is the text of that note:\n"
+                     note-text))))
+
 (defun ekg-agent-ask-with-buffer (instructions)
   "Issue INSTRUCTIONS to the agent, with the current buffer as context."
   (interactive "sInstructions: ")
@@ -565,14 +602,40 @@ self info and self-instruct notes."
                         10)
               "\n\n")))
 
+(defun ekg-agent--read-agents-md (dir)
+  "Read AGENTS.md from DIR, returning its contents or nil if not found."
+  (let ((file (expand-file-name "AGENTS.md" dir)))
+    (when (file-readable-p file)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (buffer-string)))))
+
+(defun ekg-agent--agents-md-context ()
+  "Return AGENTS.md content from the current and home directories.
+Returns nil if no AGENTS.md files are found."
+  (let* ((home-dir (expand-file-name "~"))
+         (current-dir (expand-file-name default-directory))
+         (home-content (ekg-agent--read-agents-md home-dir))
+         (current-content (unless (string= current-dir (file-name-as-directory home-dir))
+                            (ekg-agent--read-agents-md current-dir)))
+         (parts nil))
+    (when home-content
+      (push (format "From %s:\n%s" (expand-file-name "AGENTS.md" home-dir) home-content) parts))
+    (when current-content
+      (push (format "From %s:\n%s" (expand-file-name "AGENTS.md" current-dir) current-content) parts))
+    (when parts
+      (concat "\n\nUser instructions from AGENTS.md files:\n\n"
+              (string-join (nreverse parts) "\n\n")))))
+
 (defun ekg-agent-instructions-intro ()
   "Introductory instructions for the ekg agent."
   (let ((timeout-desc (if (and (numberp ekg-agent-timeout-seconds)
                                (> ekg-agent-timeout-seconds 0))
                           (format "%s seconds" ekg-agent-timeout-seconds)
                         "no timeout configured")))
-    (format
-     "You are an agent that works with a user through a note taking system in
+    (concat
+     (format
+      "You are an agent that works with a user through a note taking system in
 Emacs, called ekg.  In ekg, notes have tags and content, and can be
 written in markdown, org-mode or plain text.  ekg is backed by a
 database, and the way to interact with it is with the tools provided.
@@ -608,10 +671,11 @@ about a minute), start saving your state every few tool calls to a note.
 When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
 these tags manually."
-     ekg-agent-self-instruct-tag
-     timeout-desc
-     ekg-agent-self-info-tag
-     ekg-agent-self-instruct-tag)))
+      ekg-agent-self-instruct-tag
+      timeout-desc
+      ekg-agent-self-info-tag
+      ekg-agent-self-instruct-tag)
+     (or (ekg-agent--agents-md-context) ""))))
 
 (defun ekg-agent-instructions-evaluate-status ()
   "Return instructions for the agent to evaluate user status and help them."
@@ -692,6 +756,27 @@ to create new notes or perform other actions to help the user."
                :tool-options (make-llm-tool-options :tool-choice 'any)))
     id))
 
+(defvar ekg-agent-log-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") #'ekg-agent-continue)
+    (define-key map (kbd "C-c C-k") #'ekg-agent-cancel)
+    map)
+  "Keymap for `ekg-agent-log-mode'.")
+
+(define-minor-mode ekg-agent-log-mode
+  "Minor mode for ekg agent log buffers.
+Provides commands to continue or cancel agent work.
+
+\\{ekg-agent-log-mode-map}"
+  :lighter (:eval (if ekg-agent--running-p " Agent:run" " Agent:idle"))
+  :keymap ekg-agent-log-mode-map)
+
+(defun ekg-agent--set-stopped (log-buf)
+  "Mark the agent as no longer running in LOG-BUF."
+  (when (and log-buf (buffer-live-p log-buf))
+    (with-current-buffer log-buf
+      (setq ekg-agent--running-p nil))))
+
 (defun ekg-agent--iterate (prompt iteration-num &optional status-callback end-tools deadline timeout-final)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 
@@ -712,7 +797,8 @@ If TIMEOUT-FINAL is non-nil, this is the final iteration before
 stopping.
 
 This is to start, and after every tool call to continue the agent
-session."
+session.  At iteration 0 the log buffer is created and
+`ekg-agent-log-mode' is enabled."
   (if (= iteration-num 0)
       ;; Set up everything
       (let* ((id (ekg-agent--prompt-id prompt))
@@ -723,8 +809,12 @@ session."
 
           (insert (format "Agent session for: %s\n\n" id))
           (setq ekg-agent--prompt prompt)
+          (setq ekg-agent--end-tools end-tools)
+          (setq ekg-agent--running-p t)
+          (setq ekg-agent--cancelled-p nil)
           (when (featurep 'markdown-mode)
             (markdown-mode))
+          (ekg-agent-log-mode 1)
           (goto-char (point-min))
           (ekg-agent--iterate prompt 1
                               status-callback
@@ -732,7 +822,8 @@ session."
                               deadline
                               timeout-final)))
     ;; iteration > 0: run the agent loop
-    (let ((expired (and deadline (> (float-time) deadline))))
+    (let ((log-buf (current-buffer))
+          (expired (and deadline (> (float-time) deadline))))
       (when (and expired (not timeout-final))
         (ekg-agent--log "Timeout reached; requesting final state note.")
         (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
@@ -741,27 +832,68 @@ session."
        (ekg-llm--provider)
        prompt
        (lambda (result)
-         (let ((result-alist (plist-get result :tool-results))
-               (end-tools (or end-tools '("end"))))
-           (let ((tools-ran (mapconcat #'car result-alist ", ")))
-             (if status-callback
-                 (funcall status-callback (format "tools ran: %s" tools-ran))
-               (message "Ran tools: %s" tools-ran)))
-           (cond
-            (timeout-final
-             (when status-callback (funcall status-callback 'done)))
-            ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
-             (when status-callback (funcall status-callback 'done)))
-            (t
-             (ekg-agent--iterate prompt
-                                 (+ 1 iteration-num)
-                                 status-callback
-                                 end-tools
-                                 deadline)))))
+         (if (and (buffer-live-p log-buf)
+                  (buffer-local-value 'ekg-agent--cancelled-p log-buf))
+             (progn
+               (ekg-agent--set-stopped log-buf)
+               (with-current-buffer log-buf
+                 (ekg-agent--log "Agent stopped (cancelled by user)"))
+               (when status-callback (funcall status-callback 'done)))
+           (let ((result-alist (plist-get result :tool-results))
+                 (end-tools (or end-tools '("end"))))
+             (let ((tools-ran (mapconcat #'car result-alist ", ")))
+               (if status-callback
+                   (funcall status-callback (format "tools ran: %s" tools-ran))
+                 (message "Ran tools: %s" tools-ran)))
+             (cond
+              (timeout-final
+               (ekg-agent--set-stopped log-buf)
+               (when status-callback (funcall status-callback 'done)))
+              ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
+               (ekg-agent--set-stopped log-buf)
+               (when status-callback (funcall status-callback 'done)))
+              (t
+               (ekg-agent--iterate prompt
+                                   (+ 1 iteration-num)
+                                   status-callback
+                                   end-tools
+                                   deadline))))))
        (lambda (_ err)
+         (ekg-agent--set-stopped log-buf)
          (when status-callback (funcall status-callback 'error))
          (error "%s" err))
        t))))
+
+(defun ekg-agent-continue (message)
+  "Continue the agent from where it left off.
+With a prefix argument, prompt for a MESSAGE to send to the agent."
+  (interactive (list (when current-prefix-arg
+                       (read-string "Message to agent: "))))
+  (unless ekg-agent--prompt
+    (user-error "No agent prompt available to continue"))
+  (when ekg-agent--running-p
+    (user-error "Agent is already running"))
+  (setq ekg-agent--cancelled-p nil)
+  (setq ekg-agent--running-p t)
+  (ekg-agent--log-session-start "Continuing agent")
+  (when (and message (not (string-empty-p message)))
+    (ekg-agent--prompt-append-user-message ekg-agent--prompt message)
+    (ekg-agent--log "User message: %s" message))
+  (ekg-agent--iterate ekg-agent--prompt
+                      1
+                      (ekg-agent--make-status-callback)
+                      ekg-agent--end-tools
+                      (ekg-agent--timeout-deadline)))
+
+(defun ekg-agent-cancel ()
+  "Cancel the current agent run, preserving the prompt for continuation.
+The agent will stop after the current in-flight LLM call completes.
+Use \\[ekg-agent-continue] to resume."
+  (interactive)
+  (unless ekg-agent--running-p
+    (user-error "No agent is currently running"))
+  (setq ekg-agent--cancelled-p t)
+  (ekg-agent--log "Cancellation requested; will stop after current tool call"))
 
 (defun ekg-agent-evaluate-status-daily ()
   "Run the ekg agent to evaluate status as a daily routine."
