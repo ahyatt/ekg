@@ -265,7 +265,8 @@ but we'll only get strings from the LLM."
       (when (featurep 'markdown-mode)
         (markdown-mode))
       (goto-char (point-min)))
-    (pop-to-buffer buf)))
+    (pop-to-buffer buf)
+    (format "Popup displayed in buffer %s" (buffer-name))))
 
 (defconst ekg-agent-tool-popup-result
   (make-llm-tool :function #'ekg-agent--popup-result-in-buffer
@@ -303,7 +304,7 @@ but we'll only get strings from the LLM."
                                                    (result
                                                     (condition-case err
                                                         (eval (read elisp))
-                                                      (error (set e err)))))
+                                                      (error (setq e err)))))
                                               (or e
                                                   (if (equal return "result")
                                                       result
@@ -334,7 +335,7 @@ but we'll only get strings from the LLM."
                                         (ekg-agent-instructions-intro)
                                         "\n\nYou are a sub-agent working on a specific task. "
                                         "Complete the given task using the tools available to you. "
-                                        "When you are done, call the end tool.\n\n"
+                                        "When you are done, call the subagent_end tool.\n\n"
                                         (format "The current date and time is %s."
                                                 (format-time-string "%F %R")))
                               :tools (append
@@ -349,7 +350,9 @@ but we'll only get strings from the LLM."
                               :tool-options (make-llm-tool-options :tool-choice 'any))))
                  (ekg-agent--iterate prompt
                                      1
-                                     (lambda (status) (funcall callback status))
+                                     (lambda (status)
+                                       (funcall callback
+                                                (format "Subagent result: %s" status)))
                                      '("subagent_end")
                                      (ekg-agent--timeout-deadline))))
    :name "run_subagent"
@@ -397,11 +400,10 @@ but we'll only get strings from the LLM."
   (ekg-agent--log "%s%s" label (if detail (format ": %s" detail) "")))
 
 (defun ekg-agent--log-status (status)
-  "Log STATUS update from the agent."
-  (pcase status
-    ('done (ekg-agent--log "Done"))
-    ('error (ekg-agent--log "Error"))
-    (_ (ekg-agent--log "Status: %s" status))))
+  "Log final STATUS from the agent."
+  (if (eq status 'error)
+      (ekg-agent--log "Error")
+    (ekg-agent--log "Done: %s" status)))
 
 (defun ekg-agent--make-status-callback (&optional extra-callback)
   "Return a status callback that logs, then call EXTRA-CALLBACK."
@@ -480,7 +482,7 @@ These tools are used in addition to `ekg-agent-base-tools' in
 `ekg-agent-evaluate-status' and `ekg-agent-note-response'.
 
 This is the place to opt into tools like `ekg-agent-tool-run-elisp',
-`ekg-agent-tool-code', or `ekg-agent-tool-subagent'."
+or `ekg-agent-tool-code'."
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
 
@@ -539,8 +541,8 @@ which is best."
 (defun ekg-agent-ask-with-note (question &optional id)
   "Ask the agent QUESTION with the note with ID as context.
 
-ID is nil, we will use the current buffer's associated note, or the note
-at point if in a `ekg-notes-mode` buffer.'"
+If ID is nil, we will use the current buffer's associated note, or the
+note at point if in a `ekg-notes-mode` buffer.'"
   (interactive "sQuestion: \n")
   (let* ((note (or (and id (ekg-agent--get-note-with-id id))
                    (and (derived-mode-p 'ekg-notes-mode)
@@ -660,13 +662,13 @@ Use the `summarize_state` tool regularly to write brief status updates
 to the user-visible agent log window (at least every couple of tool
 calls or whenever your plan changes).
 
-This session has a hard timeout of about %s. Before the session
-ends, you MUST write out your current state to an ekg note (tag with
-`%s` or `%s`). If you receive a timeout warning, do this immediately and
-then finish.
-
-When executing a long-running task (more than a couple of tool calls or
-about a minute), start saving your state every few tool calls to a note.
+The session may end if a total task timeout has been configured. Or,
+some error may interrupt the processing. Because your processing can end
+unexpected, you MUST occasionally write out your current state to an ekg
+note (tag with `%s` or `%s`, and a tag you choose to represent the
+task). If you receive a timeout warning, do this immediately and then
+finish. When executing a long-running task (more than a couple of tool
+calls), start saving your state every few tool calls to a note.
 
 When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
@@ -785,9 +787,9 @@ PROMPT is the chat prompt for the LLM.
 ITERATION-NUM is the current iteration count.  0 is the setup iteration,
 1 is the first iteration in which we call start the agentic loop.
 
-STATUS-CALLBACK is a function that takes a string argument, which is the
-status of the agent.  If the status is \\='done or \\='error, the agent
-has finished.
+STATUS-CALLBACK is called exactly once when the agent finishes.  The
+argument is a string with the end-tool result on success, or the symbol
+\\='error on failure.
 
 END-TOOLS is a list of tool names that will end the iteration.
 
@@ -813,7 +815,12 @@ session.  At iteration 0 the log buffer is created and
           (setq ekg-agent--running-p t)
           (setq ekg-agent--cancelled-p nil)
           (when (featurep 'markdown-mode)
-            (markdown-mode))
+            (markdown-mode)
+            ;; No need for flycheck or flymake to be running on this buffer.
+            (when (featurep 'flycheck)
+              (flycheck-mode 0))
+            (when (featurep 'flymake)
+              (flymake-mode 0)))
           (ekg-agent-log-mode 1)
           (goto-char (point-min))
           (ekg-agent--iterate prompt 1
@@ -838,20 +845,31 @@ session.  At iteration 0 the log buffer is created and
                (ekg-agent--set-stopped log-buf)
                (with-current-buffer log-buf
                  (ekg-agent--log "Agent stopped (cancelled by user)"))
-               (when status-callback (funcall status-callback 'done)))
+               (when status-callback (funcall status-callback "stopped by user")))
            (let ((result-alist (plist-get result :tool-results))
                  (end-tools (or end-tools '("end"))))
-             (let ((tools-ran (mapconcat #'car result-alist ", ")))
-               (if status-callback
-                   (funcall status-callback (format "tools ran: %s" tools-ran))
+             (let ((tools-ran (mapconcat (lambda (result)
+                                           (format "Tool: %s Result: %s"
+                                                   (car result) (cdr result)))
+                                         result-alist ", ")))
+               (if (and log-buf (buffer-live-p log-buf))
+                   (with-current-buffer log-buf
+                     (ekg-agent--log "Tools: %s" tools-ran))
                  (message "Ran tools: %s" tools-ran)))
              (cond
               (timeout-final
                (ekg-agent--set-stopped log-buf)
-               (when status-callback (funcall status-callback 'done)))
+               (when status-callback (funcall status-callback "stopped by timeout")))
               ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
                (ekg-agent--set-stopped log-buf)
-               (when status-callback (funcall status-callback 'done)))
+               (when status-callback
+                 (funcall
+                  status-callback
+                  (mapconcat (lambda (end-tool)
+                               (assoc-default end-tool result-alist))
+                             (seq-filter (lambda (end-tool) (assoc-default end-tool result-alist))
+                                         end-tools)
+                             ", "))))
               (t
                (ekg-agent--iterate prompt
                                    (+ 1 iteration-num)
@@ -997,10 +1015,8 @@ ARG, if non-nil, allows editing the instructions."
                            instructions-for-use
                            "\n\nYou have access to tools to help you.
 After each tool call you will be given a chance to make more tool calls.
-When you are done, you can call the end tool to indicate that you are
-finished.  Try to make no more than 4 tool calls before calling the end
-tool to finish your work.  Although you can create a note or rewrite the
-note, prefer to append to the note by default, unless the user is asking
+Your work will end after you create a note or rewrite the
+note.  Prefer to append to the note by default, unless the user is asking
 for a rewritten or new note.\nThe user input will be the note they are
 currently editing.\n\n"
                            (format "The current date and time is %s.\n"
@@ -1026,12 +1042,8 @@ currently editing.\n\n"
                              :tool-options (make-llm-tool-options :tool-choice 'any))
                             0
                             (ekg-agent--make-status-callback
-                             (lambda (status)
-                               (if (memq status '(done error))
-                                   (delete-overlay overlay)
-                                 (overlay-put overlay 'after-string
-                                              (propertize (format " [LLM response: %s]" status)
-                                                          'face 'shadow)))))
+                             (lambda (_status)
+                               (delete-overlay overlay)))
                             '("append_to_current_note" "replace_current_note")
                             (ekg-agent--timeout-deadline))))))
 

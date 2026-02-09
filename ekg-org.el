@@ -331,7 +331,7 @@ Returns text in Org format, as if they were in an Org file."
   (llm-make-tool
    :function #'ekg-org--agent-tool-set-status
    :name "set_org_item_status"
-   :description "Set the status of an org-mode task item.  Use this when you want to change the status of an existing task, for example setting it to DONE when completing it, or makring it WAITING if it's on hold."
+   :description "Set the status of an org-mode task item.  Use this when you want to change the status of an existing task, for example setting it to DONE when completing it, or marking it WAITING if it's on hold."
    :args
    '((:name "id" :type integer :description "The ID of the task item" :required t)
      (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)" :required t))))
