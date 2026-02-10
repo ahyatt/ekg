@@ -304,7 +304,7 @@ but we'll only get strings from the LLM."
                                                    (result
                                                     (condition-case err
                                                         (eval (read elisp))
-                                                      (error (setq e err)))))
+                                                      (error (setq e (format "%S" e))))))
                                               (or e
                                                   (if (equal return "result")
                                                       result
