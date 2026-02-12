@@ -549,13 +549,22 @@ note at point if in a `ekg-notes-mode` buffer.'"
                         (ekg-current-note-or-error))
                    (and (derived-mode-p 'ekg-note-mode)
                         ekg-note)))
-         (note-text (if note
-                        (ekg-llm-note-to-text note)
-                      (error "No current note found"))))
+         (_ (unless note (error "No current note found")))
+         (note-text (ekg-llm-note-to-text note))
+         (prompt-notes (ekg-get-notes-cotagged-with-tags
+                        (ekg-note-tags note) ekg-llm-prompt-tag))
+         (prompt-context (when prompt-notes
+                           (concat "\n\nPrompt instructions from co-tagged notes:\n"
+                                   (mapconcat (lambda (n)
+                                                (string-trim
+                                                 (substring-no-properties
+                                                  (ekg-display-note-text n nil 'plaintext))))
+                                              prompt-notes "\n")))))
     (ekg-agent--ask question
                     (concat
                      "The user is issuing instructions with a note as context. This is the text of that note:\n"
-                     note-text))))
+                     note-text
+                     prompt-context))))
 
 (defun ekg-agent-ask-with-buffer (instructions)
   "Issue INSTRUCTIONS to the agent, with the current buffer as context."
