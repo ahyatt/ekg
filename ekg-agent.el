@@ -307,7 +307,7 @@ but we'll only get strings from the LLM."
                                                       (error (setq e (format "%S" e))))))
                                               (or e
                                                   (if (equal return "result")
-                                                      result
+                                                      (format "%S" result)
                                                     (buffer-substring-no-properties (point-min) (point-max))))))
                                           callback))
                  :name "run_elisp"
