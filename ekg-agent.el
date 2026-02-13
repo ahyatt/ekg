@@ -300,7 +300,11 @@ but we'll only get strings from the LLM."
         (erase-buffer)
         (insert result)
         (when (featurep 'markdown-mode)
-          (markdown-mode))
+          (markdown-mode)
+          (when (featurep 'flycheck)
+            (flycheck-mode 0))
+          (when (featurep 'flymake)
+            (flymake-mode 0)))
         (goto-char (point-min)))
       (pop-to-buffer buf)
       (format "Popup displayed in buffer %s" (buffer-name)))))
@@ -570,6 +574,32 @@ properties."
                                                 line))))
         (substring-no-properties (mapconcat #'identity selected "\n"))))))
 
+(defun ekg-agent--adjust-indentation (text target-column)
+  "Adjust indentation of TEXT so its first line aligns to TARGET-COLUMN.
+The relative indentation between lines is preserved.  Only
+leading whitespace is removed; lines with less whitespace than
+the delta are left unchanged."
+  (let* ((lines (split-string text "\n"))
+         (first-line (car lines))
+         (_ (string-match "\\`[ \t]*" first-line))
+         (first-indent (length (match-string 0 first-line)))
+         (delta (- first-indent target-column)))
+    (if (zerop delta)
+        text
+      (mapconcat
+       (lambda (line)
+         (if (string-empty-p line)
+             line
+           (if (> delta 0)
+               ;; Strip delta leading whitespace chars.
+               (let ((prefix (substring line 0 (min delta (length line)))))
+                 (if (string-match-p "\\`[ \t]*\\'" prefix)
+                     (substring line (length prefix))
+                   line))
+             ;; Add whitespace to reach target.
+             (concat (make-string (- delta) ?\s) line))))
+       lines "\n"))))
+
 (defun ekg-agent--edit-file (path begin-id begin-text end-id end-text replacement)
   "Edit file at PATH by replacing a region identified by boundary markers.
 
@@ -599,10 +629,18 @@ identifiers."
                 (insert-file-contents truepath))
               (goto-char (point-min))
               (forward-line (1- begin-line))
-              (let ((region-start (point)))
+              (let ((region-start (point))
+                    (line-indent (current-indentation)))
                 (unless (search-forward begin-text (line-end-position) t)
                   (error "Begin text not found on line %d" begin-line))
                 (setq region-start (match-beginning 0))
+                ;; Expand to include leading whitespace so the
+                ;; replacement controls the full indentation.
+                (let ((line-start (line-beginning-position)))
+                  (when (string-match-p
+                         "\\`[ \t]*\\'"
+                         (buffer-substring-no-properties line-start region-start))
+                    (setq region-start line-start)))
                 (goto-char (point-min))
                 (forward-line (1- end-line))
                 (unless (search-forward end-text (line-end-position) t)
@@ -610,7 +648,8 @@ identifiers."
                 (let ((region-end (match-end 0)))
                   (delete-region region-start region-end)
                   (goto-char region-start)
-                  (insert replacement)))
+                  (insert (ekg-agent--adjust-indentation
+                           replacement line-indent))))
               (unless existing-buf
                 (write-region (point-min) (point-max) truepath nil 'silent)))
           (unless existing-buf
@@ -1109,9 +1148,8 @@ session.  At iteration 0 the log buffer is created and
 
 (defun ekg-agent-continue (message)
   "Continue the agent from where it left off.
-With a prefix argument, prompt for a MESSAGE to send to the agent."
-  (interactive (list (when current-prefix-arg
-                       (read-string "Message to agent: "))))
+Prompts for a MESSAGE with additional instructions for the agent."
+  (interactive (list (read-string "Instructions for agent: ")))
   (unless ekg-agent--prompt
     (user-error "No agent prompt available to continue"))
   (when ekg-agent--running-p
