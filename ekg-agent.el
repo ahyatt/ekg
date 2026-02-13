@@ -321,7 +321,7 @@ but we'll only get strings from the LLM."
 (defconst ekg-agent-tool-code
   (make-llm-tool :function #'ekg-agent--run-code
                  :name "run_code_tool"
-                 :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to make changes to code, use this tool and ask it to make the changes.  Assume that it can do almost anything, including reading files and webpages."
+                 :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to accomplish a significant task that may not be possible with the tools you have access, ask this tool, which has more functionality."
                  :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))))
 
 (defconst ekg-agent-tool-subagent
@@ -459,6 +459,169 @@ but we'll only get strings from the LLM."
                  :description "Read the AGENTS.md file from a specified directory.  AGENTS.md files contain user instructions and preferences for agents."
                  :args '((:name "dir" :type string :description "The directory path to read AGENTS.md from."))))
 
+(defun ekg-agent--line-id (path line-num)
+  "Return a 3-char base64 identifier unique to PATH and LINE-NUM."
+  (let* ((input (format "%s:%d" (file-truename path) line-num))
+         (hash (secure-hash 'md5 input))
+         ;; Take first 2 bytes of the hex hash (4 hex chars = 2 bytes),
+         ;; base64-encode them to get a short identifier, then truncate
+         ;; to 3 chars.  2 bytes → 4 base64 chars, we use the first 3.
+         (raw (unibyte-string (string-to-number (substring hash 0 2) 16)
+                              (string-to-number (substring hash 2 4) 16))))
+    (substring (base64-encode-string raw t) 0 3)))
+
+(defun ekg-agent--file-content (path)
+  "Return the text content of the file at PATH as a property-free string.
+Reads from an existing buffer if one is visiting PATH.
+PATH should already be resolved via `file-truename'."
+  (let ((buf (find-buffer-visiting path)))
+    (if buf
+        (with-current-buffer buf
+          (substring-no-properties (buffer-string)))
+      (with-temp-buffer
+        (insert-file-contents path)
+        (buffer-string)))))
+
+(defun ekg-agent--resolve-line-id (path id)
+  "Resolve line identifier ID to a line number for the file at PATH."
+  (let ((total (length (split-string (ekg-agent--file-content path) "\n"))))
+    (or (cl-loop for i from 1 to total
+                 when (string= (ekg-agent--line-id path i) id)
+                 return i)
+        (error "Line identifier %s not found in %s" id path))))
+
+(defun ekg-agent--read-file (path &optional begin end range-type)
+  "Read file at PATH, returning contents with line identifiers.
+
+Each line is prefixed with a 3-char identifier derived from the
+file path and line number.  If the file is visiting a buffer,
+read from the buffer.
+
+BEGIN and END restrict the output to a range.  RANGE-TYPE is
+either \"line_number\" or \"identifier\" and indicates how to
+interpret BEGIN and END.  Returns a string without text
+properties."
+  (let ((truepath (file-truename path)))
+    (unless (or (find-buffer-visiting truepath) (file-exists-p truepath))
+      (error "File not found: %s" path))
+    (unless (or (find-buffer-visiting truepath) (file-readable-p truepath))
+      (error "File not readable: %s" path))
+    (let* ((lines (split-string (ekg-agent--file-content truepath) "\n"))
+           (total (length lines))
+           (start (cond
+                   ((null begin) 1)
+                   ((or (null range-type) (string= range-type "line_number"))
+                    (max 1 (if (stringp begin) (string-to-number begin) begin)))
+                   ((string= range-type "identifier")
+                    (ekg-agent--resolve-line-id truepath begin))
+                   (t (error "Unknown range_type: %s" range-type))))
+           (finish (cond
+                    ((null end) total)
+                    ((or (null range-type) (string= range-type "line_number"))
+                     (min total (if (stringp end) (string-to-number end) end)))
+                    ((string= range-type "identifier")
+                     (ekg-agent--resolve-line-id truepath end))
+                    (t total)))
+           (selected (cl-loop for i from start to finish
+                              for line in (nthcdr (1- start) lines)
+                              collect (format "%s: %s"
+                                              (ekg-agent--line-id truepath i)
+                                              line))))
+      (substring-no-properties (mapconcat #'identity selected "\n")))))
+
+(defun ekg-agent--edit-file (path begin-id begin-text end-id end-text replacement)
+  "Edit file at PATH by replacing a region identified by boundary markers.
+
+BEGIN-ID is the line identifier where BEGIN-TEXT starts.
+END-ID is the line identifier where END-TEXT starts.
+REPLACEMENT replaces from the start of BEGIN-TEXT through the end
+of END-TEXT (inclusive).
+
+If the file is already open in a buffer, edit the buffer in place
+without saving.  Otherwise, edit in a temp buffer and save to
+disk.
+
+Returns the file content around the edited region with line
+identifiers."
+  (let* ((truepath (file-truename path))
+         (begin-line (ekg-agent--resolve-line-id truepath begin-id))
+         (end-line (ekg-agent--resolve-line-id truepath end-id)))
+    (unless (file-exists-p truepath)
+      (error "File not found: %s" path))
+    (let* ((existing-buf (find-buffer-visiting truepath))
+           (edit-buf (or existing-buf
+                         (generate-new-buffer " *ekg-agent-edit*"))))
+      (unwind-protect
+          (with-current-buffer edit-buf
+            (unless existing-buf
+              (insert-file-contents truepath))
+            (goto-char (point-min))
+            (forward-line (1- begin-line))
+            (let ((region-start (point)))
+              (unless (search-forward begin-text (line-end-position) t)
+                (error "Begin text not found on line %d" begin-line))
+              (setq region-start (match-beginning 0))
+              (goto-char (point-min))
+              (forward-line (1- end-line))
+              (unless (search-forward end-text (line-end-position) t)
+                (error "End text not found on line %d" end-line))
+              (let ((region-end (match-end 0)))
+                (delete-region region-start region-end)
+                (goto-char region-start)
+                (insert replacement)))
+            (unless existing-buf
+              (write-region (point-min) (point-max) truepath nil 'silent)))
+        (unless existing-buf
+          (kill-buffer edit-buf)))
+      (ekg-agent--read-file truepath
+                            (max 1 (- begin-line 2))
+                            (+ end-line 5)))))
+
+(defconst ekg-agent-tool-read-file
+  (make-llm-tool
+   :function #'ekg-agent--read-file
+   :name "read_file"
+   :description "Read a file and return its contents.  Each line is prefixed with a unique 3-character identifier (not a line number).  Use these identifiers when calling edit_file.  Optionally restrict to a range by passing begin/end as either line numbers or identifiers, with range_type indicating which.  If the file is open in an Emacs buffer, reads from the buffer (which may have unsaved changes)."
+   :args '((:name "path" :type string :description "The file path to read." :required t)
+           (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning.")
+           (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end.")
+           (:name "range_type" :type string :enum ["line_number" "identifier"]
+                  :description "How to interpret begin and end.  Required when begin or end is set."))))
+
+(defconst ekg-agent-tool-edit-file
+  (make-llm-tool
+   :function #'ekg-agent--edit-file
+   :name "edit_file"
+   :description "Edit a file by replacing text between two boundary markers.  The begin and end positions are specified using the unique line identifiers returned by read_file.  The begin_text on the begin line and end_text on the end line are both included in the replacement.  Returns the edited region with surrounding context and new line identifiers.  If the file is open in an Emacs buffer, edits the buffer in place without saving; otherwise saves to disk."
+   :args '((:name "path" :type string :description "The file path to edit." :required t)
+           (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts." :required t)
+           (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace." :required t)
+           (:name "end_id" :type string :description "The 3-character line identifier where the replacement region ends." :required t)
+           (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive)." :required t)
+           (:name "replacement" :type string :description "The new text to insert in place of the matched region." :required t))))
+
+(defun ekg-agent--run-command (command &optional directory)
+  "Run shell COMMAND and return its combined stdout and stderr.
+DIRECTORY, if given, is used as `default-directory' for the
+process.  Returns a string with the exit code and output."
+  (let* ((default-directory (if directory
+                                (file-truename directory)
+                              default-directory))
+         (output (with-temp-buffer
+                   (let ((exit-code (call-process
+                                     shell-file-name nil t nil
+                                     shell-command-switch command)))
+                     (format "Exit code: %d\n%s" exit-code (buffer-string))))))
+    (substring-no-properties output)))
+
+(defconst ekg-agent-tool-run-command
+  (make-llm-tool
+   :function #'ekg-agent--run-command
+   :name "run_command"
+   :description "Run a shell command and return its combined stdout/stderr and exit code."
+   :args '((:name "command" :type string :description "The shell command to run." :required t)
+           (:name "directory" :type string :description "Working directory for the command.  Defaults to the current buffer's directory."))))
+
 (defconst ekg-agent-base-tools
   (list
    ekg-agent-tool-all-tags
@@ -472,7 +635,9 @@ but we'll only get strings from the LLM."
    ekg-agent-tool-summarize-state
    ekg-agent-tool-subagent
    ekg-agent-tool-ask-user
-   ekg-agent-tool-read-agents-md)
+   ekg-agent-tool-read-agents-md
+   ekg-agent-tool-read-file
+   ekg-agent-tool-edit-file)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 
