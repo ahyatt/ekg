@@ -126,11 +126,25 @@ stdout will be returned."
 (defvar ekg-agent--daily-timer nil
   "Timer object for the daily agent evaluation.")
 
+(defmacro ekg-agent--with-error-as-text (&rest body)
+  "Execute BODY, returning any error as a descriptive string.
+If BODY signals an error, return \"Error: MESSAGE\" instead of
+propagating the signal.  This is used in tool functions so that
+the LLM sees the error and can react, rather than aborting the
+tool call."
+  (declare (indent 0) (debug t))
+  `(condition-case err
+       (progn ,@body)
+     (error (format "Error: %s" (error-message-string err)))))
+
 (defconst ekg-agent-tool-all-tags
   (make-llm-tool :function (lambda (tags num)
-                             (let ((ekg-llm-note-numwords 500)
-                                   (notes (ekg-agent--get-notes :tags (append tags nil) :num num)))
-                               (mapconcat #'ekg-llm-note-to-text notes "\n\n")))
+                             (ekg-agent--with-error-as-text
+                               (let ((ekg-llm-note-numwords 500)
+                                     (notes (ekg-agent--get-notes :tags (append tags nil) :num num)))
+                                 (if notes
+                                     (mapconcat #'ekg-llm-note-to-text notes "\n\n")
+                                   "No notes found with all of those tags."))))
                  :name "get_notes_with_all_tags"
                  :description "Retrieve notes that have all the specified tags."
                  :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.")
@@ -138,9 +152,12 @@ stdout will be returned."
 
 (defconst ekg-agent-tool-any-tags
   (make-llm-tool :function (lambda (tags num)
-                             (let ((ekg-llm-note-numwords 500)
-                                   (notes (ekg-agent--get-notes :any-tags (append tags nil) :num num)))
-                               (mapconcat #'ekg-llm-note-to-text notes "\n\n")))
+                             (ekg-agent--with-error-as-text
+                               (let ((ekg-llm-note-numwords 500)
+                                     (notes (ekg-agent--get-notes :any-tags (append tags nil) :num num)))
+                                 (if notes
+                                     (mapconcat #'ekg-llm-note-to-text notes "\n\n")
+                                   "No notes found with any of those tags."))))
                  :name "get_notes_with_any_tags"
                  :description "Retrieve notes that have any of the specified tags."
                  :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.")
@@ -148,19 +165,23 @@ stdout will be returned."
 
 (defconst ekg-agent-tool-get-note-by-id
   (make-llm-tool :function (lambda (id)
-                             (let ((notes (ekg-agent--get-notes :note-id id)))
-                               (if notes
-                                   (ekg-llm-note-to-text (car notes))
-                                 (error "Note with ID %s not found" id))))
+                             (ekg-agent--with-error-as-text
+                               (let ((notes (ekg-agent--get-notes :note-id id)))
+                                 (if notes
+                                     (ekg-llm-note-to-text (car notes))
+                                   (error "Note with ID %s not found" id)))))
                  :name "get_note_by_id"
                  :description "Retrieve a note by its unique identifier."
                  :args '((:name "id" :type string :description "The unique identifier of the note."))))
 
 (defconst ekg-agent-tool-search-notes
   (make-llm-tool :function (lambda (query num)
-                             (let ((ekg-llm-note-numwords 500)
-                                   (notes (ekg-agent--get-notes :semantic-search query :num num)))
-                               (mapconcat #'ekg-llm-note-to-text notes "\n\n")))
+                             (ekg-agent--with-error-as-text
+                               (let ((ekg-llm-note-numwords 500)
+                                     (notes (ekg-agent--get-notes :semantic-search query :num num)))
+                                 (if notes
+                                     (mapconcat #'ekg-llm-note-to-text notes "\n\n")
+                                   "No notes found matching that search."))))
                  :name "search_notes"
                  :description "Search notes by a query string, retrieving by semantic similarity."
                  :args '((:name "query" :type string :description "The search query string.")
@@ -168,16 +189,27 @@ stdout will be returned."
 
 (defconst ekg-agent-tool-ask-user
   (make-llm-tool :function (lambda (question)
-                             (read-string (format "Question from ekg-agent: %s\nResponse: " question)))
+                             (ekg-agent--with-error-as-text
+                               (read-string (format "Question from ekg-agent: %s\nResponse: " question))))
                  :name "ask_user"
                  :description "Ask the user a question and get their response."
                  :args '((:name "question" :type string :description "The question to ask the user."))))
 
 (defconst ekg-agent-tool-list-tags
-  (make-llm-tool :function (lambda () (apply #'vector (ekg-tags)))
+  (make-llm-tool :function (lambda (&optional regex-filter)
+                             (ekg-agent--with-error-as-text
+                               (let* ((tags (ekg-tags))
+                                      (filtered (if regex-filter
+                                                    (seq-filter (lambda (tag)
+                                                                  (string-match-p regex-filter tag))
+                                                                tags)
+                                                  tags)))
+                                 (if filtered
+                                     (mapconcat #'identity filtered "\n")
+                                   "No tags found."))))
                  :name "list_all_tags"
                  :description "List all existing tags in the ekg database."
-                 :args '()))
+                 :args '((:name "regex_filter" :type string :description "Optional regex to filter the tags by"))))
 
 (defun ekg-agent--get-note-with-id (id)
   "Retrieve the note with string ID, handling different ID types.
@@ -192,17 +224,18 @@ but we'll only get strings from the LLM."
 
 (defconst ekg-agent-tool-append-to-note
   (make-llm-tool :function (lambda (id content)
-                             (let ((note (ekg-agent--get-note-with-id id)))
-                               (unless note
-                                 (error "Note with ID %s not found" id))
-                               (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                      (new-text (concat (ekg-note-text note) "\n"
-                                                        (car enclosure) "\n"
-                                                        content "\n"
-                                                        (cdr enclosure))))
-                                 (setf (ekg-note-text note) new-text)
-                                 (ekg-save-note note)
-                                 (format "Appended content to note ID %s" id))))
+                             (ekg-agent--with-error-as-text
+                               (let ((note (ekg-agent--get-note-with-id id)))
+                                 (unless note
+                                   (error "Note with ID %s not found" id))
+                                 (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                                        (new-text (concat (ekg-note-text note) "\n"
+                                                          (car enclosure) "\n"
+                                                          content "\n"
+                                                          (cdr enclosure))))
+                                   (setf (ekg-note-text note) new-text)
+                                   (ekg-save-note note)
+                                   (format "Appended content to note ID %s" id)))))
                  :name "append_to_note"
                  :description "Append content to an existing note by its ID."
                  :args '((:name "id" :type string :description "The unique identifier of the note.")
@@ -210,16 +243,17 @@ but we'll only get strings from the LLM."
 
 (defconst ekg-agent-tool-replace-note
   (make-llm-tool :function (lambda (id content)
-                             (let ((note (ekg-agent--get-note-with-id id)))
-                               (unless note
-                                 (error "Note with ID %s not found" id))
-                               (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                      (new-text (concat (car enclosure) "\n"
-                                                        content "\n"
-                                                        (cdr enclosure))))
-                                 (setf (ekg-note-text note) new-text)
-                                 (ekg-save-note note)
-                                 (format "Replaced content of note ID %s" id))))
+                             (ekg-agent--with-error-as-text
+                               (let ((note (ekg-agent--get-note-with-id id)))
+                                 (unless note
+                                   (error "Note with ID %s not found" id))
+                                 (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                                        (new-text (concat (car enclosure) "\n"
+                                                          content "\n"
+                                                          (cdr enclosure))))
+                                   (setf (ekg-note-text note) new-text)
+                                   (ekg-save-note note)
+                                   (format "Replaced content of note ID %s" id)))))
                  :name "replace_note"
                  :description "Replace the content of an existing note by its ID."
                  :args '((:name "id" :type string :description "The unique identifier of the note.")
@@ -227,10 +261,12 @@ but we'll only get strings from the LLM."
 
 (defconst ekg-agent-tool-create-note
   (make-llm-tool :function (lambda (tags content mode)
-                             (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
-                               (error "Unsupported mode: %s" mode))
-                             ;; Use ekg-agent-add-note for consistency (includes auto-tags)
-                             (ekg-agent-add-note content (append tags nil) mode))
+                             (ekg-agent--with-error-as-text
+                               (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
+                                 (error "Unsupported mode: %s" mode))
+                               ;; Use ekg-agent-add-note for consistency (includes auto-tags)
+                               (let ((note (ekg-agent-add-note content (append tags nil) mode)))
+                                 (format "Created note with ID %s" (ekg-note-id note)))))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
                  :args `((:name "tags" :type array :items (:type string)
@@ -258,15 +294,16 @@ but we'll only get strings from the LLM."
 
 (defun ekg-agent--popup-result-in-buffer (result)
   "Display RESULT in a new buffer and pop up to it."
-  (let ((buf (get-buffer-create "*ekg agent result*")))
-    (with-current-buffer buf
-      (erase-buffer)
-      (insert result)
-      (when (featurep 'markdown-mode)
-        (markdown-mode))
-      (goto-char (point-min)))
-    (pop-to-buffer buf)
-    (format "Popup displayed in buffer %s" (buffer-name))))
+  (ekg-agent--with-error-as-text
+    (let ((buf (get-buffer-create "*ekg agent result*")))
+      (with-current-buffer buf
+        (erase-buffer)
+        (insert result)
+        (when (featurep 'markdown-mode)
+          (markdown-mode))
+        (goto-char (point-min)))
+      (pop-to-buffer buf)
+      (format "Popup displayed in buffer %s" (buffer-name)))))
 
 (defconst ekg-agent-tool-popup-result
   (make-llm-tool :function #'ekg-agent--popup-result-in-buffer
@@ -276,26 +313,27 @@ but we'll only get strings from the LLM."
 
 (defun ekg-agent--run-code (prompt)
   "Run the configured `ekg-agent-code-command` with PROMPT on stdin."
-  (unless (and (stringp ekg-agent-code-command)
-               (string-match-p "\\S-" ekg-agent-code-command))
-    (error "Ekg-agent-code-command is not configured"))
-  (let* ((args (split-string-and-unquote ekg-agent-code-command))
-         (program (car args))
-         (program-args (cdr args)))
-    (with-temp-buffer
-      (insert prompt)
-      (let ((exit-code (apply #'call-process-region
-                              (point-min) (point-max)
-                              program
-                              t
-                              (list t t)
-                              nil
-                              program-args)))
-        (if (and (integerp exit-code) (zerop exit-code))
-            (string-trim-right (buffer-string))
-          (error "Command failed (%s): %s"
-                 exit-code
-                 (string-trim-right (buffer-string))))))))
+  (ekg-agent--with-error-as-text
+    (unless (and (stringp ekg-agent-code-command)
+                 (string-match-p "\\S-" ekg-agent-code-command))
+      (error "Ekg-agent-code-command is not configured"))
+    (let* ((args (split-string-and-unquote ekg-agent-code-command))
+           (program (car args))
+           (program-args (cdr args)))
+      (with-temp-buffer
+        (insert prompt)
+        (let ((exit-code (apply #'call-process-region
+                                (point-min) (point-max)
+                                program
+                                t
+                                (list t t)
+                                nil
+                                program-args)))
+          (if (and (integerp exit-code) (zerop exit-code))
+              (string-trim-right (buffer-string))
+            (error "Command failed (%s): %s"
+                   exit-code
+                   (string-trim-right (buffer-string)))))))))
 
 (defconst ekg-agent-tool-run-elisp
   (make-llm-tool :function (lambda (callback elisp return)
@@ -441,9 +479,10 @@ but we'll only get strings from the LLM."
 
 (defun ekg-agent--summarize-state (state)
   "Write STATE to the agent log window."
-  (ekg-agent--ensure-log-window)
-  (ekg-agent--log "State: %s" state)
-  "ok")
+  (ekg-agent--with-error-as-text
+    (ekg-agent--ensure-log-window)
+    (ekg-agent--log "State: %s" state)
+    "ok"))
 
 (defconst ekg-agent-tool-summarize-state
   (make-llm-tool :function #'ekg-agent--summarize-state
@@ -453,8 +492,9 @@ but we'll only get strings from the LLM."
 
 (defconst ekg-agent-tool-read-agents-md
   (make-llm-tool :function (lambda (dir)
-                             (or (ekg-agent--read-agents-md dir)
-                                 (format "No AGENTS.md found in %s" dir)))
+                             (ekg-agent--with-error-as-text
+                               (or (ekg-agent--read-agents-md dir)
+                                   (format "No AGENTS.md found in %s" dir))))
                  :name "read_agents_md"
                  :description "Read the AGENTS.md file from a specified directory.  AGENTS.md files contain user instructions and preferences for agents."
                  :args '((:name "dir" :type string :description "The directory path to read AGENTS.md from."))))
@@ -501,33 +541,34 @@ BEGIN and END restrict the output to a range.  RANGE-TYPE is
 either \"line_number\" or \"identifier\" and indicates how to
 interpret BEGIN and END.  Returns a string without text
 properties."
-  (let ((truepath (file-truename path)))
-    (unless (or (find-buffer-visiting truepath) (file-exists-p truepath))
-      (error "File not found: %s" path))
-    (unless (or (find-buffer-visiting truepath) (file-readable-p truepath))
-      (error "File not readable: %s" path))
-    (let* ((lines (split-string (ekg-agent--file-content truepath) "\n"))
-           (total (length lines))
-           (start (cond
-                   ((null begin) 1)
-                   ((or (null range-type) (string= range-type "line_number"))
-                    (max 1 (if (stringp begin) (string-to-number begin) begin)))
-                   ((string= range-type "identifier")
-                    (ekg-agent--resolve-line-id truepath begin))
-                   (t (error "Unknown range_type: %s" range-type))))
-           (finish (cond
-                    ((null end) total)
-                    ((or (null range-type) (string= range-type "line_number"))
-                     (min total (if (stringp end) (string-to-number end) end)))
-                    ((string= range-type "identifier")
-                     (ekg-agent--resolve-line-id truepath end))
-                    (t total)))
-           (selected (cl-loop for i from start to finish
-                              for line in (nthcdr (1- start) lines)
-                              collect (format "%s: %s"
-                                              (ekg-agent--line-id truepath i)
-                                              line))))
-      (substring-no-properties (mapconcat #'identity selected "\n")))))
+  (ekg-agent--with-error-as-text
+    (let ((truepath (file-truename path)))
+      (unless (or (find-buffer-visiting truepath) (file-exists-p truepath))
+        (error "File not found: %s" path))
+      (unless (or (find-buffer-visiting truepath) (file-readable-p truepath))
+        (error "File not readable: %s" path))
+      (let* ((lines (split-string (ekg-agent--file-content truepath) "\n"))
+             (total (length lines))
+             (start (cond
+                     ((null begin) 1)
+                     ((or (null range-type) (string= range-type "line_number"))
+                      (max 1 (if (stringp begin) (string-to-number begin) begin)))
+                     ((string= range-type "identifier")
+                      (ekg-agent--resolve-line-id truepath begin))
+                     (t (error "Unknown range_type: %s" range-type))))
+             (finish (cond
+                      ((null end) total)
+                      ((or (null range-type) (string= range-type "line_number"))
+                       (min total (if (stringp end) (string-to-number end) end)))
+                      ((string= range-type "identifier")
+                       (ekg-agent--resolve-line-id truepath end))
+                      (t total)))
+             (selected (cl-loop for i from start to finish
+                                for line in (nthcdr (1- start) lines)
+                                collect (format "%s: %s"
+                                                (ekg-agent--line-id truepath i)
+                                                line))))
+        (substring-no-properties (mapconcat #'identity selected "\n"))))))
 
 (defun ekg-agent--edit-file (path begin-id begin-text end-id end-text replacement)
   "Edit file at PATH by replacing a region identified by boundary markers.
@@ -543,39 +584,40 @@ disk.
 
 Returns the file content around the edited region with line
 identifiers."
-  (let* ((truepath (file-truename path))
-         (begin-line (ekg-agent--resolve-line-id truepath begin-id))
-         (end-line (ekg-agent--resolve-line-id truepath end-id)))
-    (unless (file-exists-p truepath)
-      (error "File not found: %s" path))
-    (let* ((existing-buf (find-buffer-visiting truepath))
-           (edit-buf (or existing-buf
-                         (generate-new-buffer " *ekg-agent-edit*"))))
-      (unwind-protect
-          (with-current-buffer edit-buf
-            (unless existing-buf
-              (insert-file-contents truepath))
-            (goto-char (point-min))
-            (forward-line (1- begin-line))
-            (let ((region-start (point)))
-              (unless (search-forward begin-text (line-end-position) t)
-                (error "Begin text not found on line %d" begin-line))
-              (setq region-start (match-beginning 0))
+  (ekg-agent--with-error-as-text
+    (let* ((truepath (file-truename path))
+           (begin-line (ekg-agent--resolve-line-id truepath begin-id))
+           (end-line (ekg-agent--resolve-line-id truepath end-id)))
+      (unless (file-exists-p truepath)
+        (error "File not found: %s" path))
+      (let* ((existing-buf (find-buffer-visiting truepath))
+             (edit-buf (or existing-buf
+                           (generate-new-buffer " *ekg-agent-edit*"))))
+        (unwind-protect
+            (with-current-buffer edit-buf
+              (unless existing-buf
+                (insert-file-contents truepath))
               (goto-char (point-min))
-              (forward-line (1- end-line))
-              (unless (search-forward end-text (line-end-position) t)
-                (error "End text not found on line %d" end-line))
-              (let ((region-end (match-end 0)))
-                (delete-region region-start region-end)
-                (goto-char region-start)
-                (insert replacement)))
-            (unless existing-buf
-              (write-region (point-min) (point-max) truepath nil 'silent)))
-        (unless existing-buf
-          (kill-buffer edit-buf)))
-      (ekg-agent--read-file truepath
-                            (max 1 (- begin-line 2))
-                            (+ end-line 5)))))
+              (forward-line (1- begin-line))
+              (let ((region-start (point)))
+                (unless (search-forward begin-text (line-end-position) t)
+                  (error "Begin text not found on line %d" begin-line))
+                (setq region-start (match-beginning 0))
+                (goto-char (point-min))
+                (forward-line (1- end-line))
+                (unless (search-forward end-text (line-end-position) t)
+                  (error "End text not found on line %d" end-line))
+                (let ((region-end (match-end 0)))
+                  (delete-region region-start region-end)
+                  (goto-char region-start)
+                  (insert replacement)))
+              (unless existing-buf
+                (write-region (point-min) (point-max) truepath nil 'silent)))
+          (unless existing-buf
+            (kill-buffer edit-buf)))
+        (ekg-agent--read-file truepath
+                              (max 1 (- begin-line 2))
+                              (+ end-line 5))))))
 
 (defconst ekg-agent-tool-read-file
   (make-llm-tool
@@ -604,15 +646,16 @@ identifiers."
   "Run shell COMMAND and return its combined stdout and stderr.
 DIRECTORY, if given, is used as `default-directory' for the
 process.  Returns a string with the exit code and output."
-  (let* ((default-directory (if directory
-                                (file-truename directory)
-                              default-directory))
-         (output (with-temp-buffer
-                   (let ((exit-code (call-process
-                                     shell-file-name nil t nil
-                                     shell-command-switch command)))
-                     (format "Exit code: %d\n%s" exit-code (buffer-string))))))
-    (substring-no-properties output)))
+  (ekg-agent--with-error-as-text
+    (let* ((default-directory (if directory
+                                  (file-truename directory)
+                                default-directory))
+           (output (with-temp-buffer
+                     (let ((exit-code (call-process
+                                       shell-file-name nil t nil
+                                       shell-command-switch command)))
+                       (format "Exit code: %d\n%s" exit-code (buffer-string))))))
+      (substring-no-properties output))))
 
 (defconst ekg-agent-tool-run-command
   (make-llm-tool
@@ -812,8 +855,10 @@ Returns nil if no AGENTS.md files are found."
     (concat
      (format
       "You are an agent that works with a user through a note taking system in
-Emacs, called ekg.  In ekg, notes have tags and content, and can be
-written in markdown, org-mode or plain text.  ekg is backed by a
+Emacs, called ekg. In ekg, notes have tags and content, and can be
+written in markdown, org-mode or plain text. Tags can be any string, and
+can have whitespace. They can be nested as well, such as
+`self improvement/languages/spanish/conjucations`. ekg is backed by a
 database, and the way to interact with it is with the tools provided.
 
 In org-mode, you can link to a note with `[[ekg-note:<id>][<link display
@@ -824,7 +869,13 @@ In markdown mode, there's no way to link directly to notes, but you can
 use [[tag]] to link to a tag.
 
 These notes should act as memory for subjects and tasks that both users
-and agents can read and write.
+and agents can read and write. When you have learned something, you
+*must* write a note about it. Tag the note with any project id you have
+to represent the task you are working on, as a nested project struct.
+For example, the tags might be `[ekg/latency/agent async startup]`.
+Similarly, when you need to know something, look at the notes before
+asking the user. Always look at the notes before starting a task to
+understand the background.
 
 To write a note to your future self so that you remember important
 information the next time you are run, use the `%s` tag for information
@@ -981,20 +1032,20 @@ session.  At iteration 0 the log buffer is created and
              (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
         (with-current-buffer buf
           (erase-buffer)
+          ;; Set up major mode first since it calls
+          ;; `kill-all-local-variables'.
+          (when (featurep 'markdown-mode)
+            (markdown-mode)
+            (when (featurep 'flycheck)
+              (flycheck-mode 0))
+            (when (featurep 'flymake)
+              (flymake-mode 0)))
           (ekg-agent--log-session-start (buffer-name))
-
           (insert (format "Agent session for: %s\n\n" id))
           (setq ekg-agent--prompt prompt)
           (setq ekg-agent--end-tools end-tools)
           (setq ekg-agent--running-p t)
           (setq ekg-agent--cancelled-p nil)
-          (when (featurep 'markdown-mode)
-            (markdown-mode)
-            ;; No need for flycheck or flymake to be running on this buffer.
-            (when (featurep 'flycheck)
-              (flycheck-mode 0))
-            (when (featurep 'flymake)
-              (flymake-mode 0)))
           (ekg-agent-log-mode 1)
           (goto-char (point-min))
           (ekg-agent--iterate prompt 1

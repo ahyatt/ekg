@@ -29,6 +29,7 @@
 (require 'seq)
 (require 'ekg)
 (require 'llm)
+(require 'ekg-agent)
 
 (defconst ekg-org-state-tag-prefix "org/state/"
   "Prefix for EKG tags representing Org TODO states.")
@@ -255,40 +256,42 @@ PARENT-ID is the parent task ID (nil for no parent)
 STATUS is the task status (will be converted to uppercase).
 DEADLINE is the deadline timestamp string (ignored if empty).
 SCHEDULED is the scheduled timestamp string (ignored if empty)."
-  (let* ((note (ekg-note-create :text content
-                                :tags (append (list ekg-org-task-tag) tags
-                                              (when (and status (not (string-empty-p status)))
-                                                (list (concat ekg-org-state-tag-prefix (downcase status)))))
-                                :properties (list :titled/title (list title)))))
-    ;; Handle parent ID
-    (when (and parent-id (not (equal parent-id 0)) (not (string-empty-p (format "%s" parent-id))))
-      (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/parent parent-id)))
-    ;; Handle deadline
-    (when (and deadline (not (string-empty-p deadline)))
-      (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/deadline (ekg-org--to-timestamp deadline))))
-    ;; Handle scheduled
-    (when (and scheduled (not (string-empty-p scheduled)))
-      (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/scheduled (ekg-org--to-timestamp scheduled))))
-    ;; Save the note
-    (ekg-save-note note)
-    (format "Added note with ID %s" (ekg-note-id note))))
+  (ekg-agent--with-error-as-text
+    (let* ((note (ekg-note-create :text content
+                                  :tags (append (list ekg-org-task-tag) tags
+                                                (when (and status (not (string-empty-p status)))
+                                                  (list (concat ekg-org-state-tag-prefix (downcase status)))))
+                                  :properties (list :titled/title (list title)))))
+      ;; Handle parent ID
+      (when (and parent-id (not (equal parent-id 0)) (not (string-empty-p (format "%s" parent-id))))
+        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/parent parent-id)))
+      ;; Handle deadline
+      (when (and deadline (not (string-empty-p deadline)))
+        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/deadline (ekg-org--to-timestamp deadline))))
+      ;; Handle scheduled
+      (when (and scheduled (not (string-empty-p scheduled)))
+        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/scheduled (ekg-org--to-timestamp scheduled))))
+      ;; Save the note
+      (ekg-save-note note)
+      (format "Added note with ID %s" (ekg-note-id note)))))
 
 (defun ekg-org--agent-tool-set-status (id status)
   "Set the status of an org task item.
 
 ID is the note ID.
 STATUS is the new status (will be converted to uppercase)."
-  (let ((note (ekg-get-note-with-id id)))
-    (unless note
-      (error "No note found with ID %s" id))
-    (setf (ekg-note-tags note)
-          (cons
-           (concat ekg-org-state-tag-prefix (downcase status))
-           (seq-remove
-            (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
-            (ekg-note-tags note))))
-    (ekg-save-note note)
-    (format "Set status of note ID %s to %s" id status)))
+  (ekg-agent--with-error-as-text
+    (let ((note (ekg-get-note-with-id id)))
+      (unless note
+        (error "No note found with ID %s" id))
+      (setf (ekg-note-tags note)
+            (cons
+             (concat ekg-org-state-tag-prefix (downcase status))
+             (seq-remove
+              (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
+              (ekg-note-tags note))))
+      (ekg-save-note note)
+      (format "Set status of note ID %s to %s" id status))))
 
 (defun ekg-org--state (note)
   "Get the org state of NOTE."
@@ -304,13 +307,19 @@ STATUS is the new status (will be converted to uppercase)."
   "List all org task items.
 
 STATE if non-nil, filter by status (e.g., \"TODO\", \"DONE\").
-INCLUDE-ARCHIVED if non-nil, include archived tasks.
 Returns text in Org format, as if they were in an Org file."
-  (ekg-org-generate-org-content nil (when state
-                                      (lambda (note)
-                                        (string-equal
-                                         (downcase state)
-                                         (downcase (ekg-org--state note)))))))
+  (ekg-agent--with-error-as-text
+    (let ((result (ekg-org-generate-org-content
+                   nil (when state
+                         (lambda (note)
+                           (string-equal
+                            (downcase state)
+                            (downcase (ekg-org--state note))))))))
+      (if (string-empty-p result)
+          (if state
+              (format "No org items found with state %s." state)
+            "No org items found.")
+        result))))
 
 (defconst ekg-org-tool-add-task
   (llm-make-tool
