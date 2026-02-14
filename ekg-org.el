@@ -107,7 +107,11 @@ PARENT is the parent org-element node."
                     'headline
                     `(:level ,(+ 1 (or (org-element-property :level parent) 0))
                              :title ,title
-                             :tags ,(ekg-note-tags note)
+                             :tags ,(seq-filter
+                                     (lambda (tag) (and (not (string-prefix-p ekg-org-state-tag-prefix tag))
+                                                        (not (string-equal tag ekg-org-task-tag))
+                                                        (not (string-equal tag ekg-org-archive-tag))))
+                                     (ekg-note-tags note))
                              :todo-keyword ,state
                              ,@(when deadline `(:deadline ,deadline))
                              ,@(when scheduled `(:scheduled ,scheduled))))))
