@@ -156,15 +156,18 @@ an ekg-note and returns nil to exclude it."
 
 NEW-STATE is one of the standard org states."
   (interactive (list (completing-read "New state: " org-todo-keywords-1)))
-  (unless (and (member 'ekg-edit-mode local-minor-modes)
-               (ekg-org--org-note-p ekg-note))
-    (error "Not in an EKG org task buffer"))
-  (setf (ekg-note-tags ekg-note)
-        (cons
-         (concat ekg-org-state-tag-prefix (downcase new-state))
-         (seq-remove
-          (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
-          (ekg-note-tags ekg-note)))))
+  (let ((ekg-note (ekg-current-note-or-error-expanded)))
+    (setf (ekg-note-tags ekg-note)
+          (cons
+           (concat ekg-org-state-tag-prefix (downcase new-state))
+           (seq-remove
+            (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
+            (ekg-note-tags ekg-note))))
+    ;; We save unless we're currently editing the note.
+    (unless (member 'ekg-edit-mode local-minor-modes)
+      (ekg-save-note ekg-note)
+      (when (member 'ekg-notes-mode local-minor-modes)
+        (ekg-notes-refresh)))))
 
 (defun ekg-org-capture (title)
   "Capture a new org task with TITLE into EKG."
@@ -174,6 +177,16 @@ NEW-STATE is one of the standard org states."
                             :titled/title (list title))
                :tags (list ekg-org-task-tag
                            (format "%s%s" ekg-org-state-tag-prefix "todo"))))
+
+(defun ekg-org-agent-plan-task ()
+  "Plan the current task and add the plan as child tasks using the agent."
+  (let* ((ekg-note (ekg-current-note-or-error-expanded))
+         (parent-id (ekg-note-id ekg-note))
+         (parent-note (ekg-get-note-with-id parent-id))
+         (question (format "Given the task '%s', create a plan to accomplish it by creating subtasks using the tool to add ekg org tasks or add information to existing ekg note tasks. The parent ekg note id is '%s'."
+                           (ekg-note-title parent-note)
+                           parent-id)))
+    (ekg-agent-ask-with-note question parent-id (list ekg-org-tool-add-task))))
 
 (defun ekg-org-fs-handler (operation &rest args)
   "Fake our ekg data as a file.

@@ -366,6 +366,21 @@ but we'll only get strings from the LLM."
                  :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to accomplish a significant task that may not be possible with the tools you have access, ask this tool, which has more functionality."
                  :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))))
 
+(defun ekg-agent--tools (extra-tools)
+  "Return the list of tools available to the agent.
+
+EXTRA-TOOLS is a list of additional tools beyond `ekg-agent-base-tools' and `ekg-agent-extra-tools' to include."
+  (seq-uniq
+   (append ekg-agent-base-tools
+           ekg-agent-extra-tools
+           extra-tools
+           (when (llm-google-p (ekg-llm--provider))
+             (list (make-llm-tool :function #'ignore
+                                  :name "google_search"
+                                  :description "Google Search built-in tool"
+                                  :args nil))))
+   (lambda (a b) (string-equal (llm-tool-name a) (llm-tool-name b)))))
+
 (defconst ekg-agent-tool-subagent
   (make-llm-tool
    :function (lambda (callback instructions)
@@ -380,15 +395,7 @@ but we'll only get strings from the LLM."
                                         "When you are done, call the subagent_end tool.\n\n"
                                         (format "The current date and time is %s."
                                                 (format-time-string "%F %R")))
-                              :tools (append
-                                      ekg-agent-base-tools
-                                      (list ekg-agent-tool-subagent-end)
-                                      ekg-agent-extra-tools
-                                      (when (llm-google-p (ekg-llm--provider))
-                                        (list (make-llm-tool :function #'ignore
-                                                             :name "google_search"
-                                                             :description "Google Search built-in tool"
-                                                             :args nil))))
+                              :tools (ekg-agent--tools (list ekg-agent-tool-subagent-end))
                               :tool-options (make-llm-tool-options :tool-choice 'any))))
                  (ekg-agent--iterate prompt
                                      1
@@ -439,7 +446,7 @@ but we'll only get strings from the LLM."
   "Start a new session in the agent log with LABEL and optional DETAIL."
   (ekg-agent--ensure-log-window)
   (ekg-agent--log-raw (make-string 72 ?-))
-  (ekg-agent--log "%s%s" label (if detail (format ": %s" detail) "")))
+  (ekg-agent--log "`%s`%s" label (if detail (format ": %s" detail) "")))
 
 (defun ekg-agent--log-status (status)
   "Log final STATUS from the agent."
@@ -733,11 +740,13 @@ or `ekg-agent-tool-code'."
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
 
-(defun ekg-agent--ask (question context)
+(defun ekg-agent--ask (question context &optional extra-tools)
   "Ask the ekg agent a QUESTION and display the result.
 
 CONTEXT is what we'll display to the agent as context.  If nil no
 additional context is added.
+
+EXTRA-TOOLS is a list of additional tools used for this request.
 
 The agent has access to all the defined tools, and can create notes or
 display results in a popup buffer, or ask the user a question.  The
@@ -759,14 +768,11 @@ agent will decide which is best."
     (ekg-agent--iterate (llm-make-chat-prompt
                          question
                          :context prompt
-                         :tools (append ekg-agent-base-tools
-                                        ekg-agent-extra-tools
-                                        (list ekg-agent-tool-popup-result)
-                                        (when (llm-google-p (ekg-llm--provider))
-                                          (list (make-llm-tool :function #'ignore
-                                                               :name "google_search"
-                                                               :description "Google Search built-in tool"
-                                                               :args nil))))
+                         :tools
+                         (ekg-agent--tools (append
+                                            (list ekg-agent-tool-end
+                                                  ekg-agent-tool-popup-result)
+                                            extra-tools))
                          :tool-options (make-llm-tool-options :tool-choice 'any))
                         0
                         (ekg-agent--make-status-callback)
@@ -785,18 +791,14 @@ which is best."
                    (mapconcat #'ekg-llm-note-to-text
                               (ekg-get-latest-modified 10) "\n\n"))))
 
-(defun ekg-agent-ask-with-note (question &optional id)
+(defun ekg-agent-ask-with-note (question &optional id extra-tools)
   "Ask the agent QUESTION with the note with ID as context.
 
 If ID is nil, we will use the current buffer's associated note, or the
 note at point if in a `ekg-notes-mode` buffer.'"
   (interactive "sQuestion: \n")
   (let* ((note (or (and id (ekg-agent--get-note-with-id id))
-                   (and (derived-mode-p 'ekg-notes-mode)
-                        (ekg-current-note-or-error))
-                   (and (derived-mode-p 'ekg-note-mode)
-                        ekg-note)))
-         (_ (unless note (error "No current note found")))
+                   (ekg-current-note-or-error-expanded)))
          (note-text (ekg-llm-note-to-text note))
          (prompt-notes (ekg-get-notes-cotagged-with-tags
                         (ekg-note-tags note) ekg-llm-prompt-tag))
@@ -811,7 +813,8 @@ note at point if in a `ekg-notes-mode` buffer.'"
                     (concat
                      "The user is issuing instructions with a note as context. This is the text of that note:\n"
                      note-text
-                     prompt-context))))
+                     prompt-context)
+                    extra-tools)))
 
 (defun ekg-agent-ask-with-buffer (instructions)
   "Issue INSTRUCTIONS to the agent, with the current buffer as context."
@@ -988,16 +991,9 @@ to create new notes or perform other actions to help the user."
                        :context
                        (concat (ekg-agent-instructions-intro) "\n"
                                (ekg-agent-instructions-evaluate-status))
-                       :tools (append
-                               ekg-agent-base-tools
-                               (list (ekg-agent-tool-end))
-                               ekg-agent-extra-tools
-                               ;; Use Google Search as well, if possible.
-                               (when (llm-google-p (ekg-llm--provider))
-                                 (list (make-llm-tool :function #'ignore
-                                                      :name "google_search"
-                                                      :description "Google Search built-in tool"
-                                                      :args nil)))))
+                       :tools
+                       (ekg-agent--tools (list ekg-agent-tool-end))
+                       :tool-options (make-llm-tool-options :tool-choice 'any))
                       0
                       (ekg-agent--make-status-callback)
                       '("end")
@@ -1291,17 +1287,10 @@ currently editing.\n\n"
         (ekg-agent--iterate (llm-make-chat-prompt
                              current-note-json
                              :context prompt
-                             :tools (append
-                                     ekg-agent-base-tools
-                                     ekg-agent-extra-tools
-                                     (list
-                                      ekg-agent-tool-append-response
-                                      ekg-agent-tool-replace-response)
-                                     (when (llm-google-p (ekg-llm--provider))
-                                       (list (make-llm-tool :function #'ignore
-                                                            :name "google_search"
-                                                            :description "Google Search built-in tool"
-                                                            :args nil))))
+                             :tools
+                             (ekg-agent--tools (list
+                                                ekg-agent-tool-append-response
+                                                ekg-agent-tool-replace-response))
                              :tool-options (make-llm-tool-options :tool-choice 'any))
                             0
                             (ekg-agent--make-status-callback

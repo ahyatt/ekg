@@ -1806,6 +1806,17 @@ Raise an error if there is no current note."
       (ewoc-data node)
     (error "No current note is available to act on!  Create a new note first with `ekg-capture'")))
 
+(defun ekg-current-note-or-error-expanded ()
+  "Return the current note based on context, or signal an error if none found.
+
+This is a more flexible version of `ekg-current-note-or-error' that is
+intended to be used in any context where a note might be available."
+  (or (and (derived-mode-p 'ekg-notes-mode)
+           (ekg-current-note-or-error))
+      (and (derived-mode-p 'ekg-note-mode)
+           ekg-note)
+      (error "No current note found in context")))
+
 (defun ekg-notes-tag (&optional tag)
   "Show notes associated with TAG.
 If TAG is nil, it will be read, selecting from the list of the current note's
@@ -1818,7 +1829,6 @@ tags."
   "Open the current note."
   (interactive nil ekg-notes-mode)
   (ekg-edit (ekg-current-note-or-error)))
-
 (defun ekg-notes-kill ()
   "Kill (hide) the current note from the view.
 Note is not deleted from the database and will reappear when the
