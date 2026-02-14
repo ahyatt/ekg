@@ -167,5 +167,140 @@
               (should (string-match-p "^  new content" (buffer-string))))))
       (delete-file path))))
 
+;; Agent integration tests
+;;
+;; These simulate the agent loop by mocking llm-chat-async to make
+;; predetermined tool calls, then verify that tools execute correctly
+;; and the agent loop terminates as expected.
+
+(require 'ekg-test-utils)
+(require 'llm-fake)
+
+(defun ekg-agent-test--extract-id (read-output line-index)
+  "Extract the 3-char line identifier from READ-OUTPUT at LINE-INDEX."
+  (substring (nth line-index (split-string read-output "\n")) 0 3))
+
+(defun ekg-agent-test--make-tool-response (tool-calls)
+  "Create a mock llm-chat-async that executes TOOL-CALLS in sequence.
+TOOL-CALLS is a list of lists, each being a sequence of (tool-name . args)
+pairs for one iteration.  Each call to the mock pops the next iteration
+and executes the tool functions found in the prompt."
+  (let ((remaining (copy-sequence tool-calls)))
+    (lambda (_provider prompt response-callback _error-callback &optional _multi-output)
+      (let* ((calls (pop remaining))
+             (tools (llm-chat-prompt-tools prompt))
+             (results
+              (mapcar
+               (lambda (call)
+                 (let* ((name (car call))
+                        (args (cdr call))
+                        (tool (seq-find (lambda (tl)
+                                          (equal (llm-tool-name tl) name))
+                                        tools)))
+                   (unless tool
+                     (error "Tool %s not found in prompt" name))
+                   (let ((result (apply (llm-tool-function tool) args)))
+                     (cons name (if (stringp result) result
+                                  (format "%s" result))))))
+               calls)))
+        (funcall response-callback (list :tool-results results))))))
+
+(defmacro ekg-agent-test--with-mock-agent (tool-call-sequence &rest body)
+  "Run BODY with the agent loop mocked to execute TOOL-CALL-SEQUENCE.
+Each element of TOOL-CALL-SEQUENCE is one iteration's worth of
+tool calls.  `ekg-agent--prompt-id' is stubbed to return a fixed
+name.  The provider is set to a fake.  The test should wait on
+the `done-flag' variable which is set to the status callback
+result when the agent finishes."
+  (declare (indent 1) (debug t))
+  `(let ((ekg-llm-provider (make-llm-fake))
+         (done-flag nil)
+         (mock-fn (ekg-agent-test--make-tool-response ,tool-call-sequence)))
+     (cl-letf (((symbol-function 'ekg-agent--prompt-id)
+                (lambda (_) "test-agent"))
+               ((symbol-function 'llm-chat-async)
+                mock-fn)
+               ((symbol-function 'ekg-agent--ensure-log-window)
+                #'ignore))
+       ,@body)
+     ;; Clean up log buffer
+     (when-let ((buf (get-buffer (format ekg-agent-log-buffer-name-format
+                                         "test-agent"))))
+       (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-agent-reads-and-edits-file ()
+  "The agent loop reads a file, edits it, and ends."
+  (let ((path (make-temp-file "ekg-agent-int-test")))
+    (unwind-protect
+        (progn
+          (with-temp-file path
+            (insert "def greet():\n    print(\"hello\")\n    return True\n"))
+          ;; Pre-compute the line IDs so we know what the agent
+          ;; would see after calling read_file.
+          (let* ((read-output (ekg-agent--read-file path))
+                 (id1 (ekg-agent-test--extract-id read-output 0))
+                 (id2 (ekg-agent-test--extract-id read-output 1)))
+            ;; The agent will: 1) read the file, 2) edit line 2, 3) end.
+            (ekg-agent-test--with-mock-agent
+                (list
+                 ;; Iteration 1: read the file
+                 (list (cons "read_file" (list path)))
+                 ;; Iteration 2: edit the greeting
+                 (list (cons "edit_file"
+                             (list path id2 "print(\"hello\")"
+                                   id2 "print(\"hello\")"
+                                   "    print(\"goodbye\")")))
+                 ;; Iteration 3: done
+                 (list (cons "end" nil)))
+              (ekg-agent--iterate
+               (llm-make-chat-prompt
+                "Test: read and edit a file."
+                :tools (append ekg-agent-base-tools
+                               (list ekg-agent-tool-end))
+                :tool-options (make-llm-tool-options :tool-choice 'any))
+               0
+               (lambda (status) (setq done-flag status))
+               '("end")))
+            ;; Verify the edit happened
+            (with-temp-buffer
+              (insert-file-contents path)
+              (should (string-match-p "goodbye" (buffer-string)))
+              (should-not (string-match-p "\"hello\"" (buffer-string)))
+              (should (string-match-p "def greet" (buffer-string)))
+              (should (string-match-p "return True" (buffer-string))))))
+      (delete-file path))))
+
+(ekg-deftest ekg-agent-test-agent-creates-note ()
+  (ekg-agent-test--with-mock-agent
+      (list
+       ;; Iteration 1: create a note
+       (list (cons "create_note"
+                   (list ["test-tag" "agent"] "Test note content" "org-mode")))
+       ;; Iteration 2: done
+       (list (cons "end" nil)))
+    (ekg-agent--iterate
+     (llm-make-chat-prompt
+      "Test: create a note."
+      :tools (append ekg-agent-base-tools
+                     (list ekg-agent-tool-end))
+      :tool-options (make-llm-tool-options :tool-choice 'any))
+     0
+     (lambda (status) (setq done-flag status))
+     '("end")))
+  (let ((notes (ekg-get-notes-with-tags '("test-tag"))))
+    (should (= 1 (length notes)))
+    (should (string-match-p "Test note content" (ekg-note-text (car notes))))))
+
+(ert-deftest ekg-agent-test-agent-run-command ()
+  "The run_command tool executes a shell command and returns output."
+  (let ((result (ekg-agent--run-command "echo hello-world")))
+    (should (string-match-p "Exit code: 0" result))
+    (should (string-match-p "hello-world" result))))
+
+(ert-deftest ekg-agent-test-agent-run-command-failure ()
+  "The run_command tool reports non-zero exit codes."
+  (let ((result (ekg-agent--run-command "exit 42")))
+    (should (string-match-p "Exit code: 42" result))))
+
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here
