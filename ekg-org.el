@@ -79,8 +79,9 @@ active, unarchived, tasks."
 
 (defun ekg-org-get-child-notes-of-id (id)
   "Fetch child notes of a given note ID."
-  (mapcar (lambda (row) (ekg-get-note-with-id (car row)))
-          (triples-db-select ekg-db nil 'org/parent-id id)))
+  (seq-filter #'ekg-note-active-p
+              (mapcar (lambda (row) (ekg-get-note-with-id (car row)))
+                      (triples-db-select ekg-db nil 'org/parent id))))
 
 (defun ekg-org--format-timestamp (timestamp)
   "Parse TIMESTAMP integer into an Org timestamp string."
