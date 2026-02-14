@@ -361,6 +361,21 @@ ARGS are additional arguments to the operation."
 
 (add-to-list 'file-name-handler-alist '("\\`/ekg:" . ekg-org-fs-handler))
 
+(defun ekg-org-revert-buffers (note)
+  "Revert any buffers visiting the fake ekg org files.
+Optionally check NOTE to only revert when org tasks change."
+  (when (or (null note) (ekg-org--org-note-p note))
+    (dolist (buf (buffer-list))
+      (with-current-buffer buf
+        (when (and buffer-file-name
+                   (string-match "\\`/ekg:" buffer-file-name)
+                   (buffer-modified-p buf))
+          (revert-buffer t t t))))))
+
+;; When we save an org note, any org buffers showing our fake files should
+;; update to reflect the changes.
+(add-hook 'ekg-note-save-hook #'ekg-org-revert-buffers)
+
 ;; Add the fake file to Org Agenda
 (add-to-list 'org-agenda-files "/ekg:tasks.org")
 
