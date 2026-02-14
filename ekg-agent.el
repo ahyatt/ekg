@@ -795,7 +795,10 @@ which is best."
   "Ask the agent QUESTION with the note with ID as context.
 
 If ID is nil, we will use the current buffer's associated note, or the
-note at point if in a `ekg-notes-mode` buffer.'"
+note at point if in a `ekg-notes-mode` buffer.
+
+EXTRA-TOOLS is a list of additional tools to make available to the
+agent."
   (interactive "sQuestion: \n")
   (let* ((note (or (and id (ekg-agent--get-note-with-id id))
                    (ekg-current-note-or-error-expanded)))
