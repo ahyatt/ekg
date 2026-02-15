@@ -1382,6 +1382,14 @@ However, if URL already exists, we edit the existing note on it."
                    :properties `(:titled/title ,(list title))
                    :id url))))
 
+(defun ekg-file-to-id (file)
+  "Give a standard note resource id for FILE."
+  (format "file:%s" (file-truename file)))
+
+(defun ekg-file-to-tag (file)
+  "Give a standard tag for FILE."
+  (concat "doc/" (downcase (file-name-nondirectory file))))
+
 ;;;###autoload
 (defun ekg-capture-file ()
   "Capture a new note about the file the user is visiting.
@@ -1391,13 +1399,13 @@ file.  If not, an error will be thrown."
   (ekg-connect)
   (let ((file (buffer-file-name)))
     (unless file (error "Cannot capture: no file associated with this buffer"))
-    (let* ((file (format "file:%s" (file-truename file)))
-           (existing (triples-get-subject ekg-db file)))
+    (let* ((file-uri (ekg-file-to-uri file))
+           (existing (triples-get-subject ekg-db file-uri)))
       (if existing
-          (ekg-edit (ekg-get-note-with-id file))
-        (ekg-capture :tags (list (concat "doc/" (downcase (file-name-nondirectory file))))
+          (ekg-edit (ekg-get-note-with-id file-uri))
+        (ekg-capture :tags (list (ekg-file-to-tag file))
                      :properties `(:titled/title ,(list (file-name-nondirectory file)))
-                     :id file)))))
+                     :id file-uri)))))
 
 (defun ekg-change-mode (mode)
   "Change the mode of the current note to MODE."
