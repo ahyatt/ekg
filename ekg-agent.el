@@ -1104,21 +1104,35 @@ session.  At iteration 0 the log buffer is created and
        (lambda (result)
          (if (and (buffer-live-p log-buf)
                   (buffer-local-value 'ekg-agent--cancelled-p log-buf))
+             ;; Cancelled by user
              (progn
                (ekg-agent--set-stopped log-buf)
                (with-current-buffer log-buf
                  (ekg-agent--log "Agent stopped (cancelled by user)"))
                (when status-callback (funcall status-callback "stopped by user")))
+           ;; Normal processing of result
            (let ((result-alist (plist-get result :tool-results))
                  (end-tools (or end-tools '("end"))))
-             (let ((tools-ran (mapconcat (lambda (result)
-                                           (format "Tool: %s Result: %s"
-                                                   (car result) (cdr result)))
-                                         result-alist ", ")))
-               (if (and log-buf (buffer-live-p log-buf))
-                   (with-current-buffer log-buf
-                     (ekg-agent--log "Tools: %s" tools-ran))
-                 (message "Ran tools: %s" tools-ran)))
+             (if result-alist
+                 (let ((tools-ran (mapconcat (lambda (result)
+                                               (format "Tool: %s Result: %s"
+                                                       (car result) (cdr result)))
+                                             result-alist ", ")))
+                   (if (and log-buf (buffer-live-p log-buf))
+                       (with-current-buffer log-buf
+                         (ekg-agent--log "Tools: %s" tools-ran))
+                     (message "Ran tools: %s" tools-ran)))
+               ;; Everything must be a tool call, by default if it just gets
+               ;; non-tool output we'll log it, and then instruct it to use
+               ;; tools to end if needed.
+               (when (and log-buf (buffer-live-p log-buf))
+                 (with-current-buffer log-buf
+                   (ekg-agent--log (plist-get :text result))))
+               (llm-chat-prompt-append-response
+                prompt
+                (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
+                        (string-join end-tools ", "))))
+
              (cond
               (timeout-final
                (ekg-agent--set-stopped log-buf)
