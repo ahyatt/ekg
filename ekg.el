@@ -1384,11 +1384,11 @@ However, if URL already exists, we edit the existing note on it."
 
 (defun ekg-file-to-id (file)
   "Give a standard note resource id for FILE."
-  (format "file:%s" (file-truename file)))
+  (format "file://%s" (file-truename file)))
 
 (defun ekg-file-to-tag (file)
   "Give a standard tag for FILE."
-  (concat "doc/" (downcase (file-name-nondirectory file))))
+  (concat "doc/" (ekg-file-to-id file)))
 
 ;;;###autoload
 (defun ekg-capture-file ()

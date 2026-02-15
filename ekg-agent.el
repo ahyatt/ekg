@@ -866,17 +866,61 @@ self info and self-instruct notes."
                         10)
               "\n\n")))
 
+(defun ekg-agent--doc-tags-for-dir (filename)
+  "Return a list of doc tags for DIR and its parent directories.
+
+For a directory like /home/user/project, this returns:
+- doc//home/user/project
+- doc//home/user
+- doc//home
+- doc/ (root directory)"
+  (let* ((truepath (file-truename filename))
+         (tags nil)
+         (current truepath))
+    (while (and current (> (length current) 0))
+      (push (ekg-file-to-tag current) tags)
+      (let ((parent (file-name-directory (directory-file-name current))))
+        (setq current (when (and parent
+                                 (not (equal "/" current))) (directory-file-name parent)))))
+    tags))
+
 (defun ekg-agent--read-agents-md (dir)
-  "Read AGENTS.md from DIR, returning its contents or nil if not found."
-  (let ((file (expand-file-name "AGENTS.md" dir)))
-    (when (file-readable-p file)
-      (with-temp-buffer
-        (insert-file-contents file)
-        (buffer-string)))))
+  "Read AGENTS.md from DIR, returning its contents or nil if not found.
+
+Also includes notes tagged with `doc/<path>` for the directory and parent
+directories, co-tagged with `ekg-llm-prompt-tag`.
+
+The result is a combination of AGENTS.md content (if present) and relevant
+prompt notes, formatted as a string suitable for the agent context."
+  (let* ((file (expand-file-name "AGENTS.md" dir))
+         (agents-content (when (file-readable-p file)
+                           (with-temp-buffer
+                             (insert-file-contents file)
+                             (buffer-string))))
+         (prompt-notes (ekg-get-notes-cotagged-with-tags
+                        (ekg-agent--doc-tags-for-dir dir) ekg-llm-prompt-tag))
+         (note-contents (mapconcat
+                         (lambda (n)
+                           (format "Note (tags: %s):\n%s"
+                                   (string-join (ekg-note-tags n) ", ")
+                                   (string-trim
+                                    (substring-no-properties
+                                     (ekg-display-note-text n nil 'plaintext)))))
+                         prompt-notes "\n\n")))
+    (when (or agents-content (not (string-empty-p note-contents)))
+      (concat
+       (when agents-content
+         (format "From %s:\n%s" file agents-content))
+       (when (and agents-content (not (string-empty-p note-contents)))
+         "\n\n")
+       (when (not (string-empty-p note-contents))
+         (concat "Prompt notes for this location:\n" note-contents))))))
 
 (defun ekg-agent--agents-md-context ()
   "Return AGENTS.md content from the current and home directories.
-Returns nil if no AGENTS.md files are found."
+
+Also includes prompt notes tagged with `doc/<path>` for these directories.
+Returns nil if no AGENTS.md files or prompt notes are found."
   (let* ((home-dir (expand-file-name "~"))
          (current-dir (expand-file-name default-directory))
          (home-content (ekg-agent--read-agents-md home-dir))
@@ -884,11 +928,11 @@ Returns nil if no AGENTS.md files are found."
                             (ekg-agent--read-agents-md current-dir)))
          (parts nil))
     (when home-content
-      (push (format "From %s:\n%s" (expand-file-name "AGENTS.md" home-dir) home-content) parts))
+      (push home-content parts))
     (when current-content
-      (push (format "From %s:\n%s" (expand-file-name "AGENTS.md" current-dir) current-content) parts))
+      (push current-content parts))
     (when parts
-      (concat "\n\nUser instructions from AGENTS.md files:\n\n"
+      (concat "\n\nUser instructions from AGENTS.md files and doc/ notes:\n\n"
               (string-join (nreverse parts) "\n\n")))))
 
 (defun ekg-agent-instructions-intro ()
