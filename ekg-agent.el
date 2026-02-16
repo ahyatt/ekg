@@ -265,8 +265,8 @@ but we'll only get strings from the LLM."
                                (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
                                  (error "Unsupported mode: %s" mode))
                                ;; Use ekg-agent-add-note for consistency (includes auto-tags)
-                               (let ((note (ekg-agent-add-note content (append tags nil) mode)))
-                                 (format "Created note with ID %s" (ekg-note-id note)))))
+                               (let ((id (ekg-agent-add-note content (append tags nil) mode)))
+                                 (format "Created note with ID %s" id))))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
                  :args `((:name "tags" :type array :items (:type string)
