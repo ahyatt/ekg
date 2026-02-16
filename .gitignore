@@ -2,7 +2,5 @@
 doc/*info
 *-autoloads.el
 .eldev
-AGENTS.md
-CLAUDE.md
 .claude/
 project.org
