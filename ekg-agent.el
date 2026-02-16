@@ -1171,7 +1171,7 @@ session.  At iteration 0 the log buffer is created and
                ;; tools to end if needed.
                (when (and log-buf (buffer-live-p log-buf))
                  (with-current-buffer log-buf
-                   (ekg-agent--log (plist-get :text result))))
+                   (ekg-agent--log (or (plist-get :text result) (format "%S" result)))))
                (llm-chat-prompt-append-response
                 prompt
                 (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
