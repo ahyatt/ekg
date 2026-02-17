@@ -1,0 +1,147 @@
+#!/bin/bash
+# ekg-tags - Search and list tags in ekg
+#
+# Usage:
+#   ekg-tags                          # List all tags
+#   ekg-tags --regex "pattern"        # Tags matching regex
+#   ekg-tags --prefix "org/"          # Tags with prefix
+#   ekg-tags --including "moltbot"    # Tags containing substring
+#   ekg-tags --co-tagged prompt       # Tags co-occurring with given tag
+#
+# Multiple filters can be combined (AND logic).
+
+set -e
+
+REGEX=""
+PREFIX=""
+INCLUDING=""
+CO_TAGGED=()
+DAEMON_NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --regex)
+            REGEX="$2"
+            shift 2
+            ;;
+        --prefix)
+            PREFIX="$2"
+            shift 2
+            ;;
+        --including)
+            INCLUDING="$2"
+            shift 2
+            ;;
+        --co-tagged)
+            CO_TAGGED+=("$2")
+            shift 2
+            ;;
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-tags [OPTIONS]"
+            echo ""
+            echo "Search and list tags in ekg."
+            echo ""
+            echo "Options:"
+            echo "  --regex PATTERN     Filter tags matching regex"
+            echo "  --prefix PREFIX     Filter tags with given prefix"
+            echo "  --including TEXT    Filter tags containing substring"
+            echo "  --co-tagged TAG     Find tags that co-occur with TAG on the same notes"
+            echo "                      (can be repeated for AND logic)"
+            echo "  --daemon NAME       Name of the Emacs daemon (optional)"
+            echo "  --help              Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  # All tags"
+            echo "  ekg-tags"
+            echo ""
+            echo "  # Tags co-occurring with 'prompt'"
+            echo "  ekg-tags --co-tagged prompt"
+            echo ""
+            echo "  # Tags matching a regex"
+            echo "  ekg-tags --regex 'org/state/.*'"
+            echo ""
+            echo "  # Tags with prefix, co-tagged with another tag"
+            echo "  ekg-tags --prefix 'project/' --co-tagged moltbot"
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Build the elisp expression
+# Start with the base tag list, then apply filters
+ELISP="(progn
+  (require 'ekg)
+  (ekg-connect)
+  (let ((tags (ekg-tags)))"
+
+# Apply co-tagged filter: find tags that share notes with the given tag(s)
+if [[ ${#CO_TAGGED[@]} -gt 0 ]]; then
+    # Build the co-tagged filter
+    CO_TAGS_ELISP="("
+    for tag in "${CO_TAGGED[@]}"; do
+        escaped="${tag//\"/\\\"}"
+        CO_TAGS_ELISP+="\"$escaped\" "
+    done
+    CO_TAGS_ELISP="${CO_TAGS_ELISP% })"
+
+    ELISP+="
+    (let ((co-tags '$CO_TAGS_ELISP)
+          (co-tag-set (make-hash-table :test 'equal)))
+      ;; Get all notes that have ALL the co-tagged tags
+      (let ((notes (ekg-get-notes-with-tags co-tags)))
+        (dolist (note notes)
+          (dolist (tag (ekg-note-tags note))
+            (unless (member tag co-tags)
+              (puthash tag t co-tag-set)))))
+      (setq tags (seq-filter (lambda (t) (gethash t co-tag-set)) tags)))"
+fi
+
+# Apply prefix filter
+if [[ -n "$PREFIX" ]]; then
+    escaped="${PREFIX//\"/\\\"}"
+    ELISP+="
+    (setq tags (seq-filter (lambda (t) (string-prefix-p \"$escaped\" t)) tags))"
+fi
+
+# Apply including filter
+if [[ -n "$INCLUDING" ]]; then
+    escaped="${INCLUDING//\"/\\\"}"
+    ELISP+="
+    (setq tags (seq-filter (lambda (t) (string-match-p (regexp-quote \"$escaped\") t)) tags))"
+fi
+
+# Apply regex filter
+if [[ -n "$REGEX" ]]; then
+    escaped="${REGEX//\"/\\\"}"
+    ELISP+="
+    (setq tags (seq-filter (lambda (t) (string-match-p \"$escaped\" t)) tags))"
+fi
+
+# Output as JSON array
+ELISP+="
+    (princ (concat \"[\" (mapconcat (lambda (t) (format \"\\\"%s\\\"\" t)) (sort tags #'string<) \",\") \"]\"))))"
+
+# Build emacsclient command
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+# Execute
+if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP" 2>&1); then
+    echo "Error: Failed to list tags. Is the Emacs daemon running?" >&2
+    echo "$OUTPUT" >&2
+    exit 1
+fi
+
+# Clean up emacsclient output (strip outer quotes, unescape)
+echo "$OUTPUT" | sed 's/^"//; s/"$//' | sed 's/\\\\\\\\/\\\\/g; s/\\"/"/g'

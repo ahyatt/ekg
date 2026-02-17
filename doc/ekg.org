@@ -1401,26 +1401,47 @@ was not the starting directory.
 
 *** Command-line tools for agent integration
 
-The =ekg-agent= module provides command-line tools that enable external AI
-agents to use ekg as persistent memory storage.  These tools are designed for
-programmatic use by agents, not for end users.
+The =ekg= package provides command-line tools in the =agent_tools/= subdirectory
+that enable external AI agents to use ekg as persistent memory storage.  These
+tools communicate with the running Emacs daemon via =emacsclient= and are
+designed for programmatic use by agents.
+
+If you use =ekg= with an agent, you need to =(require 'ekg-agent)=.
 
 **** Agent tool location
 
 The command-line tools are located in the =agent_tools/= subdirectory of the
 ekg installation:
 
-- =agent_tools/ekg-add-note= - Write notes to ekg
-- =agent_tools/ekg-read= - Read notes from ekg
+- =agent_tools/ekg-add-note= - Create notes
+- =agent_tools/ekg-read= - Read notes by tag, ID, or search
+- =agent_tools/ekg-tags= - Search and list tags
+- =agent_tools/ekg-update-tags= - Add or remove tags on existing notes
+- =agent_tools/ekg-trash= - Soft-delete notes
 
 To use these tools, agents should locate the ekg installation directory and
 reference the scripts with their full path, for example:
 =$EKG_DIR/agent_tools/ekg-add-note=
 
+**** Skill file
+The file =agent_tools/skill.md= is a complete reference document describing all
+available tools, tag conventions, and recommended workflows.  It is designed to
+be used as an agent skill --- a file that an agent reads to learn how to use ekg.
+
+To make this skill available to your agent, symlink =skill.md= into wherever
+your agent stores its skill files.  For example:
+
+#+begin_src sh
+ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
+#+end_src
+
+This way, the agent always has up-to-date documentation for the ekg tools
+without needing to duplicate it.
 **** Instructions for configuring agents
 
-When setting up an AI agent to use ekg for memory, provide these instructions
-to the agent:
+When setting up an AI agent to use ekg for memory, the recommended approach is
+to provide the agent with the =skill.md= file as described above.  For agents
+that do not support skill files, you can provide these instructions directly:
 
 ***** Long version
 
@@ -1525,6 +1546,20 @@ Example:
   
   # Later, retrieve preferences
   ekg-read --tag "user-preferences" -n 10
+
+Additional tools:
+
+  # Search and list tags
+  ekg-tags                              # All tags
+  ekg-tags --co-tagged prompt           # Tags co-occurring with "prompt"
+  ekg-tags --regex "org/state/.*"       # Tags matching regex
+  ekg-tags --prefix "project/"          # Tags with prefix
+
+  # Update tags on a note
+  ekg-update-tags <note-id> --add "done" --remove "in-progress"
+
+  # Soft-delete a note
+  ekg-trash <note-id>
   
 #+end_example
 
@@ -1560,6 +1595,14 @@ Usage modes:
 
 4. Text search (keyword matching):
    ekg-read --search "deadline"
+
+To search and list tags, use ekg-tags:
+  ekg-tags                              # All tags
+  ekg-tags --co-tagged prompt           # Tags co-occurring with "prompt"
+  ekg-tags --regex "pattern"            # Tags matching regex
+
+To update tags on a note: ekg-update-tags <note-id> --add tag1 --remove tag2
+To soft-delete a note: ekg-trash <note-id>
 
 You should use ekg memory to:
 1. Record important findings, decisions, and progress
@@ -1611,6 +1654,18 @@ For direct elisp integration:
 
 ;; Text search
 (ekg-agent-read-notes :text-search "query" :num 10)
+
+;; List all tags
+(ekg-tags)
+
+;; Tags with prefix
+(ekg-tags-with-prefix "project/")
+
+;; Tags containing substring
+(ekg-tags-including "moltbot")
+
+;; Tags co-occurring with prompt tag
+(ekg-agent-cotagged-prompt-tags)
 #+end_src
 
 * Design

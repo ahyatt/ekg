@@ -786,7 +786,7 @@ default.  The idea is that you can tag files and folders to make them easier to
 find.  Here is an example note similar to web address URL:
 
 @quotation
-Resource: @uref{file:///Users/andrewhyatt/notes/20230510T162600__emacs_init-file.org}
+Resource: @uref{file:///Users/ahyatt/notes/20230510T162600__emacs_init-file.org}
 Tags: doc/emacs config, date/2023-05-13, emacs/init
 Title: Emacs Config
 
@@ -1960,9 +1960,12 @@ was not the starting directory.
 @node Command-line tools for agent integration
 @subsection Command-line tools for agent integration
 
-The @samp{ekg-agent} module provides command-line tools that enable external AI
-agents to use ekg as persistent memory storage.  These tools are designed for
-programmatic use by agents, not for end users.
+The @samp{ekg} package provides command-line tools in the @samp{agent_tools/} subdirectory
+that enable external AI agents to use ekg as persistent memory storage.  These
+tools communicate with the running Emacs daemon via @samp{emacsclient} and are
+designed for programmatic use by agents.
+
+If you use @samp{ekg} with an agent, you need to @samp{(require 'ekg-agent)}.
 
 @enumerate
 @item
@@ -1974,9 +1977,15 @@ ekg installation:
 
 @itemize
 @item
-@samp{agent_tools/ekg-add-note} - Write notes to ekg
+@samp{agent_tools/ekg-add-note} - Create notes
 @item
-@samp{agent_tools/ekg-read} - Read notes from ekg
+@samp{agent_tools/ekg-read} - Read notes by tag, ID, or search
+@item
+@samp{agent_tools/ekg-tags} - Search and list tags
+@item
+@samp{agent_tools/ekg-update-tags} - Add or remove tags on existing notes
+@item
+@samp{agent_tools/ekg-trash} - Soft-delete notes
 @end itemize
 
 To use these tools, agents should locate the ekg installation directory and
@@ -1984,11 +1993,30 @@ reference the scripts with their full path, for example:
 @samp{$EKG_DIR/agent_tools/ekg-add-note}
 
 @item
+@anchor{Skill file}Skill file
+
+
+The file @samp{agent_tools/skill.md} is a complete reference document describing all
+available tools, tag conventions, and recommended workflows.  It is designed to
+be used as an agent skill --- a file that an agent reads to learn how to use ekg.
+
+To make this skill available to your agent, symlink @samp{skill.md} into wherever
+your agent stores its skill files.  For example:
+
+@example
+ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
+@end example
+
+This way, the agent always has up-to-date documentation for the ekg tools
+without needing to duplicate it.
+
+@item
 @anchor{Instructions for configuring agents}Instructions for configuring agents
 
 
-When setting up an AI agent to use ekg for memory, provide these instructions
-to the agent:
+When setting up an AI agent to use ekg for memory, the recommended approach is
+to provide the agent with the @samp{skill.md} file as described above.  For agents
+that do not support skill files, you can provide these instructions directly:
 
 @enumerate
 @item
@@ -2096,6 +2124,20 @@ Example:
   
   # Later, retrieve preferences
   ekg-read --tag "user-preferences" -n 10
+
+Additional tools:
+
+  # Search and list tags
+  ekg-tags                              # All tags
+  ekg-tags --co-tagged prompt           # Tags co-occurring with "prompt"
+  ekg-tags --regex "org/state/.*"       # Tags matching regex
+  ekg-tags --prefix "project/"          # Tags with prefix
+
+  # Update tags on a note
+  ekg-update-tags <note-id> --add "done" --remove "in-progress"
+
+  # Soft-delete a note
+  ekg-trash <note-id>
   
 @end example
 
@@ -2134,6 +2176,14 @@ Usage modes:
 
 4. Text search (keyword matching):
    ekg-read --search "deadline"
+
+To search and list tags, use ekg-tags:
+  ekg-tags                              # All tags
+  ekg-tags --co-tagged prompt           # Tags co-occurring with "prompt"
+  ekg-tags --regex "pattern"            # Tags matching regex
+
+To update tags on a note: ekg-update-tags <note-id> --add tag1 --remove tag2
+To soft-delete a note: ekg-trash <note-id>
 
 You should use ekg memory to:
 1. Record important findings, decisions, and progress
@@ -2207,6 +2257,18 @@ For direct elisp integration:
 
 ;; Text search
 (ekg-agent-read-notes :text-search "query" :num 10)
+
+;; List all tags
+(ekg-tags)
+
+;; Tags with prefix
+(ekg-tags-with-prefix "project/")
+
+;; Tags containing substring
+(ekg-tags-including "moltbot")
+
+;; Tags co-occurring with prompt tag
+(ekg-agent-cotagged-prompt-tags)
 @end lisp
 @end enumerate
 @end enumerate
