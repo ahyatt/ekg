@@ -50,21 +50,7 @@
   :type 'string
   :group 'ekg-agent)
 
-(defcustom ekg-agent-self-instruct-tag "agent/instruct"
-  "The tag used to identify notes with instructions for the agent."
-  :type 'string
-  :group 'ekg-agent)
-
 (add-to-list 'ekg-hidden-tags ekg-agent-self-info-tag)
-(add-to-list 'ekg-hidden-tags ekg-agent-self-instruct-tag)
-
-(defcustom ekg-agent-context-func #'ekg-agent-starting-context
-  "Function that returns the starting information for an ekg agent.
-
-This is combined with a standard prompt to form the LLM context for the
-agent."
-  :type 'function
-  :group 'ekg-agent)
 
 (defcustom ekg-agent-daily-time "09:00"
   "Time of day to run the daily agent evaluation, in HH:MM format (24-hour).
@@ -483,10 +469,9 @@ EXTRA-TOOLS is a list of additional tools beyond `ekg-agent-base-tools' and `ekg
   "Return a message instructing the agent to save state before stopping."
   (format (concat
            "Time limit reached. Before this session ends, immediately create a note with your current state "
-           "using `create_note` (tag it with `%s` or `%s`). Also call `summarize_state` with a brief update. "
+           "using `create_note` (tag it with `%s`). Also call `summarize_state` with a brief update. "
            "Then finish by calling `end` or the appropriate completion tool.")
-          ekg-agent-self-info-tag
-          ekg-agent-self-instruct-tag))
+          ekg-agent-self-info-tag))
 
 (defun ekg-agent--summarize-state (state)
   "Write STATE to the agent log window."
@@ -845,11 +830,11 @@ agent."
                            major-mode)
                    (buffer-substring-no-properties start end))))
 
-(defun ekg-agent-starting-context ()
+(defun ekg-agent-latest-notes-context ()
   "Return the context for an agent for new sessions.
 
 This includes the latest 10 notes and the org agenda, and the last 10
-self info and self-instruct notes."
+self info."
   (concat
    "The last 10 notes:\n"
    (let ((ekg-llm-note-numwords 300))
@@ -860,9 +845,9 @@ self info and self-instruct notes."
       "\n\nTODO items from org-mode:\n"
       (with-temp-buffer (org-ql-search org-agenda-files '(todo) :buffer (current-buffer))
                         (buffer-substring-no-properties (point-min) (point-max)))))
-   "\n\nThe last 10 self-info and self-instruct notes:\n"
+   "\n\nThe last 10 self-info notes:\n"
    (mapconcat #'ekg-llm-note-to-text
-              (seq-take (ekg-get-notes-with-any-tags (list ekg-agent-self-info-tag ekg-agent-self-instruct-tag))
+              (seq-take (ekg-get-notes-with-tag ekg-agent-self-info-tag)
                         10)
               "\n\n")))
 
@@ -891,11 +876,20 @@ Returns nil if no AGENTS.md files are found."
       (concat "\n\nUser instructions from AGENTS.md files:\n\n"
               (string-join (nreverse parts) "\n\n")))))
 
+(defun ekg-agent-cotagged-prompt-tags ()
+  "Return a list of all tags that are cotagged with the prompt tag."
+  (let (result)
+    (dolist (note (ekg-get-notes-with-tag ekg-llm-prompt-tag))
+      (dolist (tag (ekg-note-tags note))
+        (when (not (string-equal tag ekg-llm-prompt-tag))
+          (push tag result))))
+    result))
+
 (defun ekg-agent-instructions-intro ()
   "Introductory instructions for the ekg agent.
 
 These instructions guide the agent on how to effectively use ekg
-notes as memory for tasks. Follow these rules to ensure proper
+notes as memory for tasks.  Follow these rules to ensure proper
 note-taking and knowledge retention."
   (let ((timeout-desc (if (and (numberp ekg-agent-timeout-seconds)
                                (> ekg-agent-timeout-seconds 0))
@@ -925,8 +919,10 @@ Before you begin any substantive work on a task:
    - Read existing notes to understand what's already known.
    - Read the project's AGENTS.md file (if present) or check
      ~/.pi/agent/AGENTS.md for global instructions.
-   - Get notes about userful skills by looking up tags with the `skill/'
-     prefix.
+   - Read existing notes that contain instructions for directories,
+     skills, or projects mentioned in the task description.  Each of
+     these will have a tag cotagged with the prompt tag.  Existing
+     cotags with the prompt tag are: %s.
    - If you find relevant notes, reference them in your task description.
 
 2. **CREATE INITIAL TASK NOTE**
@@ -965,7 +961,9 @@ When the task is complete:
    - Ask: what did I learn that's generally useful?
    - Convert those learnings into standalone notes with appropriate tags
    - If something went wrong, document the lesson
-   - If my instructions could be improved, create or edit notes tagged with `%s`
+   - If my instructions could be improved, create or edit notes tagged
+     with `%s` and other tags that will allow you to later use it in the
+     correct contexts.
 
 6. **UPDATE THE TASK NOTE**
    - Add a final entry summarizing the outcome
@@ -976,10 +974,10 @@ Use the `summarize_state` tool regularly to write brief status updates
 to the user-visible agent log window (at least every couple of tool
 calls or whenever your plan changes).
 
-The session may end if a total task timeout has been configured. Or,
+The session may end if a total task timeout (%s) has been configured. Or,
 some error may interrupt the processing. Because your processing can end
 unexpected, you MUST occasionally write out your current state to an ekg
-note (tag with `%s` or `%s`, and a tag you choose to represent the
+note (tag with `%s`, and a tag you choose to represent the
 task). If you receive a timeout warning, do this immediately and then
 finish. When executing a long-running task (more than a couple of tool
 calls), start saving your state every few tool calls to a note.
@@ -987,11 +985,10 @@ calls), start saving your state every few tool calls to a note.
 When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
 these tags manually."
-     ekg-agent-self-instruct-tag
+     (concat "[" (string-join (ekg-agent-get-all-cotagged-prompt-tags) " ") "]")
+     ekg-llm-prompt-tag
      timeout-desc
-     ekg-agent-self-info-tag
-     ekg-agent-self-instruct-tag
-     ekg-agent-self-instruct-tag)))
+     ekg-agent-self-info-tag)))
 
 (defun ekg-agent--load-org-instructions ()
   "Legacy function - kept for backwards compatibility.
@@ -1327,8 +1324,7 @@ ARG, if non-nil, allows editing the instructions."
                                                 (ekg-get-notes-with-any-tags
                                                  (append
                                                   (ekg-note-tags ekg-note)
-                                                  (list ekg-agent-self-info-tag
-                                                        ekg-agent-self-instruct-tag))))
+                                                  (list ekg-agent-self-info-tag))))
                                     10))
            (context-notes-json (let ((ekg-llm-note-numwords 100))
                                  (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
@@ -1371,7 +1367,7 @@ currently editing.\n\n"
 (defun ekg-agent-show-internal-notes ()
   "Show notes with agent internal tags."
   (interactive)
-  (ekg-show-notes-with-any-tags (list ekg-agent-self-info-tag ekg-agent-self-instruct-tag)))
+  (ekg-show-notes-with-tag ekg-agent-self-info-tag))
 
 ;;;###autoload
 (defun ekg-agent-add-note (text tags mode)

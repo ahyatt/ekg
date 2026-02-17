@@ -1339,7 +1339,6 @@ with =ekg-agent-cancel-daily=.
 The agent uses specific tags to organize its work:
 - ~ekg-agent-author-tag~ (default "agent"): All notes created by the agent will have this tag.
 - ~ekg-agent-self-info-tag~ (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
-- ~ekg-agent-self-instruct-tag~ (default "agent/instruct"): The agent uses this tag to leave instructions for its future self.
 
 You can customize these tags if you prefer different names.
 
