@@ -126,6 +126,17 @@ stdout will be returned."
 (defvar ekg-agent--daily-timer nil
   "Timer object for the daily agent evaluation.")
 
+(defun ekg-agent--provider ()
+  "Return the provider for the LLM.
+
+If there is a list of providers, find the first one that has tool
+calling, or if none have tool calling, just return the first provider."
+  (if (listp ekg-llm-provider)
+      (or (car (seq-filter (lambda (provider) (member 'tool-use (llm-provider-capabilities provider)))
+                           ekg-llm-provider))
+          (car ekg-llm-provider))
+    ekg-llm-provider))
+
 (defmacro ekg-agent--with-error-as-text (&rest body)
   "Execute BODY, returning any error as a descriptive string.
 If BODY signals an error, return \"Error: MESSAGE\" instead of
@@ -374,7 +385,7 @@ EXTRA-TOOLS is a list of additional tools beyond `ekg-agent-base-tools' and `ekg
    (append ekg-agent-base-tools
            ekg-agent-extra-tools
            extra-tools
-           (when (llm-google-p (ekg-llm--provider))
+           (when (llm-google-p (ekg-agent--provider))
              (list (make-llm-tool :function #'ignore
                                   :name "google_search"
                                   :description "Google Search built-in tool"
@@ -1005,7 +1016,7 @@ to create new notes or perform other actions to help the user."
 (defun ekg-agent--prompt-id (prompt)
   "From llm PROMPT, call an LLM to get a short identifier."
   (let (id)
-    (llm-chat (ekg-llm--provider)
+    (llm-chat (ekg-agent--provider)
               (llm-make-chat-prompt
                (llm-chat-prompt-interaction-content
                 (car (seq-filter (lambda (interaction)
@@ -1099,7 +1110,7 @@ session.  At iteration 0 the log buffer is created and
         (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
         (setq timeout-final t))
       (llm-chat-async
-       (ekg-llm--provider)
+       (ekg-agent--provider)
        prompt
        (lambda (result)
          (if (and (buffer-live-p log-buf)
