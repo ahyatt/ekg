@@ -10,7 +10,7 @@ the user must have run `M-x server-start` on their emacs, as well as loaded the
 `ekg` package. These scripts can be found in the `ekg` package, under the
 `agent_tools` directory.
 
-### ekg-add-note
+## ekg-add-note
 
 Create a new note.
 
@@ -50,7 +50,7 @@ ekg-read --search "query string"
 - Output is JSON: array of objects with `id`, `text`, `mode`, `tags`,
   `creation_time`, `modified_time`.
 
-### ekg-update-tags
+## ekg-update-tags
 
 Add or remove tags on an existing note.
 
@@ -58,7 +58,7 @@ Add or remove tags on an existing note.
 ekg-update-tags <note-id> --add tag1 --remove tag2
 ```
 
-### ekg-tags
+## ekg-tags
 
 Search and list tags in ekg.
 
@@ -90,7 +90,7 @@ ekg-tags --prefix "project/" --co-tagged moltbot
 
 Output is a JSON array of tag strings.
 
-### ekg-trash
+## ekg-trash
 
 Soft-delete a note (trash it). Running again on a trashed note permanently
 deletes it.
@@ -103,7 +103,8 @@ ekg-trash <note-id>
 
 ### Org Task Tags
 
-These make notes appear in Andy's org-mode agenda (`/ekg:tasks.org`):
+With a tag, notes will appear in org-mode agenda (`/ekg:tasks.org`) once the
+user sets it up by adding the file `/ekg:tasks.org` to the agenda.
 
 | Tag | Purpose |
 |---|---|
@@ -127,13 +128,13 @@ ekg-add-note \
   --mode org-mode
 ```
 
-#### Marking a task done
+### Marking a task done
 
 ```sh
 ekg-update-tags <note-id> --add "org/state/done" --remove "org/state/todo"
 ```
 
-#### Archiving a completed task
+### Archiving a completed task
 
 ```sh
 ekg-update-tags <note-id> --add "org/archive"
