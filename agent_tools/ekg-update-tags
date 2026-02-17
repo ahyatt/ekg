@@ -1,0 +1,100 @@
+#!/bin/bash
+# ekg-update-tags - Add or remove tags on an existing note
+#
+# Usage: ekg-update-tags <note-id> --add tag1 --remove tag2 [--daemon name]
+
+set -e
+
+NOTE_ID=""
+ADD_TAGS=()
+REMOVE_TAGS=()
+DAEMON_NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --add)
+            ADD_TAGS+=("$2")
+            shift 2
+            ;;
+        --remove)
+            REMOVE_TAGS+=("$2")
+            shift 2
+            ;;
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-update-tags <note-id> --add tag1 --remove tag2 [--daemon name]"
+            echo ""
+            echo "Options:"
+            echo "  --add TAG       Add a tag (repeatable)"
+            echo "  --remove TAG    Remove a tag (repeatable)"
+            echo "  --daemon NAME   Emacs daemon name (optional)"
+            exit 0
+            ;;
+        *)
+            if [[ -z "$NOTE_ID" ]]; then
+                NOTE_ID="$1"
+            else
+                echo "Error: Unexpected argument: $1"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$NOTE_ID" ]]; then
+    echo "Error: Note ID is required"
+    exit 1
+fi
+
+if [[ ${#ADD_TAGS[@]} -eq 0 && ${#REMOVE_TAGS[@]} -eq 0 ]]; then
+    echo "Error: At least one --add or --remove is required"
+    exit 1
+fi
+
+# Build add tags elisp list
+ADD_ELISP="("
+for tag in "${ADD_TAGS[@]}"; do
+    escaped="${tag//\"/\\\"}"
+    ADD_ELISP+="\"$escaped\" "
+done
+ADD_ELISP="${ADD_ELISP% })"
+
+# Build remove tags elisp list
+REMOVE_ELISP="("
+for tag in "${REMOVE_TAGS[@]}"; do
+    escaped="${tag//\"/\\\"}"
+    REMOVE_ELISP+="\"$escaped\" "
+done
+REMOVE_ELISP="${REMOVE_ELISP% })"
+
+ELISP_EXPR="(progn
+  (require 'ekg)
+  (ekg-connect)
+  (let ((note (ekg-get-note-with-id $NOTE_ID)))
+    (if note
+        (progn
+          (dolist (tag '$ADD_ELISP)
+            (unless (member tag (ekg-note-tags note))
+              (push tag (ekg-note-tags note))))
+          (dolist (tag '$REMOVE_ELISP)
+            (setf (ekg-note-tags note) (delete tag (ekg-note-tags note))))
+          (ekg-save-note note)
+          (princ (format \"Updated note $NOTE_ID. Tags: %s\" (ekg-note-tags note))))
+      (princ \"Error: Note $NOTE_ID not found\"))))"
+
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
+    echo "Error: Failed to update tags. Is the Emacs daemon running?" >&2
+    echo "$OUTPUT" >&2
+    exit 1
+fi
+
+echo "$OUTPUT" | sed 's/^"//; s/"$//'

@@ -1,0 +1,62 @@
+#!/bin/bash
+# ekg-trash - Trash (soft-delete) a note by ID
+#
+# Usage: ekg-trash <note-id> [--daemon name]
+#
+# Moves the note to trash. If already trashed, permanently deletes it.
+
+set -e
+
+NOTE_ID=""
+DAEMON_NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-trash <note-id> [--daemon name]"
+            echo ""
+            echo "Trash a note by its ID. If already trashed, permanently deletes it."
+            exit 0
+            ;;
+        *)
+            if [[ -z "$NOTE_ID" ]]; then
+                NOTE_ID="$1"
+            else
+                echo "Error: Unexpected argument: $1"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$NOTE_ID" ]]; then
+    echo "Error: Note ID is required"
+    echo "Use --help for usage information"
+    exit 1
+fi
+
+ELISP_EXPR="(progn
+  (require 'ekg)
+  (ekg-connect)
+  (let ((note (ekg-get-note-with-id $NOTE_ID)))
+    (if note
+        (progn (ekg-note-trash note) (princ \"Trashed note $NOTE_ID\"))
+      (princ \"Error: Note $NOTE_ID not found\"))))"
+
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
+    echo "Error: Failed to trash note. Is the Emacs daemon running?" >&2
+    echo "$OUTPUT" >&2
+    exit 1
+fi
+
+echo "$OUTPUT" | sed 's/^"//; s/"$//'
