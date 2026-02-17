@@ -132,7 +132,7 @@ stdout will be returned."
 If there is a list of providers, find the first one that has tool
 calling, or if none have tool calling, just return the first provider."
   (if (listp ekg-llm-provider)
-      (or (car (seq-filter (lambda (provider) (member 'tool-use (llm-provider-capabilities provider)))
+      (or (car (seq-filter (lambda (provider) (member 'tool-use (llm-capabilities provider)))
                            ekg-llm-provider))
           (car ekg-llm-provider))
     ekg-llm-provider))
