@@ -1,3 +1,9 @@
+---
+name: ekg
+description: "Use this skill to supplement memory - both looking for and using memory to understand how to do things, and the state of tasks."
+model: inherit
+---
+
 # ekg Skill — Emacs Knowledge Graph
 
 `ekg` is an Emacs package ([source](https://github.com/ahyatt/ekg)) for taking
@@ -6,8 +12,25 @@ of agent memory, and it may also be used by users for their notes as well.
 
 Here's how to use it from the command-line. Each script calls `emacsclient` so
 the user must have run `M-x server-start` on their emacs, as well as loaded the
-`ekg` package. These scripts can be found in the `ekg` package, under the
-`agent_tools` directory.
+`ekg` package.
+
+## Setup: Locating the Scripts
+
+The command-line scripts live in the `agent_tools/` directory of the `ekg`
+package. Since Emacs packages aren't normally on `$PATH`, resolve the directory
+at the start of any session by asking Emacs where ekg is installed:
+
+```sh
+EKG_DIR=$(emacsclient --eval '(file-name-directory (locate-library "ekg"))' | tr -d '"')
+```
+
+Then invoke scripts with their full path, e.g. `"$EKG_DIR/agent_tools/ekg-read"`.
+
+Alternatively, if you prefer, you can add the directory to your `$PATH`:
+
+```sh
+export PATH="$EKG_DIR/agent_tools:$PATH"
+```
 
 ## ekg-add-note
 
