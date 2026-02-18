@@ -2,8 +2,7 @@
 
 `ekg` is an Emacs package ([source](https://github.com/ahyatt/ekg)) for taking
 and retrieving notes, backed by a `sqlite` database. It should be used as a form
-of agent memory, and it also may be used by users as well for their notes as
-well.
+of agent memory, and it may also be used by users for their notes as well.
 
 Here's how to use it from the command-line. Each script calls `emacsclient` so
 the user must have run `M-x server-start` on their emacs, as well as loaded the
@@ -27,7 +26,7 @@ ekg-add-note --title "Title" --tag tag1 --tag tag2 --note "content" --mode org-m
 - The note is automatically tagged with `agent` and the current date (`date/YYYY-MM-DD`).
 - Content is automatically wrapped in LLM output markers.
 
-### ekg-read
+## ekg-read
 
 Read notes by tag, ID, or search.
 
@@ -103,7 +102,7 @@ ekg-trash <note-id>
 
 ### Org Task Tags
 
-With a tag, notes will appear in org-mode agenda (`/ekg:tasks.org`) once the
+With an `org/task` tag, notes will appear in the org-mode agenda (`/ekg:tasks.org`) once the
 user sets it up by adding the file `/ekg:tasks.org` to the agenda.
 
 | Tag | Purpose |
@@ -143,7 +142,7 @@ ekg-update-tags <note-id> --add "org/archive"
 ### Prompt Co-Tags
 
 Notes tagged with `prompt` plus other tags act as **injected instructions**.
-This is used by the build in ekg agent, but as an outside agent, you also need
+This is used by the built-in ekg agent, but as an outside agent, you also need
 to retrieve relevant prompts (if there are any) and use them before performing
 any significant action.
 

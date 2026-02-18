@@ -102,38 +102,38 @@ if [[ ${#CO_TAGGED[@]} -gt 0 ]]; then
           (dolist (tag (ekg-note-tags note))
             (unless (member tag co-tags)
               (puthash tag t co-tag-set)))))
-      (setq tags (seq-filter (lambda (t) (gethash t co-tag-set)) tags)))"
+      (setq tags (seq-filter (lambda (tag) (gethash tag co-tag-set)) tags)))"
 fi
 
 # Apply prefix filter
 if [[ -n "$PREFIX" ]]; then
     escaped="${PREFIX//\"/\\\"}"
     ELISP+="
-    (setq tags (seq-filter (lambda (t) (string-prefix-p \"$escaped\" t)) tags))"
+    (setq tags (seq-filter (lambda (tag) (string-prefix-p \"$escaped\" tag)) tags))"
 fi
 
 # Apply including filter
 if [[ -n "$INCLUDING" ]]; then
     escaped="${INCLUDING//\"/\\\"}"
     ELISP+="
-    (setq tags (seq-filter (lambda (t) (string-match-p (regexp-quote \"$escaped\") t)) tags))"
+    (setq tags (seq-filter (lambda (tag) (string-match-p (regexp-quote \"$escaped\") tag)) tags))"
 fi
 
 # Apply regex filter
 if [[ -n "$REGEX" ]]; then
     escaped="${REGEX//\"/\\\"}"
     ELISP+="
-    (setq tags (seq-filter (lambda (t) (string-match-p \"$escaped\" t)) tags))"
+    (setq tags (seq-filter (lambda (tag) (string-match-p \"$escaped\" tag)) tags))"
 fi
 
 # Output as JSON array
 ELISP+="
-    (princ (concat \"[\" (mapconcat (lambda (t) (format \"\\\"%s\\\"\" t)) (sort tags #'string<) \",\") \"]\"))))"
+    (princ (concat \"[\" (mapconcat (lambda (tag) (format \"\\\"%s\\\"\" tag)) (sort tags #'string<) \",\") \"]\"))))"
 
 # Build emacsclient command
 EMACSCLIENT_CMD="emacsclient"
 if [[ -n "$DAEMON_NAME" ]]; then
-    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+    EMACSCLIENT_CMD+=" -s \"$DAEMON_NAME\""
 fi
 
 # Execute
