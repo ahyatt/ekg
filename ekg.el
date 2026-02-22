@@ -1627,6 +1627,9 @@ Return the latest `ekg-note' object."
 (defun ekg-capture-finalize ()
   "Save the current note."
   (interactive nil ekg-capture-mode)
+  (when ekg-draft-tag
+    (setf (ekg-note-tags ekg-note)
+          (seq-difference (ekg-note-tags ekg-note) (list ekg-draft-tag))))
   (ekg--save-note-in-buffer)
   (let ((note ekg-note))
     (quit-window 'kill)
