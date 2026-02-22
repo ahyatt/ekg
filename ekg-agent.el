@@ -996,7 +996,7 @@ calls), start saving your state every few tool calls to a note.
 When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
 these tags manually."
-     (concat "[" (string-join (ekg-agent-get-all-cotagged-prompt-tags) " ") "]")
+     (concat "[" (string-join (ekg-agent-cotagged-prompt-tags) " ") "]")
      ekg-llm-prompt-tag
      timeout-desc
      ekg-agent-self-info-tag)))
