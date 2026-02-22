@@ -395,7 +395,7 @@ The valid interaction types are `'append' and `'replace'."
                    (ekg-llm-create-output-holder (car enclosure) (cdr enclosure))))))
     ('replace (lambda ()
                 (save-excursion
-                  (goto-char (+ 1 (overlay-end (ekg--metadata-overlay))))
+                  (goto-char (point-min))
                   (let ((start (make-marker))
                         (end (make-marker)))
                     (set-marker start (point))

@@ -36,6 +36,14 @@
 (require 'subr-x)
 (require 'async)
 
+;; Forward declarations for variables defined later in this file.
+(defvar ekg-agent-base-tools)
+(defvar ekg-agent-extra-tools)
+
+;; Forward declarations for optional external packages.
+(declare-function flycheck-mode "flycheck")
+(declare-function org-ql-search "org-ql")
+
 (defgroup ekg-agent nil
   "Agentic actions for ekg."
   :group 'ekg)
@@ -343,7 +351,7 @@ but we'll only get strings from the LLM."
                                                    (result
                                                     (condition-case err
                                                         (eval (read elisp))
-                                                      (error (setq e (format "%S" e))))))
+                                                      (error (setq e (format "%S" err))))))
                                               (or e
                                                   (if (equal return "result")
                                                       (format "%S" result)
@@ -365,8 +373,8 @@ but we'll only get strings from the LLM."
 
 (defun ekg-agent--tools (extra-tools)
   "Return the list of tools available to the agent.
-
-EXTRA-TOOLS is a list of additional tools beyond `ekg-agent-base-tools' and `ekg-agent-extra-tools' to include."
+EXTRA-TOOLS is a list of additional tools beyond
+`ekg-agent-base-tools' and `ekg-agent-extra-tools' to include."
   (seq-uniq
    (append ekg-agent-base-tools
            ekg-agent-extra-tools
@@ -1046,7 +1054,7 @@ The agent will review recent notes and TODO items, then decide whether
 to create new notes or perform other actions to help the user."
   (interactive)
   (ekg-agent--iterate (llm-make-chat-prompt
-                       (ekg-agent-starting-context)
+                       (ekg-agent-latest-notes-context)
                        :context
                        (concat (ekg-agent-instructions-intro) "\n"
                                (ekg-agent-instructions-evaluate-status))
@@ -1385,8 +1393,8 @@ currently editing.\n\n"
   "Add a note from an agent with TEXT, TAGS, and MODE.
 
 TAGS should be a list of tag strings.  MODE should be a symbol like
-'org-mode, 'markdown-mode, or 'text-mode.  Returns the note ID on
-success, signals an error on failure.
+`org-mode', `markdown-mode', or `text-mode'.  Returns the note
+ID on success, signals an error on failure.
 
 This function automatically:
 - Adds the `ekg-agent-author-tag' to the tags

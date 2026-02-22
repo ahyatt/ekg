@@ -26,6 +26,8 @@
 (require 'ekg)
 (require 'triples)
 (require 'seq)
+(require 'gnus-art)
+(require 'gnus-util)
 
 (defun ekg-email-add-schema ()
   "Add the email schema to the ekg database."
@@ -86,14 +88,12 @@
       (plist-put prop-plist :email/cc cc))
     (ekg-capture
      :text (gnus-with-article-buffer
-            (buffer-substring-no-properties
-             (save-excursion
-               (article-goto-body)
-               (point))
-             (point-max)))
+             (buffer-substring-no-properties
+              (save-excursion
+                (article-goto-body)
+                (point))
+              (point-max)))
      :properties prop-plist)))
-
-(add-hook 'ekg-note-save-hook #'ekg-email-save)
 
 (defun ekg-email-addresses ()
   "Return all addresses found in email."
