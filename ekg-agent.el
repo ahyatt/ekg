@@ -145,27 +145,35 @@ tool call."
 (defconst ekg-agent-tool-all-tags
   (make-llm-tool :function (lambda (tags num)
                              (ekg-agent--with-error-as-text
-                               (let ((ekg-llm-note-numwords 500)
-                                     (notes (ekg-agent--get-notes :tags (append tags nil) :num num)))
+                               (let* ((ekg-llm-note-numwords 500)
+                                      (tag-list (append tags nil))
+                                      (notes (ekg-agent--get-notes
+                                              :tags (or tag-list nil)
+                                              :latest (null tag-list)
+                                              :num num)))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
-                                   "No notes found with all of those tags."))))
+                                   "No notes found."))))
                  :name "get_notes_with_all_tags"
-                 :description "Retrieve notes that have all the specified tags."
-                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.")
+                 :description "Retrieve notes that have all the specified tags.  Results are returned newest first."
+                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be empty to retrieve the latest notes.")
                          (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
 
 (defconst ekg-agent-tool-any-tags
   (make-llm-tool :function (lambda (tags num)
                              (ekg-agent--with-error-as-text
-                               (let ((ekg-llm-note-numwords 500)
-                                     (notes (ekg-agent--get-notes :any-tags (append tags nil) :num num)))
+                               (let* ((ekg-llm-note-numwords 500)
+                                      (tag-list (append tags nil))
+                                      (notes (ekg-agent--get-notes
+                                              :any-tags (or tag-list nil)
+                                              :latest (null tag-list)
+                                              :num num)))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
-                                   "No notes found with any of those tags."))))
+                                   "No notes found."))))
                  :name "get_notes_with_any_tags"
-                 :description "Retrieve notes that have any of the specified tags."
-                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.")
+                 :description "Retrieve notes that have any of the specified tags.  Results are returned newest first."
+                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be empty to retrieve the latest notes.")
                          (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
 
 (defconst ekg-agent-tool-get-note-by-id
@@ -1488,13 +1496,15 @@ Returns a list of note objects."
                          (triples-fts-query-subject ekg-db text-search ekg-query-pred-abbrevs)))
      num))
 
-   ;; Tag-based search with OR logic
+   ;; Tag-based search with OR logic (already sorted by creation time)
    (any-tags
     (seq-take (ekg-get-notes-with-any-tags any-tags) num))
 
    ;; Tag-based search (AND logic)
    (tags
-    (seq-take (ekg-get-notes-with-tags tags) num))
+    (seq-take (sort (ekg-get-notes-with-tags tags)
+                    #'ekg-sort-by-creation-time)
+              num))
 
    ;; No search criteria
    (t
