@@ -232,6 +232,7 @@ Each level is indented to show the nesting structure."
 
 (defun ekg-org-agent-plan-task ()
   "Plan the current task and add the plan as child tasks using the agent."
+  (interactive)
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (parent-id (ekg-note-id ekg-note))
          (parent-note (ekg-get-note-with-id parent-id))
