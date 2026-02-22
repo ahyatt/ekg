@@ -51,7 +51,7 @@ ekg-add-note --title "Title" --tag tag1 --tag tag2 --note "content" --mode org-m
 
 ## ekg-read
 
-Read notes by tag, ID, or search.
+Read notes by tag, ID, search, or recency.
 
 ```sh
 # By tags (AND logic)
@@ -65,6 +65,9 @@ ekg-read --semantic-search "query string"
 
 # Full-text search
 ekg-read --search "query string"
+
+# Latest modified notes
+ekg-read --latest -n 5
 ```
 
 - `-n NUM` — Max notes to return (default: 10).

@@ -1440,7 +1440,7 @@ If MAX-WORDS is specified, truncate each note's text to that many words."
                          (ekg-agent--note-to-alist note max-words))
                        notes)))
 
-(cl-defun ekg-agent--get-notes (&key tags any-tags note-id semantic-search text-search (num 10))
+(cl-defun ekg-agent--get-notes (&key tags any-tags note-id semantic-search text-search latest (num 10))
   "Get notes from ekg based on search criteria.
 
 This is a helper function that returns a list of note objects.
@@ -1453,11 +1453,16 @@ This function supports multiple modes of operation:
 3. By note ID: Provide NOTE-ID as a number or string.
 4. By semantic search: Provide SEMANTIC-SEARCH as a query string.
 5. By text search: Provide TEXT-SEARCH as a query string.
+6. Latest modified: Provide LATEST as non-nil.
 
 NUM is the maximum number of notes to return (default 10).
 
 Returns a list of note objects."
   (cond
+   ;; Latest modified notes
+   (latest
+    (ekg-get-latest-modified num))
+
    ;; Read by note ID
    (note-id
     (let ((note (ekg-get-note-with-id (if (stringp note-id)
@@ -1493,10 +1498,10 @@ Returns a list of note objects."
 
    ;; No search criteria
    (t
-    (error "Must provide tags, any-tags, note-id, semantic-search, or text-search"))))
+    (error "Must provide tags, any-tags, note-id, semantic-search, text-search, or latest"))))
 
 ;;;###autoload
-(cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search (num 10) (max-words 100))
+(cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search latest (num 10) (max-words 100))
   "Read notes from ekg and return as JSON.
 
 This function supports multiple modes of operation:
@@ -1505,6 +1510,7 @@ This function supports multiple modes of operation:
 2. By note ID: Provide NOTE-ID as a number or string.
 3. By semantic search: Provide SEMANTIC-SEARCH as a query string.
 4. By text search: Provide TEXT-SEARCH as a query string.
+5. Latest modified: Provide LATEST as non-nil.
 
 NUM is the maximum number of notes to return (default 10).
 MAX-WORDS is the maximum number of words per note text (default 100).
@@ -1518,6 +1524,7 @@ notes from ekg."
                                      :note-id note-id
                                      :semantic-search semantic-search
                                      :text-search text-search
+                                     :latest latest
                                      :num num)))
     (ekg-agent--notes-to-json notes max-words)))
 

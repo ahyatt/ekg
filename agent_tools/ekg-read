@@ -6,6 +6,7 @@
 #   ekg-read <note-id>
 #   ekg-read --semantic-search "query string"
 #   ekg-read --search "query string"
+#   ekg-read --latest -n 5
 #
 # This script uses emacsclient to communicate with a running Emacs daemon,
 # providing fast note reading for agents and scripts.
@@ -47,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             MODE="text"
             shift 2
             ;;
+        --latest)
+            MODE="latest"
+            shift
+            ;;
         --daemon)
             DAEMON_NAME="$2"
             shift 2
@@ -62,6 +67,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -w, --words NUM     Maximum words per note (default: 100)"
             echo "  --semantic-search Q Semantic search using embeddings"
             echo "  --search QUERY      Full-text search"
+            echo "  --latest            Return the latest modified notes"
             echo "  --daemon NAME       Name of the Emacs daemon to use (optional)"
             echo "  --help              Show this help message"
             echo ""
@@ -77,6 +83,9 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "  # Text search"
             echo "  ekg-read --search 'important deadline'"
+            echo ""
+            echo "  # Latest modified notes"
+            echo "  ekg-read --latest -n 5"
             exit 0
             ;;
         *)
@@ -99,7 +108,7 @@ if [[ -z "$MODE" ]]; then
     if [[ ${#TAGS[@]} -gt 0 ]]; then
         MODE="tags"
     else
-        echo "Error: Must provide either tags, note ID, --semantic-search, or --search"
+        echo "Error: Must provide either tags, note ID, --semantic-search, --search, or --latest"
         echo "Use --help for usage information"
         exit 1
     fi
@@ -156,6 +165,12 @@ case $MODE in
         ELISP_EXPR="(princ (progn
           (require 'ekg-agent)
           (ekg-agent-read-notes :text-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)))"
+        ;;
+
+    latest)
+        ELISP_EXPR="(princ (progn
+          (require 'ekg-agent)
+          (ekg-agent-read-notes :latest t :num $NUM :max-words $MAX_WORDS)))"
         ;;
 esac
 
