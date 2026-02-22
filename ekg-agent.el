@@ -36,6 +36,14 @@
 (require 'subr-x)
 (require 'async)
 
+;; Forward declarations for variables defined later in this file.
+(defvar ekg-agent-base-tools)
+(defvar ekg-agent-extra-tools)
+
+;; Forward declarations for optional external packages.
+(declare-function flycheck-mode "flycheck")
+(declare-function org-ql-search "org-ql")
+
 (defgroup ekg-agent nil
   "Agentic actions for ekg."
   :group 'ekg)
@@ -378,8 +386,8 @@ but we'll only get strings from the LLM."
 
 (defun ekg-agent--tools (extra-tools)
   "Return the list of tools available to the agent.
-
-EXTRA-TOOLS is a list of additional tools beyond `ekg-agent-base-tools' and `ekg-agent-extra-tools' to include."
+EXTRA-TOOLS is a list of additional tools beyond
+`ekg-agent-base-tools' and `ekg-agent-extra-tools' to include."
   (seq-uniq
    (append ekg-agent-base-tools
            ekg-agent-extra-tools
@@ -1009,7 +1017,7 @@ calls), start saving your state every few tool calls to a note.
 When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
 these tags manually."
-     (concat "[" (string-join (ekg-agent-get-all-cotagged-prompt-tags) " ") "]")
+     (concat "[" (string-join (ekg-agent-cotagged-prompt-tags) " ") "]")
      ekg-llm-prompt-tag
      timeout-desc
      ekg-agent-self-info-tag)))
@@ -1059,7 +1067,7 @@ The agent will review recent notes and TODO items, then decide whether
 to create new notes or perform other actions to help the user."
   (interactive)
   (ekg-agent--iterate (llm-make-chat-prompt
-                       (ekg-agent-starting-context)
+                       (ekg-agent-latest-notes-context)
                        :context
                        (concat (ekg-agent-instructions-intro) "\n"
                                (ekg-agent-instructions-evaluate-status))
@@ -1177,65 +1185,65 @@ session.  At iteration 0 the log buffer is created and
         (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
         (setq timeout-final t))
       (let ((request
-             (llm-chat-async
-              (ekg-agent--provider)
-              prompt
-              (lambda (result)
-                (if (and (buffer-live-p log-buf)
-                         (buffer-local-value 'ekg-agent--cancelled-p log-buf))
-                    ;; Cancelled by user
-                    (when (ekg-agent--set-stopped log-buf)
-                      (with-current-buffer log-buf
-                        (ekg-agent--log "Agent stopped (cancelled by user)"))
-                      (when status-callback (funcall status-callback "stopped by user")))
-                  ;; Normal processing of result
-                  (let ((result-alist (plist-get result :tool-results))
-                        (end-tools (or end-tools '("end"))))
-                    (if result-alist
-                        (let ((tools-ran (mapconcat (lambda (result)
-                                                      (format "Tool: %s Result: %s"
-                                                              (car result) (cdr result)))
-                                                    result-alist ", ")))
-                          (if (and log-buf (buffer-live-p log-buf))
-                              (with-current-buffer log-buf
-                                (ekg-agent--log "Tools: %s" tools-ran))
-                            (message "Ran tools: %s" tools-ran)))
-                      ;; Everything must be a tool call, by default if it just gets
-                      ;; non-tool output we'll log it, and then instruct it to use
-                      ;; tools to end if needed.
-                      (when (and log-buf (buffer-live-p log-buf))
-                        (with-current-buffer log-buf
-                          (ekg-agent--log (plist-get :text result))))
-                      (llm-chat-prompt-append-response
-                       prompt
-                       (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
-                               (string-join end-tools ", "))))
+              (llm-chat-async
+               (ekg-agent--provider)
+               prompt
+               (lambda (result)
+                 (if (and (buffer-live-p log-buf)
+                          (buffer-local-value 'ekg-agent--cancelled-p log-buf))
+                     ;; Cancelled by user
+                     (when (ekg-agent--set-stopped log-buf)
+                       (with-current-buffer log-buf
+                         (ekg-agent--log "Agent stopped (cancelled by user)"))
+                       (when status-callback (funcall status-callback "stopped by user")))
+                   ;; Normal processing of result
+                   (let ((result-alist (plist-get result :tool-results))
+                         (end-tools (or end-tools '("end"))))
+                     (if result-alist
+                         (let ((tools-ran (mapconcat (lambda (result)
+                                                       (format "Tool: %s Result: %s"
+                                                               (car result) (cdr result)))
+                                                     result-alist ", ")))
+                           (if (and log-buf (buffer-live-p log-buf))
+                               (with-current-buffer log-buf
+                                 (ekg-agent--log "Tools: %s" tools-ran))
+                             (message "Ran tools: %s" tools-ran)))
+                       ;; Everything must be a tool call, by default if it just gets
+                       ;; non-tool output we'll log it, and then instruct it to use
+                       ;; tools to end if needed.
+                       (when (and log-buf (buffer-live-p log-buf))
+                         (with-current-buffer log-buf
+                           (ekg-agent--log (plist-get :text result))))
+                       (llm-chat-prompt-append-response
+                        prompt
+                        (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
+                                (string-join end-tools ", "))))
 
-                    (cond
-                     (timeout-final
-                      (when (ekg-agent--set-stopped log-buf)
-                        (when status-callback (funcall status-callback "stopped by timeout"))))
-                     ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
-                      (when (ekg-agent--set-stopped log-buf)
-                        (when status-callback
-                          (funcall
-                           status-callback
-                           (mapconcat (lambda (end-tool)
-                                        (assoc-default end-tool result-alist))
-                                      (seq-filter (lambda (end-tool) (assoc-default end-tool result-alist))
-                                                  end-tools)
-                                      ", ")))))
-                     (t
-                      (ekg-agent--iterate prompt
-                                          (+ 1 iteration-num)
-                                          status-callback
-                                          end-tools
-                                          deadline))))))
-              (lambda (_ err)
-                (when (ekg-agent--set-stopped log-buf)
-                  (when status-callback (funcall status-callback 'error))
-                  (error "%s" err)))
-              t)))
+                     (cond
+                      (timeout-final
+                       (when (ekg-agent--set-stopped log-buf)
+                         (when status-callback (funcall status-callback "stopped by timeout"))))
+                      ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
+                       (when (ekg-agent--set-stopped log-buf)
+                         (when status-callback
+                           (funcall
+                            status-callback
+                            (mapconcat (lambda (end-tool)
+                                         (assoc-default end-tool result-alist))
+                                       (seq-filter (lambda (end-tool) (assoc-default end-tool result-alist))
+                                                   end-tools)
+                                       ", ")))))
+                      (t
+                       (ekg-agent--iterate prompt
+                                           (+ 1 iteration-num)
+                                           status-callback
+                                           end-tools
+                                           deadline))))))
+               (lambda (_ err)
+                 (when (ekg-agent--set-stopped log-buf)
+                   (when status-callback (funcall status-callback 'error))
+                   (error "%s" err)))
+               t)))
         (when (buffer-live-p log-buf)
           (with-current-buffer log-buf
             (setq ekg-agent--current-request request)))))))
@@ -1438,8 +1446,8 @@ currently editing.\n\n"
   "Add a note from an agent with TEXT, TAGS, and MODE.
 
 TAGS should be a list of tag strings.  MODE should be a symbol like
-'org-mode, 'markdown-mode, or 'text-mode.  Returns the note ID on
-success, signals an error on failure.
+`org-mode', `markdown-mode', or `text-mode'.  Returns the note
+ID on success, signals an error on failure.
 
 This function automatically:
 - Adds the `ekg-agent-author-tag' to the tags

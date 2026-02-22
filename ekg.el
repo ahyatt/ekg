@@ -147,11 +147,12 @@ Modules can add to this list to hide their internal tags."
 (defcustom ekg-truncation-method 'word
   "Method used for truncating text.
 Possible values are:
-- 'word: Truncate text based on word count (default).
-- 'character: Truncate text based on character count.
-This affects functions like `ekg-truncate-at` and text selection for embeddings."
-  :type '(choice (const :tag "Word-based" 'word)
-                 (const :tag "Character-based" 'character))
+- `word': Truncate text based on word count (default).
+- `character': Truncate text based on character count.
+This affects functions like `ekg-truncate-at' and text
+selection for embeddings."
+  :type '(choice (const :tag "Word-based" word)
+                 (const :tag "Character-based" character))
   :group 'ekg)
 
 (defcustom ekg-display-note-template "%n(id)%n(tagged)%n(titled)%n(text 500)%n(other)"
@@ -176,7 +177,9 @@ which are applied to each non-standard property in turn."
 
 (defcustom ekg-oneliner-note-template "%n(tagged 20 oneline) %n(titled 20 oneline) %n(text 40 oneline)"
   "Template for displaying one-line notes in a note buffer.
-Otherwise the same format as `ekg-display-note-template'")
+Otherwise the same format as `ekg-display-note-template'."
+  :type 'string
+  :group 'ekg)
 
 (defcustom ekg-notes-display-images t
   "Whether images are displayed by default."
@@ -396,8 +399,9 @@ callers have already called this function")
   (run-hooks 'ekg-add-schema-hook))
 
 (defun ekg-property-name-for (prop)
-  "Return the human-readable name for property PROP (such as :tagged/tag).
-If there is no name, return the symbol converted to a string (without the colon)."
+  "Return the human-readable name for property PROP.
+PROP is a keyword such as :tagged/tag.  If there is no name,
+return the symbol converted to a string (without the colon)."
   (ekg-connect)
   (let ((decoloned-prop (triples--decolon prop)))
     (or (plist-get (triples-get-type ekg-db decoloned-prop 'ekg-property) :name)
@@ -690,14 +694,14 @@ or, if unknown, `ekg-inline'."
 
 (defun ekg-truncate-at (s num &optional truncation-indicator)
   "Return S truncated, with TRUNCATION-INDICATOR.
-Truncation method depends on `ekg-truncation-method`.
-If `ekg-truncation-method` is 'word, NUM is the number of words.
-If `ekg-truncation-method` is 'character, NUM is the number of characters.
-If NUM is greater than the number of words/characters of S, return S
-unchanged.
+Truncation method depends on `ekg-truncation-method'.
+If `ekg-truncation-method' is `word', NUM is the number of words.
+If `ekg-truncation-method' is `character', NUM is the number of
+characters.  If NUM is greater than the number of
+words/characters of S, return S unchanged.
 
-TRUNCATION-INDICATOR is the string to append when truncation occurs.
-If nil, defaults to \"…\" (ellipsis)."
+TRUNCATION-INDICATOR is the string to append when truncation
+occurs.  If nil, defaults to \"...\" (ellipsis)."
   (with-temp-buffer
     (insert s)
     (goto-char (point-max))
@@ -1094,14 +1098,14 @@ This is needed to identify references to refresh when the subject is changed.")
 (defun ekg--header-line-format ()
   "Generate header line format showing note metadata, constrained by window width."
   (when ekg-note
-    (let ((window-width (window-width (get-buffer-window (current-buffer))))
-          (parts '())
-          (commands-part (concat " | "
-                                 (substitute-command-keys
-                                  "\\<ekg-edit-mode-map>\\[ekg-edit-finalize] finish"))))
+    (let* ((window-width (window-width (get-buffer-window (current-buffer))))
+           (parts '())
+           (commands-part (concat " | "
+                                  (substitute-command-keys
+                                   "\\<ekg-edit-mode-map>\\[ekg-edit-finalize] finish")))
+           (remaining-width (- window-width (length commands-part))))
       ;; Always add commands part
       (push commands-part parts)
-      (setq remaining-width (- window-width (length commands-part)))
 
       ;; Add tags if present
       (when (ekg-note-tags ekg-note)
@@ -1410,11 +1414,10 @@ file.  If not, an error will be thrown."
     (setq ekg-note note)
     (ekg--set-local-variables)))
 
-(defun ekg-note-available-properties (note)
-  "Given an ekg NOTE, return a list of all applicable properties."
-
-  ;; For now, we don't use the information in NOTE to decide what properties it
-  ;; has, but we probably will need to do this in the future.
+(defun ekg-note-available-properties (_note)
+  "Given an ekg note, return a list of all applicable properties."
+  ;; For now, we don't use the information in the note to decide what
+  ;; properties it has, but we probably will need to do this in the future.
   (triples-subjects-of-type ekg-db 'ekg-property))
 
 (defun ekg-note-edit-property ()
@@ -2110,7 +2113,8 @@ notes to show.  But with a prefix ARG, ask the user."
                          (read-number "Number of notes to display: ")
                        ekg-notes-size)))
   (ekg-connect)
-  (ekg-setup-notes-buffer "Latest modified notes" #'ekg-get-latest-modified nil))
+  (ekg-setup-notes-buffer "Latest modified notes"
+                          (lambda () (ekg-get-latest-modified num)) nil))
 
 (defun ekg-document-titles ()
   "Return an alist of all titles.

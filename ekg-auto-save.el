@@ -162,8 +162,6 @@ After save, reset idle timer and keystroke counter."
   ;; TODO Do not auto-save when llm is streaming output?
   (when (and (or ekg-edit-mode ekg-capture-mode)
              (buffer-modified-p)
-             ;; avoid creating immature tags from unfinished tags
-             (not (ekg--in-metadata-p))
              (not cursor-in-echo-area)
              (not (or (use-region-p) (secondary-selection-exist-p)))
              (not (or defining-kbd-macro executing-kbd-macro))

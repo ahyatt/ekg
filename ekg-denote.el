@@ -43,7 +43,8 @@
   :group 'ekg-denote-export)
 
 (defcustom ekg-denote-export-combined-keywords-len 150
-  "Maximum length of the combined keywords used for trimming kws when converting tags to keywords during export."
+  "Maximum length of the combined keywords during export.
+This is used for trimming keywords when converting tags."
   :type 'integer
   :group 'ekg-denote-export)
 
@@ -53,8 +54,9 @@
   :group 'ekg-denote-export)
 
 (defcustom ekg-denote-export-backup-on-conflict t
-  "Whether to backup denotes using `backup-buffer' on conflict during export.
-You can choose not to backup in case denotes are already backed up using git or in other usecases."
+  "Whether to backup denotes on conflict during export.
+Uses `backup-buffer' to create the backup.  You can choose not
+to backup in case denotes are already backed up using git."
   :type 'boolean
   :group 'ekg-denote-export)
 
@@ -105,7 +107,7 @@ COMBINED-LENGTH."
 
 (defun ekg-denote-create (note)
   "Create a new `ekg-denote' from given NOTE."
-  (let* ((id (format-time-string denote-id-format (ekg-note-creation-time note)))
+  (let* ((id (format-time-string denote-date-identifier-format (ekg-note-creation-time note)))
 	     (note-id (ekg-note-id note))
 	     (text (or (ekg-note-text note) ""))
 	     (ext (if (eq ekg-capture-default-mode 'org-mode) ".org" ".md"))
@@ -153,10 +155,14 @@ Optionally add front-matter."
   (let ((path (ekg-denote-path denote))
 	    (text (ekg-denote-text denote))
 	    (title (ekg-denote-title denote))
-	    (kws (ekg-denote-kws denote)))
+	    (kws (ekg-denote-kws denote))
+	    (id (ekg-denote-id denote)))
     (with-temp-file path (insert text))
     (when ekg-denote-export-add-front-matter
-      (denote-add-front-matter path title kws))))
+      (denote-prepend-front-matter path title kws ""
+				                   (date-to-time id)
+				                   id
+				                   (denote-filetype-heuristics path)))))
 
 (defun ekg-denote--modified-time-from-file (denote)
   "Return modified time for the DENOTE."

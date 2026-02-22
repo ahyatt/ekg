@@ -32,6 +32,15 @@
 (require 'llm)
 (require 'vecdb nil t)
 
+(declare-function vecdb-exists "vecdb")
+(declare-function vecdb-create "vecdb")
+(declare-function vecdb-upsert-items "vecdb")
+(declare-function vecdb-delete-items "vecdb")
+(declare-function vecdb-get-item "vecdb")
+(declare-function vecdb-search-by-vector "vecdb")
+(declare-function vecdb-item-payload "vecdb")
+(declare-function make-vecdb-item "vecdb")
+
 ;;; Code:
 
 (defgroup ekg-embedding nil
