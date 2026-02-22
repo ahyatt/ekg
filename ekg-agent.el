@@ -118,7 +118,7 @@ stdout will be returned."
   "Non-nil when the user has requested cancellation of the agent.")
 
 (defvar-local ekg-agent--current-request nil
-  "The current in-flight LLM request handle, for cancellation via `llm-cancel-request'.")
+  "The in-flight LLM request handle, for cancellation.")
 
 (defvar-local ekg-agent--tool-processes nil
   "List of active tool subprocesses, for force cancellation.")
@@ -330,29 +330,38 @@ but we'll only get strings from the LLM."
                  :description "Display the result of a query in a popup buffer.  Use markdown mode for formatting."
                  :args '((:name "result" :type string :description "The result to display."))))
 
-(defun ekg-agent--run-code (prompt)
-  "Run the configured `ekg-agent-code-command` with PROMPT on stdin."
-  (ekg-agent--with-error-as-text
-    (unless (and (stringp ekg-agent-code-command)
-                 (string-match-p "\\S-" ekg-agent-code-command))
-      (error "Ekg-agent-code-command is not configured"))
-    (let* ((args (split-string-and-unquote ekg-agent-code-command))
-           (program (car args))
-           (program-args (cdr args)))
-      (with-temp-buffer
-        (insert prompt)
-        (let ((exit-code (apply #'call-process-region
-                                (point-min) (point-max)
-                                program
-                                t
-                                (list t t)
-                                nil
-                                program-args)))
-          (if (and (integerp exit-code) (zerop exit-code))
-              (string-trim-right (buffer-string))
-            (error "Command failed (%s): %s"
-                   exit-code
-                   (string-trim-right (buffer-string)))))))))
+(defun ekg-agent--run-code (callback prompt)
+  "Run the configured `ekg-agent-code-command` asynchronously with PROMPT on stdin.
+CALLBACK is called with the result string when the process finishes."
+  (condition-case err
+      (progn
+        (unless (and (stringp ekg-agent-code-command)
+                     (string-match-p "\\S-" ekg-agent-code-command))
+          (error "Ekg-agent-code-command is not configured"))
+        (let* ((args (split-string-and-unquote ekg-agent-code-command))
+               (program (car args))
+               (program-args (cdr args))
+               (output-buf (generate-new-buffer " *ekg-agent-code*" t))
+               (proc (make-process
+                      :name "ekg-agent-code"
+                      :buffer output-buf
+                      :command (cons program program-args)
+                      :sentinel (lambda (process _event)
+                                  (when (memq (process-status process) '(exit signal))
+                                    (let* ((exit-code (process-exit-status process))
+                                           (output (with-current-buffer (process-buffer process)
+                                                     (buffer-string))))
+                                      (kill-buffer (process-buffer process))
+                                      (funcall callback
+                                               (if (zerop exit-code)
+                                                   (string-trim-right output)
+                                                 (format "Error: Command failed (%d): %s"
+                                                         exit-code
+                                                         (string-trim-right output))))))))))
+          (process-send-string proc prompt)
+          (process-send-eof proc)
+          (push proc ekg-agent--tool-processes)))
+    (error (funcall callback (format "Error: %s" (error-message-string err))))))
 
 (defconst ekg-agent-tool-run-elisp
   (make-llm-tool :function (lambda (callback elisp return)
@@ -362,7 +371,7 @@ but we'll only get strings from the LLM."
                                                           (result
                                                            (condition-case err
                                                                (eval (read elisp))
-                                                             (error (setq e (format "%S" e))))))
+                                                             (error (setq e (format "%S" err))))))
                                                      (or e
                                                          (if (equal return "result")
                                                              (format "%S" result)
@@ -382,7 +391,8 @@ but we'll only get strings from the LLM."
   (make-llm-tool :function #'ekg-agent--run-code
                  :name "run_code_tool"
                  :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to accomplish a significant task that may not be possible with the tools you have access, ask this tool, which has more functionality."
-                 :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))))
+                 :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))
+                 :async t))
 
 (defun ekg-agent--tools (extra-tools)
   "Return the list of tools available to the agent.
@@ -705,20 +715,29 @@ identifiers."
            (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive)." :required t)
            (:name "replacement" :type string :description "The new text to insert in place of the matched region." :required t))))
 
-(defun ekg-agent--run-command (command &optional directory)
-  "Run shell COMMAND and return its combined stdout and stderr.
-DIRECTORY, if given, is used as `default-directory' for the
-process.  Returns a string with the exit code and output."
-  (ekg-agent--with-error-as-text
-    (let* ((default-directory (if directory
-                                  (file-truename directory)
-                                default-directory))
-           (output (with-temp-buffer
-                     (let ((exit-code (call-process
-                                       shell-file-name nil t nil
-                                       shell-command-switch command)))
-                       (format "Exit code: %d\n%s" exit-code (buffer-string))))))
-      (substring-no-properties output))))
+(defun ekg-agent--run-command (callback command &optional directory)
+  "Run shell COMMAND asynchronously and call CALLBACK with the result.
+DIRECTORY, if given, is used as `default-directory' for the process."
+  (condition-case err
+      (let* ((default-directory (if directory
+                                    (file-truename directory)
+                                  default-directory))
+             (output-buf (generate-new-buffer " *ekg-agent-cmd*" t))
+             (proc (make-process
+                    :name "ekg-agent-command"
+                    :buffer output-buf
+                    :command (list shell-file-name shell-command-switch command)
+                    :sentinel (lambda (process _event)
+                                (when (memq (process-status process) '(exit signal))
+                                  (let ((result
+                                         (with-current-buffer (process-buffer process)
+                                           (format "Exit code: %d\n%s"
+                                                   (process-exit-status process)
+                                                   (buffer-string)))))
+                                    (kill-buffer (process-buffer process))
+                                    (funcall callback (substring-no-properties result))))))))
+        (push proc ekg-agent--tool-processes))
+    (error (funcall callback (format "Error: %s" (error-message-string err))))))
 
 (defconst ekg-agent-tool-run-command
   (make-llm-tool
@@ -726,7 +745,8 @@ process.  Returns a string with the exit code and output."
    :name "run_command"
    :description "Run a shell command and return its combined stdout/stderr and exit code."
    :args '((:name "command" :type string :description "The shell command to run." :required t)
-           (:name "directory" :type string :description "Working directory for the command.  Defaults to the current buffer's directory."))))
+           (:name "directory" :type string :description "Working directory for the command.  Defaults to the current buffer's directory."))
+   :async t))
 
 (defconst ekg-agent-base-tools
   (list

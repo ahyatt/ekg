@@ -293,13 +293,17 @@ result when the agent finishes."
 
 (ert-deftest ekg-agent-test-agent-run-command ()
   "The run_command tool executes a shell command and returns output."
-  (let ((result (ekg-agent--run-command "echo hello-world")))
+  (let (result)
+    (ekg-agent--run-command (lambda (r) (setq result r)) "echo hello-world")
+    (while (not result) (accept-process-output nil 0.1))
     (should (string-match-p "Exit code: 0" result))
     (should (string-match-p "hello-world" result))))
 
 (ert-deftest ekg-agent-test-agent-run-command-failure ()
   "The run_command tool reports non-zero exit codes."
-  (let ((result (ekg-agent--run-command "exit 42")))
+  (let (result)
+    (ekg-agent--run-command (lambda (r) (setq result r)) "exit 42")
+    (while (not result) (accept-process-output nil 0.1))
     (should (string-match-p "Exit code: 42" result))))
 
 (provide 'ekg-agent-test)
