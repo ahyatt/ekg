@@ -4,6 +4,7 @@
 - **Test all**: `eldev test`
 - **Test single file**: `eldev test ekg-test.el` or `eldev test ekg-llm-test.el`
 - **Lint**: `eldev lint`
+- **Compile**: `eldev compile` (check for warnings — docstring width, unused vars, etc.)
 - **Run with debug**: `eldev -p -dtT test` (shows full output with debug traces)
 
 ## Code Style Guidelines
@@ -61,6 +62,28 @@ Uses `triples` library for RDF-like storage in SQLite:
 - Notes stored as triples with various predicates (text, tags, mode, etc.)
 - Supports full-text search via `triples-fts`
 - Backup and upgrade functionality via `triples-backups` and `triples-upgrade`
+
+## Agent Architecture (`ekg-agent.el`)
+
+- The agent loop is in `ekg-agent--iterate`, which calls `llm-chat-async` and
+  recurses on each tool result until an end tool is called.
+- `llm-chat-async` returns a request handle (curl process from plz) that can be
+  cancelled via `llm-cancel-request`. This is stored in `ekg-agent--current-request`.
+- Tool functions that spawn subprocesses should be `:async t` and track their
+  processes in `ekg-agent--tool-processes` for force-cancellation support.
+- `ekg-agent--set-stopped` acts as a once-only guard — it returns non-nil only on
+  the first running→stopped transition, preventing double-firing of status callbacks.
+- The request chain: `ekg-agent--iterate` → `llm-chat-async` → `llm-request-plz-async`
+  → `plz-media-type-request` → `plz` (curl process named "plz-request-curl").
+- `async-start` (used by `run_elisp`) creates a subprocess named "emacs".
+
+## CLI Tools (`agent_tools/`)
+
+- Shell scripts in `agent_tools/` provide CLI access to ekg for external agents.
+- Scripts call `emacsclient` so require a running Emacs with `server-start`.
+- `agent_tools/skill.md` documents the scripts for use as an agent skill.
+- To locate scripts programmatically, query Emacs:
+  `emacsclient --eval '(file-name-directory (locate-library "ekg"))'`
 
 ## Development Notes
 
