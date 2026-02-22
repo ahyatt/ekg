@@ -495,6 +495,24 @@ EXTRA-TOOLS is a list of additional tools beyond
              (> ekg-agent-timeout-seconds 0))
     (+ (float-time) ekg-agent-timeout-seconds)))
 
+(defun ekg-agent--clean-orphaned-tool-interactions (prompt)
+  "Remove a trailing assistant tool-use interaction from PROMPT.
+When cancelling mid-tool-execution, the prompt may end with an
+assistant interaction containing structured tool-use data but no
+matching `tool-results' interaction.  LLM providers will reject
+this, so remove it.  A tool-use interaction is detected by having
+non-string content in the assistant role."
+  (let ((interactions (llm-chat-prompt-interactions prompt)))
+    (when interactions
+      (let ((last-interaction (car (last interactions))))
+        (when (and (eq (llm-chat-prompt-interaction-role last-interaction)
+                       'assistant)
+                   (not (stringp
+                         (llm-chat-prompt-interaction-content
+                          last-interaction))))
+          (setf (llm-chat-prompt-interactions prompt)
+                (butlast interactions)))))))
+
 (defun ekg-agent--prompt-append-user-message (prompt message)
   "Append a user MESSAGE to PROMPT."
   (condition-case err
@@ -1280,6 +1298,7 @@ Prompts for a MESSAGE with additional instructions for the agent."
   (setq ekg-agent--running-p t)
   (setq ekg-agent--current-request nil)
   (setq ekg-agent--tool-processes nil)
+  (ekg-agent--clean-orphaned-tool-interactions ekg-agent--prompt)
   (let ((cb (ekg-agent--make-status-callback)))
     (setq ekg-agent--status-callback cb)
     (ekg-agent--log-session-start "Continuing agent")
@@ -1320,6 +1339,9 @@ subprocesses.  Use \\[ekg-agent-continue] to resume."
     (when (process-live-p proc)
       (ignore-errors (delete-process proc))))
   (setq ekg-agent--tool-processes nil)
+  ;; Clean up orphaned tool-use interactions from the prompt.
+  (when ekg-agent--prompt
+    (ekg-agent--clean-orphaned-tool-interactions ekg-agent--prompt))
   ;; Mark as stopped and fire the status callback exactly once.
   (setq ekg-agent--running-p nil)
   (ekg-agent--log "Agent force-cancelled")
