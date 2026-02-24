@@ -357,7 +357,8 @@ markdown format [text](url)."
     body))
 
 (defun ekg-apple-notes--relink-org (text)
-  "Convert [text](url) patterns in TEXT to `org-mode' links [[url][text]]."
+  "Convert [text](url) patterns in TEXT to `org-mode' links [[url][text]].
+Does not handle nested brackets or parentheses in link text or URLs."
   (replace-regexp-in-string
    "\\[\\([^]]+\\)\\](\\([^)]+\\))"
    "[[\\2][\\1]]"
