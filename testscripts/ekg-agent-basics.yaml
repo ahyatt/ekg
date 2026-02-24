@@ -1,0 +1,25 @@
+group: ekg-agent basics
+setup: |
+  Evaluate the following elisp to set up ekg with a temporary database:
+    (require 'ekg)
+    (require 'ekg-agent)
+    (setq ekg-db-file (make-temp-file "ekg-llm-test"))
+    (ekg-connect)
+tests:
+  - description: |
+      Create a note by evaluating:
+        (ekg-save-note (ekg-note-create :text "Test note alpha." :mode 'org-mode :tags '("test-tag")))
+      Then verify it was saved by evaluating:
+        (length (ekg-get-notes-with-tag "test-tag"))
+      The result should be 1.
+      Then retrieve the note text:
+        (ekg-note-text (car (ekg-get-notes-with-tag "test-tag")))
+      It should contain "Test note alpha."
+
+  - description: |
+      Create two notes:
+        (ekg-save-note (ekg-note-create :text "Apple pie recipe" :mode 'org-mode :tags '("food" "recipes")))
+        (ekg-save-note (ekg-note-create :text "Banana bread recipe" :mode 'org-mode :tags '("food" "baking")))
+      Verify that (length (ekg-get-notes-with-tag "food")) returns 2.
+      Verify that (length (ekg-get-notes-with-tag "recipes")) returns 1.
+      Verify that the text of the note with tag "baking" contains "Banana bread".

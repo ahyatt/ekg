@@ -1,0 +1,28 @@
+group: ekg-agent note tools
+setup: |
+  Evaluate the following elisp to set up ekg with a temporary database:
+    (require 'ekg)
+    (require 'ekg-agent)
+    (setq ekg-db-file (make-temp-file "ekg-llm-test"))
+    (ekg-connect)
+  Then create a test note:
+    (ekg-save-note (ekg-note-create :text "Meeting notes: discussed Q3 roadmap." :mode 'org-mode :tags '("work" "meetings")))
+tests:
+  - description: |
+      Use the ekg-agent-add-note function to create a note:
+        (ekg-agent-add-note "Agent created this note." '("agent-test") "org-mode")
+      Verify the note exists by evaluating:
+        (length (ekg-get-notes-with-tag "agent-test"))
+      It should be 1.
+      Retrieve the note and verify its text contains "Agent created this note."
+      Also verify it has the "agent" tag (auto-added by ekg-agent-add-note):
+        (member "agent" (ekg-note-tags (car (ekg-get-notes-with-tag "agent-test"))))
+      This should be non-nil.
+
+  - description: |
+      Use ekg-agent-read-notes to read notes as JSON:
+        (ekg-agent-read-notes :tags '("work") :num 10 :max-words 50)
+      The result should be a JSON string. Parse it by evaluating:
+        (json-parse-string (ekg-agent-read-notes :tags '("work") :num 10 :max-words 50) :object-type 'alist)
+      The result should be a vector with one element.
+      The first element's "text" field should contain "Q3 roadmap".
