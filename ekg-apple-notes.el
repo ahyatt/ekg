@@ -57,6 +57,26 @@ If nil, all non-hidden notes are exported."
   :type '(repeat string)
   :group 'ekg-apple-notes)
 
+(defcustom ekg-apple-notes-exclude-tags '("agent" "agent/self-info")
+  "Tags whose notes should be excluded from sync.
+Notes with any of these tags will not be exported or imported.
+The default values match the agent tags from `ekg-agent'; if
+`ekg-agent' is loaded, its tag variables are also consulted at
+runtime."
+  :type '(repeat string)
+  :group 'ekg-apple-notes)
+
+(defun ekg-apple-notes--exclude-tags ()
+  "Return the effective list of tags to exclude from sync.
+Merges `ekg-apple-notes-exclude-tags' with the `ekg-agent' tag
+variables if `ekg-agent' is loaded."
+  (seq-uniq
+   (append ekg-apple-notes-exclude-tags
+           (when (boundp 'ekg-agent-author-tag)
+             (list (symbol-value 'ekg-agent-author-tag)))
+           (when (boundp 'ekg-agent-self-info-tag)
+             (list (symbol-value 'ekg-agent-self-info-tag))))))
+
 ;;; Tag characters valid in Apple Notes hashtags: letters (Unicode),
 ;;; numbers, hyphens, underscores, and forward slashes (for nesting).
 (defconst ekg-apple-notes--tag-invalid-chars-re "[^[:alnum:]/_-]"
@@ -388,6 +408,11 @@ Respects `ekg-apple-notes-export-tags' if set."
          (ids (seq-uniq (mapcar #'car rows)))
          (notes (delq nil (mapcar #'ekg-get-note-with-id ids))))
     (setq notes (seq-filter #'ekg-note-active-p notes))
+    (let ((excluded (ekg-apple-notes--exclude-tags)))
+      (setq notes (seq-filter
+                   (lambda (note)
+                     (not (seq-intersection (ekg-note-tags note) excluded)))
+                   notes)))
     (when ekg-apple-notes-export-tags
       (setq notes (seq-filter
                    (lambda (note)
@@ -470,18 +495,20 @@ Returns non-nil if a note was created or updated."
                 (message "ekg-apple-notes: updated ekg note from Apple Notes %s"
                          apple-id)
                 t))))
-      ;; New note from Apple Notes.
-      (let ((note (ekg-note-create
-                   :text text
-                   :mode mode
-                   :tags (or tags '("imported")))))
-        (ekg-save-note note)
-        (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
-        (ekg-apple-notes--set-content-hash
-         (ekg-note-id note) (secure-hash 'sha256 body))
-        (message "ekg-apple-notes: imported new note from Apple Notes %s"
-                 apple-id)
-        t))))
+      ;; New note from Apple Notes — skip if tags match exclusions.
+      (unless (seq-intersection (or tags '("imported"))
+                                (ekg-apple-notes--exclude-tags))
+        (let ((note (ekg-note-create
+                     :text text
+                     :mode mode
+                     :tags (or tags '("imported")))))
+          (ekg-save-note note)
+          (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
+          (ekg-apple-notes--set-content-hash
+           (ekg-note-id note) (secure-hash 'sha256 body))
+          (message "ekg-apple-notes: imported new note from Apple Notes %s"
+                   apple-id)
+          t)))))
 
 (defun ekg-apple-notes-import ()
   "Import new and modified notes from Apple Notes into ekg."
