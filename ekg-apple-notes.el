@@ -90,7 +90,6 @@ variables if `ekg-agent' is loaded."
                       '(last-export :base/unique t :base/type integer)
                       '(last-import :base/unique t :base/type integer)
                       '(note-id :base/unique t :base/type string)
-                      '(content-hash :base/unique t :base/type string)
                       '(folder :base/unique t :base/type string)))
 
 (defun ekg-apple-notes-connect ()
@@ -153,16 +152,6 @@ Future syncs will use this folder instead of `ekg-apple-notes-folder'."
   "Return the ekg note ID mapped to APPLE-ID, or nil."
   (car (triples-subjects-with-predicate-object
         ekg-db 'apple-notes/note-id apple-id)))
-
-(defun ekg-apple-notes--set-content-hash (ekg-id hash)
-  "Store the content HASH for EKG-ID's last export."
-  (let ((plist (triples-get-type ekg-db ekg-id 'apple-notes)))
-    (apply #'triples-set-type ekg-db ekg-id 'apple-notes
-           (plist-put plist :content-hash hash))))
-
-(defun ekg-apple-notes--get-content-hash (ekg-id)
-  "Return the content hash for EKG-ID's last export, or nil."
-  (plist-get (triples-get-type ekg-db ekg-id 'apple-notes) :content-hash))
 
 ;;; ---- AppleScript Layer ----
 
@@ -398,16 +387,6 @@ markdown format [text](url)."
             (when tags-line
               (concat "\n<div><br></div>\n<div>" tags-line "</div>")))))
 
-(defun ekg-apple-notes--strip-title-div (body name)
-  "Remove the title div from BODY if it matches NAME.
-Apple Notes auto-prepends <div>NAME</div> to the body."
-  (let ((title-re (concat "\\`<div>"
-                          (regexp-quote (or name ""))
-                          "</div>\n?")))
-    (if (and name (string-match title-re body))
-        (substring body (match-end 0))
-      body)))
-
 (defun ekg-apple-notes--relink-org (text)
   "Convert [text](url) patterns in TEXT to `org-mode' links [[url][text]].
 Does not handle nested brackets or parentheses in link text or URLs."
@@ -416,13 +395,10 @@ Does not handle nested brackets or parentheses in link text or URLs."
    "[[\\2][\\1]]"
    text))
 
-(defun ekg-apple-notes--from-html (body mode &optional name)
+(defun ekg-apple-notes--from-html (body mode)
   "Convert Apple Notes BODY (HTML) to text in MODE.
-MODE should be the symbol `org-mode' or `markdown-mode'.
-NAME, if provided, is the Apple Notes name used to strip the
-auto-prepended title div."
-  (let* ((body (ekg-apple-notes--strip-title-div body name))
-         (body (ekg-apple-notes--remove-tags-html body))
+MODE should be the symbol `org-mode' or `markdown-mode'."
+  (let* ((body (ekg-apple-notes--remove-tags-html body))
          (to (pcase mode
                ('org-mode "org")
                ('markdown-mode "markdown")
@@ -460,7 +436,6 @@ Respects `ekg-apple-notes-export-tags' if set."
 Creates or updates the corresponding Apple Note."
   (let* ((title (ekg-apple-notes--note-title note))
          (body (ekg-apple-notes--to-html note))
-         (content-hash (secure-hash 'sha256 body))
          (apple-id (ekg-apple-notes--get-apple-id (ekg-note-id note))))
     (if apple-id
         ;; Update existing note.
@@ -470,8 +445,7 @@ Creates or updates the corresponding Apple Note."
       ;; Create new note.
       (setq apple-id (ekg-apple-notes--create-note title body))
       (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
-      (message "ekg-apple-notes: created note %s" title))
-    (ekg-apple-notes--set-content-hash (ekg-note-id note) content-hash)))
+      (message "ekg-apple-notes: created note %s" title))))
 
 (defun ekg-apple-notes-export (&optional force)
   "Export modified ekg notes to Apple Notes.
@@ -481,7 +455,6 @@ modification time."
   (ekg-apple-notes-connect)
   (ekg-apple-notes--ensure-folder)
   (let* ((last-export (if force 0 (ekg-apple-notes--get-last-export)))
-         (start-time (current-time))
          (notes (ekg-apple-notes--notes-to-export last-export))
          (count 0))
     (message "ekg-apple-notes: exporting %d notes modified since %s"
@@ -496,7 +469,7 @@ modification time."
         (error (message "ekg-apple-notes: failed to export note %S: %s"
                         (ekg-note-id note) (error-message-string err)))))
     (message "ekg-apple-notes: exported %d notes" count)
-    (ekg-apple-notes--set-last-export start-time)))
+    (ekg-apple-notes--set-last-export (current-time))))
 
 ;;; ---- Import (Apple Notes → ekg) ----
 
@@ -510,25 +483,23 @@ APPLE-NOTE is an `ekg-apple-notes--note' struct.
 Returns non-nil if a note was created or updated."
   (let* ((apple-id (ekg-apple-notes--note-id apple-note))
          (body (ekg-apple-notes--note-body apple-note))
-         (name (ekg-apple-notes--note-name apple-note))
          (ekg-id (ekg-apple-notes--get-ekg-id apple-id))
          (tags (ekg-apple-notes--parse-tags-from-body body))
          (mode ekg-capture-default-mode)
-         (text (ekg-apple-notes--from-html body mode name)))
+         (text (ekg-apple-notes--from-html body mode)))
     (if ekg-id
-        ;; Existing note — check if Apple Notes side was modified.
-        (let* ((last-hash (ekg-apple-notes--get-content-hash ekg-id))
-               (current-hash (secure-hash 'sha256 body)))
-          (if (equal last-hash current-hash)
-              nil ;; No change from what we exported.
-            ;; Apple Notes version was modified externally.
+        ;; Existing note — only import if modified after our last export.
+        (let ((mod-time (ekg-apple-notes--parse-iso-time
+                         (ekg-apple-notes--note-modification-date apple-note)))
+              (last-export (ekg-apple-notes--get-last-export)))
+          (if (<= mod-time last-export)
+              nil ;; Modified by our export, not externally.
             (let ((note (ekg-get-note-with-id ekg-id)))
               (when note
                 (setf (ekg-note-text note) text)
                 (when tags
                   (setf (ekg-note-tags note) tags))
                 (ekg-save-note note)
-                (ekg-apple-notes--set-content-hash ekg-id current-hash)
                 (message "ekg-apple-notes: updated ekg note from Apple Notes %s"
                          apple-id)
                 t))))
@@ -541,8 +512,6 @@ Returns non-nil if a note was created or updated."
                      :tags (or tags '("imported")))))
           (ekg-save-note note)
           (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
-          (ekg-apple-notes--set-content-hash
-           (ekg-note-id note) (secure-hash 'sha256 body))
           (message "ekg-apple-notes: imported new note from Apple Notes %s"
                    apple-id)
           t)))))
