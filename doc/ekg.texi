@@ -1854,6 +1854,12 @@ of tags.  Only notes with at least one of those tags will be exported:
 (setq ekg-apple-notes-export-tags '("shared" "mobile"))
 @end lisp
 
+Notes with certain tags are excluded from sync entirely.  If @samp{ekg-agent} is
+loaded, its tag variables (@code{ekg-agent-author-tag} and
+@code{ekg-agent-self-info-tag}) are automatically excluded, so agent notes will
+not be synced.  You can exclude additional tags by customizing
+@code{ekg-apple-notes-exclude-tags}.
+
 @node Syncing
 @subsection Syncing
 
