@@ -1300,12 +1300,11 @@ of tags.  Only notes with at least one of those tags will be exported:
 (setq ekg-apple-notes-export-tags '("shared" "mobile"))
 #+end_src
 
-Notes with certain tags are excluded from sync entirely.  By default, agent
-notes (those tagged with "agent" or "agent/self-info") are excluded.  You can
-customize this with ~ekg-apple-notes-exclude-tags~.  If =ekg-agent= is loaded,
-its tag variables are also consulted at runtime, so changes to
-~ekg-agent-author-tag~ or ~ekg-agent-self-info-tag~ are automatically
-respected.
+Notes with certain tags are excluded from sync entirely.  If =ekg-agent= is
+loaded, its tag variables (~ekg-agent-author-tag~ and
+~ekg-agent-self-info-tag~) are automatically excluded, so agent notes will
+not be synced.  You can exclude additional tags by customizing
+~ekg-apple-notes-exclude-tags~.
 
 *** Syncing
 The primary command is =ekg-apple-notes-sync=, which performs a bidirectional

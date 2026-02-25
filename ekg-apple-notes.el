@@ -57,12 +57,12 @@ If nil, all non-hidden notes are exported."
   :type '(repeat string)
   :group 'ekg-apple-notes)
 
-(defcustom ekg-apple-notes-exclude-tags '("agent" "agent/self-info")
+(defcustom ekg-apple-notes-exclude-tags nil
   "Tags whose notes should be excluded from sync.
 Notes with any of these tags will not be exported or imported.
-The default values match the agent tags from `ekg-agent'; if
-`ekg-agent' is loaded, its tag variables are also consulted at
-runtime."
+If `ekg-agent' is loaded, its tag variables
+`ekg-agent-author-tag' and `ekg-agent-self-info-tag' are
+automatically excluded as well."
   :type '(repeat string)
   :group 'ekg-apple-notes)
 
