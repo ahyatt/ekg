@@ -103,16 +103,25 @@
                   "Visit <a href=\"http://a.com\">A</a> and <a href=\"http://b.com\">B</a>"))))
 
 (ert-deftest ekg-apple-notes-test-strip-title-div ()
-  "The auto-prepended title div is stripped."
+  "The auto-prepended title div is stripped when name matches."
   (should (equal "<div>content</div>"
                  (ekg-apple-notes--strip-title-div
-                  "<div>My Title</div>\n<div>content</div>"))))
+                  "<div>My Title</div>\n<div>content</div>"
+                  "My Title"))))
 
-(ert-deftest ekg-apple-notes-test-strip-title-div-no-title ()
-  "Non-title content is left alone."
+(ert-deftest ekg-apple-notes-test-strip-title-div-no-match ()
+  "Content is preserved when name doesn't match first div."
+  (should (equal "<div>Actual Content</div>\n<div>more</div>"
+                 (ekg-apple-notes--strip-title-div
+                  "<div>Actual Content</div>\n<div>more</div>"
+                  "Different Title"))))
+
+(ert-deftest ekg-apple-notes-test-strip-title-div-no-name ()
+  "Content is preserved when no name is provided."
   (should (equal "<ul><li>item</li></ul>"
                  (ekg-apple-notes--strip-title-div
-                  "<ul><li>item</li></ul>"))))
+                  "<ul><li>item</li></ul>"
+                  nil))))
 
 (ert-deftest ekg-apple-notes-test-relink-org ()
   "Markdown links are converted to org links."

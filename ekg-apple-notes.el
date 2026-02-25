@@ -201,27 +201,53 @@ end tell"
              folder acct-clause
              acct-clause folder))))
 
+(defun ekg-apple-notes--applescript-escape (str)
+  "Escape STR for safe embedding in an AppleScript string literal.
+Only backslashes and double quotes need escaping in AppleScript."
+  (replace-regexp-in-string
+   "\"" "\\\\\""
+   (replace-regexp-in-string "\\\\" "\\\\\\\\" str)))
+
+(defun ekg-apple-notes--with-body-file (body func)
+  "Write BODY to a temp file, call FUNC with the file path, then clean up.
+FUNC receives the temp file path and should return the result.
+This avoids AppleScript string escaping issues for large HTML content."
+  (let ((temp-file (make-temp-file "ekg-apple-notes-" nil ".html")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert body))
+          (funcall func temp-file))
+      (when (file-exists-p temp-file)
+        (delete-file temp-file)))))
+
 (defun ekg-apple-notes--create-note (title body)
   "Create a note with TITLE and BODY in the sync folder.
 Returns the Apple Notes ID of the new note."
-  (ekg-apple-notes--run-applescript
-   (format "tell application \"Notes\"
+  (ekg-apple-notes--with-body-file body
+    (lambda (body-file)
+      (ekg-apple-notes--run-applescript
+       (format "tell application \"Notes\"
   launch
-  set theNote to make new note at %s with properties {name:%S, body:%S}
+  set bodyText to read POSIX file %S as «class utf8»
+  set theNote to make new note at %s with properties {name:\"%s\", body:bodyText}
   return id of theNote
 end tell"
-           (ekg-apple-notes--folder-ref)
-           title
-           body)))
+               body-file
+               (ekg-apple-notes--folder-ref)
+               (ekg-apple-notes--applescript-escape title))))))
 
 (defun ekg-apple-notes--update-note (apple-id body)
   "Update the note with APPLE-ID to have the given BODY."
-  (ekg-apple-notes--run-applescript
-   (format "tell application \"Notes\"
+  (ekg-apple-notes--with-body-file body
+    (lambda (body-file)
+      (ekg-apple-notes--run-applescript
+       (format "tell application \"Notes\"
   launch
-  set body of note id %S to %S
+  set bodyText to read POSIX file %S as «class utf8»
+  set body of note id %S to bodyText
 end tell"
-           apple-id body)))
+               body-file apple-id)))))
 
 (defun ekg-apple-notes--delete-note (apple-id)
   "Delete the note with APPLE-ID.  Move it to Recently Deleted."
@@ -236,7 +262,7 @@ end tell"
 
 (cl-defstruct ekg-apple-notes--note
   "Representation of an Apple Notes note for sync."
-  id body modification-date)
+  id name body modification-date)
 
 (defun ekg-apple-notes--list-notes ()
   "Return a list of `ekg-apple-notes--note' for all notes in the sync folder."
@@ -247,9 +273,10 @@ end tell"
   set noteData to {}
   repeat with n in notes of %s
     set noteId to id of n
+    set noteName to name of n
     set noteBody to body of n
     set noteMod to modification date of n as «class isot» as string
-    set end of noteData to noteId & \"|||\" & noteMod & \"|||\" & noteBody
+    set end of noteData to noteId & \"|||\" & noteName & \"|||\" & noteMod & \"|||\" & noteBody
   end repeat
   set AppleScript's text item delimiters to \"###NOTE###\"
   return noteData as string
@@ -261,11 +288,12 @@ end tell"
     (delq nil
           (mapcar
            (lambda (entry)
-             (when (string-match "\\`\\(x-coredata://[^|]+\\)|||\\([^|]+\\)|||\\(\\(?:.\\|\n\\)*\\)\\'" entry)
+             (when (string-match "\\`\\(x-coredata://[^|]+\\)|||\\([^|]*\\)|||\\([^|]+\\)|||\\(\\(?:.\\|\n\\)*\\)\\'" entry)
                (make-ekg-apple-notes--note
                 :id (match-string 1 entry)
-                :modification-date (match-string 2 entry)
-                :body (match-string 3 entry))))
+                :name (match-string 2 entry)
+                :modification-date (match-string 3 entry)
+                :body (match-string 4 entry))))
            entries))))
 
 ;;; ---- Tag Conversion ----
@@ -370,11 +398,15 @@ markdown format [text](url)."
             (when tags-line
               (concat "\n<div><br></div>\n<div>" tags-line "</div>")))))
 
-(defun ekg-apple-notes--strip-title-div (body)
-  "Remove the first <div>Title</div> that Apple Notes auto-prepends to BODY."
-  (if (string-match "\\`<div>[^<]*</div>\n?" body)
-      (substring body (match-end 0))
-    body))
+(defun ekg-apple-notes--strip-title-div (body name)
+  "Remove the title div from BODY if it matches NAME.
+Apple Notes auto-prepends <div>NAME</div> to the body."
+  (let ((title-re (concat "\\`<div>"
+                          (regexp-quote (or name ""))
+                          "</div>\n?")))
+    (if (and name (string-match title-re body))
+        (substring body (match-end 0))
+      body)))
 
 (defun ekg-apple-notes--relink-org (text)
   "Convert [text](url) patterns in TEXT to `org-mode' links [[url][text]].
@@ -384,10 +416,12 @@ Does not handle nested brackets or parentheses in link text or URLs."
    "[[\\2][\\1]]"
    text))
 
-(defun ekg-apple-notes--from-html (body mode)
+(defun ekg-apple-notes--from-html (body mode &optional name)
   "Convert Apple Notes BODY (HTML) to text in MODE.
-MODE should be the symbol `org-mode' or `markdown-mode'."
-  (let* ((body (ekg-apple-notes--strip-title-div body))
+MODE should be the symbol `org-mode' or `markdown-mode'.
+NAME, if provided, is the Apple Notes name used to strip the
+auto-prepended title div."
+  (let* ((body (ekg-apple-notes--strip-title-div body name))
          (body (ekg-apple-notes--remove-tags-html body))
          (to (pcase mode
                ('org-mode "org")
@@ -474,10 +508,11 @@ APPLE-NOTE is an `ekg-apple-notes--note' struct.
 Returns non-nil if a note was created or updated."
   (let* ((apple-id (ekg-apple-notes--note-id apple-note))
          (body (ekg-apple-notes--note-body apple-note))
+         (name (ekg-apple-notes--note-name apple-note))
          (ekg-id (ekg-apple-notes--get-ekg-id apple-id))
          (tags (ekg-apple-notes--parse-tags-from-body body))
          (mode ekg-capture-default-mode)
-         (text (ekg-apple-notes--from-html body mode)))
+         (text (ekg-apple-notes--from-html body mode name)))
     (if ekg-id
         ;; Existing note — check if Apple Notes side was modified.
         (let* ((last-hash (ekg-apple-notes--get-content-hash ekg-id))
