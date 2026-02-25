@@ -395,10 +395,20 @@ Does not handle nested brackets or parentheses in link text or URLs."
    "[[\\2][\\1]]"
    text))
 
+(defun ekg-apple-notes--normalize-divs (html)
+  "Convert <div> wrappers to <p> in HTML.
+Apple Notes wraps every line in <div> tags, which pandoc passes
+through as raw HTML when converting to markdown.  Converting to
+<p> gives pandoc proper paragraph structure to work with."
+  (let ((html (replace-regexp-in-string "<div><br></div>" "" html)))
+    (setq html (replace-regexp-in-string "<div>" "<p>" html))
+    (replace-regexp-in-string "</div>" "</p>" html)))
+
 (defun ekg-apple-notes--from-html (body mode)
   "Convert Apple Notes BODY (HTML) to text in MODE.
 MODE should be the symbol `org-mode' or `markdown-mode'."
   (let* ((body (ekg-apple-notes--remove-tags-html body))
+         (body (ekg-apple-notes--normalize-divs body))
          (to (pcase mode
                ('org-mode "org")
                ('markdown-mode "markdown")

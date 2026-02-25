@@ -102,6 +102,17 @@
                  (ekg-apple-notes--html-delink
                   "Visit <a href=\"http://a.com\">A</a> and <a href=\"http://b.com\">B</a>"))))
 
+(ert-deftest ekg-apple-notes-test-normalize-divs ()
+  "Div wrappers are converted to paragraphs."
+  (should (equal "<p>First</p>\n<p>Second</p>"
+                 (ekg-apple-notes--normalize-divs
+                  "<div>First</div>\n<div>Second</div>"))))
+
+(ert-deftest ekg-apple-notes-test-normalize-divs-br-spacer ()
+  "Div-wrapped br spacers are removed."
+  (should (equal "<p>First</p>\n\n<p>Second</p>"
+                 (ekg-apple-notes--normalize-divs
+                  "<div>First</div>\n<div><br></div>\n<div>Second</div>"))))
 
 (ert-deftest ekg-apple-notes-test-relink-org ()
   "Markdown links are converted to org links."
