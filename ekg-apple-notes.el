@@ -473,12 +473,14 @@ Creates or updates the corresponding Apple Note."
       (message "ekg-apple-notes: created note %s" title))
     (ekg-apple-notes--set-content-hash (ekg-note-id note) content-hash)))
 
-(defun ekg-apple-notes-export ()
-  "Export modified ekg notes to Apple Notes."
-  (interactive)
+(defun ekg-apple-notes-export (&optional force)
+  "Export modified ekg notes to Apple Notes.
+With FORCE (prefix arg), re-export all notes regardless of
+modification time."
+  (interactive "P")
   (ekg-apple-notes-connect)
   (ekg-apple-notes--ensure-folder)
-  (let* ((last-export (ekg-apple-notes--get-last-export))
+  (let* ((last-export (if force 0 (ekg-apple-notes--get-last-export)))
          (start-time (current-time))
          (notes (ekg-apple-notes--notes-to-export last-export))
          (count 0))
@@ -571,13 +573,14 @@ Returns non-nil if a note was created or updated."
 ;;; ---- Sync ----
 
 ;;;###autoload
-(defun ekg-apple-notes-sync ()
+(defun ekg-apple-notes-sync (&optional force)
   "Bidirectional sync between ekg and Apple Notes.
-Imports from Apple Notes first, then exports to Apple Notes."
-  (interactive)
+Imports from Apple Notes first, then exports to Apple Notes.
+With FORCE (prefix arg), re-export all notes."
+  (interactive "P")
   (ekg-apple-notes-connect)
   (ekg-apple-notes-import)
-  (ekg-apple-notes-export))
+  (ekg-apple-notes-export force))
 
 (provide 'ekg-apple-notes)
 
