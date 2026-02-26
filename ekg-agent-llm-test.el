@@ -22,9 +22,11 @@
 ;; verify test scenarios described in YAML.
 ;;
 ;; To run these tests:
-;;   1. Ensure `llm-test-provider' is configured (or set it below).
-;;   2. M-x eval-buffer on this file.
-;;   3. M-x ert RET llm-test/ RET
+;;   1. Set `llm-test-provider' (the LLM that drives the test agent).
+;;   2. Set `ekg-agent-llm-test-provider-form' to a form that creates
+;;      the LLM provider for the ekg-agent subprocess.
+;;   3. M-x eval-buffer on this file.
+;;   4. M-x ert RET llm-test/ RET
 ;;
 ;; The tests require a working LLM provider both for the test agent
 ;; (llm-test) and for the ekg-agent inside the test Emacs subprocess.
@@ -33,12 +35,25 @@
 
 (require 'llm-test)
 
+(defcustom ekg-agent-llm-test-provider-form nil
+  "A form that constructs an LLM provider in the test subprocess.
+This form will be evaluated in a fresh Emacs subprocess to create
+the `ekg-llm-provider' used by ekg-agent during tests.
+
+Example values:
+  (make-llm-claude :key \"sk-...\" :chat-model \"claude-sonnet-4-20250514\")
+  (progn (require \\='llm-openai)
+         (make-llm-openai :key \"sk-...\" :chat-model \"gpt-4o\"))"
+  :type 'sexp
+  :group 'ekg-agent)
+
 (defconst ekg-agent-llm-test--required-libraries
   '("ekg" "ekg-agent" "llm-test" "triples" "llm" "plz" "plz-media-type"
-    "plz-event-source" "websocket" "async" "compat" "yaml"
-    "claude-oauth")
+    "plz-event-source" "websocket" "async" "compat" "yaml")
   "Libraries whose load-path directories are needed by the test subprocess.
-Libraries not found on `load-path' are silently skipped.")
+Libraries not found on `load-path' are silently skipped.
+
+You may need to add more directories if your LLM provider has additional dependencies not in this list.")
 
 (defun ekg-agent-llm-test--package-load-paths ()
   "Compute the load-path entries needed by the test Emacs subprocess.
@@ -54,44 +69,10 @@ unrelated packages that could cause conflicts."
 (defun ekg-agent-llm-test--init-forms ()
   "Return the init forms for the test Emacs subprocess.
 This configures the LLM provider for ekg-agent to use."
-  ;; The test Emacs needs an LLM provider for ekg-agent.
-  ;; We use the same provider as llm-test-provider, reconstructed
-  ;; from its printed representation.
-  (let ((provider-form (ekg-agent-llm-test--provider-form)))
-    `((require 'ekg)
-      (require 'ekg-agent)
-      ,@(when provider-form
-          `((setq ekg-llm-provider ,provider-form))))))
-
-(defun ekg-agent-llm-test--provider-form ()
-  "Return a form that reconstructs `llm-test-provider' in the subprocess.
-Returns nil if the provider type is not recognized."
-  (when llm-test-provider
-    (cond
-     ;; Claude OAuth — requires claude-oauth.el on load-path
-     ((and (fboundp 'llm-claude-oauth-p)
-           (llm-claude-oauth-p llm-test-provider))
-      `(progn
-         (require 'claude-oauth)
-         (make-llm-claude-oauth
-          :chat-model ,(llm-claude-chat-model llm-test-provider))))
-     ;; Standard Claude with API key
-     ((and (fboundp 'llm-claude-p) (llm-claude-p llm-test-provider))
-      `(make-llm-claude
-        :key ,(llm-claude-key llm-test-provider)
-        :chat-model ,(llm-claude-chat-model llm-test-provider)))
-     ;; OpenAI
-     ((and (fboundp 'llm-openai-p) (llm-openai-p llm-test-provider))
-      `(progn
-         (require 'llm-openai)
-         (make-llm-openai
-          :key ,(llm-openai-key llm-test-provider)
-          :chat-model ,(llm-openai-chat-model llm-test-provider))))
-     (t
-      (warn "ekg-agent-llm-test: unrecognized provider type %S, \
-test Emacs will not have an LLM provider"
-            (type-of llm-test-provider))
-      nil))))
+  `((require 'ekg)
+    (require 'ekg-agent)
+    ,@(when ekg-agent-llm-test-provider-form
+        `((setq ekg-llm-provider ,ekg-agent-llm-test-provider-form)))))
 
 ;;;###autoload
 (defun ekg-agent-llm-test-register ()
@@ -102,6 +83,8 @@ the testscripts/ directory."
   (interactive)
   (unless llm-test-provider
     (user-error "Set `llm-test-provider' before registering tests"))
+  (unless ekg-agent-llm-test-provider-form
+    (user-error "Set `ekg-agent-llm-test-provider-form' before registering tests"))
   (let ((testscripts-dir (expand-file-name
                           "testscripts"
                           (file-name-directory
