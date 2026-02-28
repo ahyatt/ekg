@@ -1506,6 +1506,7 @@ This function automatically:
 
 This is intended to be used from the command-line so agents can easily
 add properly formatted notes to ekg."
+  (ekg-connect)
   (let* ((mode-sym (if (stringp mode) (intern mode) mode))
          (enclosure (assoc-default mode-sym ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
          (formatted-text (concat (car enclosure) "\n"
@@ -1561,6 +1562,7 @@ This function supports multiple modes of operation:
 NUM is the maximum number of notes to return (default 10).
 
 Returns a list of note objects."
+  (ekg-connect)
   (cond
    ;; Latest modified notes
    (latest
