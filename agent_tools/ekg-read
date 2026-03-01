@@ -136,15 +136,11 @@ case $MODE in
         done
         TAGS_ELISP="${TAGS_ELISP% })"
 
-        ELISP_EXPR="(princ (progn
-          (require 'ekg-agent)
-          (ekg-agent-read-notes :tags '$TAGS_ELISP :num $NUM :max-words $MAX_WORDS)))"
+        READ_EXPR="(ekg-agent-read-notes :tags '$TAGS_ELISP :num $NUM :max-words $MAX_WORDS)"
         ;;
 
     id)
-        ELISP_EXPR="(princ (progn
-          (require 'ekg-agent)
-          (ekg-agent-read-notes :note-id $NOTE_ID)))"
+        READ_EXPR="(ekg-agent-read-notes :note-id $NOTE_ID)"
         ;;
 
     semantic)
@@ -152,9 +148,7 @@ case $MODE in
         SEARCH_ELISP="${SEMANTIC_SEARCH//\\/\\\\}"
         SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
 
-        ELISP_EXPR="(princ (progn
-          (require 'ekg-agent)
-          (ekg-agent-read-notes :semantic-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)))"
+        READ_EXPR="(ekg-agent-read-notes :semantic-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)"
         ;;
 
     text)
@@ -162,15 +156,11 @@ case $MODE in
         SEARCH_ELISP="${TEXT_SEARCH//\\/\\\\}"
         SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
 
-        ELISP_EXPR="(princ (progn
-          (require 'ekg-agent)
-          (ekg-agent-read-notes :text-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)))"
+        READ_EXPR="(ekg-agent-read-notes :text-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)"
         ;;
 
     latest)
-        ELISP_EXPR="(princ (progn
-          (require 'ekg-agent)
-          (ekg-agent-read-notes :latest t :num $NUM :max-words $MAX_WORDS)))"
+        READ_EXPR="(ekg-agent-read-notes :latest t :num $NUM :max-words $MAX_WORDS)"
         ;;
 esac
 
@@ -180,6 +170,13 @@ if [[ -n "$DAEMON_NAME" ]]; then
     EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
 fi
 
+# Base64-encode the JSON to avoid emacsclient protocol escaping issues.
+# emacsclient --eval interprets \n in output as literal newlines, which can
+# corrupt output containing JSON with embedded newlines.
+ELISP_EXPR="(progn
+  (require 'ekg-agent)
+  (base64-encode-string (encode-coding-string $READ_EXPR 'utf-8) t))"
+
 # Execute via emacsclient
 if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
     echo "Error: Failed to read notes. Is the Emacs daemon running?" >&2
@@ -188,10 +185,5 @@ if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
     exit 1
 fi
 
-# Output the JSON
-# emacsclient --eval always returns the Elisp printed representation, which means:
-# - The string is wrapped in double quotes
-# - Internal quotes are escaped as \"
-# - Backslashes are escaped as \\
-# We need to strip the outer quotes and unescape: \\\\ -> \\ and \" -> "
-echo "$OUTPUT" | sed 's/^"//; s/"$//' | sed 's/\\\\\\\\/\\\\/g; s/\\"/"/g'
+# Strip outer quotes from emacsclient output, then base64-decode
+echo "$OUTPUT" | sed 's/^"//; s/"$//' | base64 --decode

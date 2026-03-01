@@ -126,9 +126,12 @@ if [[ -n "$REGEX" ]]; then
     (setq tags (seq-filter (lambda (tag) (string-match-p \"$escaped\" tag)) tags))"
 fi
 
-# Output as JSON array
+# Output as base64-encoded JSON array to avoid emacsclient protocol issues
 ELISP+="
-    (princ (concat \"[\" (mapconcat (lambda (tag) (format \"\\\"%s\\\"\" tag)) (sort tags #'string<) \",\") \"]\"))))"
+    (base64-encode-string
+     (encode-coding-string
+      (concat \"[\" (mapconcat (lambda (tag) (format \"\\\"%s\\\"\" tag)) (sort tags #'string<) \",\") \"]\")
+      'utf-8) t)))"
 
 # Build emacsclient command
 EMACSCLIENT_CMD="emacsclient"
@@ -143,5 +146,5 @@ if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP" 2>&1); then
     exit 1
 fi
 
-# Clean up emacsclient output (strip outer quotes, unescape)
-echo "$OUTPUT" | sed 's/^"//; s/"$//' | sed 's/\\\\\\\\/\\\\/g; s/\\"/"/g'
+# Strip outer quotes from emacsclient output, then base64-decode
+echo "$OUTPUT" | sed 's/^"//; s/"$//' | base64 --decode

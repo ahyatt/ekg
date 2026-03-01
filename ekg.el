@@ -568,6 +568,8 @@ Draft notes are not returned, unless TAGS contains the draft tag."
 If the ID does not exist, create a new note with that ID."
   (ekg-connect)
   (let* ((v (triples-get-subject ekg-db id))
+         (stored-types (triples-get-types ekg-db id))
+         (core-types '(text time-tracked inline titled tagged))
          (inlines (mapcar (lambda (iid)
                             (let ((iv (triples-get-type ekg-db iid
                                                         'inline)))
@@ -576,7 +578,20 @@ If the ID does not exist, create a new note with that ID."
                                                          (plist-get iv :command)
                                                          (plist-get iv :args))
                                                :type (plist-get iv :type))))
-                          (plist-get v :text/inlines))))
+                          (plist-get v :text/inlines)))
+         ;; Query extension types not already returned by triples-get-subject,
+         ;; to pick up virtual reversed properties like org/children.
+         (extra-props
+          (mapcan (lambda (type)
+                    (unless (or (memq type stored-types)
+                                (memq type core-types))
+                      (let ((type-data (triples-get-type ekg-db id type)))
+                        (when type-data
+                          (cl-loop for (k v) on type-data by #'cddr
+                                   nconc (list (intern (format ":%s/%s" type
+                                                               (substring (symbol-name k) 1)))
+                                               v))))))
+                  (ekg-note-cotypes))))
     (make-ekg-note :id id
                    :text (plist-get v :text/text)
                    :mode (plist-get v :text/mode)
@@ -584,17 +599,19 @@ If the ID does not exist, create a new note with that ID."
                    :tags (plist-get v :tagged/tag)
                    :creation-time (plist-get v :time-tracked/creation-time)
                    :modified-time (plist-get v :time-tracked/modified-time)
-                   :properties (map-into
-                                (map-filter
-                                 (lambda (plist-key _)
-                                   (not (member plist-key
-                                                '(:text/text
-                                                  :text/mode
-                                                  :text/inlines
-                                                  :tagged/tag
-                                                  :time-tracked/creation-time
-                                                  :time-tracked/modified-time)))) v)
-                                'plist))))
+                   :properties (append
+                                (map-into
+                                 (map-filter
+                                  (lambda (plist-key _)
+                                    (not (member plist-key
+                                                 '(:text/text
+                                                   :text/mode
+                                                   :text/inlines
+                                                   :tagged/tag
+                                                   :time-tracked/creation-time
+                                                   :time-tracked/modified-time)))) v)
+                                 'plist)
+                                extra-props))))
 
 (defun ekg-get-notes-with-title (title)
   "Get a list of note structs with TITLE."

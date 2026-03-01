@@ -288,8 +288,7 @@ but we'll only get strings from the LLM."
                                (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
                                  (error "Unsupported mode: %s" mode))
                                ;; Use ekg-agent-add-note for consistency (includes auto-tags)
-                               (let ((note (ekg-agent-add-note content (append tags nil) mode)))
-                                 (format "Created note with ID %s" (ekg-note-id note)))))
+                               (format "Created note with ID %s" (ekg-agent-add-note content (append tags nil) mode))))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
                  :args `((:name "tags" :type array :items (:type string)
@@ -1534,7 +1533,8 @@ If MAX-WORDS is specified, truncate the text to that many words."
       (mode . ,(symbol-name (ekg-note-mode note)))
       (tags . ,(ekg-note-tags note))
       (creation_time . ,(ekg-note-creation-time note))
-      (modified_time . ,(ekg-note-modified-time note)))))
+      (modified_time . ,(ekg-note-modified-time note))
+      (properties . ,(ekg-note-properties note)))))
 
 (defun ekg-agent--notes-to-json (notes &optional max-words)
   "Convert list of NOTES to a JSON array string.
