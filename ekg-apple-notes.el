@@ -108,6 +108,7 @@ back to `ekg-apple-notes-folder'."
 (defun ekg-apple-notes-set-folder (folder)
   "Store FOLDER as the Apple Notes folder for this ekg database.
 Future syncs will use this folder instead of `ekg-apple-notes-folder'."
+  (interactive "sName for the ekg folder in Apple Notes for this database: ")
   (ekg-apple-notes-connect)
   (let ((plist (triples-get-type ekg-db 'apple-notes 'apple-notes)))
     (apply #'triples-set-type ekg-db 'apple-notes 'apple-notes
@@ -214,29 +215,29 @@ This avoids AppleScript string escaping issues for large HTML content."
   "Create a note with TITLE and BODY in the sync folder.
 Returns the Apple Notes ID of the new note."
   (ekg-apple-notes--with-body-file body
-    (lambda (body-file)
-      (ekg-apple-notes--run-applescript
-       (format "tell application \"Notes\"
+                                   (lambda (body-file)
+                                     (ekg-apple-notes--run-applescript
+                                      (format "tell application \"Notes\"
   launch
   set bodyText to read POSIX file %S as «class utf8»
   set theNote to make new note at %s with properties {name:\"%s\", body:bodyText}
   return id of theNote
 end tell"
-               body-file
-               (ekg-apple-notes--folder-ref)
-               (ekg-apple-notes--applescript-escape title))))))
+                                              body-file
+                                              (ekg-apple-notes--folder-ref)
+                                              (ekg-apple-notes--applescript-escape title))))))
 
 (defun ekg-apple-notes--update-note (apple-id body)
   "Update the note with APPLE-ID to have the given BODY."
   (ekg-apple-notes--with-body-file body
-    (lambda (body-file)
-      (ekg-apple-notes--run-applescript
-       (format "tell application \"Notes\"
+                                   (lambda (body-file)
+                                     (ekg-apple-notes--run-applescript
+                                      (format "tell application \"Notes\"
   launch
   set bodyText to read POSIX file %S as «class utf8»
   set body of note id %S to bodyText
 end tell"
-               body-file apple-id)))))
+                                              body-file apple-id)))))
 
 (defun ekg-apple-notes--delete-note (apple-id)
   "Delete the note with APPLE-ID.  Move it to Recently Deleted."
@@ -246,7 +247,7 @@ end tell"
   launch
   delete note id %S
 end tell"
-              apple-id))
+               apple-id))
     (error nil)))
 
 (cl-defstruct ekg-apple-notes--note
