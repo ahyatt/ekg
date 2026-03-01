@@ -1325,9 +1325,20 @@ device.
 
 Because Apple Notes hashtags only support letters, numbers, hyphens,
 underscores, and forward slashes, any other characters in ekg tags (such as
-spaces, dots, or colons) are replaced with underscores.  For example, the ekg
-tag "my project" becomes =#my_project=, and "date/2024-01-01" stays as
+spaces, dots, or colons) are replaced with underscores on export.  For example,
+the ekg tag "my project" becomes =#my_project=, and "date/2024-01-01" stays as
 =#date/2024-01-01= (since slashes create nested tags in Apple Notes).
+
+On import, the reverse conversion uses underscore wildcard matching: each
+underscore in an Apple Notes tag is treated as a single-character wildcard and
+matched against existing ekg tags.  So =#my_project= will match the ekg tag
+"my project" (since the underscore matches the space).  If no existing ekg tag
+matches, the Apple Notes tag is used as-is.  This means that tags round-trip
+correctly as long as the original ekg tag still exists.
+
+The tag conversion can be customized via ~ekg-apple-notes-tag-converter~, a
+function that receives a list of Apple Notes tags and the note text, and returns
+a list of ekg tags.
 
 Hidden tags (such as "trash" and "draft") are not synced.
 
