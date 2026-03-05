@@ -30,10 +30,11 @@
 (require 'ekg)
 (require 'llm)
 
-;; Forward declarations for variables defined later in this file.
-(defvar ekg-org-tool-add-task)
-(defvar ekg-org-tool-set-status)
-(defvar ekg-org-tool-list-items)
+;; Forward declarations for variables defined in ekg-agent.el.
+(defvar ekg-agent-extra-tools)
+(defvar ekg-agent-org-tool-add-task)
+(defvar ekg-agent-org-tool-set-status)
+(defvar ekg-agent-org-tool-list-items)
 
 (defconst ekg-org-state-tag-prefix "org/state/"
   "Prefix for EKG tags representing Org TODO states.")
