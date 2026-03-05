@@ -2,6 +2,13 @@
 
 ;; Copyright (c) 2024  Jay Rajput <jayrajput@gmail.com>
 
+;; Author: Jay Rajput <jayrajput@gmail.com>
+;; Homepage: https://github.com/ahyatt/ekg
+;; Package-Requires: ((ekg "0.7.0") (denote "4.0.0"))
+;; Keywords: outlines, hypermedia
+;; Version: 1.0.0
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 3 of the
@@ -27,7 +34,6 @@
 ;; ekg notes are trimmed to a configurable length before export.  Ekg
 ;; notes can have creation time within a second when trying to bulk
 ;; import org-roam files to ekg.
-;;
 
 
 (require 'ekg)

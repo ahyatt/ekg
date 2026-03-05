@@ -1206,8 +1206,10 @@ In the capture mode, this. is equivalent to saving periodically (to drafts).  In
 :END:
 ekg can export notes as denotes. Denote is a note taking and file
 naming tool. Primary reason for export is taking backup of your notes
-in a git backed repository. Import is in road map (PR is welcome). To
-export to denote, =ekg-denote= module is required.
+in a git backed repository. Import is in road map (PR is welcome).
+
+To export to denote, =ekg-denote= module is required, which is a separate package
+from ekg in MELPA.
 
 #+begin_src emacs-lisp
   (use-package ekg-denote
@@ -1270,6 +1272,16 @@ notes.  This agent can review your notes and org-mode agenda, searching across
 notes by embeddings or tags as appropriate, and proactively create new notes to
 help you, such as offering advice, pointing out connections, or suggesting
 resources.
+
+=ekg-agent= is a separate package from =ekg= and must be installed separately.
+
+#+begin_src emacs-lisp
+(use-package ekg-agent
+  :init
+  (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
+  (add-to-list 'ekg-agent-extra-tools (list ekg-agent-tool-run-elisp
+                                            ekg-agent-tool-code)))
+#+end_src
 
 To use this module, you must have an LLM provider configured as described in the
 [[#llm][LLM]] section.  You can then load the agent:

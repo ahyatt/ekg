@@ -1,6 +1,6 @@
 ;;; ekg.el --- A system for recording and linking information -*- lexical-binding: t -*-
 
-;; Copyright (c) 2022-2025  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2022-2026  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg

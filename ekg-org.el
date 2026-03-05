@@ -29,7 +29,6 @@
 (require 'seq)
 (require 'ekg)
 (require 'llm)
-(require 'ekg-agent)
 
 ;; Forward declarations for variables defined later in this file.
 (defvar ekg-org-tool-add-task)
@@ -230,79 +229,6 @@ Each level is indented to show the nesting structure."
          result))
      hierarchy "")))
 
-(defun ekg-org-agent-plan-task ()
-  "Plan the current task and add the plan as child tasks using the agent."
-  (interactive)
-  (let* ((ekg-note (ekg-current-note-or-error-expanded))
-         (parent-id (ekg-note-id ekg-note))
-         (parent-note (ekg-get-note-with-id parent-id))
-         (question (format "Given the task '%s', create a plan to accomplish it by creating subtasks using the tool to add ekg org tasks or add information to existing ekg note tasks. The parent ekg note id is '%s'."
-                           (ekg-org--note-title parent-note)
-                           parent-id)))
-    (ekg-agent-ask-with-note question parent-id (list ekg-org-tool-add-task))))
-
-(defun ekg-org-agent-run-task ()
-  "Execute the current org task autonomously using the agent.
-The agent receives the full org hierarchy as context (current task,
-parent, grandparent, etc.) and instructions to complete the task.
-When finished, the agent sets the task status (typically DONE),
-which ends the agent session.  No human input is required."
-  (interactive)
-  (let* ((ekg-note (ekg-current-note-or-error-expanded))
-         (task-id (ekg-note-id ekg-note))
-         (note (ekg-get-note-with-id task-id))
-         (hierarchy (ekg-org--get-hierarchy note))
-         (hierarchy-text (ekg-org--hierarchy-to-text hierarchy))
-         (title (or (ekg-org--note-title note) "(untitled)"))
-         (children (ekg-org-get-child-notes-of-id task-id))
-         (children-text (when children
-                          (concat "\n\nChild tasks:\n"
-                                  (mapconcat
-                                   (lambda (child)
-                                     (format "  - [%s] %s (id: %s)"
-                                             (condition-case nil (ekg-org--state child) (error "UNKNOWN"))
-                                             (or (ekg-org--note-title child) "(untitled)")
-                                             (ekg-note-id child)))
-                                   children "\n"))))
-         (prompt-notes (ekg-get-notes-cotagged-with-tags
-                        (ekg-note-tags note) ekg-llm-prompt-tag))
-         (prompt-context (when prompt-notes
-                           (concat "\n\nPrompt instructions from co-tagged notes:\n"
-                                   (mapconcat (lambda (n)
-                                                (string-trim
-                                                 (substring-no-properties
-                                                  (ekg-display-note-text n nil 'plaintext))))
-                                              prompt-notes "\n"))))
-         (context (concat
-                   "You are executing an org task autonomously. Here is the full task hierarchy, "
-                   "from the root task down to the current task you must execute:\n\n"
-                   hierarchy-text
-                   (or children-text "")
-                   (or prompt-context "")
-                   "\n\n"
-                   (format "The current date and time is %s." (format-time-string "%F %R"))))
-         (question (concat
-                    (format "Execute the following task: '%s' (note id: %s).\n\n" title task-id)
-                    "Complete this task using the tools available to you. "
-                    "You should NOT ask the user for input. Work autonomously.\n\n"
-                    "When you are done, you MUST call the `set_org_item_status` tool to "
-                    "set this task's status (typically to DONE, or WAITING if blocked). "
-                    "Calling `set_org_item_status` will end your session.\n\n"
-                    "Before setting the status, use `display_result_in_popup` to tell the user what you did.")))
-    (ekg-agent--iterate (llm-make-chat-prompt
-                         question
-                         :context (concat (ekg-agent-instructions-intro) "\n\n" context)
-                         :tools (ekg-agent--tools
-                                 (list ekg-agent-tool-popup-result
-                                       ekg-org-tool-add-task
-                                       ekg-org-tool-set-status
-                                       ekg-org-tool-list-items))
-                         :tool-options (make-llm-tool-options :tool-choice 'any))
-                        0
-                        (ekg-agent--make-status-callback)
-                        '("set_org_item_status")
-                        (ekg-agent--timeout-deadline))))
-
 (defun ekg-org-fs-handler (operation &rest args)
   "Fake our ekg data as a file.
 
@@ -389,53 +315,6 @@ Optionally check NOTE to only revert when org tasks change."
 ;; But without this, we get an error.
 (add-to-list 'auto-mode-alist '("\\.org_archive" . org-mode))
 
-(defun ekg-org--agent-tool-add-item (title content tags parent-id status deadline scheduled)
-  "Add a new org task item to EKG.
-
-TITLE is the task title.
-CONTENT is the task content/description.
-TAGS is a list of additional tags.
-PARENT-ID is the parent task ID (nil for no parent)
-STATUS is the task status (will be converted to uppercase).
-DEADLINE is the deadline timestamp string (ignored if empty).
-SCHEDULED is the scheduled timestamp string (ignored if empty)."
-  (ekg-agent--with-error-as-text
-    (let* ((note (ekg-note-create :text content
-                                  :tags (append (list ekg-org-task-tag) tags
-                                                (when (and status (not (string-empty-p status)))
-                                                  (list (concat ekg-org-state-tag-prefix (downcase status)))))
-                                  :properties (list :titled/title (list title)))))
-      ;; Handle parent ID
-      (when (and parent-id (not (equal parent-id 0)) (not (string-empty-p (format "%s" parent-id))))
-        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/parent parent-id)))
-      ;; Handle deadline
-      (when (and deadline (not (string-empty-p deadline)))
-        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/deadline (ekg-org--to-timestamp deadline))))
-      ;; Handle scheduled
-      (when (and scheduled (not (string-empty-p scheduled)))
-        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/scheduled (ekg-org--to-timestamp scheduled))))
-      ;; Save the note
-      (ekg-save-note note)
-      (format "Added note with ID %s" (ekg-note-id note)))))
-
-(defun ekg-org--agent-tool-set-status (id status)
-  "Set the status of an org task item.
-
-ID is the note ID.
-STATUS is the new status (will be converted to uppercase)."
-  (ekg-agent--with-error-as-text
-    (let ((note (ekg-get-note-with-id id)))
-      (unless note
-        (error "No note found with ID %s" id))
-      (setf (ekg-note-tags note)
-            (cons
-             (concat ekg-org-state-tag-prefix (downcase status))
-             (seq-remove
-              (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
-              (ekg-note-tags note))))
-      (ekg-save-note note)
-      (format "Set status of note ID %s to %s" id status))))
-
 (defun ekg-org--state (note)
   "Get the org state of NOTE."
   (let ((tags (ekg-note-tags note)))
@@ -446,64 +325,16 @@ STATUS is the new status (will be converted to uppercase)."
           (upcase (string-replace ekg-org-state-tag-prefix "" tag))
         (error "No org state tag found for note ID %s" (ekg-note-id note))))))
 
-(defun ekg-org--agent-tool-list-items (&optional state)
-  "List all org task items.
-
-STATE if non-nil, filter by status (e.g., \"TODO\", \"DONE\").
-Returns text in Org format, as if they were in an Org file."
-  (ekg-agent--with-error-as-text
-    (let ((result (ekg-org-generate-org-content
-                   nil (when state
-                         (lambda (note)
-                           (string-equal
-                            (downcase state)
-                            (downcase (ekg-org--state note))))))))
-      (if (string-empty-p result)
-          (if state
-              (format "No org items found with state %s." state)
-            "No org items found.")
-        result))))
-
-(defconst ekg-org-tool-add-task
-  (llm-make-tool
-   :function #'ekg-org--agent-tool-add-item
-   :name "add_org_item"
-   :description "Add a new org-mode task item"
-   :args
-   '((:name "title" :type string :description "The title/headline of the task" :require t)
-     (:name "content" :type string :description "The content/description of the task" :required t)
-     (:name "tags" :type array :items (:type string)
-            :description "Additional tags for the task (org tags and agent tags will be added automatically)")
-     (:name "parent_id" :type integer :description "The parent task ID if exists")
-     (:name "status" :type string :description "The task status (TODO, DONE, etc.), will default to TODO if not set")
-     (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format")
-     (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format"))))
-
-(defconst ekg-org-tool-set-status
-  (llm-make-tool
-   :function #'ekg-org--agent-tool-set-status
-   :name "set_org_item_status"
-   :description "Set the status of an org-mode task item.  Use this when you want to change the status of an existing task, for example setting it to DONE when completing it, or marking it WAITING if it's on hold."
-   :args
-   '((:name "id" :type integer :description "The ID of the task item" :required t)
-     (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)" :required t))))
-
-(defconst ekg-org-tool-list-items
-  (llm-make-tool
-   :function #'ekg-org--agent-tool-list-items
-   :name "list_org_items"
-   :description "Return all matching org-mode task items as an Org formatted string."
-   :args
-   '((:name "state" :type string
-            :description "Filter tasks by state (TODO, DONE, etc.)"))))
-
 (defun ekg-org-initialize ()
-  "Initialize the ekg-org integration."
+  "Initialize the ekg-org integration.
+
+This adds the necessary schema and, if `ekg-agent' is available,
+registers tools for interacting with org tasks."
   (ekg-org-add-schema)
   (when (featurep 'ekg-agent)
-    (add-to-list 'ekg-agent-extra-tools ekg-org-tool-add-task)
-    (add-to-list 'ekg-agent-extra-tools ekg-org-tool-set-status)
-    (add-to-list 'ekg-agent-extra-tools ekg-org-tool-list-items)))
+    (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-add-task)
+    (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-set-status)
+    (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-list-items)))
 
 (provide 'ekg-org)
 ;;; ekg-org.el ends here
