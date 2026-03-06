@@ -3,7 +3,7 @@
 ;;; Commentary: This defines the package for ekg.
 ;;; Code:
 
-(define-package "ekg" "20260305"
+(define-package "ekg" "0.8.0"
   "A sqlite-based note-taking package based on tags."
   '((triples "0.6.1")
     (emacs   "28.1")

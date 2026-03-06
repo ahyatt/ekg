@@ -5,7 +5,7 @@
 
 ;;; Code:
 
-(define-package "ekg-agent" "20260305"
+(define-package "ekg-agent" "0.0.1"
   "Agent tools for ekg."
   '((ekg "20260305")
     (async "20251005.634")))

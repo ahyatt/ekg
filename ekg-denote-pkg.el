@@ -5,7 +5,7 @@
 
 ;;; Code:
 
-(define-package "ekg-denote" "20260305"
+(define-package "ekg-denote" "1.0.0"
   "Denote integration for ekg."
   '((ekg "20260305")(denote "4.0.0")))
 
