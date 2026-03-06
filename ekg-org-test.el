@@ -22,6 +22,7 @@
 (require 'ert)
 (require 'ekg)
 (require 'ekg-org)
+(require 'ekg-agent)
 (require 'ekg-test-utils)
 
 (defun ekg-org-test-parse-out-id (result-string)
@@ -33,7 +34,7 @@
   "Test that a basic task is rendered correctly."
   (ekg-org-add-schema)
   (let* ((note-id (ekg-org-test-parse-out-id
-                   (ekg-org--agent-tool-add-item
+                   (ekg-agent-org--tool-add-item
                     "Test Task"
                     "This is a test task content."
                     '("tag1" "tag2")
@@ -58,7 +59,7 @@
   (ekg-org-add-schema)
   (let* ((deadline "2026-02-01 10:00")
          (scheduled "2026-01-31 09:00")
-         (note-result (ekg-org--agent-tool-add-item
+         (note-result (ekg-agent-org--tool-add-item
                        "Timed Task"
                        "Content"
                        nil
@@ -80,14 +81,14 @@
 (ekg-deftest ekg-org-test-hierarchy ()
   "Test that child tasks have correct parent relationship."
   (ekg-org-add-schema)
-  (let* ((parent-result (ekg-org--agent-tool-add-item
+  (let* ((parent-result (ekg-agent-org--tool-add-item
                          "Parent Task"
                          "Parent content"
                          nil nil "TODO" nil nil))
          ;; The result will have the integer ID as a substring, let's just parse it out.
          (parent-id (ekg-org-test-parse-out-id parent-result))
          ;; Add a child task
-         (child (ekg-org--agent-tool-add-item
+         (child (ekg-agent-org--tool-add-item
                  "Child Task"
                  "Child content"
                  nil parent-id "TODO" nil nil))
@@ -109,11 +110,11 @@
   "Test ekg-org-generate-org-content function."
   (ekg-org-add-schema)
   ;; Create multiple tasks
-  (let* ((task1-id (ekg-org--agent-tool-add-item
+  (let* ((task1-id (ekg-agent-org--tool-add-item
                     "Task One"
                     "First task content"
                     '("project1") nil "TODO" nil nil))
-         (task2-id (ekg-org--agent-tool-add-item
+         (task2-id (ekg-agent-org--tool-add-item
                     "Task Two"
                     "Second task content"
                     '("project2") nil "DONE" nil nil))
@@ -135,13 +136,13 @@
   (ekg-org-add-schema)
   ;; Create normal task
   (let* ((normal (ekg-org-test-parse-out-id
-                  (ekg-org--agent-tool-add-item
+                  (ekg-agent-org--tool-add-item
                    "Normal Task"
                    "Normal content"
                    nil nil "TODO" nil nil)))
          ;; Create archived task by adding archive tag
          (archived-id (ekg-org-test-parse-out-id
-                       (ekg-org--agent-tool-add-item
+                       (ekg-agent-org--tool-add-item
                         "Archived Task"
                         "Archived content"
                         (list ekg-org-archive-tag) nil "DONE" nil nil))))
@@ -163,13 +164,13 @@
 (ekg-deftest ekg-org-test-set-status ()
   "Test changing status of a task."
   (ekg-org-add-schema)
-  (let* ((note-result (ekg-org--agent-tool-add-item
+  (let* ((note-result (ekg-agent-org--tool-add-item
                        "Status Task"
                        "Content"
                        nil nil "TODO" nil nil))
          (note-id (ekg-org-test-parse-out-id note-result)))
     ;; Change status to DONE
-    (ekg-org--agent-tool-set-status note-id "DONE")
+    (ekg-agent-org--tool-set-status note-id "DONE")
     (let* ((note (ekg-get-note-with-id note-id))
            (rendered (ekg-org-task-to-string note)))
       ;; Verify status changed in rendered output
@@ -191,12 +192,12 @@
 (ekg-deftest ekg-org-test-list-items ()
   "Test listing tasks."
   (ekg-org-add-schema)
-  (ekg-org--agent-tool-add-item "Task 1" "C1" nil nil "TODO" nil nil)
-  (ekg-org--agent-tool-add-item "Task 2" "C2" nil nil "DONE" nil nil)
-  (ekg-org--agent-tool-add-item "Archived" "AC"
+  (ekg-agent-org--tool-add-item "Task 1" "C1" nil nil "TODO" nil nil)
+  (ekg-agent-org--tool-add-item "Task 2" "C2" nil nil "DONE" nil nil)
+  (ekg-agent-org--tool-add-item "Archived" "AC"
                                 (list ekg-org-archive-tag) nil "DONE" nil nil)
-  (let ((all (ekg-org--agent-tool-list-items))
-        (todos (ekg-org--agent-tool-list-items "TODO")))
+  (let ((all (ekg-agent-org--tool-list-items))
+        (todos (ekg-agent-org--tool-list-items "TODO")))
     ;; Normal listing should not include archived
     (should (= (ekg-org-test-count-tasks all) 2))
     (should (= (ekg-org-test-count-tasks todos) 1))
@@ -207,7 +208,7 @@
   (ekg-org-add-schema)
   (let* ((note-id
           (ekg-org-test-parse-out-id
-           (ekg-org--agent-tool-add-item
+           (ekg-agent-org--tool-add-item
             "Tagged Task"
             "Content with tags"
             '("custom-tag" "project/test")
