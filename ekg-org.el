@@ -273,7 +273,10 @@ ARGS are additional arguments to the operation."
      ;; 5. Emacs asks: "Read the file!" -> WE GENERATE IT
      ((eq operation 'insert-file-contents)
       (let ((content (ekg-org-generate-org-content
-                      (string-match ".*archive" filename))))
+                      (string-match ".*archive" filename)))
+            (replace (nth 4 args)))
+        (when replace
+          (erase-buffer))
         (setq-local buffer-file-name filename)
         (insert content)
         ;; Return value must be (filename size)
