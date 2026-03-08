@@ -154,7 +154,7 @@ tool call."
   (declare (indent 0) (debug t))
   `(condition-case err
        (progn ,@body)
-     (error "Error: %s" (error-message-string err))))
+     (error (format "Error: %s" (error-message-string err)))))
 
 (defconst ekg-agent-tool-all-tags
   (make-llm-tool :function (lambda (tags num)
