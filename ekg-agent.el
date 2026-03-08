@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((ekg "0.8.0") async)
+;; Package-Requires: ((emacs "28.1") (ekg "0.8.0") async)
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.0.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -46,6 +46,7 @@
 ;; Forward declarations for optional external packages.
 (declare-function flycheck-mode "flycheck")
 (declare-function org-ql-search "org-ql")
+(declare-function markdown-mode "markdown-mode")
 
 (defgroup ekg-agent nil
   "Agentic actions for ekg."
@@ -153,7 +154,7 @@ tool call."
   (declare (indent 0) (debug t))
   `(condition-case err
        (progn ,@body)
-     (error (format "Error: %s" (error-message-string err)))))
+     (error "Error: %s" (error-message-string err))))
 
 (defconst ekg-agent-tool-all-tags
   (make-llm-tool :function (lambda (tags num)
@@ -537,10 +538,7 @@ non-string content in the assistant role."
 
 (defun ekg-agent--timeout-warning-message ()
   "Return a message instructing the agent to save state before stopping."
-  (format (concat
-           "Time limit reached. Before this session ends, immediately create a note with your current state "
-           "using `create_note` (tag it with `%s`). Also call `summarize_state` with a brief update. "
-           "Then finish by calling `end` or the appropriate completion tool.")
+  (format "Time limit reached. Before this session ends, immediately create a note with your current state using `create_note` (tag it with `%s`). Also call `summarize_state` with a brief update. Then finish by calling `end` or the appropriate completion tool."
           ekg-agent-self-info-tag))
 
 (defun ekg-agent--summarize-state (state)
