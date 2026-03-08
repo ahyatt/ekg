@@ -291,8 +291,8 @@
                                                                 :unknown/ignored "unknown"
                                                                 :rendered/text "rendered"))
                (setf (ekg-note-id note) 1)
-               (setf (ekg-note-modified-time note) 1682139975)
-               (setf (ekg-note-creation-time note) 1682053575)
+               (setf (ekg-note-modified-time note) 1682164800)
+               (setf (ekg-note-creation-time note) 1682078400)
                (should (string-equal "tag1 tag2\ntext\nTitle\nCreated: 2023-04-21   Modified: 2023-04-22\n"
                                      (ekg-display-note note ekg-display-note-template)))))
 
