@@ -120,6 +120,7 @@ Extras
 * Auto save::
 * Denote::
 * Email::
+* Org Integration::
 * Agent::
 
 Logseq
@@ -132,6 +133,13 @@ LLM
 * Augmenting notes with LLM output::
 * Using ekg notes as prompts::
 * Querying your ekg database::
+
+Org Integration
+
+* Org tasks in ekg::
+* Virtual file and agenda integration::
+* Editing tasks from org (@samp{ekg-org-edit-mode})::
+* Agent integration::
 
 Agent
 
@@ -637,7 +645,11 @@ with their tag.
 The note buffer is a buffer of the particular mode for the node, which can change based off the setting, and can be different for different notes.  It acts mosty just like that mode, but has a header that displays some of the properties of the note, and lets you edit those properties.
 
 The properties shown in the note property area come from the data stored in the
-database for the entity.  At a minimum, there will be tags.
+database for the entity. At a minimum, there will be tags. Some properties are
+not useful to display (for example, embedding vectors or internal parent/child
+IDs). These can be hidden by adding the property keyword to
+@code{ekg-header-hidden-properties}. Packages such as @samp{ekg-embedding} and @samp{ekg-org}
+automatically add their internal properties to this list.
 
 For the common cases, there are special commands, available under the @samp{C-c /} prefix keymap:
 
@@ -742,8 +754,8 @@ Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
 of funtionality, but much of it depends on the assumption that the buffer is all
 for use by org-mode (not true in this case, because of the properties portion),
 and the assumption that the buffer is visiting a file, which is also not
-true.  In particular, attachments will not work, and ekg-notes cannot be added to
-the agenda.
+true.  In particular, attachments will not work.  However, ekg notes @emph{can} appear
+in the org agenda via the @ref{Org Integration} module.
 
 @node Capturing notes
 @chapter Capturing notes
@@ -1344,6 +1356,7 @@ package.
 * Auto save::
 * Denote::
 * Email::
+* Org Integration::
 * Agent::
 @end menu
 
@@ -1800,6 +1813,92 @@ Gnus.  Other importing methods may be available in the future.
 While in a Gnus article buffer, you can execute the command @samp{ekg-email-from-gnus}.
 
 Once mails are imported, you can search for email addresses associated with them with @samp{ekg-email-show-notes-with-address}.
+
+@node Org Integration
+@section Org Integration
+
+The @samp{ekg-org} module lets ekg notes appear as org tasks, viewable in the org
+agenda and editable with standard org commands.  To use this module:
+
+@lisp
+(require 'ekg-org)
+@end lisp
+
+@menu
+* Org tasks in ekg::
+* Virtual file and agenda integration::
+* Editing tasks from org (@samp{ekg-org-edit-mode})::
+* Agent integration::
+@end menu
+
+@node Org tasks in ekg
+@subsection Org tasks in ekg
+
+Any ekg note tagged with @samp{org/task} is treated as an org task.  Task state is
+represented by tags with the @samp{org/state/} prefix (e.g., @samp{org/state/todo},
+@samp{org/state/done}).  Tasks can also have deadlines, scheduled dates, and a
+parent-child hierarchy.
+
+To create a task interactively, use @samp{ekg-org-capture}, which prompts for a title
+and creates a note with the @samp{org/task} and @samp{org/state/todo} tags.  To change a
+task's state from an ekg buffer, use @samp{ekg-org-change-state}.
+
+@node Virtual file and agenda integration
+@subsection Virtual file and agenda integration
+
+The module registers a virtual file handler for @samp{/ekg:} paths.  Opening
+@samp{/ekg:tasks.org} generates an org buffer containing all active ekg tasks,
+rendered as a proper org-mode outline with headlines, TODO states, tags,
+deadlines, scheduled dates, and property drawers.  This file is automatically
+added to @samp{org-agenda-files}, so ekg tasks appear in your org agenda.
+
+An archived view is available at @samp{/ekg:tasks.org_archive}, which shows only
+tasks tagged with @samp{org/archive}.
+
+@node Editing tasks from org (@samp{ekg-org-edit-mode})
+@subsection Editing tasks from org (@samp{ekg-org-edit-mode})
+
+When you visit a @samp{/ekg:} buffer, the minor mode @samp{ekg-org-edit-mode} is
+automatically enabled.  This mode intercepts standard org editing commands and
+syncs changes back to the underlying ekg notes:
+
+@itemize
+@item
+@strong{TODO state changes} (@samp{C-c C-t}, speed key @samp{t}, or from the agenda): Changing
+a TODO keyword updates the corresponding @samp{org/state/} tag on the ekg note.
+
+@item
+@strong{Deadlines and scheduled dates} (@samp{C-c C-d}, @samp{C-c C-s}): Setting or clearing a
+deadline or scheduled date updates the @samp{:org/deadline} or @samp{:org/scheduled}
+property on the ekg note.
+
+@item
+@strong{Tag changes} (@samp{C-c C-q}): Modifying org tags on a heading syncs the visible
+tags back to the ekg note, while preserving internal ekg tags (such as
+@samp{org/task}, @samp{org/state/}, and @samp{org/archive}) that are not displayed in org.
+@end itemize
+
+These sync operations work both from the @samp{/ekg:tasks.org} buffer directly and
+from the org agenda when it jumps to the source buffer.
+
+@node Agent integration
+@subsection Agent integration
+
+The module also provides agent tools for managing org tasks programmatically.
+When @samp{ekg-agent} is loaded, three tools are automatically registered:
+
+@itemize
+@item
+@samp{add_org_item}: Create a new org task with title, content, tags, parent,
+status, deadline, and scheduled date.
+@item
+@samp{set_org_item_status}: Change the status of an existing task.
+@item
+@samp{list_org_items}: List all tasks, optionally filtered by state.
+@end itemize
+
+The commands @samp{ekg-org-agent-plan-task} and @samp{ekg-org-agent-run-task} use the
+agent to plan subtasks or execute a task autonomously.
 
 @node Agent
 @section Agent

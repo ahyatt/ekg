@@ -186,6 +186,14 @@ Otherwise the same format as `ekg-display-note-template'."
   :type 'boolean
   :group 'ekg)
 
+(defcustom ekg-header-hidden-properties nil
+  "List of property keywords to hide from the header line.
+Each element should be a keyword like `:embedding/embedding'.
+Packages that add properties unsuitable for display (such as
+large vectors or internal IDs) should add entries via `add-to-list'."
+  :type '(repeat symbol)
+  :group 'ekg)
+
 (defcustom ekg-save-no-message nil
   "Non-nil means do not print any message when saving."
   :type 'boolean
@@ -1131,9 +1139,9 @@ This is needed to identify references to refresh when the subject is changed.")
           (push (ekg-truncate-at tags-part remaining-width) parts)
           (cl-decf remaining-width (length tags-part))))
 
-      ;; Add all other properties except vectors
+      ;; Add all other properties that are either text or lists of text.
       (map-do (lambda (prop value)
-                (unless (vectorp value)
+                (unless (memq prop ekg-header-hidden-properties)
                   (push (ekg-truncate-at
                          (concat (propertize (ekg-property-name-for prop) 'face 'bold)
                                  ": "

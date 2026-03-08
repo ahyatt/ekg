@@ -58,7 +58,9 @@
                       '(parent :base/type integer :base/unique t)
                       '(children :base/virtual-reversed org/parent))
   ;; Mark 'org' as an ekg note type so it's managed with notes
-  (triples-set-type ekg-db 'org 'ekg-note-type))
+  (triples-set-type ekg-db 'org 'ekg-note-type)
+  (add-to-list 'ekg-header-hidden-properties :org/parent)
+  (add-to-list 'ekg-header-hidden-properties :org/children))
 
 (add-hook 'ekg-add-schema-hook #'ekg-org-add-schema)
 

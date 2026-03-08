@@ -249,7 +249,11 @@ with their tag.
 The note buffer is a buffer of the particular mode for the node, which can change based off the setting, and can be different for different notes.  It acts mosty just like that mode, but has a header that displays some of the properties of the note, and lets you edit those properties.
 
 The properties shown in the note property area come from the data stored in the
-database for the entity.  At a minimum, there will be tags.
+database for the entity. At a minimum, there will be tags. Some properties are
+not useful to display (for example, embedding vectors or internal parent/child
+IDs). These can be hidden by adding the property keyword to
+~ekg-header-hidden-properties~. Packages such as =ekg-embedding= and =ekg-org=
+automatically add their internal properties to this list.
 
 For the common cases, there are special commands, available under the =C-c /= prefix keymap:
 
