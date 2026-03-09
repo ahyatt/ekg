@@ -1840,6 +1840,8 @@ Raise an error if there is no current note."
       (ewoc-data node)
     (error "No current note is available to act on!  Create a new note first with `ekg-capture'")))
 
+(declare-function ekg-org-view--note-at-point "ekg-org")
+
 (defun ekg-current-note-or-error-expanded ()
   "Return the current note based on context, or signal an error if none found.
 
@@ -1849,6 +1851,9 @@ intended to be used in any context where a note might be available."
            (ekg-current-note-or-error))
       (and (derived-mode-p 'ekg-note-mode)
            ekg-note)
+      (and (derived-mode-p 'ekg-org-view-mode)
+           (when-let ((id (ekg-org-view--note-at-point)))
+             (ekg-get-note-with-id id)))
       (error "No current note found in context")))
 
 (defun ekg-notes-tag (&optional tag)
