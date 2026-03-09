@@ -1,10 +1,10 @@
-;;; ekg-denote.el --- ekg and denote integration -*- lexical-binding: t -*-
+;;; ekg-denote.el --- A denote integration for ekg -*- lexical-binding: t -*-
 
 ;; Copyright (c) 2024  Jay Rajput <jayrajput@gmail.com>
 
 ;; Author: Jay Rajput <jayrajput@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((ekg "0.7.0") (denote "4.0.0"))
+;; Package-Requires: ((emacs "28.1") (ekg "0.7.0") (denote "4.0.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 1.0.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -194,14 +194,14 @@ Optionally add front-matter."
 Denote uses creation-time as ID."
   (cl-loop for note in notes do
 	       (when (not (ekg-note-creation-time note))
-	         (error (format "ekg-denote: note missing creation time: %s" (ekg-denote--note-print note))))))
+	         (error "In ekg-denote: note missing creation time: %s" (ekg-denote--note-print note)))))
 
 (defun ekg-denote-assert-notes-have-unique-creation-time (notes)
   "Raise error if NOTES are using duplicate creation-time.
 Denote uses creation-time as ID and assume it to be unique."
   (let ((creation-times (mapcar #'ekg-note-creation-time notes)))
     (when (not (equal creation-times (seq-uniq creation-times)))
-      (error "ekg-denote: Notes using same creation time"))))
+      (error "In ekg-denote: Notes using same creation time"))))
 
 (defun ekg-denote-export ()
   "Export the current ekg database to denote."

@@ -103,17 +103,21 @@
 (ert-deftest ekg-logseq-test-note-to-logseq-with-inlines ()
   (let ((note (ekg-note-create :text " " :mode 'org-mode :tags '("tag1" "tag2" "tag3"))))
     (setf (ekg-note-id note) 123)
-    (setf (ekg-note-modified-time note) 1682139975)
-    (setf (ekg-note-creation-time note) 1682053575)
+    (setf (ekg-note-modified-time note) 1682164800)
+    (setf (ekg-note-creation-time note) 1682078400)
     (setf (ekg-note-inlines note)
           (list (make-ekg-inline :pos 0 :command '(transclude-note "abc") :type 'command)
                 (make-ekg-inline :pos 1 :command '(time-tracked) :type 'note)))
-    (should (equal
-             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: b858cb282617fb0956d960215c8e84d1ccf909c6\n:END:\n#[[tag1]] #[[tag2]]\n{{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
-             (ekg-logseq-note-to-logseq-org note "tag3")))
-    (should (equal
-             "- Untitled Note\n  id:: 123\n  ekg_hash:: b858cb282617fb0956d960215c8e84d1ccf909c6\n  #[[tag1]] #[[tag2]]\n  {{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
-             (ekg-logseq-note-to-logseq-md note "tag3")))))
+    (set-time-zone-rule "UTC")
+    (unwind-protect
+        (progn
+          (should (equal
+                   "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: b858cb282617fb0956d960215c8e84d1ccf909c6\n:END:\n#[[tag1]] #[[tag2]]\n{{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
+                   (ekg-logseq-note-to-logseq-org note "tag3")))
+          (should (equal
+                   "- Untitled Note\n  id:: 123\n  ekg_hash:: b858cb282617fb0956d960215c8e84d1ccf909c6\n  #[[tag1]] #[[tag2]]\n  {{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
+                   (ekg-logseq-note-to-logseq-md note "tag3"))))
+      (set-time-zone-rule nil))))
 
 (ert-deftest ekg-logseq-test-note-with-resource-and-title-to-logseq ()
   (let ((note (ekg-note-create :text "line1\nline2\n" :mode 'org-mode :tags '("tag1" "tag2" "tag3"))))
