@@ -30,6 +30,7 @@
 (require 'ekg)
 (require 'llm)
 (require 'vui)
+(declare-function vui-rerender "vui")
 
 ;; Forward declarations for variables defined in ekg-agent.el.
 (defvar ekg-agent-extra-tools)
@@ -389,7 +390,7 @@ Also renumbers all SIBLINGS to ensure consistent spacing."
               (ekg-note-tags note)))
 
 (defun ekg-org-view--fontify-org (text)
-  "Return TEXT with org-mode font-lock properties applied."
+  "Return TEXT with `org-mode' font-lock properties applied."
   (if (or (null text) (string-empty-p text))
       ""
     (with-temp-buffer
