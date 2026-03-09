@@ -344,6 +344,9 @@ Optionally check NOTE to only revert when org tasks change."
 (defvar-local ekg-org-view--root-id nil
   "When non-nil, show only this task and its children.")
 
+(defvar-local ekg-org-view--archive nil
+  "When non-nil, show archived tasks instead of active ones.")
+
 (defun ekg-org-view--sort-order (note)
   "Return the sort-order of NOTE, defaulting to creation time."
   (or (plist-get (ekg-note-properties note) :org/sort-order)
@@ -360,26 +363,32 @@ Optionally check NOTE to only revert when org tasks change."
           (< (ekg-org-view--sort-order a)
              (ekg-org-view--sort-order b)))))
 
-(defun ekg-org-view--sorted-top-level ()
-  "Return top-level tasks, sorted by sort-order."
-  (sort (ekg-org-get-tasks)
+(defun ekg-org-view--sorted-top-level (&optional archive)
+  "Return top-level tasks, sorted by sort-order.
+If ARCHIVE is non-nil, return archived tasks instead."
+  (sort (ekg-org-get-tasks archive)
         (lambda (a b)
           (< (ekg-org-view--sort-order a)
              (ekg-org-view--sort-order b)))))
 
 (defun ekg-org-view--assign-order-after (siblings current-id)
   "Return a sort-order value that places a new item after CURRENT-ID in SIBLINGS.
-Also renumbers all SIBLINGS to ensure consistent spacing."
+Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
   (let ((order 0)
-        (insert-after nil))
+        (insert-after nil)
+        (found nil))
     (dolist (sib siblings)
+      (when (and found (not insert-after))
+        ;; Leave a gap for the new item
+        (setq insert-after order)
+        (cl-incf order))
       (setf (ekg-note-properties sib)
             (plist-put (ekg-note-properties sib) :org/sort-order order))
       (ekg-save-note sib)
       (when (equal (ekg-note-id sib) current-id)
-        (setq insert-after order))
+        (setq found t))
       (cl-incf order))
-    (if insert-after (1+ insert-after) order)))
+    (or insert-after order)))
 
 (defun ekg-org-view--visible-tags (note)
   "Return the user-visible tags of NOTE, excluding internal org tags."
@@ -444,17 +453,20 @@ Also renumbers all SIBLINGS to ensure consistent spacing."
              :ekg-org-heading t)
            body-nodes)))
 
-(vui-defcomponent ekg-org-view-root (root-id)
+(vui-defcomponent ekg-org-view-root (root-id archive)
   "Root component for the ekg org task view."
   :state ((collapsed-ids nil))
   :render
   (let* ((tasks (if root-id
                     (let ((note (ekg-get-note-with-id root-id)))
                       (when note (list note)))
-                  (ekg-org-view--sorted-top-level)))
+                  (ekg-org-view--sorted-top-level archive)))
          (start-level (if root-id 1 1)))
     (if (null tasks)
-        (vui-text "(No org tasks found)" :face 'font-lock-comment-face)
+        (vui-text (if archive
+                      "(No archived org tasks found)"
+                    "(No org tasks found)")
+                  :face 'font-lock-comment-face)
       (apply #'vui-vstack
              :spacing 1
              (mapcar (lambda (task)
@@ -537,10 +549,11 @@ If SAME-LEVEL, only stop at headings with the same level as current."
 (defun ekg-org-view--refresh ()
   "Re-render the view by re-mounting with fresh data."
   (let ((pos (point))
-        (root-id ekg-org-view--root-id))
+        (root-id ekg-org-view--root-id)
+        (archive ekg-org-view--archive))
     (if root-id
         (ekg-org-view-task root-id)
-      (ekg-org-view))
+      (ekg-org-view--mount archive))
     (goto-char (min pos (point-max)))))
 
 (defun ekg-org-view-toggle-collapse ()
@@ -674,6 +687,7 @@ trashed, it is permanently deleted."
                              (plist-get (ekg-note-properties parent-note)
                                         :org/parent))))
       (triples-with-transaction
+        ekg-db
         (if grandparent-id
             (setf (ekg-note-properties note)
                   (plist-put props :org/parent grandparent-id))
@@ -759,13 +773,14 @@ trashed, it is permanently deleted."
   (interactive)
   (ekg-org-view--refresh))
 
-;;;###autoload
-(defun ekg-org-view ()
-  "Show all ekg org tasks in a hierarchical view."
-  (interactive)
+(defun ekg-org-view--mount (&optional archive)
+  "Mount the org task view buffer.
+If ARCHIVE is non-nil, show archived tasks."
   (ekg-connect)
-  (let* ((buf (get-buffer-create "*ekg-org-tasks*"))
-         (vnode (vui-component 'ekg-org-view-root :root-id nil))
+  (let* ((buf-name (if archive "*ekg-org-archive*" "*ekg-org-tasks*"))
+         (buf (get-buffer-create buf-name))
+         (vnode (vui-component 'ekg-org-view-root
+                               :root-id nil :archive archive))
          (instance (vui--create-instance vnode nil))
          (vui--pending-effects nil))
     (setf (vui-instance-buffer instance) buf)
@@ -776,6 +791,7 @@ trashed, it is permanently deleted."
         (setq-local vui--root-instance instance)
         (setq-local ekg-org-view--instance instance)
         (setq-local ekg-org-view--root-id nil)
+        (setq-local ekg-org-view--archive archive)
         (let ((vui--root-instance instance)
               (vui--rendering-p t))
           (unwind-protect
@@ -786,6 +802,18 @@ trashed, it is permanently deleted."
         (goto-char (point-min))))
     (switch-to-buffer buf)
     instance))
+
+;;;###autoload
+(defun ekg-org-view ()
+  "Show all ekg org tasks in a hierarchical view."
+  (interactive)
+  (ekg-org-view--mount))
+
+;;;###autoload
+(defun ekg-org-archive-view ()
+  "Show archived ekg org tasks in a hierarchical view."
+  (interactive)
+  (ekg-org-view--mount t))
 
 ;;;###autoload
 (defun ekg-org-view-task (id)

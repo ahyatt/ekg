@@ -234,4 +234,268 @@
     (should (string-match-p ":custom-tag:" rendered))
     (should (string-match-p ":project/test:" rendered))))
 
+;;; View tests
+
+(defun ekg-org-test--add-task (title &optional parent-id state)
+  "Create a task with TITLE, optional PARENT-ID and STATE.
+Returns the note ID."
+  (let ((result (ekg-agent-org--tool-add-item
+                 title "" nil parent-id (or state "TODO") nil nil)))
+    (ekg-org-test-parse-out-id result)))
+
+(defun ekg-org-test--view-headings ()
+  "Return a list of (LEVEL TITLE) pairs from the current view buffer."
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (let (headings)
+      (while (not (eobp))
+        (when (get-text-property (point) :ekg-org-heading)
+          (let* ((level (get-text-property (point) :ekg-org-level))
+                 (id (get-text-property (point) :ekg-org-note-id))
+                 (note (ekg-get-note-with-id id))
+                 (title (car (plist-get (ekg-note-properties note)
+                                        :titled/title))))
+            (push (list level title) headings)))
+        (forward-line 1))
+      (nreverse headings))))
+
+(defun ekg-org-test--view-titles ()
+  "Return a flat list of titles from the current view buffer."
+  (mapcar #'cadr (ekg-org-test--view-headings)))
+
+(ekg-deftest ekg-org-test-view-basic-hierarchy ()
+  "Test that the view renders a parent with children in order."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (_child1 (ekg-org-test--add-task "Child A" parent-id))
+         (_child2 (ekg-org-test--add-task "Child B" parent-id)))
+    (ekg-org-view)
+    (let ((headings (ekg-org-test--view-headings)))
+      (should (equal headings
+                     '((1 "Parent") (2 "Child A") (2 "Child B")))))))
+
+(ekg-deftest ekg-org-test-view-multiple-top-level ()
+  "Test that multiple top-level tasks all appear."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (let ((titles (ekg-org-test--view-titles)))
+    (should (= (length titles) 3))
+    (should (member "First" titles))
+    (should (member "Second" titles))
+    (should (member "Third" titles))))
+
+(ekg-deftest ekg-org-test-view-collapse ()
+  "Test that collapsing a parent hides its children."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (_child (ekg-org-test--add-task "Child" parent-id)))
+    (ekg-org-view)
+    (should (= (length (ekg-org-test--view-headings)) 2))
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view-toggle-collapse))
+    (should (equal (ekg-org-test--view-headings)
+                   '((1 "Parent"))))))
+
+(ekg-deftest ekg-org-test-view-archive-removes-from-view ()
+  "Test that archiving a task removes it from the active view."
+  (ekg-org-add-schema)
+  (let ((id (ekg-org-test--add-task "To Archive")))
+    (ekg-org-view)
+    (should (member "To Archive" (ekg-org-test--view-titles)))
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (let ((note (ekg-get-note-with-id id)))
+        (push ekg-org-archive-tag (ekg-note-tags note))
+        (ekg-save-note note)))
+    (ekg-org-view)
+    (should-not (member "To Archive" (ekg-org-test--view-titles)))))
+
+(ekg-deftest ekg-org-test-view-archive-appears-in-archive-view ()
+  "Test that archived tasks appear in the archive view."
+  (ekg-org-add-schema)
+  (let ((id (ekg-org-test--add-task "Archived Task")))
+    (let ((note (ekg-get-note-with-id id)))
+      (push ekg-org-archive-tag (ekg-note-tags note))
+      (ekg-save-note note))
+    (ekg-org-archive-view)
+    (with-current-buffer "*ekg-org-archive*"
+      (goto-char (point-min))
+      (let (titles)
+        (while (not (eobp))
+          (when (get-text-property (point) :ekg-org-heading)
+            (let* ((nid (get-text-property (point) :ekg-org-note-id))
+                   (note (ekg-get-note-with-id nid))
+                   (title (car (plist-get (ekg-note-properties note)
+                                          :titled/title))))
+              (push title titles)))
+          (forward-line 1))
+        (should (member "Archived Task" titles))))))
+
+(ekg-deftest ekg-org-test-view-promote ()
+  "Test that promoting a child makes it a sibling of its parent."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (child-id (ekg-org-test--add-task "Child" parent-id)))
+    (ekg-org-view)
+    ;; Navigate to the child and promote it
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view-next-heading)
+      (ekg-org-view-promote))
+    ;; Child should now be top-level
+    (let ((headings (ekg-org-test--view-headings)))
+      (should (= (length headings) 2))
+      (should (equal (assoc 1 headings) '(1 "Parent")))
+      (should (member '(1 "Child") headings)))))
+
+(ekg-deftest ekg-org-test-view-demote ()
+  "Test that demoting a task makes it a child of the previous sibling."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-view)
+  ;; Navigate to "Second" and demote it
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-next-heading)
+    (ekg-org-view-demote))
+  (let ((headings (ekg-org-test--view-headings)))
+    (should (= (length headings) 2))
+    (should (equal (car headings) '(1 "First")))
+    (should (equal (cadr headings) '(2 "Second")))))
+
+(ekg-deftest ekg-org-test-view-state-change ()
+  "Test that changing state updates the heading."
+  (ekg-org-add-schema)
+  (let ((id (ekg-org-test--add-task "My Task" nil "TODO")))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (should (string-match-p "TODO" (buffer-substring
+                                      (line-beginning-position)
+                                      (line-end-position)))))
+    ;; Change state directly and refresh
+    (let ((note (ekg-get-note-with-id id)))
+      (setf (ekg-note-tags note)
+            (cons (concat ekg-org-state-tag-prefix "done")
+                  (seq-remove
+                   (lambda (tag)
+                     (string-prefix-p ekg-org-state-tag-prefix tag))
+                   (ekg-note-tags note))))
+      (ekg-save-note note))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (should (string-match-p "DONE" (buffer-substring
+                                      (line-beginning-position)
+                                      (line-end-position)))))))
+
+(ekg-deftest ekg-org-test-view-create-sibling-after-current ()
+  "Test that creating a sibling inserts it after the current item."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  ;; Point on "First", create sibling "Second"
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (_prompt &rest _) "Second")))
+      (ekg-org-view-create-sibling)))
+  (let ((titles (ekg-org-test--view-titles)))
+    (should (equal titles '("First" "Second" "Third")))))
+
+(ekg-deftest ekg-org-test-view-create-child ()
+  "Test that creating a child adds it under the parent."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Parent")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (_prompt &rest _) "New Child")))
+      (ekg-org-view-create-child)))
+  (let ((headings (ekg-org-test--view-headings)))
+    (should (equal headings
+                   '((1 "Parent") (2 "New Child"))))))
+
+(ekg-deftest ekg-org-test-view-trash ()
+  "Test that trashing a task removes it from the view."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Keep")
+  (ekg-org-test--add-task "Trash Me")
+  (ekg-org-view)
+  (should (= (length (ekg-org-test--view-titles)) 2))
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-next-heading)
+    (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) t)))
+      (ekg-org-view-delete)))
+  (let ((titles (ekg-org-test--view-titles)))
+    (should (= (length titles) 1))
+    (should (equal (car titles) "Keep"))))
+
+(ekg-deftest ekg-org-test-view-navigation ()
+  "Test heading navigation commands."
+  (ekg-org-add-schema)
+  (let* ((p1 (ekg-org-test--add-task "Parent 1"))
+         (_c1 (ekg-org-test--add-task "Child 1" p1))
+         (_p2 (ekg-org-test--add-task "Parent 2")))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      ;; At "Parent 1"
+      (should (equal (get-text-property (point) :ekg-org-level) 1))
+      ;; Next heading → "Child 1"
+      (ekg-org-view-next-heading)
+      (should (equal (get-text-property (point) :ekg-org-level) 2))
+      ;; Up → back to "Parent 1"
+      (ekg-org-view-up-heading)
+      (should (equal (get-text-property (point) :ekg-org-level) 1))
+      (let* ((id (get-text-property (point) :ekg-org-note-id))
+             (title (car (plist-get (ekg-note-properties
+                                     (ekg-get-note-with-id id))
+                                    :titled/title))))
+        (should (equal title "Parent 1")))
+      ;; Next sibling → "Parent 2"
+      (ekg-org-view-next-sibling)
+      (let* ((id (get-text-property (point) :ekg-org-note-id))
+             (title (car (plist-get (ekg-note-properties
+                                     (ekg-get-note-with-id id))
+                                    :titled/title))))
+        (should (equal title "Parent 2"))))))
+
+(ekg-deftest ekg-org-test-view-deep-hierarchy ()
+  "Test a three-level deep hierarchy renders correctly."
+  (ekg-org-add-schema)
+  (let* ((gp (ekg-org-test--add-task "Grandparent"))
+         (p (ekg-org-test--add-task "Parent" gp))
+         (_c (ekg-org-test--add-task "Child" p)))
+    (ekg-org-view)
+    (should (equal (ekg-org-test--view-headings)
+                   '((1 "Grandparent") (2 "Parent") (3 "Child"))))))
+
+(ekg-deftest ekg-org-test-view-promote-to-grandparent ()
+  "Test promoting a deeply nested child to its grandparent's level."
+  (ekg-org-add-schema)
+  (let* ((gp (ekg-org-test--add-task "Grandparent"))
+         (p (ekg-org-test--add-task "Parent" gp))
+         (_c (ekg-org-test--add-task "Child" p)))
+    (ekg-org-view)
+    ;; Navigate to "Child" (3rd heading) and promote
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view-next-heading)
+      (ekg-org-view-next-heading)
+      (ekg-org-view-promote))
+    ;; "Child" should now be at level 2 (sibling of Parent)
+    (let ((headings (ekg-org-test--view-headings)))
+      (should (= (length headings) 3))
+      (should (member '(2 "Child") headings))
+      (should (member '(2 "Parent") headings)))))
+
 (provide 'ekg-org-test)
