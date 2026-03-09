@@ -338,6 +338,9 @@ Optionally check NOTE to only revert when org tasks change."
 
 ;;; ekg-org-view — vui-based hierarchical task view
 
+(defvar-local ekg-org-view--hl nil
+  "Overlay for highlighting the current heading in `ekg-org-view-mode'.")
+
 (defvar-local ekg-org-view--instance nil
   "The vui root instance for the current ekg-org-view buffer.")
 
@@ -487,6 +490,18 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
   "Return non-nil if point is on a heading line."
   (get-text-property (line-beginning-position) :ekg-org-heading))
 
+(defun ekg-org-view--highlight ()
+  "Highlight the current heading in the ekg-org-view buffer."
+  (when ekg-org-view--hl
+    (let ((beg (line-beginning-position))
+          (end (save-excursion
+                 (forward-line 1)
+                 (while (and (not (eobp))
+                             (not (get-text-property (point) :ekg-org-heading)))
+                   (forward-line 1))
+                 (if (eobp) (point) (line-beginning-position)))))
+      (move-overlay ekg-org-view--hl beg end))))
+
 (defun ekg-org-view--goto-heading (direction &optional same-level)
   "Move to the next heading in DIRECTION (:forward or :backward).
 If SAME-LEVEL, only stop at headings with the same level as current."
@@ -512,22 +527,26 @@ If SAME-LEVEL, only stop at headings with the same level as current."
 (defun ekg-org-view-next-heading ()
   "Move to the next heading."
   (interactive)
-  (ekg-org-view--goto-heading :forward))
+  (ekg-org-view--goto-heading :forward)
+  (ekg-org-view--highlight))
 
 (defun ekg-org-view-previous-heading ()
   "Move to the previous heading."
   (interactive)
-  (ekg-org-view--goto-heading :backward))
+  (ekg-org-view--goto-heading :backward)
+  (ekg-org-view--highlight))
 
 (defun ekg-org-view-next-sibling ()
   "Move to the next heading at the same level."
   (interactive)
-  (ekg-org-view--goto-heading :forward t))
+  (ekg-org-view--goto-heading :forward t)
+  (ekg-org-view--highlight))
 
 (defun ekg-org-view-previous-sibling ()
   "Move to the previous heading at the same level."
   (interactive)
-  (ekg-org-view--goto-heading :backward t))
+  (ekg-org-view--goto-heading :backward t)
+  (ekg-org-view--highlight))
 
 (defun ekg-org-view-up-heading ()
   "Move to the parent heading."
@@ -542,19 +561,23 @@ If SAME-LEVEL, only stop at headings with the same level as current."
             (let ((level (get-text-property (point) :ekg-org-level)))
               (when (and level (< level current-level))
                 (setq found (point))))))))
-    (when found (goto-char found))))
+    (when found (goto-char found))
+    (ekg-org-view--highlight)))
 
 ;; Interactive action commands
 
 (defun ekg-org-view--refresh ()
   "Re-render the view by re-mounting with fresh data."
   (let ((pos (point))
+        (win-start (window-start))
         (root-id ekg-org-view--root-id)
         (archive ekg-org-view--archive))
     (if root-id
         (ekg-org-view-task root-id)
       (ekg-org-view--mount archive))
-    (goto-char (min pos (point-max)))))
+    (goto-char (min pos (point-max)))
+    (set-window-start (selected-window) (min win-start (point-max)))
+    (ekg-org-view--highlight)))
 
 (defun ekg-org-view-toggle-collapse ()
   "Toggle collapse/expand of the task at point."
@@ -799,7 +822,10 @@ If ARCHIVE is non-nil, show archived tasks."
             (setq vui--rendering-p nil)))
         (widget-setup)
         (vui--run-pending-effects)
-        (goto-char (point-min))))
+        (setq-local ekg-org-view--hl (make-overlay 1 1))
+        (overlay-put ekg-org-view--hl 'face hl-line-face)
+        (goto-char (point-min))
+        (ekg-org-view--highlight)))
     (switch-to-buffer buf)
     instance))
 
@@ -847,7 +873,10 @@ If ARCHIVE is non-nil, show archived tasks."
             (setq vui--rendering-p nil)))
         (widget-setup)
         (vui--run-pending-effects)
-        (goto-char (point-min))))
+        (setq-local ekg-org-view--hl (make-overlay 1 1))
+        (overlay-put ekg-org-view--hl 'face hl-line-face)
+        (goto-char (point-min))
+        (ekg-org-view--highlight)))
     (switch-to-buffer buf)
     instance))
 
