@@ -350,8 +350,11 @@ This will be the location of the database file."
                      (when (or (null (plist-get ekg-plist :version))
                                (version-list-< (plist-get ekg-plist :version) (version-to-list ekg-version)))
                        (ekg-add-schema)
-                       (ekg-upgrade-db (plist-get ekg-plist :version))
-                       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))))
+                       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version)))
+                     ;; Always run upgrades — they are idempotent and
+                     ;; handle invariants that may need to be
+                     ;; re-established even without a version change.
+                     (ekg-upgrade-db (plist-get ekg-plist :version)))
                    (unless (triples-backups-configuration ekg-db)
                      (triples-backups-setup ekg-db ekg-default-num-backups
                                             ekg-default-backups-strategy)))
@@ -2387,7 +2390,12 @@ the database after the upgrade, in list form."
                        (ekg-note-trash note)))))
           (cl-loop for tag in trash-ids do
                    (triples-remove-type ekg-db tag 'tag)
-                   (triples-set-type ekg-db ekg-trash-tag 'tag)))))))
+                   (triples-set-type ekg-db ekg-trash-tag 'tag))))))
+    ;; Always ensure core note types are registered.  These can be
+    ;; lost when the develop branch changes without incrementing the
+    ;; version number.
+    (dolist (type '(text time-tracked inline titled tagged))
+      (triples-set-type ekg-db type 'ekg-note-type)))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."
