@@ -247,7 +247,7 @@ NEW-STATE is one of the standard org states."
       (ekg-save-note ekg-note)
       (when (derived-mode-p 'ekg-notes-mode)
         (ekg-notes-refresh)))))
-  ;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
+;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
 
 (defun ekg-org-capture (title)
   "Capture a new org task with TITLE into EKG."
@@ -493,18 +493,31 @@ Reuses a hidden buffer to avoid repeated `org-mode' initialization."
 
 (defun ekg-org-view--render-heading (note level)
   "Return a propertized heading string for NOTE at LEVEL."
-  (let* ((state (condition-case nil (ekg-org--state note) (error "UNKNOWN")))
+  (let* ((props (ekg-note-properties note))
+         (state (condition-case nil (ekg-org--state note) (error "UNKNOWN")))
          (title (or (ekg-org--note-title note) "Untitled"))
          (tags (ekg-org-view--visible-tags note))
          (stars (make-string level ?*))
          (state-face (if (string-equal state "DONE") 'org-done 'org-todo))
-         (tag-str (if tags (concat " :" (mapconcat #'identity tags ":") ":") "")))
+         (tag-str (if tags (concat " :" (mapconcat #'identity tags ":") ":") ""))
+         (scheduled (plist-get props :org/scheduled))
+         (deadline (plist-get props :org/deadline))
+         (date-str (concat
+                    (when scheduled
+                      (concat "\n  SCHEDULED: "
+                              (propertize (ekg-org--format-timestamp scheduled)
+                                          'face 'org-date)))
+                    (when deadline
+                      (concat "\n  DEADLINE: "
+                              (propertize (ekg-org--format-timestamp deadline)
+                                          'face 'org-date))))))
     (concat (propertize stars 'face (ekg-org-view--heading-face level))
             " "
             (propertize state 'face state-face)
             " "
             (propertize title 'face (ekg-org-view--heading-face level))
-            (propertize tag-str 'face 'org-tag))))
+            (propertize tag-str 'face 'org-tag)
+            date-str)))
 
 
 
@@ -708,7 +721,7 @@ as the starting heading are skipped."
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (let* ((states (or (seq-filter #'stringp
-                                    (flatten-list org-todo-keywords))
+                                   (flatten-list org-todo-keywords))
                        '("TODO" "DONE")))
            (states (seq-remove (lambda (s) (string= s "|")) states))
            (new-state (completing-read "State: " states nil t)))
@@ -728,6 +741,32 @@ as the starting heading are skipped."
     (ekg-save-note note))
   (dolist (child (ekg-org-get-child-notes-of-id (ekg-note-id note)))
     (ekg-org-view--archive-note child)))
+
+(defun ekg-org-view--read-date (prop note)
+  "Read a date using `org-read-date' and set PROP on NOTE.
+PROP is :org/scheduled or :org/deadline.  An empty input clears the date."
+  (let* ((current (plist-get (ekg-note-properties note) prop))
+         (default-time (when current (seconds-to-time current)))
+         (time (org-read-date nil t nil nil default-time)))
+    (setf (ekg-note-properties note)
+          (plist-put (ekg-note-properties note) prop
+                     (time-convert time 'integer)))
+    (ekg-save-note note)
+    (ekg-org-view--refresh)))
+
+(defun ekg-org-view-set-scheduled ()
+  "Set the scheduled date of the task at point."
+  (interactive)
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (ekg-org-view--read-date :org/scheduled note)))
+
+(defun ekg-org-view-set-deadline ()
+  "Set the deadline of the task at point."
+  (interactive)
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (ekg-org-view--read-date :org/deadline note)))
 
 (defun ekg-org-view-archive ()
   "Archive the task at point and all its descendants."
@@ -887,8 +926,8 @@ skipped."
               (push (list (point) id level
                           (when id
                             (plist-get (ekg-note-properties
-                                       (ekg-get-note-with-id id))
-                                      :org/parent)))
+                                        (ekg-get-note-with-id id))
+                                       :org/parent)))
                     headings))))
         (forward-line 1)))
     (nreverse headings)))
@@ -1206,6 +1245,8 @@ A placeholder shows where the new task will be inserted.  Use
     (define-key map (kbd "RET") #'ekg-org-view-open-note)
     (define-key map (kbd "L") #'ekg-org-view-promote)
     (define-key map (kbd "R") #'ekg-org-view-demote)
+    (define-key map (kbd "C-c C-s") #'ekg-org-view-set-scheduled)
+    (define-key map (kbd "C-c C-d") #'ekg-org-view-set-deadline)
     (define-key map (kbd "g") #'ekg-org-view-refresh)
     map)
   "Keymap for `ekg-org-view-mode'.")
