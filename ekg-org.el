@@ -231,7 +231,10 @@ an ekg-note and returns nil to exclude it."
   "Change the state of the current org task to NEW-STATE.
 
 NEW-STATE is one of the standard org states."
-  (interactive (list (completing-read "New state: " org-todo-keywords-1)))
+  (interactive (list (completing-read "New state: "
+                                      (seq-remove (lambda (s) (string= s "|"))
+                                                  (seq-filter #'stringp
+                                                              (flatten-list org-todo-keywords))))))
   (let ((ekg-note (ekg-current-note-or-error-expanded)))
     (setf (ekg-note-tags ekg-note)
           (cons
@@ -704,7 +707,10 @@ as the starting heading are skipped."
   (interactive)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
-    (let* ((states (or org-todo-keywords-1 '("TODO" "DONE")))
+    (let* ((states (or (seq-filter #'stringp
+                                    (flatten-list org-todo-keywords))
+                       '("TODO" "DONE")))
+           (states (seq-remove (lambda (s) (string= s "|")) states))
            (new-state (completing-read "State: " states nil t)))
       (setf (ekg-note-tags note)
             (cons (concat ekg-org-state-tag-prefix (downcase new-state))
