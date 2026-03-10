@@ -106,6 +106,28 @@
       (should (string-match-p "\\* TODO Parent Task" rendered))
       (should (string-match-p "Parent content" rendered)))))
 
+(ekg-deftest ekg-org-test-save-with-virtual-reversed ()
+  "Test that saving a parent note with org/children doesn't error.
+When a note has children, reading it populates :org/children as a
+virtual-reversed property.  Saving it back must not attempt to
+write that property."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test-parse-out-id
+                     (ekg-agent-org--tool-add-item
+                      "Parent" "content" nil nil "TODO" nil nil)))
+         (child-id (ekg-org-test-parse-out-id
+                    (ekg-agent-org--tool-add-item
+                     "Child" "child content" nil parent-id "TODO" nil nil)))
+         (parent-note (ekg-get-note-with-id parent-id)))
+    ;; Verify the virtual-reversed property is present when reading.
+    (should (plist-get (ekg-note-properties parent-note) :org/children))
+    ;; Saving the parent should not error.
+    (ekg-save-note parent-note)
+    ;; Verify the child relationship is still intact after save.
+    (let ((reloaded (ekg-get-note-with-id child-id)))
+      (should (= (plist-get (ekg-note-properties reloaded) :org/parent)
+                 parent-id)))))
+
 (ekg-deftest ekg-org-test-generate-content ()
   "Test ekg-org-generate-org-content function."
   (ekg-org-add-schema)

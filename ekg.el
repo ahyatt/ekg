@@ -467,6 +467,20 @@ if it is time for one, according to the settings in
            (error msg (cdr err))
          (lwarn :error 'ekg msg (cdr err)))))))
 
+(defun ekg--virtual-reversed-p (combined-prop)
+  "Return non-nil if COMBINED-PROP is a virtual-reversed property."
+  (plist-get (triples-properties-for-predicate ekg-db combined-prop)
+             :base/virtual-reversed))
+
+(defun ekg--filter-virtual-reversed (properties)
+  "Return PROPERTIES with virtual-reversed properties removed."
+  (let ((result nil))
+    (cl-loop for (key value) on properties by #'cddr do
+             (let ((cpred (intern (substring (symbol-name key) 1))))
+               (unless (ekg--virtual-reversed-p cpred)
+                 (setq result (plist-put result key value)))))
+    result))
+
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
   (ekg-connect)
@@ -475,45 +489,48 @@ if it is time for one, according to the settings in
     (ekg--convert-inline-tags-to-links note))
   (ekg--populate-inline-tags note)
   (run-hook-with-args 'ekg-note-pre-save-hook note)
-  (triples-with-transaction
-    ekg-db
-    (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
-    (triples-set-type ekg-db (ekg-note-id note) 'text
-                      :text (ekg-note-text note)
-                      :mode (ekg-note-mode note))
-    ;; Delete any previous linked inlines.
-    (cl-loop for inline-id in (triples-subjects-with-predicate-object
-                               ekg-db 'inline/for-text (ekg-note-id note))
-             do (triples-remove-type ekg-db inline-id 'inline))
-    ;; Now store the new inlines.
-    (cl-loop for inline in (ekg-note-inlines note) do
-             (triples-set-type ekg-db (format "%S/pos:%d" (ekg-note-id note)
-                                              (ekg-inline-pos inline))
-                               'inline
-                               :command (car (ekg-inline-command inline))
-                               :args (cdr (ekg-inline-command inline))
-                               :pos (ekg-inline-pos inline)
-                               :for-text (ekg-note-id note)
-                               :type (ekg-inline-type inline)))
-    ;; Note that we recalculate modified time here, since we are modifying the
-    ;; entity.
-    (let ((modified-time (time-convert (current-time) 'integer)))
-      (triples-set-type ekg-db (ekg-note-id note) 'time-tracked
-                        :creation-time (ekg-note-creation-time note)
-                        :modified-time modified-time)
-      (setf (ekg-note-modified-time note) modified-time))
-    (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
-    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
-    ;; For any properties that no longer have a value, delete the type.  Iterate
-    ;; over the plist, and for each key, if the value is nil, delete the type.
-    (let ((empty-types)
-          (nonempty-types))
-      (cl-loop for (key value) on (ekg-note-properties note) by #'cddr do
-               (push (car (triples-combined-to-type-and-prop key))
-                     (if value nonempty-types empty-types)))
-      (mapc (lambda (type) (triples-remove-type ekg-db (ekg-note-id note) type))
-            (seq-difference empty-types nonempty-types)))
-    (run-hook-with-args 'ekg-note-save-hook note))
+  (let ((saveable-props (ekg--filter-virtual-reversed
+                         (ekg-note-properties note))))
+    (triples-with-transaction
+      ekg-db
+      (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
+      (triples-set-type ekg-db (ekg-note-id note) 'text
+                        :text (ekg-note-text note)
+                        :mode (ekg-note-mode note))
+      ;; Delete any previous linked inlines.
+      (cl-loop for inline-id in (triples-subjects-with-predicate-object
+                                 ekg-db 'inline/for-text (ekg-note-id note))
+               do (triples-remove-type ekg-db inline-id 'inline))
+      ;; Now store the new inlines.
+      (cl-loop for inline in (ekg-note-inlines note) do
+               (triples-set-type ekg-db (format "%S/pos:%d" (ekg-note-id note)
+                                                (ekg-inline-pos inline))
+                                 'inline
+                                 :command (car (ekg-inline-command inline))
+                                 :args (cdr (ekg-inline-command inline))
+                                 :pos (ekg-inline-pos inline)
+                                 :for-text (ekg-note-id note)
+                                 :type (ekg-inline-type inline)))
+      ;; Note that we recalculate modified time here, since we are modifying the
+      ;; entity.
+      (let ((modified-time (time-convert (current-time) 'integer)))
+        (triples-set-type ekg-db (ekg-note-id note) 'time-tracked
+                          :creation-time (ekg-note-creation-time note)
+                          :modified-time modified-time)
+        (setf (ekg-note-modified-time note) modified-time))
+      (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
+      (apply #'triples-set-types ekg-db (ekg-note-id note) saveable-props)
+      ;; For any properties that no longer have a value, delete the type.
+      ;; Iterate over the plist, and for each key, if the value is nil, delete
+      ;; the type.
+      (let ((empty-types)
+            (nonempty-types))
+        (cl-loop for (key value) on saveable-props by #'cddr do
+                 (push (car (triples-combined-to-type-and-prop key))
+                       (if value nonempty-types empty-types)))
+        (mapc (lambda (type) (triples-remove-type ekg-db (ekg-note-id note) type))
+              (seq-difference empty-types nonempty-types)))
+      (run-hook-with-args 'ekg-note-save-hook note)))
   (ekg-backup)
   (set-buffer-modified-p nil))
 
