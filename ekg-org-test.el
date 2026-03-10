@@ -285,6 +285,15 @@ Returns the note ID."
   "Return a flat list of titles from the current view buffer."
   (mapcar #'cadr (ekg-org-test--view-headings)))
 
+(defun ekg-org-test--task-id-by-title (title)
+  "Return the note ID of the task with TITLE."
+  (let ((notes (ekg-get-notes-with-tag ekg-org-task-tag)))
+    (cl-loop for note in notes
+             when (equal (car (plist-get (ekg-note-properties note)
+                                         :titled/title))
+                         title)
+             return (ekg-note-id note))))
+
 (ekg-deftest ekg-org-test-view-basic-hierarchy ()
   "Test that the view renders a parent with children in order."
   (ekg-org-add-schema)
@@ -444,6 +453,65 @@ Returns the note ID."
   (let ((headings (ekg-org-test--view-headings)))
     (should (equal headings
                    '((1 "Parent") (2 "New Child"))))))
+
+(ekg-deftest ekg-org-test-view-insert-mode-sibling ()
+  "Test that insert mode creates a sibling after the current task."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    ;; Enter insert mode and find the slot after "First" at level 1.
+    (ekg-org-view-create)
+    (let ((first-id (ekg-org-test--task-id-by-title "First"))
+          (target-slot nil))
+      (cl-loop for slot in ekg-org-view--insert-slots
+               when (and (= (plist-get slot :level) 1)
+                         (equal (plist-get slot :after-id) first-id))
+               do (setq target-slot slot))
+      (ekg-org-view--insert-cleanup)
+      (ekg-org-view--insert-create-task target-slot "Second")))
+  (let ((titles (ekg-org-test--view-titles)))
+    (should (equal titles '("First" "Second" "Third")))))
+
+(ekg-deftest ekg-org-test-view-insert-mode-child ()
+  "Test that insert mode creates a child task."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Parent")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-create)
+    (let ((parent-id (ekg-org-test--task-id-by-title "Parent"))
+          (target-slot nil))
+      (cl-loop for slot in ekg-org-view--insert-slots
+               when (and (= (plist-get slot :level) 2)
+                         (equal (plist-get slot :parent-id) parent-id))
+               do (setq target-slot slot))
+      (ekg-org-view--insert-cleanup)
+      (ekg-org-view--insert-create-task target-slot "Child")))
+  (let ((headings (ekg-org-test--view-headings)))
+    (should (equal headings '((1 "Parent") (2 "Child"))))))
+
+(ekg-deftest ekg-org-test-view-insert-mode-top-level ()
+  "Test that insert mode creates a top-level task at the beginning."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Existing")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-create)
+    (let ((target-slot nil))
+      (cl-loop for slot in ekg-org-view--insert-slots
+               when (and (= (plist-get slot :level) 1)
+                         (null (plist-get slot :after-id)))
+               do (progn (setq target-slot slot) (cl-return)))
+      (ekg-org-view--insert-cleanup)
+      (ekg-org-view--insert-create-task target-slot "New First")))
+  (let ((titles (ekg-org-test--view-titles)))
+    (should (equal (car titles) "New First"))
+    (should (= (length titles) 2))))
 
 (ekg-deftest ekg-org-test-view-trash ()
   "Test that trashing a task removes it from the view."

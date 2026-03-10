@@ -499,6 +499,8 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
             (propertize title 'face (ekg-org-view--heading-face level))
             (propertize tag-str 'face 'org-tag))))
 
+
+
 (defun ekg-org-view--render-task (note level collapsed-ids)
   "Return a vui vnode tree for NOTE at LEVEL with COLLAPSED-IDS."
   (let* ((id (ekg-note-id note))
@@ -600,19 +602,24 @@ has no headings."
 
 (defun ekg-org-view--goto-heading (direction &optional same-level)
   "Move to the next heading in DIRECTION (:forward or :backward).
-If SAME-LEVEL, only stop at headings with the same level as current."
+If SAME-LEVEL, only stop at headings with the same level as current.
+Continuation lines (SCHEDULED/DEADLINE) sharing the same note ID
+as the starting heading are skipped."
   (let ((current-level (ekg-org-view--level-at-point))
+        (current-id (ekg-org-view--note-at-point))
         (step (if (eq direction :forward) 1 -1))
         (found nil))
     (save-excursion
       (forward-line step)
       (while (not found)
-        (when (get-text-property (point) :ekg-org-heading)
-          (if same-level
-              (when (equal (get-text-property (point) :ekg-org-level)
-                           current-level)
-                (setq found (point)))
-            (setq found (point))))
+        (let ((id (get-text-property (point) :ekg-org-note-id)))
+          (when (and (get-text-property (point) :ekg-org-heading)
+                     (not (equal id current-id)))
+            (if same-level
+                (when (equal (get-text-property (point) :ekg-org-level)
+                             current-level)
+                  (setq found (point)))
+              (setq found (point)))))
         (when (or found (if (= step 1) (eobp) (bobp)))
           (setq found (or found 'stop)))
         (unless found (forward-line step))))
@@ -853,6 +860,317 @@ trashed, they are permanently deleted."
         (ekg-save-note note)
         (ekg-org-view--refresh)))))
 
+;;; Task insertion mode
+
+(defun ekg-org-view--collect-headings ()
+  "Return a list of (BUFFER-POS ID LEVEL PARENT-ID) for every heading.
+Only the first line of each heading is collected; continuation
+lines (e.g. SCHEDULED/DEADLINE) sharing the same note ID are
+skipped."
+  (let ((headings nil)
+        (seen-ids nil))
+    (save-excursion
+      (goto-char (point-min))
+      (while (not (eobp))
+        (when (get-text-property (point) :ekg-org-heading)
+          (let ((id (get-text-property (point) :ekg-org-note-id))
+                (level (get-text-property (point) :ekg-org-level)))
+            (unless (member id seen-ids)
+              (push id seen-ids)
+              (push (list (point) id level
+                          (when id
+                            (plist-get (ekg-note-properties
+                                       (ekg-get-note-with-id id))
+                                      :org/parent)))
+                    headings))))
+        (forward-line 1)))
+    (nreverse headings)))
+
+(defun ekg-org-view--build-insert-slots ()
+  "Build a list of insertion slots from the current buffer headings.
+Each slot is a plist with :buffer-pos, :level, :parent-id, :after-id.
+:buffer-pos is where to display the placeholder (the line before
+which the new task would visually appear).
+:after-id is the sibling after which to insert for sort-order, or
+nil to insert as first child/first top-level."
+  (let* ((headings (ekg-org-view--collect-headings))
+         (slots nil))
+    ;; Slot before the first heading (top-level, first position).
+    (when headings
+      (push (list :buffer-pos (nth 0 (car headings))
+                  :level 1 :parent-id nil :after-id nil)
+            slots))
+    (let ((len (length headings)))
+      (dotimes (i len)
+        (let* ((h (nth i headings))
+               (h-id (nth 1 h))
+               (h-level (nth 2 h))
+               (next (when (< (1+ i) len) (nth (1+ i) headings)))
+               (next-pos (when next (nth 0 next)))
+               (next-level (when next (nth 2 next)))
+               ;; The display position for slots after this heading is
+               ;; the next heading's pos, or end of buffer.
+               (after-pos (or next-pos (point-max))))
+          ;; Slot: sibling after this heading (same level, same parent).
+          (push (list :buffer-pos after-pos
+                      :level h-level
+                      :parent-id (nth 3 h)
+                      :after-id h-id)
+                slots)
+          ;; Slot: first child of this heading (one level deeper).
+          ;; Only if the next heading isn't already a child — we want
+          ;; to offer "first child" when there are existing children
+          ;; (insert before them) or none.
+          (let ((child-pos (if (and next-level (> next-level h-level))
+                               next-pos
+                             after-pos)))
+            (push (list :buffer-pos child-pos
+                        :level (1+ h-level)
+                        :parent-id h-id
+                        :after-id nil)
+                  slots)))))
+    ;; Remove duplicate slots (same buffer-pos + level + parent-id).
+    (let ((seen (make-hash-table :test #'equal))
+          (result nil))
+      (dolist (slot (nreverse slots))
+        (let ((key (list (plist-get slot :buffer-pos)
+                         (plist-get slot :level)
+                         (plist-get slot :parent-id))))
+          (unless (gethash key seen)
+            (puthash key t seen)
+            (push slot result))))
+      (nreverse result))))
+
+(defface ekg-org-view-insert-placeholder
+  '((t :inherit highlight :extend t))
+  "Face for the task insertion placeholder line."
+  :group 'ekg)
+
+(defun ekg-org-view--insert-placeholder-string (level &optional title)
+  "Return the placeholder string for an insertion slot at LEVEL.
+If TITLE is non-nil and non-empty, show it; otherwise show hint text."
+  (let* ((stars (make-string level ?*))
+         (title-part (if (and title (not (string-empty-p title)))
+                         title
+                       (propertize "← type task title" 'face 'shadow)))
+         (text (concat (propertize stars 'face (ekg-org-view--heading-face level))
+                       " "
+                       (propertize "TODO" 'face 'org-todo)
+                       " "
+                       title-part)))
+    (propertize text 'face 'ekg-org-view-insert-placeholder)))
+
+(defvar ekg-org-view-insert-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "n") #'ekg-org-view-insert-next)
+    (define-key map (kbd "p") #'ekg-org-view-insert-prev)
+    (define-key map (kbd "R") #'ekg-org-view-insert-demote)
+    (define-key map (kbd "L") #'ekg-org-view-insert-promote)
+    (define-key map (kbd "RET") #'ekg-org-view-insert-confirm)
+    (define-key map (kbd "C-g") #'ekg-org-view-insert-cancel)
+    map)
+  "Keymap active during task insertion mode.")
+
+(defvar-local ekg-org-view--insert-slots nil
+  "List of available insertion slots during insert mode.")
+
+(defvar-local ekg-org-view--insert-index nil
+  "Current slot index during insert mode.")
+
+(defvar-local ekg-org-view--insert-overlay nil
+  "Overlay showing the insertion placeholder.")
+
+(defun ekg-org-view--insert-update-overlay (ov pos level &optional title)
+  "Update overlay OV at POS to show insertion placeholder at LEVEL.
+If TITLE is given, display it in the placeholder."
+  (let ((placeholder (ekg-org-view--insert-placeholder-string level title))
+        (at-end (>= pos (point-max))))
+    (move-overlay ov pos pos)
+    ;; At end of buffer, we need a preceding newline since there's no
+    ;; following line to attach before-string to.  Use after-string
+    ;; instead.
+    (if at-end
+        (progn
+          (overlay-put ov 'before-string nil)
+          (overlay-put ov 'after-string (concat "\n" placeholder)))
+      (overlay-put ov 'after-string nil)
+      (overlay-put ov 'before-string (concat placeholder "\n")))))
+
+(defun ekg-org-view--insert-show ()
+  "Display the placeholder overlay at the current insertion slot."
+  (when ekg-org-view--insert-overlay
+    (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
+           (level (plist-get slot :level))
+           (pos (plist-get slot :buffer-pos)))
+      (ekg-org-view--insert-update-overlay
+       ekg-org-view--insert-overlay pos level)
+      (goto-char (min pos (point-max))))))
+
+(defun ekg-org-view--insert-find-nearest-index (pos)
+  "Return the slot index closest to buffer position POS."
+  (let ((best 0)
+        (best-dist most-positive-fixnum))
+    (cl-loop for slot in ekg-org-view--insert-slots
+             for i from 0
+             do (let ((dist (abs (- (plist-get slot :buffer-pos) pos))))
+                  (when (< dist best-dist)
+                    (setq best i best-dist dist))))
+    best))
+
+(defun ekg-org-view-insert-next ()
+  "Move to the next insertion slot."
+  (interactive)
+  (when (< ekg-org-view--insert-index
+           (1- (length ekg-org-view--insert-slots)))
+    (cl-incf ekg-org-view--insert-index)
+    (ekg-org-view--insert-show)))
+
+(defun ekg-org-view-insert-prev ()
+  "Move to the previous insertion slot."
+  (interactive)
+  (when (> ekg-org-view--insert-index 0)
+    (cl-decf ekg-org-view--insert-index)
+    (ekg-org-view--insert-show)))
+
+(defun ekg-org-view-insert-demote ()
+  "Make the insertion slot one level deeper (child of current parent)."
+  (interactive)
+  (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
+         (parent-id (plist-get slot :parent-id))
+         (after-id (plist-get slot :after-id))
+         (level (plist-get slot :level))
+         ;; Demote: the new parent is the after-id sibling (or if
+         ;; after-id is nil, there's nothing to demote into).
+         (new-parent-id (or after-id parent-id)))
+    (when new-parent-id
+      (let ((new-slot (list :buffer-pos (plist-get slot :buffer-pos)
+                            :level (1+ level)
+                            :parent-id new-parent-id
+                            :after-id nil)))
+        ;; Replace the current slot in-place.
+        (setf (nth ekg-org-view--insert-index ekg-org-view--insert-slots)
+              new-slot)
+        (ekg-org-view--insert-show)))))
+
+(defun ekg-org-view-insert-promote ()
+  "Make the insertion slot one level shallower (sibling of current parent)."
+  (interactive)
+  (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
+         (parent-id (plist-get slot :parent-id))
+         (level (plist-get slot :level)))
+    (when (and parent-id (> level 1))
+      (let* ((parent-note (ekg-get-note-with-id parent-id))
+             (grandparent-id (when parent-note
+                               (plist-get (ekg-note-properties parent-note)
+                                          :org/parent)))
+             (new-slot (list :buffer-pos (plist-get slot :buffer-pos)
+                             :level (1- level)
+                             :parent-id grandparent-id
+                             :after-id parent-id)))
+        (setf (nth ekg-org-view--insert-index ekg-org-view--insert-slots)
+              new-slot)
+        (ekg-org-view--insert-show)))))
+
+(defun ekg-org-view--insert-cleanup ()
+  "Clean up insertion mode state."
+  (when ekg-org-view--insert-overlay
+    (delete-overlay ekg-org-view--insert-overlay)
+    (setq ekg-org-view--insert-overlay nil))
+  (setq ekg-org-view--insert-slots nil
+        ekg-org-view--insert-index nil)
+  (setq overriding-local-map nil))
+
+(defun ekg-org-view--insert-create-task (slot title)
+  "Create a new task from SLOT data with TITLE."
+  (let ((parent-id (plist-get slot :parent-id))
+        (after-id (plist-get slot :after-id)))
+    (let* ((siblings (if parent-id
+                         (ekg-org-view--sorted-children parent-id)
+                       (ekg-org-view--sorted-top-level)))
+           (sort-order (if after-id
+                           (ekg-org-view--assign-order-after siblings after-id)
+                         ;; Inserting as first: renumber from 1 and take 0.
+                         (when siblings
+                           (let ((order 1))
+                             (dolist (sib siblings)
+                               (setf (ekg-note-properties sib)
+                                     (plist-put (ekg-note-properties sib)
+                                                :org/sort-order order))
+                               (ekg-save-note sib)
+                               (cl-incf order))))
+                         0))
+           (note (ekg-note-create
+                  :text ""
+                  :mode 'org-mode
+                  :tags (list ekg-org-task-tag
+                              (concat ekg-org-state-tag-prefix "todo"))
+                  :properties (append
+                               (list :titled/title (list title)
+                                     :org/sort-order sort-order)
+                               (when parent-id
+                                 (list :org/parent parent-id))))))
+      (ekg-save-note note)
+      (ekg-org-view--refresh))))
+
+(defun ekg-org-view-insert-confirm ()
+  "Confirm the insertion position and prompt for the task title.
+The placeholder remains visible and updates live as you type."
+  (interactive)
+  (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
+         (level (plist-get slot :level))
+         (pos (plist-get slot :buffer-pos))
+         (ov ekg-org-view--insert-overlay)
+         (buf (current-buffer)))
+    ;; Release the positioning keymap so the minibuffer works normally.
+    (setq overriding-local-map nil)
+    (unwind-protect
+        (let ((title
+               (minibuffer-with-setup-hook
+                   (lambda ()
+                     (add-hook
+                      'post-command-hook
+                      (lambda ()
+                        (when (buffer-live-p buf)
+                          (let ((input (minibuffer-contents)))
+                            (with-current-buffer buf
+                              (ekg-org-view--insert-update-overlay
+                               ov pos level input)))))
+                      nil t))
+                 (read-string "Task title: "))))
+          (ekg-org-view--insert-cleanup)
+          (when (not (string-empty-p title))
+            (ekg-org-view--insert-create-task slot title)))
+      ;; Ensure cleanup happens even on C-g.
+      (ekg-org-view--insert-cleanup))))
+
+(defun ekg-org-view-insert-cancel ()
+  "Cancel task insertion mode."
+  (interactive)
+  (ekg-org-view--insert-cleanup)
+  (message "Cancelled."))
+
+(defun ekg-org-view-create ()
+  "Enter insertion mode to create a new task.
+A placeholder shows where the new task will be inserted.  Use
+\\`n'/\\`p' to move between positions, \\`R'/\\`L' to demote/promote,
+\\`RET' to confirm, and \\`C-g' to cancel."
+  (interactive)
+  (let ((slots (ekg-org-view--build-insert-slots)))
+    (if (null slots)
+        ;; Empty view — just create a top-level task directly.
+        (let ((title (read-string "Task title: ")))
+          (when (not (string-empty-p title))
+            (ekg-org-view--insert-create-task
+             (list :parent-id nil :after-id nil) title)))
+      (setq ekg-org-view--insert-slots slots
+            ekg-org-view--insert-index (ekg-org-view--insert-find-nearest-index
+                                        (point))
+            ekg-org-view--insert-overlay (make-overlay 1 1))
+      (overlay-put ekg-org-view--insert-overlay 'priority 100)
+      (setq overriding-local-map ekg-org-view-insert-mode-map)
+      (ekg-org-view--insert-show)
+      (message "Insert mode: n/p move, R/L demote/promote, RET confirm, C-g cancel"))))
+
 ;; Major mode
 
 (defvar ekg-org-view-mode-map
@@ -865,8 +1183,7 @@ trashed, they are permanently deleted."
     (define-key map (kbd "t") #'ekg-org-view-cycle-state)
     (define-key map (kbd "a") #'ekg-org-view-archive)
     (define-key map (kbd "d") #'ekg-org-view-delete)
-    (define-key map (kbd "c") #'ekg-org-view-create-child)
-    (define-key map (kbd "C") #'ekg-org-view-create-sibling)
+    (define-key map (kbd "c") #'ekg-org-view-create)
     (define-key map (kbd "TAB") #'ekg-org-view-toggle-collapse)
     (define-key map (kbd "RET") #'ekg-org-view-open-note)
     (define-key map (kbd "L") #'ekg-org-view-promote)
