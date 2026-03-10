@@ -1220,13 +1220,17 @@ A placeholder shows where the new task will be inserted.  Use
              (list :parent-id nil :after-id nil) title)))
       (setq ekg-org-view--insert-slots slots
             ekg-org-view--insert-index (ekg-org-view--insert-find-nearest-index
+                                        <<<<<<< HEAD
                                         (point)
                                         (ekg-org-view--note-at-point))
-            ekg-org-view--insert-overlay (make-overlay 1 1))
-      (overlay-put ekg-org-view--insert-overlay 'priority 100)
-      (setq overriding-local-map ekg-org-view-insert-mode-map)
-      (ekg-org-view--insert-show)
-      (message "Insert mode: n/p move, R/L demote/promote, RET confirm, C-g cancel"))))
+            =======
+            (point))
+      >>>>>>> a3944e4 (Better UI for task creation)
+      ekg-org-view--insert-overlay (make-overlay 1 1))
+    (overlay-put ekg-org-view--insert-overlay 'priority 100)
+    (setq overriding-local-map ekg-org-view-insert-mode-map)
+    (ekg-org-view--insert-show)
+    (message "Insert mode: n/p move, R/L demote/promote, RET confirm, C-g cancel"))))
 
 ;; Major mode
 
