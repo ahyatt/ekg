@@ -47,6 +47,11 @@
 (defconst ekg-org-archive-tag "org/archive"
   "Tag used to identify EKG notes that should be treated as archived Org tasks.")
 
+(defface ekg-org-view-body
+  '((t :inherit shadow))
+  "Face used for task body text in `ekg-org-view-mode'."
+  :group 'ekg)
+
 (defun ekg-org--note-title (note)
   "Return the title string of NOTE, or nil if it has no title."
   (car (plist-get (ekg-note-properties note) :titled/title)))
@@ -504,9 +509,9 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
          (body-nodes nil))
     (unless collapsed
       (when (and text (not (string-empty-p (string-trim text))))
-        (let ((indent (make-string (1+ level) ?\s)))
-          (push (vui-text (ekg-org-view--fontify-org
-                           (ekg-org-view--indent-text text indent))
+        (let* ((indent (make-string (1+ level) ?\s))
+               (body (ekg-org-view--indent-text text indent)))
+          (push (vui-text (propertize body 'face 'ekg-org-view-body)
                   :key (intern (format "body-%s" id)))
                 body-nodes)))
       (dolist (child children)
