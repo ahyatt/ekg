@@ -408,23 +408,29 @@ Optionally check NOTE to only revert when org tasks change."
       (ekg-note-creation-time note)
       0))
 
+(defun ekg-org-view--sort-predicate (a b)
+  "Return non-nil if note A should sort before note B.
+Uses sort-order as primary key and note ID as tiebreaker for
+stability."
+  (let ((oa (ekg-org-view--sort-order a))
+        (ob (ekg-org-view--sort-order b)))
+    (or (< oa ob)
+        (and (= oa ob)
+             (< (ekg-note-id a) (ekg-note-id b))))))
+
 (defun ekg-org-view--sorted-children (id)
   "Return non-archived children of ID, sorted by sort-order."
   (sort (seq-remove
          (lambda (child)
            (member ekg-org-archive-tag (ekg-note-tags child)))
          (ekg-org-get-child-notes-of-id id))
-        (lambda (a b)
-          (< (ekg-org-view--sort-order a)
-             (ekg-org-view--sort-order b)))))
+        #'ekg-org-view--sort-predicate))
 
 (defun ekg-org-view--sorted-top-level (&optional archive)
   "Return top-level tasks, sorted by sort-order.
 If ARCHIVE is non-nil, return archived tasks instead."
   (sort (ekg-org-get-tasks archive)
-        (lambda (a b)
-          (< (ekg-org-view--sort-order a)
-             (ekg-org-view--sort-order b)))))
+        #'ekg-org-view--sort-predicate))
 
 (defun ekg-org-view--assign-order-after (siblings current-id)
   "Return a sort-order value that places a new item after CURRENT-ID in SIBLINGS.
@@ -452,6 +458,12 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
                      (not (string-equal tag ekg-org-task-tag))
                      (not (string-equal tag ekg-org-archive-tag))))
               (ekg-note-tags note)))
+
+(defun ekg-org-view--indent-text (text prefix)
+  "Indent each line of TEXT with PREFIX."
+  (mapconcat (lambda (line) (concat prefix line))
+             (split-string text "\n")
+             "\n"))
 
 (defun ekg-org-view--fontify-org (text)
   "Return TEXT with `org-mode' font-lock properties applied."
@@ -492,9 +504,11 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
          (body-nodes nil))
     (unless collapsed
       (when (and text (not (string-empty-p (string-trim text))))
-        (push (vui-text (ekg-org-view--fontify-org text)
-                :key (intern (format "body-%s" id)))
-              body-nodes))
+        (let ((indent (make-string (1+ level) ?\s)))
+          (push (vui-text (ekg-org-view--fontify-org
+                           (ekg-org-view--indent-text text indent))
+                  :key (intern (format "body-%s" id)))
+                body-nodes)))
       (dolist (child children)
         (push (ekg-org-view--render-task child (1+ level) collapsed-ids)
               body-nodes))
@@ -629,6 +643,7 @@ If SAME-LEVEL, only stop at headings with the same level as current."
   "Move to the parent heading."
   (interactive)
   (let ((current-level (ekg-org-view--level-at-point))
+        (current-id (ekg-org-view--note-at-point))
         (found nil))
     (when (and current-level (> current-level 1))
       (save-excursion
@@ -648,7 +663,6 @@ If SAME-LEVEL, only stop at headings with the same level as current."
 (defun ekg-org-view--refresh ()
   "Re-render the view by re-mounting with fresh data."
   (let ((pos (point))
-        (win-start (window-start))
         (root-id ekg-org-view--root-id)
         (archive ekg-org-view--archive))
     (if root-id
