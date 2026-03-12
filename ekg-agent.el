@@ -1649,21 +1649,33 @@ STATUS is the task status (will be converted to uppercase).
 DEADLINE is the deadline timestamp string (ignored if empty).
 SCHEDULED is the scheduled timestamp string (ignored if empty)."
   (ekg-agent--with-error-as-text
-    (let* ((note (ekg-note-create :text content
+    (let* ((has-parent (and parent-id (not (equal parent-id 0))
+                           (not (string-empty-p (format "%s" parent-id)))))
+           (note (ekg-note-create :text content
                                   :tags (append (list ekg-org-task-tag) tags
                                                 (when (and status (not (string-empty-p status)))
                                                   (list (concat ekg-org-state-tag-prefix (downcase status)))))
                                   :properties (list :titled/title (list title)))))
-      ;; Handle parent ID
-      (when (and parent-id (not (equal parent-id 0)) (not (string-empty-p (format "%s" parent-id))))
-        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/parent parent-id)))
-      ;; Handle deadline
+      (when has-parent
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/parent parent-id)))
+      ;; Assign sort-order at the end of existing siblings.
+      (let* ((siblings (if has-parent
+                           (ekg-org-view--sorted-children parent-id)
+                         (ekg-org-view--sorted-top-level)))
+             (last-id (when siblings
+                        (ekg-note-id (car (last siblings)))))
+             (sort-order (if siblings
+                             (ekg-org-view--assign-order-after siblings last-id)
+                           0)))
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/sort-order sort-order)))
       (when (and deadline (not (string-empty-p deadline)))
-        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/deadline (ekg-org--to-timestamp deadline))))
-      ;; Handle scheduled
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/deadline (ekg-org--to-timestamp deadline))))
       (when (and scheduled (not (string-empty-p scheduled)))
-        (setf (ekg-note-properties note) (plist-put (ekg-note-properties note) :org/scheduled (ekg-org--to-timestamp scheduled))))
-      ;; Save the note
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/scheduled (ekg-org--to-timestamp scheduled))))
       (ekg-save-note note)
       (format "Added note with ID %s" (ekg-note-id note)))))
 
