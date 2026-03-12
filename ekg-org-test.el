@@ -461,6 +461,52 @@ Returns the note ID."
     (should (= (length titles) 1))
     (should (equal (car titles) "Keep"))))
 
+(ekg-deftest ekg-org-test-view-trash-with-children ()
+  "Test that trashing a task also trashes its children."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (child-id (ekg-org-test--add-task "Child" parent-id))
+         (grandchild-id (ekg-org-test--add-task "Grandchild" child-id)))
+    (ekg-org-test--add-task "Keep Me")
+    (ekg-org-view)
+    (should (= (length (ekg-org-test--view-titles)) 4))
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view--ensure-on-heading)
+      ;; Find and trash the parent.
+      (search-forward "Parent")
+      (beginning-of-line)
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) t)))
+        (ekg-org-view-delete)))
+    (let ((titles (ekg-org-test--view-titles)))
+      (should (= (length titles) 1))
+      (should (equal (car titles) "Keep Me")))
+    (should-not (ekg-note-active-p (ekg-get-note-with-id parent-id)))
+    (should-not (ekg-note-active-p (ekg-get-note-with-id child-id)))
+    (should-not (ekg-note-active-p (ekg-get-note-with-id grandchild-id)))))
+
+(ekg-deftest ekg-org-test-view-archive-with-children ()
+  "Test that archiving a task also archives its children."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Archive Parent"))
+         (child-id (ekg-org-test--add-task "Archive Child" parent-id)))
+    (ekg-org-test--add-task "Stay Visible")
+    (ekg-org-view)
+    (should (= (length (ekg-org-test--view-titles)) 3))
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (search-forward "Archive Parent")
+      (beginning-of-line)
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) t)))
+        (ekg-org-view-archive)))
+    (let ((titles (ekg-org-test--view-titles)))
+      (should (= (length titles) 1))
+      (should (equal (car titles) "Stay Visible")))
+    (should (member ekg-org-archive-tag
+                    (ekg-note-tags (ekg-get-note-with-id parent-id))))
+    (should (member ekg-org-archive-tag
+                    (ekg-note-tags (ekg-get-note-with-id child-id))))))
+
 (ekg-deftest ekg-org-test-view-navigation ()
   "Test heading navigation commands."
   (ekg-org-add-schema)

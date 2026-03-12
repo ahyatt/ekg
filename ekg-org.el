@@ -706,29 +706,41 @@ If SAME-LEVEL, only stop at headings with the same level as current."
       (ekg-save-note note)
       (ekg-org-view--refresh))))
 
+(defun ekg-org-view--archive-note (note)
+  "Archive NOTE by adding the archive tag if not already present."
+  (unless (member ekg-org-archive-tag (ekg-note-tags note))
+    (setf (ekg-note-tags note)
+          (cons ekg-org-archive-tag (ekg-note-tags note)))
+    (ekg-save-note note))
+  (dolist (child (ekg-org-get-child-notes-of-id (ekg-note-id note)))
+    (ekg-org-view--archive-note child)))
+
 (defun ekg-org-view-archive ()
-  "Archive the task at point."
+  "Archive the task at point and all its descendants."
   (interactive)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
-    (when (y-or-n-p (format "Archive \"%s\"? "
+    (when (y-or-n-p (format "Archive \"%s\" and all children? "
                             (or (ekg-org--note-title note) "Untitled")))
-      (unless (member ekg-org-archive-tag (ekg-note-tags note))
-        (setf (ekg-note-tags note)
-              (cons ekg-org-archive-tag (ekg-note-tags note)))
-        (ekg-save-note note))
+      (ekg-org-view--archive-note note)
       (ekg-org-view--refresh))))
 
+(defun ekg-org-view--trash-note (note)
+  "Trash NOTE and all its descendants."
+  (dolist (child (ekg-org-get-child-notes-of-id (ekg-note-id note)))
+    (ekg-org-view--trash-note child))
+  (ekg-note-trash note))
+
 (defun ekg-org-view-delete ()
-  "Trash the task at point.
-The note is moved to trash, which hides it from view.  If already
-trashed, it is permanently deleted."
+  "Trash the task at point and all its descendants.
+Notes are moved to trash, which hides them from view.  If already
+trashed, they are permanently deleted."
   (interactive)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
-    (when (y-or-n-p (format "Delete \"%s\"? "
+    (when (y-or-n-p (format "Delete \"%s\" and all children? "
                             (or (ekg-org--note-title note) "Untitled")))
-      (ekg-note-trash note)
+      (ekg-org-view--trash-note note)
       (ekg-org-view--refresh))))
 
 (defun ekg-org-view-create-child ()
