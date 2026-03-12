@@ -1,0 +1,179 @@
+#!/bin/bash
+# ekg-org-edit - Edit an ekg org task's title, content, status, or properties
+#
+# Usage: ekg-org-edit <note-id> [--title "new title"] [--note "new content"]
+#        [--append "text to append"] [--status DONE]
+#        [--set-property KEY=VALUE] [--remove-property KEY]
+
+set -e
+
+NOTE_ID=""
+TITLE=""
+NOTE_TEXT=""
+APPEND_TEXT=""
+STATUS=""
+SET_TITLE=false
+SET_NOTE=false
+SET_APPEND=false
+SET_PROPERTIES=()
+REMOVE_PROPERTIES=()
+DAEMON_NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --title)
+            TITLE="$2"
+            SET_TITLE=true
+            shift 2
+            ;;
+        --note)
+            NOTE_TEXT="$2"
+            SET_NOTE=true
+            shift 2
+            ;;
+        --append)
+            APPEND_TEXT="$2"
+            SET_APPEND=true
+            shift 2
+            ;;
+        --status)
+            STATUS="$2"
+            shift 2
+            ;;
+        --set-property)
+            SET_PROPERTIES+=("$2")
+            shift 2
+            ;;
+        --remove-property)
+            REMOVE_PROPERTIES+=("$2")
+            shift 2
+            ;;
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-org-edit <note-id> [OPTIONS]"
+            echo ""
+            echo "Edit an existing ekg org task. Only specified fields are changed."
+            echo ""
+            echo "Options:"
+            echo "  --title TEXT            Set the task title/headline"
+            echo "  --note TEXT             Set the task content/body (replaces existing)"
+            echo "  --append TEXT           Append text to the existing content"
+            echo "  --status STATUS         Set the task status (TODO, DONE, WAITING, STARTED, etc.)"
+            echo "  --set-property KEY=VAL  Set an org property (repeatable, e.g. --set-property CATEGORY=work)"
+            echo "  --remove-property KEY   Remove an org property (repeatable)"
+            echo "  --daemon NAME           Emacs daemon name (optional)"
+            exit 0
+            ;;
+        *)
+            if [[ -z "$NOTE_ID" ]]; then
+                NOTE_ID="$1"
+            else
+                echo "Error: Unexpected argument: $1"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$NOTE_ID" ]]; then
+    echo "Error: Note ID is required"
+    exit 1
+fi
+
+if [[ "$SET_TITLE" == "false" && "$SET_NOTE" == "false" && "$SET_APPEND" == "false" \
+      && -z "$STATUS" && ${#SET_PROPERTIES[@]} -eq 0 && ${#REMOVE_PROPERTIES[@]} -eq 0 ]]; then
+    echo "Error: At least one modification option is required"
+    exit 1
+fi
+
+if [[ "$SET_NOTE" == "true" && "$SET_APPEND" == "true" ]]; then
+    echo "Error: --note and --append cannot be used together"
+    exit 1
+fi
+
+# Escape strings for elisp
+TITLE_ELISP="${TITLE//\\/\\\\}"
+TITLE_ELISP="${TITLE_ELISP//\"/\\\"}"
+
+NOTE_ELISP="${NOTE_TEXT//\\/\\\\}"
+NOTE_ELISP="${NOTE_ELISP//\"/\\\"}"
+NOTE_ELISP="${NOTE_ELISP//$'\n'/\\n}"
+
+APPEND_ELISP="${APPEND_TEXT//\\/\\\\}"
+APPEND_ELISP="${APPEND_ELISP//\"/\\\"}"
+APPEND_ELISP="${APPEND_ELISP//$'\n'/\\n}"
+
+STATUS_LOWER=$(echo "$STATUS" | tr '[:upper:]' '[:lower:]')
+
+# Build the update expressions
+UPDATE_EXPRS=""
+if [[ "$SET_TITLE" == "true" ]]; then
+    UPDATE_EXPRS+="
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note) :titled/title (list \"$TITLE_ELISP\")))"
+fi
+if [[ "$SET_NOTE" == "true" ]]; then
+    UPDATE_EXPRS+="
+      (setf (ekg-note-text note) \"$NOTE_ELISP\")"
+fi
+if [[ "$SET_APPEND" == "true" ]]; then
+    UPDATE_EXPRS+="
+      (setf (ekg-note-text note)
+            (concat (ekg-note-text note) \"\\n\" \"$APPEND_ELISP\"))"
+fi
+if [[ -n "$STATUS" ]]; then
+    UPDATE_EXPRS+="
+      (setf (ekg-note-tags note)
+            (cons (concat ekg-org-state-tag-prefix \"$STATUS_LOWER\")
+                  (seq-remove
+                   (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
+                   (ekg-note-tags note))))"
+fi
+for prop in "${SET_PROPERTIES[@]}"; do
+    KEY="${prop%%=*}"
+    VALUE="${prop#*=}"
+    if [[ "$KEY" == "$prop" ]]; then
+        echo "Error: --set-property requires KEY=VALUE format, got: $prop" >&2
+        exit 1
+    fi
+    KEY_ELISP="${KEY//\\/\\\\}"
+    KEY_ELISP="${KEY_ELISP//\"/\\\"}"
+    VALUE_ELISP="${VALUE//\\/\\\\}"
+    VALUE_ELISP="${VALUE_ELISP//\"/\\\"}"
+    UPDATE_EXPRS+="
+      (ekg-org-set-property note \"$KEY_ELISP\" \"$VALUE_ELISP\")"
+done
+for key in "${REMOVE_PROPERTIES[@]}"; do
+    KEY_ELISP="${key//\\/\\\\}"
+    KEY_ELISP="${KEY_ELISP//\"/\\\"}"
+    UPDATE_EXPRS+="
+      (ekg-org-remove-property note \"$KEY_ELISP\")"
+done
+
+ELISP_EXPR="(progn
+  (require 'ekg)
+  (require 'ekg-org)
+  (ekg-connect)
+  (let ((note (ekg-get-note-with-id $NOTE_ID)))
+    (if (null note)
+        (error \"Note %s not found\" $NOTE_ID)
+      $UPDATE_EXPRS
+      (ekg-save-note note)
+      (format \"Updated note %s\" $NOTE_ID))))"
+
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
+    echo "Error: Failed to edit note. Is the Emacs daemon running?" >&2
+    echo "$OUTPUT" >&2
+    exit 1
+fi
+
+echo "$OUTPUT" | sed 's/^"//; s/"$//'

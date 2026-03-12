@@ -520,4 +520,40 @@ Returns the note ID."
       (should (member '(2 "Child") headings))
       (should (member '(2 "Parent") headings)))))
 
+(ekg-deftest ekg-org-test-properties ()
+  "Test generic org property get/set/remove."
+  (ekg-org-add-schema)
+  (let* ((id (ekg-org-test--add-task "Task with props"))
+         (note (ekg-get-note-with-id id)))
+    ;; Initially no properties
+    (should (null (ekg-org-properties-alist note)))
+    (should (null (ekg-org-get-property note "WORKTREE")))
+    ;; Set a property
+    (ekg-org-set-property note "WORKTREE" "my-branch")
+    (ekg-save-note note)
+    (setq note (ekg-get-note-with-id id))
+    (should (equal "my-branch" (ekg-org-get-property note "WORKTREE")))
+    ;; Case-insensitive lookup
+    (should (equal "my-branch" (ekg-org-get-property note "worktree")))
+    ;; Set a second property
+    (ekg-org-set-property note "CATEGORY" "work")
+    (ekg-save-note note)
+    (setq note (ekg-get-note-with-id id))
+    (should (equal "work" (ekg-org-get-property note "CATEGORY")))
+    (should (equal "my-branch" (ekg-org-get-property note "WORKTREE")))
+    (should (= 2 (length (ekg-org-properties-alist note))))
+    ;; Update existing property
+    (ekg-org-set-property note "WORKTREE" "other-branch")
+    (ekg-save-note note)
+    (setq note (ekg-get-note-with-id id))
+    (should (equal "other-branch" (ekg-org-get-property note "WORKTREE")))
+    (should (= 2 (length (ekg-org-properties-alist note))))
+    ;; Remove a property
+    (ekg-org-remove-property note "CATEGORY")
+    (ekg-save-note note)
+    (setq note (ekg-get-note-with-id id))
+    (should (null (ekg-org-get-property note "CATEGORY")))
+    (should (equal "other-branch" (ekg-org-get-property note "WORKTREE")))
+    (should (= 1 (length (ekg-org-properties-alist note))))))
+
 (provide 'ekg-org-test)

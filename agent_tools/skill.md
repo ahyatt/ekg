@@ -124,6 +124,45 @@ deletes it.
 ekg-trash <note-id>
 ```
 
+## ekg-org-add-child
+
+Create a child org task under an existing parent task.
+
+```sh
+ekg-org-add-child <parent-id> --title "Subtask title" [--note "description"] \
+  [--tag extra-tag] [--status TODO] [--property KEY=VALUE]
+```
+
+- `<parent-id>` — The parent task's note ID (required, positional).
+- `--title TEXT` — Task title/headline (required).
+- `--note TEXT` — Task content/description (default: empty).
+- `--tag TAG` — Additional tags (repeatable).
+- `--status STATUS` — Task status: TODO, DONE, WAITING, etc. (default: TODO).
+- `--property KEY=VALUE` — Set an org property (repeatable). Keys are
+  case-insensitive and stored uppercase.
+- Returns the new note's ID on success.
+- The `org/task` tag and state tag are added automatically.
+
+## ekg-org-edit
+
+Edit an existing ekg org task. Only specified fields are changed.
+
+```sh
+ekg-org-edit <note-id> [--title "new title"] [--note "new content"] \
+  [--append "additional text"] [--status DONE] \
+  [--set-property KEY=VALUE] [--remove-property KEY]
+```
+
+- `<note-id>` — The task's note ID (required, positional).
+- `--title TEXT` — Set the task title/headline.
+- `--note TEXT` — Replace the task content/body.
+- `--append TEXT` — Append text to the existing content (cannot combine with
+  `--note`).
+- `--status STATUS` — Set the status (TODO, DONE, WAITING, STARTED, etc.).
+- `--set-property KEY=VALUE` — Set an org property (repeatable). Keys are
+  case-insensitive and stored uppercase.
+- `--remove-property KEY` — Remove an org property (repeatable).
+
 ## Tag Conventions
 
 ### Org Task Tags

@@ -46,6 +46,7 @@
 (declare-function markdown-follow-thing-at-point "markdown-mode")
 (declare-function markdown-wiki-link-p "markdown-mode")
 (declare-function markdown-wiki-link-link "markdown-mode")
+(declare-function ekg-org-view--note-at-point "ekg-org")
 
 ;;; Code:
 
@@ -423,6 +424,17 @@ return the symbol converted to a string (without the colon)."
 This is not suitable for generating a large number of IDs in a
 small time frame.  About one ID per second is reasonable."
   (sxhash (cons (time-convert (current-time) 'integer)  (random 100))))
+
+(defun ekg--plist-without-key (plist key)
+  "Return a copy of PLIST with all occurrences of KEY removed."
+  (let (result)
+    (while plist
+      (if (eq (car plist) key)
+          (setq plist (cddr plist))
+        (push (car plist) result)
+        (push (cadr plist) result)
+        (setq plist (cddr plist))))
+    (nreverse result)))
 
 (defun ekg--normalize-tag (tag)
   "Return a normalized version of TAG.
@@ -1869,8 +1881,9 @@ intended to be used in any context where a note might be available."
       (and (derived-mode-p 'ekg-note-mode)
            ekg-note)
       (and (derived-mode-p 'ekg-org-view-mode)
-           (when-let ((id (ekg-org-view--note-at-point)))
-             (ekg-get-note-with-id id)))
+           (let ((id (ekg-org-view--note-at-point)))
+             (if id (ekg-get-note-with-id id)
+               (error "No task at point"))))
       (error "No current note found in context")))
 
 (defun ekg-notes-tag (&optional tag)
@@ -2413,11 +2426,11 @@ the database after the upgrade, in list form."
           (cl-loop for tag in trash-ids do
                    (triples-remove-type ekg-db tag 'tag)
                    (triples-set-type ekg-db ekg-trash-tag 'tag))))))
-    ;; Always ensure core note types are registered.  These can be
-    ;; lost when the develop branch changes without incrementing the
-    ;; version number.
-    (dolist (type '(text time-tracked inline titled tagged))
-      (triples-set-type ekg-db type 'ekg-note-type)))
+  ;; Always ensure core note types are registered.  These can be
+  ;; lost when the develop branch changes without incrementing the
+  ;; version number.
+  (dolist (type '(text time-tracked inline titled tagged))
+    (triples-set-type ekg-db type 'ekg-note-type)))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."

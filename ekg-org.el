@@ -59,14 +59,65 @@
                       ;; We assume here that all org notes have the standard int ids.
                       '(parent :base/type integer :base/unique t)
                       '(children :base/virtual-reversed org/parent)
-                      '(sort-order :base/type integer :base/unique t))
+                      '(sort-order :base/type integer :base/unique t)
+                      ;; Generic org properties, stored as readable cons
+                      ;; cells "(KEY . VALUE)" following org property
+                      ;; syntax: keys are uppercase strings,
+                      ;; case-insensitive, values are strings.
+                      '(property :base/type string))
   ;; Mark 'org' as an ekg note type so it's managed with notes
   (triples-set-type ekg-db 'org 'ekg-note-type)
   (add-to-list 'ekg-header-hidden-properties :org/parent)
   (add-to-list 'ekg-header-hidden-properties :org/children)
-  (add-to-list 'ekg-header-hidden-properties :org/sort-order))
+  (add-to-list 'ekg-header-hidden-properties :org/sort-order)
+  (add-to-list 'ekg-header-hidden-properties :org/property))
 
 (add-hook 'ekg-add-schema-hook #'ekg-org-add-schema)
+
+(defun ekg-org-properties-alist (note)
+  "Return the org properties of NOTE as an alist of (KEY . VALUE) pairs.
+Keys are uppercase strings, values are strings, following org property
+syntax.  See Info node `(org) Property Syntax'."
+  (mapcar #'read (or (plist-get (ekg-note-properties note) :org/property) nil)))
+
+(defun ekg-org-get-property (note key)
+  "Return the value of org property KEY on NOTE, or nil.
+KEY is case-insensitive."
+  (let ((ukey (upcase key)))
+    (cdr (assoc ukey (ekg-org-properties-alist note)))))
+
+(defun ekg-org-set-property (note key value)
+  "Set org property KEY to VALUE on NOTE.
+KEY is case-insensitive and stored uppercase.  VALUE is a string.
+The note is not saved; call `ekg-save-note' afterward."
+  (let* ((ukey (upcase key))
+         (entries (or (plist-get (ekg-note-properties note) :org/property) nil))
+         (new-entry (prin1-to-string (cons ukey value)))
+         (filtered (seq-remove
+                    (lambda (entry)
+                      (string= (car (read entry)) ukey))
+                    entries))
+         ;; Rebuild props without any :org/property keys to avoid
+         ;; duplicates (ekg-get-note-with-id can produce duplicate
+         ;; plist keys via extra-props).
+         (clean-props (ekg--plist-without-key
+                       (ekg-note-properties note) :org/property)))
+    (setf (ekg-note-properties note)
+          (plist-put clean-props :org/property (cons new-entry filtered)))))
+
+(defun ekg-org-remove-property (note key)
+  "Remove org property KEY from NOTE.
+KEY is case-insensitive.  The note is not saved."
+  (let* ((ukey (upcase key))
+         (entries (or (plist-get (ekg-note-properties note) :org/property) nil))
+         (filtered (seq-remove
+                    (lambda (entry)
+                      (string= (car (read entry)) ukey))
+                    entries))
+         (clean-props (ekg--plist-without-key
+                       (ekg-note-properties note) :org/property)))
+    (setf (ekg-note-properties note)
+          (plist-put clean-props :org/property filtered))))
 
 (defun ekg-org-get-tasks (&optional archive)
   "Fetch top-level tasks from ekg, as ekg-note structs.
@@ -186,8 +237,9 @@ NEW-STATE is one of the standard org states."
     ;; We save unless we're currently editing the note.
     (unless (member 'ekg-edit-mode local-minor-modes)
       (ekg-save-note ekg-note)
-      (when (member 'ekg-notes-mode local-minor-modes)
+      (when (derived-mode-p 'ekg-notes-mode)
         (ekg-notes-refresh)))))
+  ;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
 
 (defun ekg-org-capture (title)
   "Capture a new org task with TITLE into EKG."
@@ -490,6 +542,28 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
   "Return non-nil if point is on a heading line."
   (get-text-property (line-beginning-position) :ekg-org-heading))
 
+(defun ekg-org-view--ensure-on-heading ()
+  "Move point to the nearest heading line if not already on one.
+Tries forward first, then backward.  Does nothing if the buffer
+has no headings."
+  (unless (ekg-org-view--on-heading-p)
+    (let ((fwd nil) (bwd nil))
+      (save-excursion
+        (while (and (not (eobp)) (not (ekg-org-view--on-heading-p)))
+          (forward-line 1))
+        (when (ekg-org-view--on-heading-p)
+          (setq fwd (point))))
+      (save-excursion
+        (while (and (not (bobp)) (not (ekg-org-view--on-heading-p)))
+          (forward-line -1))
+        (when (ekg-org-view--on-heading-p)
+          (setq bwd (point))))
+      (cond
+       ((and fwd bwd)
+        (goto-char (if (<= (- fwd (point)) (- (point) bwd)) fwd bwd)))
+       (fwd (goto-char fwd))
+       (bwd (goto-char bwd))))))
+
 (defun ekg-org-view--highlight ()
   "Highlight the current heading in the ekg-org-view buffer."
   (when ekg-org-view--hl
@@ -581,6 +655,7 @@ If SAME-LEVEL, only stop at headings with the same level as current."
         (ekg-org-view-task root-id)
       (ekg-org-view--mount archive))
     (goto-char (min pos (point-max)))
+    (ekg-org-view--ensure-on-heading)
     (ekg-org-view--highlight)))
 
 (defun ekg-org-view-toggle-collapse ()
@@ -829,6 +904,7 @@ If ARCHIVE is non-nil, show archived tasks."
         (setq-local ekg-org-view--hl (make-overlay 1 1))
         (overlay-put ekg-org-view--hl 'face hl-line-face)
         (goto-char (point-min))
+        (ekg-org-view--ensure-on-heading)
         (ekg-org-view--highlight)))
     (switch-to-buffer buf)
     instance))
@@ -880,6 +956,7 @@ If ARCHIVE is non-nil, show archived tasks."
         (setq-local ekg-org-view--hl (make-overlay 1 1))
         (overlay-put ekg-org-view--hl 'face hl-line-face)
         (goto-char (point-min))
+        (ekg-org-view--ensure-on-heading)
         (ekg-org-view--highlight)))
     (switch-to-buffer buf)
     instance))
