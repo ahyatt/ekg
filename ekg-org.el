@@ -469,7 +469,7 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
         (vui-text (if archive
                       "(No archived org tasks found)"
                     "(No org tasks found)")
-                  :face 'font-lock-comment-face)
+          :face 'font-lock-comment-face)
       (apply #'vui-vstack
              :spacing 1
              (mapcar (lambda (task)
@@ -493,13 +493,16 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
 (defun ekg-org-view--highlight ()
   "Highlight the current heading in the ekg-org-view buffer."
   (when ekg-org-view--hl
-    (let ((beg (line-beginning-position))
-          (end (save-excursion
-                 (forward-line 1)
-                 (while (and (not (eobp))
-                             (not (get-text-property (point) :ekg-org-heading)))
-                   (forward-line 1))
-                 (if (eobp) (point) (line-beginning-position)))))
+    (let* ((current-id (ekg-org-view--note-at-point))
+           (beg (line-beginning-position))
+           (end (save-excursion
+                  (forward-line 1)
+                  (while (and (not (eobp))
+                              (let ((id (get-text-property (point) :ekg-org-note-id)))
+                                (or (equal id current-id)
+                                    (not (get-text-property (point) :ekg-org-heading)))))
+                    (forward-line 1))
+                  (if (eobp) (point) (line-beginning-position)))))
       (move-overlay ekg-org-view--hl beg end))))
 
 (defun ekg-org-view--goto-heading (direction &optional same-level)
@@ -557,10 +560,12 @@ If SAME-LEVEL, only stop at headings with the same level as current."
       (save-excursion
         (while (and (not found) (not (bobp)))
           (forward-line -1)
-          (when (get-text-property (point) :ekg-org-heading)
-            (let ((level (get-text-property (point) :ekg-org-level)))
-              (when (and level (< level current-level))
-                (setq found (point))))))))
+          (let ((id (get-text-property (point) :ekg-org-note-id)))
+            (when (and (get-text-property (point) :ekg-org-heading)
+                       (not (equal id current-id)))
+              (let ((level (get-text-property (point) :ekg-org-level)))
+                (when (and level (< level current-level))
+                  (setq found (point)))))))))
     (when found (goto-char found))
     (ekg-org-view--highlight)))
 
@@ -576,7 +581,6 @@ If SAME-LEVEL, only stop at headings with the same level as current."
         (ekg-org-view-task root-id)
       (ekg-org-view--mount archive))
     (goto-char (min pos (point-max)))
-    (set-window-start (selected-window) (min win-start (point-max)))
     (ekg-org-view--highlight)))
 
 (defun ekg-org-view-toggle-collapse ()
@@ -803,7 +807,7 @@ If ARCHIVE is non-nil, show archived tasks."
   (let* ((buf-name (if archive "*ekg-org-archive*" "*ekg-org-tasks*"))
          (buf (get-buffer-create buf-name))
          (vnode (vui-component 'ekg-org-view-root
-                               :root-id nil :archive archive))
+                  :root-id nil :archive archive))
          (instance (vui--create-instance vnode nil))
          (vui--pending-effects nil))
     (setf (vui-instance-buffer instance) buf)
