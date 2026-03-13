@@ -8,7 +8,7 @@
 (define-package "ekg-agent" "0.0.1"
   "Agent tools for ekg."
   '((ekg "20260305")
-    (async "20251005.634")))
+    (futur "1.2")))
 
 (provide 'ekg-agent-pkg)
 ;;; ekg-agent-pkg.el ends here
