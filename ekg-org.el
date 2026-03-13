@@ -1006,16 +1006,26 @@ If TITLE is given, display it in the placeholder."
        ekg-org-view--insert-overlay pos level)
       (goto-char (min pos (point-max))))))
 
-(defun ekg-org-view--insert-find-nearest-index (pos)
-  "Return the slot index closest to buffer position POS."
-  (let ((best 0)
-        (best-dist most-positive-fixnum))
-    (cl-loop for slot in ekg-org-view--insert-slots
-             for i from 0
-             do (let ((dist (abs (- (plist-get slot :buffer-pos) pos))))
-                  (when (< dist best-dist)
-                    (setq best i best-dist dist))))
-    best))
+(defun ekg-org-view--insert-find-nearest-index (pos &optional prefer-parent-id)
+  "Return the slot index closest to buffer position POS.
+When PREFER-PARENT-ID is non-nil, prefer the first-child slot of
+that note (the slot with :parent-id = PREFER-PARENT-ID and
+:after-id = nil) when it exists."
+  (or (when prefer-parent-id
+        (cl-loop for slot in ekg-org-view--insert-slots
+                 for i from 0
+                 when (and (equal (plist-get slot :parent-id) prefer-parent-id)
+                           (null (plist-get slot :after-id)))
+                 return i))
+      ;; Fallback: nearest by buffer position.
+      (let ((best 0)
+            (best-dist most-positive-fixnum))
+        (cl-loop for slot in ekg-org-view--insert-slots
+                 for i from 0
+                 do (let ((dist (abs (- (plist-get slot :buffer-pos) pos))))
+                      (when (< dist best-dist)
+                        (setq best i best-dist dist))))
+        best)))
 
 (defun ekg-org-view-insert-next ()
   "Move to the next insertion slot."
@@ -1164,7 +1174,8 @@ A placeholder shows where the new task will be inserted.  Use
              (list :parent-id nil :after-id nil) title)))
       (setq ekg-org-view--insert-slots slots
             ekg-org-view--insert-index (ekg-org-view--insert-find-nearest-index
-                                        (point))
+                                        (point)
+                                        (ekg-org-view--note-at-point))
             ekg-org-view--insert-overlay (make-overlay 1 1))
       (overlay-put ekg-org-view--insert-overlay 'priority 100)
       (setq overriding-local-map ekg-org-view-insert-mode-map)

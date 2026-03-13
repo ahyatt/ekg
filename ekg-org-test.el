@@ -513,6 +513,51 @@ Returns the note ID."
     (should (equal (car titles) "New First"))
     (should (= (length titles) 2))))
 
+(ekg-deftest ekg-org-test-view-insert-initial-position ()
+  "Test that insert mode defaults to first-child of the heading at point."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Alpha")
+  (let ((alpha-id (ekg-org-test--task-id-by-title "Alpha")))
+    (ekg-org-test--add-task "Alpha Child" alpha-id))
+  (ekg-org-test--add-task "Beta")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    ;; Navigate to "Beta" heading.
+    (goto-char (point-min))
+    (while (not (equal (ekg-org-view--note-at-point)
+                       (ekg-org-test--task-id-by-title "Beta")))
+      (forward-line 1))
+    (ekg-org-view-create)
+    (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
+           (beta-id (ekg-org-test--task-id-by-title "Beta")))
+      (ekg-org-view--insert-cleanup)
+      (should (equal (plist-get slot :parent-id) beta-id))
+      (ekg-org-view--insert-create-task slot "Beta Child")))
+  (let ((headings (ekg-org-test--view-headings)))
+    (should (equal headings '((1 "Alpha") (2 "Alpha Child")
+                              (1 "Beta") (2 "Beta Child"))))))
+
+(ekg-deftest ekg-org-test-view-top-level-spacing ()
+  "Test that blank lines separate top-level task groups after creation."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Alpha")
+  (ekg-org-test--add-task "Beta")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    ;; Create a child of Beta via insert mode.
+    (goto-char (point-min))
+    (while (not (equal (ekg-org-view--note-at-point)
+                       (ekg-org-test--task-id-by-title "Beta")))
+      (forward-line 1))
+    (ekg-org-view-create)
+    (let ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots)))
+      (ekg-org-view--insert-cleanup)
+      (ekg-org-view--insert-create-task slot "Beta Child"))
+    ;; There should be a blank line between Alpha and Beta groups.
+    (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+      (should (string-match-p "\n\n\\*" text)
+              ))))
+
 (ekg-deftest ekg-org-test-view-trash ()
   "Test that trashing a task removes it from the view."
   (ekg-org-add-schema)
