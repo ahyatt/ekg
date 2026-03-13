@@ -673,13 +673,9 @@ as the starting heading are skipped."
 ;; Interactive action commands
 
 (defun ekg-org-view--refresh ()
-  "Re-render the view by re-mounting with fresh data."
-  (let ((pos (point))
-        (root-id ekg-org-view--root-id)
-        (archive ekg-org-view--archive))
-    (if root-id
-        (ekg-org-view-task root-id)
-      (ekg-org-view--mount archive))
+  "Re-render the view in place without switching windows."
+  (let ((pos (point)))
+    (vui-rerender ekg-org-view--instance)
     (goto-char (min pos (point-max)))
     (ekg-org-view--ensure-on-heading)
     (ekg-org-view--highlight)))
