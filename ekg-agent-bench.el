@@ -152,32 +152,119 @@ Libraries not found are silently skipped.")
           (push (file-name-directory file) paths))))
     (delete-dups paths)))
 
-(defun ekg-agent-bench--init-forms ()
+(defun ekg-agent-bench--init-forms (error-file)
   "Return init forms for the benchmark subprocess.
-Sets up a temp database and configures the LLM provider."
-  `(;; Delete stale .elc files that cause errors in -Q daemons
-    ;; by preferring .el source when .elc is suspect.
-    (setq load-prefer-newer t)
-    (setq ekg-db-file (make-temp-file "ekg-bench-db"))
-    (require 'ekg)
-    (require 'ekg-agent)
-    (require 'ekg-llm)
-    (require 'ekg-org)
-    ,@(when ekg-agent-bench-provider-form
-        `((setq ekg-llm-provider ,ekg-agent-bench-provider-form)))
-    ;; Connect to the temp database.
-    (ekg-connect)
-    ;; Suppress log window display in the daemon.
-    (defun ekg-agent--ensure-log-window ()
-      (let ((buf (current-buffer)))
-        (unless (get-buffer-window buf t)
-          (set-window-buffer (selected-window) buf))))))
+Sets up a temp database and configures the LLM provider.
+ERROR-FILE is a path where init errors will be written for diagnosis."
+  `(;; Wrap all init in condition-case so we get error diagnostics.
+    (condition-case err
+        (progn
+          ;; Prefer .el source over stale .elc.
+          (setq load-prefer-newer t)
+          (setq ekg-db-file (make-temp-file "ekg-bench-db"))
+          (require 'ekg)
+          (require 'ekg-agent)
+          (require 'ekg-llm)
+          (require 'ekg-org)
+          ,@(when ekg-agent-bench-provider-form
+              `((setq ekg-llm-provider ,ekg-agent-bench-provider-form)))
+          ;; Connect to the temp database.
+          (ekg-connect)
+          ;; Suppress log window display in the daemon.
+          (defun ekg-agent--ensure-log-window ()
+            (let ((buf (current-buffer)))
+              (unless (get-buffer-window buf t)
+                (set-window-buffer (selected-window) buf)))))
+      (error
+       (with-temp-file ,error-file
+         (insert (format "Init error: %S\n" err))
+         (insert (format "Load path:\n%s\n"
+                         (mapconcat #'identity load-path "\n"))))))))
+
+(defvar ekg-agent-bench--server-counter 0
+  "Counter for generating unique server names.")
 
 (defun ekg-agent-bench--start-emacs ()
-  "Start a fresh Emacs subprocess for benchmarking."
-  (llm-test--start-emacs
-   :load-path (ekg-agent-bench--compute-load-paths)
-   :init-forms (ekg-agent-bench--init-forms)))
+  "Start a fresh Emacs subprocess for benchmarking.
+Like `llm-test--start-emacs' but with better error reporting when
+the daemon fails to start."
+  (let* ((load-paths (ekg-agent-bench--compute-load-paths))
+         (error-file (make-temp-file "ekg-bench-init-error-"))
+         (init-forms (ekg-agent-bench--init-forms error-file))
+         (server-name (format "ekg-bench-%d-%d"
+                              (emacs-pid)
+                              (cl-incf ekg-agent-bench--server-counter)))
+         (socket-dir (make-temp-file "ekg-bench-socket-" t))
+         (init-file (make-temp-file "ekg-bench-init-" nil ".el"))
+         (buf-name (format " *ekg-bench-emacs-%s*" server-name)))
+    (with-temp-file init-file
+      (insert (format "(setq server-socket-dir %S server-name %S)\n"
+                      socket-dir server-name))
+      (dolist (dir load-paths)
+        (insert (format "(add-to-list 'load-path %S)\n" dir)))
+      (dolist (form init-forms)
+        (insert (format "%S\n" form))))
+    (let ((process (start-process
+                    (format "ekg-bench-emacs-%s" server-name)
+                    buf-name
+                    llm-test-emacs-executable
+                    "-Q"
+                    "-l" init-file
+                    (format "--daemon=%s" server-name)))
+          (socket-file (expand-file-name server-name socket-dir))
+          (deadline (+ (float-time) llm-test-timeout)))
+      ;; Wait for the daemon to be ready.
+      (while (and (< (float-time) deadline)
+                  (process-live-p process)
+                  (not (file-exists-p socket-file)))
+        (sit-for 0.1))
+      (unless (file-exists-p socket-file)
+        ;; Collect diagnostic info before signaling.
+        (let ((proc-output (when (get-buffer buf-name)
+                             (with-current-buffer buf-name
+                               (buffer-string))))
+              (init-error (when (and (file-exists-p error-file)
+                                     (> (file-attribute-size
+                                         (file-attributes error-file))
+                                        0))
+                            (with-temp-buffer
+                              (insert-file-contents error-file)
+                              (buffer-string))))
+              (alive (process-live-p process)))
+          (when alive (kill-process process))
+          (ignore-errors (delete-directory socket-dir t))
+          (ignore-errors (delete-file init-file))
+          (ignore-errors (delete-file error-file))
+          (error "Daemon failed to start.%s\nProcess %s, output:\n%s"
+                 (if init-error
+                     (format "\n%s" init-error)
+                   "\nNo error file written (init may have hung).")
+                 (if alive "still running (timeout)" "exited early")
+                 (or proc-output "(no output)"))))
+      ;; Daemon started — check if init actually succeeded by reading
+      ;; the error file.  The condition-case in init-forms writes here
+      ;; on failure, but the daemon still starts because server vars
+      ;; are set before the condition-case.
+      (when (and (file-exists-p error-file)
+                 (> (file-attribute-size (file-attributes error-file)) 0))
+        (let ((init-error (with-temp-buffer
+                            (insert-file-contents error-file)
+                            (buffer-string))))
+          (ignore-errors (kill-process process))
+          (ignore-errors (delete-directory socket-dir t))
+          (ignore-errors (delete-file init-file))
+          (ignore-errors (delete-file error-file))
+          (error "Daemon started but init failed:\n%s" init-error)))
+      (ignore-errors (delete-file error-file))
+      (let ((info (list :process process
+                        :server-name server-name
+                        :socket-dir socket-dir
+                        :init-file init-file)))
+        (llm-test--eval-in-emacs
+         info
+         (format "(set-frame-size (selected-frame) %d %d)"
+                 llm-test-frame-width llm-test-frame-height))
+        info))))
 
 ;;; Agent Polling and Metric Extraction
 
@@ -423,6 +510,44 @@ Returns an `ekg-agent-bench-result'."
     (pop-to-buffer buf)
     (goto-char (point-min))
     (special-mode)))
+
+;;; ERT Registration
+
+;;; Diagnostics
+
+;;;###autoload
+(defun ekg-agent-bench-diagnose ()
+  "Run a diagnostic check to verify the benchmark subprocess can start.
+Reports which libraries load successfully and whether ekg connects."
+  (interactive)
+  (unless ekg-agent-bench-provider-form
+    (user-error "Set `ekg-agent-bench-provider-form' first"))
+  (message "ekg-agent-bench: computing load paths...")
+  (let ((paths (ekg-agent-bench--compute-load-paths)))
+    (message "  %d directories on load-path" (length paths))
+    (dolist (p paths)
+      (message "    %s" p)))
+  (message "ekg-agent-bench: starting subprocess (timeout %ds)..."
+           llm-test-timeout)
+  (let ((info (ekg-agent-bench--start-emacs)))
+    (unwind-protect
+        (progn
+          (message "  daemon started OK")
+          (dolist (lib '("ekg" "ekg-agent" "ekg-llm" "ekg-org" "ekg-embedding"
+                         "llm" "triples" "futur" "vui"))
+            (let ((result (llm-test--eval-in-emacs
+                           info
+                           (format "(if (featurep '%s) \"loaded\" \"NOT loaded\")"
+                                   lib))))
+              (message "  %s: %s" lib result)))
+          (message "  ekg-db: %s"
+                   (llm-test--eval-in-emacs info "(if ekg-db \"connected\" \"nil\")"))
+          (message "  provider: %s"
+                   (llm-test--eval-in-emacs info "(type-of ekg-llm-provider)"))
+          (message "  ekg-db-file: %s"
+                   (llm-test--eval-in-emacs info "ekg-db-file"))
+          (message "ekg-agent-bench: diagnosis PASSED"))
+      (llm-test--stop-emacs info))))
 
 ;;; ERT Registration
 
