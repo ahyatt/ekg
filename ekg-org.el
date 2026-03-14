@@ -471,14 +471,18 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
              "\n"))
 
 (defun ekg-org-view--fontify-org (text)
-  "Return TEXT with `org-mode' font-lock properties applied."
+  "Return TEXT with `org-mode' font-lock properties applied.
+Reuses a hidden buffer to avoid repeated `org-mode' initialization."
   (if (or (null text) (string-empty-p text))
       ""
-    (with-temp-buffer
-      (insert text)
-      (org-mode)
-      (font-lock-ensure)
-      (buffer-string))))
+    (with-current-buffer (get-buffer-create " *ekg-org-fontify*")
+      (unless (derived-mode-p 'org-mode)
+        (delay-mode-hooks (org-mode)))
+      (let ((inhibit-modification-hooks t))
+        (erase-buffer)
+        (insert text)
+        (font-lock-ensure)
+        (buffer-string)))))
 
 (defun ekg-org-view--heading-face (level)
   "Return the org heading face for LEVEL."
@@ -511,9 +515,10 @@ Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
          (body-nodes nil))
     (unless collapsed
       (when (and text (not (string-empty-p (string-trim text))))
-        (let* ((indent (make-string (1+ level) ?\s))
-               (body (ekg-org-view--indent-text text indent)))
-          (push (vui-text (propertize body 'face 'ekg-org-view-body)
+        (let* ((fontified (ekg-org-view--fontify-org text))
+               (indent (make-string (1+ level) ?\s))
+               (body (ekg-org-view--indent-text fontified indent)))
+          (push (vui-text body
                   :key (intern (format "body-%s" id)))
                 body-nodes)))
       (dolist (child children)

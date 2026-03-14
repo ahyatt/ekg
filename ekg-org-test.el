@@ -305,6 +305,22 @@ Returns the note ID."
       (should (equal headings
                      '((1 "Parent") (2 "Child A") (2 "Child B")))))))
 
+(ekg-deftest ekg-org-test-view-body-fontified ()
+  "Test that org body text in the view is fontified, not raw text."
+  (ekg-org-add-schema)
+  (ekg-agent-org--tool-add-item
+   "Task With Body" "This has *bold* and /italic/ text." nil nil "TODO" nil nil)
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    ;; Find the body text in the buffer.
+    (should (search-forward "bold" nil t))
+    ;; The word "bold" should have a face property from org fontification,
+    ;; not just the old ekg-org-view-body shadow face.
+    (let ((face (get-text-property (match-beginning 0) 'face)))
+      (should face)
+      (should-not (eq face 'ekg-org-view-body)))))
+
 (ekg-deftest ekg-org-test-view-multiple-top-level ()
   "Test that multiple top-level tasks all appear."
   (ekg-org-add-schema)
