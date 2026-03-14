@@ -44,6 +44,7 @@
 (require 'llm-test)
 (require 'yaml)
 (require 'ert)
+(require 'futur)
 
 (defgroup ekg-agent-bench nil
   "Benchmark suite for ekg-agent."
@@ -625,6 +626,213 @@ Reports which libraries load successfully and whether ekg connects."
 
 ;;; Entry Points
 
+;;; Async Task Runner (futur-based)
+
+(defun ekg-agent-bench--eval-async (emacs-info expr)
+  "Evaluate EXPR in the subprocess asynchronously.
+Returns a futur that resolves to the result string."
+  (llm-test--eval-in-emacs-async emacs-info expr))
+
+(defun ekg-agent-bench--poll-step-async (emacs-info deadline log-buf)
+  "One async poll step.  Returns a futur resolving to \\='done or \\='timeout."
+  (if (>= (float-time) deadline)
+      (futur-done 'timeout)
+    (if (not log-buf)
+        ;; Still waiting for log buffer to appear.
+        (futur-let*
+            ((_ <- (futur-timeout ekg-agent-bench-poll-interval))
+             (found <- (ekg-agent-bench--eval-async
+                        emacs-info
+                        "(let ((buf (car (seq-filter
+                                          (lambda (b) (string-match-p \"\\\\\\\\*ekg agent log:\" (buffer-name b)))
+                                          (buffer-list)))))
+                           (if buf (buffer-name buf) \"nil\"))")))
+          ;; found is e.g. "\"*ekg agent log: foo*\"" or "nil".
+          (let ((buf-name (when (and found
+                                     (not (equal found "nil"))
+                                     (> (length found) 2)
+                                     (eq (aref found 0) ?\"))
+                            (read found))))
+            (ekg-agent-bench--poll-step-async
+             emacs-info deadline buf-name)))
+      ;; Log buffer exists, check if agent is still running.
+      (futur-let*
+          ((_ <- (futur-timeout ekg-agent-bench-poll-interval))
+           (result <- (ekg-agent-bench--eval-async
+                       emacs-info
+                       (format "(with-current-buffer %S
+                                  (if (and (boundp 'ekg-agent--running-p)
+                                           ekg-agent--running-p)
+                                      \"running\" \"stopped\"))"
+                               log-buf))))
+        (if (equal result "\"running\"")
+            (ekg-agent-bench--poll-step-async emacs-info deadline log-buf)
+          (futur-done 'done))))))
+
+(defun ekg-agent-bench--poll-until-done-async (emacs-info timeout)
+  "Poll the subprocess asynchronously until the agent finishes.
+Returns a futur resolving to \\='done or \\='timeout."
+  (let ((deadline (+ (float-time) timeout)))
+    (ekg-agent-bench--poll-step-async emacs-info deadline nil)))
+
+(defun ekg-agent-bench--extract-metrics-async (emacs-info)
+  "Async version of `ekg-agent-bench--extract-metrics'.
+Returns a futur resolving to a plist."
+  (futur-let*
+      ((log-content <- (ekg-agent-bench--eval-async
+                        emacs-info
+                        "(let ((buf (car (seq-filter
+                                          (lambda (b) (string-match-p \"\\\\\\\\*ekg agent log:\" (buffer-name b)))
+                                          (buffer-list)))))
+                           (if buf
+                               (with-current-buffer buf
+                                 (buffer-substring-no-properties (point-min) (point-max)))
+                             \"\"))")))
+    (let* ((content (if (and (> (length log-content) 1)
+                             (eq (aref log-content 0) ?\"))
+                        (read log-content)
+                      log-content))
+           (lines (split-string content "\n"))
+           (iterations 0)
+           (tools nil))
+      (dolist (line lines)
+        (when (string-match "Tools: \\(.*\\)" line)
+          (cl-incf iterations)
+          (let ((tools-str (match-string 1 line)))
+            (dolist (segment (split-string tools-str ", "))
+              (when (string-match "Tool: \\([^ ]+\\)" segment)
+                (push (match-string 1 segment) tools))))))
+      (futur-done (list :iterations iterations
+                        :tools-used (delete-dups (nreverse tools))
+                        :log content)))))
+
+(defun ekg-agent-bench--eval-verify-async (emacs-info verify-expr)
+  "Async version of `ekg-agent-bench--eval-verify'.
+Returns a futur resolving to t, nil, or \\='skip."
+  (if (null verify-expr)
+      (futur-done 'skip)
+    (futur-let*
+        ((result <- (ekg-agent-bench--eval-async
+                     emacs-info
+                     (format "(if (progn %s) \"pass\" \"fail\")" verify-expr))))
+      (futur-done (equal result "\"pass\"")))))
+
+(defun ekg-agent-bench--run-task-async (emacs-info group-setup task)
+  "Run a single benchmark TASK asynchronously.
+Returns a futur resolving to an `ekg-agent-bench-result'."
+  (let ((start-time (float-time))
+        (timeout (or (ekg-agent-bench-task-timeout task)
+                     ekg-agent-bench-default-timeout))
+        (task-name (or (ekg-agent-bench-task-name task) "unnamed")))
+    (message "bench: running %s..." task-name)
+    (futur-let*
+        ;; Group setup.
+        ((setup-result
+          <- (if (and group-setup (not (string-empty-p group-setup)))
+                 (ekg-agent-bench--eval-async
+                  emacs-info (format "(progn %s nil)" group-setup))
+               (futur-done nil)))
+         ;; Task-specific setup.
+         (task-setup-result
+          <- (if (and (ekg-agent-bench-task-setup task)
+                      (not (string-empty-p (ekg-agent-bench-task-setup task))))
+                 (ekg-agent-bench--eval-async
+                  emacs-info
+                  (format "(progn %s nil)" (ekg-agent-bench-task-setup task)))
+               (futur-done nil)))
+         ;; Trigger.
+         (trigger-result
+          <- (ekg-agent-bench--eval-async
+              emacs-info
+              (format "(progn (run-at-time 0 nil (lambda () %s)) nil)"
+                      (ekg-agent-bench-task-trigger task))))
+         ;; Poll for completion.
+         (status <- (ekg-agent-bench--poll-until-done-async emacs-info timeout))
+         ;; Collect metrics.
+         (metrics <- (ekg-agent-bench--extract-metrics-async emacs-info))
+         ;; Verify.
+         (task-passed
+          <- (ekg-agent-bench--eval-verify-async
+              emacs-info (ekg-agent-bench-task-verify-task task)))
+         (skill-passed
+          <- (ekg-agent-bench--eval-verify-async
+              emacs-info (ekg-agent-bench-task-verify-skill task)))
+         (memory-passed
+          <- (ekg-agent-bench--eval-verify-async
+              emacs-info (ekg-agent-bench-task-verify-memory task))))
+      ;; Suppress byte-compiler warnings for unused variables.
+      (ignore setup-result task-setup-result trigger-result)
+      (let ((wall-time (- (float-time) start-time)))
+        (message "bench: %s completed (%s, %.0fs)"
+                 task-name status wall-time)
+        (futur-done
+         (make-ekg-agent-bench-result
+          :name task-name
+          :task-passed task-passed
+          :skill-passed skill-passed
+          :memory-passed memory-passed
+          :iterations (or (plist-get metrics :iterations) 0)
+          :tools-used (or (plist-get metrics :tools-used) nil)
+          :wall-time wall-time
+          :status status
+          :error-message nil
+          :agent-log (plist-get metrics :log)))))))
+
+(defun ekg-agent-bench--make-error-result (task-name error-msg)
+  "Create an error result for TASK-NAME with ERROR-MSG."
+  (make-ekg-agent-bench-result
+   :name task-name :status 'error :error-message error-msg
+   :wall-time 0 :iterations 0))
+
+(defun ekg-agent-bench--run-tasks-sequentially (task-specs results-so-far callback)
+  "Run TASK-SPECS sequentially, each in a fresh subprocess.
+TASK-SPECS is a list of (group-setup . task) pairs.
+Accumulates results into RESULTS-SO-FAR (in reverse).
+Calls CALLBACK with the final list of results (in order).
+
+The daemon start is synchronous (brief blocking) but all subsequent
+work (setup, trigger, polling, verification) is fully async via futur."
+  (if (null task-specs)
+      (funcall callback (nreverse results-so-far))
+    (let* ((spec (car task-specs))
+           (group-setup (car spec))
+           (task (cdr spec))
+           (task-name (ekg-agent-bench-task-name task))
+           (rest (cdr task-specs))
+           (emacs-info
+            (condition-case err
+                (ekg-agent-bench--start-emacs)
+              (error
+               (message "bench: daemon start failed for %s: %S"
+                        task-name err)
+               nil))))
+      (if (not emacs-info)
+          ;; Daemon failed to start — record error and continue.
+          (progn
+            (push (ekg-agent-bench--make-error-result
+                   task-name (format "Daemon start failed"))
+                  results-so-far)
+            ;; Use run-at-time to avoid deep recursion on the stack.
+            (run-at-time 0 nil
+                         #'ekg-agent-bench--run-tasks-sequentially
+                         rest results-so-far callback))
+        ;; Daemon running — the rest is fully async via futur.
+        (futur--register-callback
+         (ekg-agent-bench--run-task-async emacs-info group-setup task)
+         (lambda (err val)
+           (llm-test--stop-emacs emacs-info)
+           (if err
+               (progn
+                 (message "bench: error running %s: %S" task-name err)
+                 (push (ekg-agent-bench--make-error-result
+                        task-name (format "%S" err))
+                       results-so-far))
+             (push val results-so-far))
+           (ekg-agent-bench--run-tasks-sequentially
+            rest results-so-far callback)))))))
+
+;;; Entry Points (synchronous, for ERT and batch use)
+
 ;;;###autoload
 (defun ekg-agent-bench-run (&optional directory)
   "Run all benchmark tasks from DIRECTORY and display results.
@@ -688,6 +896,80 @@ DIRECTORY defaults to the benchmarks/ subdirectory."
              (format "%S" ekg-agent-bench-provider-form))
             result)
         (llm-test--stop-emacs emacs-info)))))
+
+;;; Entry Points (async, non-blocking)
+
+;;;###autoload
+(defun ekg-agent-bench-run-async (&optional directory)
+  "Run all benchmarks asynchronously without blocking Emacs.
+DIRECTORY defaults to the benchmarks/ subdirectory next to this file.
+Results are displayed in *ekg-agent-bench* when all tasks complete.
+
+The daemon start for each task briefly blocks, but all agent
+interaction (setup, trigger, polling, verification) is fully async."
+  (interactive)
+  (unless ekg-agent-bench-provider-form
+    (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
+  (let* ((dir (or directory
+                   (expand-file-name "benchmarks"
+                                     (file-name-directory
+                                      (or load-file-name
+                                          (locate-library "ekg-agent-bench"))))))
+         (groups (ekg-agent-bench--load-directory dir))
+         (task-specs nil))
+    ;; Build a flat list of (group-setup . task) pairs.
+    (dolist (group groups)
+      (let ((group-setup (ekg-agent-bench-group-setup group)))
+        (dolist (task (ekg-agent-bench-group-tasks group))
+          (push (cons group-setup task) task-specs))))
+    (setq task-specs (nreverse task-specs))
+    (message "ekg-agent-bench: starting %d tasks asynchronously..."
+             (length task-specs))
+    ;; Defer start so the calling command returns immediately.
+    (run-at-time 0 nil
+                 #'ekg-agent-bench--run-tasks-sequentially
+                 task-specs nil
+                 (lambda (results)
+                   (ekg-agent-bench--display-results
+                    results (format "%S" ekg-agent-bench-provider-form))
+                   (message "ekg-agent-bench: complete (%d tasks)"
+                            (length results))))))
+
+;;;###autoload
+(defun ekg-agent-bench-run-one-async (task-name &optional directory)
+  "Run a single benchmark TASK-NAME asynchronously without blocking Emacs.
+DIRECTORY defaults to the benchmarks/ subdirectory.
+Results are displayed in *ekg-agent-bench* when the task completes."
+  (interactive "sTask name: ")
+  (unless ekg-agent-bench-provider-form
+    (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
+  (let* ((dir (or directory
+                   (expand-file-name "benchmarks"
+                                     (file-name-directory
+                                      (or load-file-name
+                                          (locate-library "ekg-agent-bench"))))))
+         (groups (ekg-agent-bench--load-directory dir))
+         (found nil))
+    (catch 'found
+      (dolist (group groups)
+        (dolist (task (ekg-agent-bench-group-tasks group))
+          (when (equal (ekg-agent-bench-task-name task) task-name)
+            (setq found (cons group task))
+            (throw 'found nil)))))
+    (unless found
+      (user-error "Task %s not found" task-name))
+    (let* ((group (car found))
+           (task (cdr found)))
+      (message "ekg-agent-bench: running %s asynchronously..." task-name)
+      ;; Defer start so the calling command returns immediately.
+      (run-at-time 0 nil
+                   #'ekg-agent-bench--run-tasks-sequentially
+                   (list (cons (ekg-agent-bench-group-setup group) task))
+                   nil
+                   (lambda (results)
+                     (ekg-agent-bench--display-results
+                      results (format "%S" ekg-agent-bench-provider-form))
+                     (message "ekg-agent-bench: %s complete" task-name))))))
 
 (provide 'ekg-agent-bench)
 
