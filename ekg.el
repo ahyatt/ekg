@@ -526,6 +526,11 @@ if it is time for one, according to the settings in
       ;; Note that we recalculate modified time here, since we are modifying the
       ;; entity.
       (let ((modified-time (time-convert (current-time) 'integer)))
+        ;; Ensure creation-time is set; it may be nil if the note was
+        ;; retrieved from a DB that lacks the time-tracked type for
+        ;; this note (e.g., notes created by external tools).
+        (unless (ekg-note-creation-time note)
+          (setf (ekg-note-creation-time note) modified-time))
         (triples-set-type ekg-db (ekg-note-id note) 'time-tracked
                           :creation-time (ekg-note-creation-time note)
                           :modified-time modified-time)
