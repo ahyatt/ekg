@@ -96,7 +96,8 @@ mismatches between the host and the daemon."
   "Result of running a single benchmark task."
   name
   task-passed skill-passed memory-passed
-  iterations tools-used wall-time status error-message)
+  iterations tools-used wall-time status error-message
+  agent-log)
 
 ;;; YAML Parsing
 
@@ -331,8 +332,8 @@ Returns `done' if the agent finished, `timeout' if it timed out."
       (if (< (float-time) deadline) 'done 'timeout))))
 
 (defun ekg-agent-bench--extract-metrics (emacs-info)
-  "Extract iteration count and tools used from the agent log buffer.
-Returns a plist (:iterations N :tools-used (TOOL ...))."
+  "Extract iteration count, tools used, and log from the agent log buffer.
+Returns a plist (:iterations N :tools-used (TOOL ...) :log STRING)."
   (let* ((log-content
           (llm-test--eval-in-emacs
            emacs-info
@@ -359,7 +360,8 @@ Returns a plist (:iterations N :tools-used (TOOL ...))."
             (when (string-match "Tool: \\([^ ]+\\)" segment)
               (push (match-string 1 segment) tools))))))
     (list :iterations iterations
-          :tools-used (delete-dups (nreverse tools)))))
+          :tools-used (delete-dups (nreverse tools))
+          :log content)))
 
 (defun ekg-agent-bench--eval-verify (emacs-info verify-expr)
   "Evaluate VERIFY-EXPR in the subprocess and return t if it's truthy.
@@ -456,7 +458,8 @@ Returns an `ekg-agent-bench-result'."
        :tools-used (or (plist-get metrics :tools-used) nil)
        :wall-time wall-time
        :status status
-       :error-message error-msg))))
+       :error-message error-msg
+       :agent-log (plist-get metrics :log)))))
 
 ;;; Results Display
 
@@ -506,7 +509,13 @@ Returns an `ekg-agent-bench-result'."
                             (ekg-agent-bench-result-status r)))
             (when (ekg-agent-bench-result-error-message r)
               (insert (format "  ERROR: %s\n"
-                              (ekg-agent-bench-result-error-message r)))))
+                              (ekg-agent-bench-result-error-message r))))
+            (when (ekg-agent-bench-result-agent-log r)
+              (insert "\n  Agent log:\n")
+              (dolist (line (split-string (ekg-agent-bench-result-agent-log r) "\n"))
+                (unless (string-empty-p line)
+                  (insert (format "  | %s\n" line))))
+              (insert "\n")))
           (insert (make-string 72 ?─) "\n")
           (insert (format "Task: %d/%d  Skill: %d/%d  Memory: %d/%d  Avg iters: %.1f  Avg time: %.1fs\n"
                           task-pass task-total
