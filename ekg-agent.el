@@ -889,10 +889,12 @@ agent will decide which is best."
                          "\n\nYour instructions are to answer the user's question, given below. "
                          "You have access to tools to help you. "
                          "After each tool call you will be given a chance to make more tool calls. "
-                         "When you have the answer, you MUST present it to the user by calling either "
-                         "`display_result_in_popup` or `create_note`.  Calling one of these tools "
-                         "will complete your task.  Do not call any other tools after you have "
-                         "presented the answer."
+                         "Use `create_note` freely throughout your work to record progress, "
+                         "findings, and skills — it will NOT end your session. "
+                         "When you are FINISHED with ALL work (including the actual task, any "
+                         "skill notes, and your retrospective), call `display_result_in_popup` "
+                         "to present your final summary to the user.  This is the ONLY way to "
+                         "end your session."
                          (when context
                            "\n\nHere is some additional context to help you:\n")
                          context
@@ -910,7 +912,7 @@ agent will decide which is best."
                          :tool-options (make-llm-tool-options :tool-choice 'any))
                         0
                         (ekg-agent--make-status-callback)
-                        '("display_result_in_popup" "create_note")
+                        '("display_result_in_popup")
                         (ekg-agent--timeout-deadline))))
 
 (defun ekg-agent-ask (question)
@@ -1090,10 +1092,23 @@ Before you begin any substantive work on a task:
    - When you hit a problem or make a decision: document the rationale.
    - Be specific: include file paths, code snippets, key insights, and context.
 
-4. **CREATE NEW NOTES FOR GENERAL KNOWLEDGE**
-   - If you discover something that will help with other tasks (not just this one): create a new note.
-   - Tag it appropriately (e.g., `skill/<new skill>`, `<project>/lessons`).
-   - Link back to the task note if relevant.
+4. **CREATE SKILL NOTES FOR REUSABLE KNOWLEDGE**
+   Any time you discover something generally useful — a pattern,
+   convention, gotcha, best practice, or technique — you MUST create
+   a **skill note** so it will be automatically shown in future tasks.
+
+   A skill note is a note tagged with `%s` plus one or more topic
+   tags (e.g., `elisp`, `performance`, `error-handling`, or a project
+   name).  Notes tagged with `%s` are special: they are automatically
+   included as instructions when the agent works on tasks that share
+   any of the co-tags.  This is how the agent learns and improves
+   over time.
+
+   Examples of when to create a skill note:
+   - You discover a performance anti-pattern (tag: `%s` + `elisp` + `performance`)
+   - You identify a project convention (tag: `%s` + `<project-name>`)
+   - You learn a useful technique (tag: `%s` + relevant topic)
+   - Your instructions could be improved (tag: `%s` + relevant context)
 
 In org-mode, you can link to a note with `[[ekg-note:<id>][<link display
 text>]]`.  Tags can be linked with `[[ekg-tag:<tag>][<link display
@@ -1108,11 +1123,8 @@ When the task is complete:
 
 5. **RETROSPECTIVE AND KNOWLEDGE EXTRACTION**
    - Ask: what did I learn that's generally useful?
-   - Convert those learnings into standalone notes with appropriate tags
-   - If something went wrong, document the lesson
-   - If my instructions could be improved, create or edit notes tagged
-     with `%s` and other tags that will allow you to later use it in the
-     correct contexts.
+   - For each learning, create a skill note (tagged with `%s` + topics).
+   - If something went wrong, document the lesson as a skill note.
 
 6. **UPDATE THE TASK NOTE**
    - Add a final entry summarizing the outcome
@@ -1135,7 +1147,13 @@ When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
 these tags manually."
      (concat "[" (string-join (ekg-agent-cotagged-prompt-tags) " ") "]")
-     ekg-llm-prompt-tag
+     ekg-llm-prompt-tag  ; step 4 first mention
+     ekg-llm-prompt-tag  ; step 4 "Notes tagged with..."
+     ekg-llm-prompt-tag  ; step 4 example 1
+     ekg-llm-prompt-tag  ; step 4 example 2
+     ekg-llm-prompt-tag  ; step 4 example 3
+     ekg-llm-prompt-tag  ; step 4 example 4
+     ekg-llm-prompt-tag  ; step 5
      timeout-desc
      ekg-agent-self-info-tag)))
 
