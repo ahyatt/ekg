@@ -128,6 +128,65 @@
               (kill-buffer buf))))
       (delete-file path))))
 
+(ert-deftest ekg-agent-test-read-file-empty-string-args ()
+  "Empty strings for begin/end/range-type are treated as nil."
+  (let ((path (make-temp-file "ekg-agent-test")))
+    (unwind-protect
+        (progn
+          (with-temp-file path
+            (insert "alpha\nbeta\ngamma\n"))
+          (let ((full (ekg-agent--read-file path))
+                (empty-args (ekg-agent--read-file path "" "" "line_number")))
+            (should (string= full empty-args))
+            (should (string-match-p "alpha" full))
+            (should (string-match-p "gamma" full))))
+      (delete-file path))))
+
+(ert-deftest ekg-agent-test-write-file-creates-new ()
+  "write_file creates a new file and returns content with line ids."
+  (let ((path (concat (make-temp-file "ekg-agent-test" t) "/new-file.txt")))
+    (unwind-protect
+        (progn
+          (should-not (file-exists-p path))
+          (let ((result (ekg-agent--write-file path "hello\nworld\n")))
+            (should (file-exists-p path))
+            (should (string-match-p "hello" result))
+            (should (string-match-p "world" result))
+            (should (equal "hello\nworld\n"
+                           (with-temp-buffer
+                             (insert-file-contents path)
+                             (buffer-string))))))
+      (when (file-exists-p path)
+        (delete-file path)))))
+
+(ert-deftest ekg-agent-test-write-file-overwrites-existing ()
+  "write_file replaces the content of an existing file."
+  (let ((path (make-temp-file "ekg-agent-test")))
+    (unwind-protect
+        (progn
+          (with-temp-file path (insert "old content\n"))
+          (ekg-agent--write-file path "new content\n")
+          (should (equal "new content\n"
+                         (with-temp-buffer
+                           (insert-file-contents path)
+                           (buffer-string)))))
+      (delete-file path))))
+
+(ert-deftest ekg-agent-test-write-file-updates-buffer ()
+  "write_file updates an open buffer instead of writing to disk."
+  (let ((path (make-temp-file "ekg-agent-test")))
+    (unwind-protect
+        (let ((buf (find-file-noselect path)))
+          (unwind-protect
+              (progn
+                (ekg-agent--write-file path "buffer content\n")
+                (should (equal "buffer content\n"
+                               (with-current-buffer buf
+                                 (buffer-substring-no-properties
+                                  (point-min) (point-max))))))
+            (kill-buffer buf)))
+      (delete-file path))))
+
 (ert-deftest ekg-agent-test-edit-file-round-trip ()
   "Editing a file replaces the identified region and returns context."
   (let ((path (make-temp-file "ekg-agent-test")))

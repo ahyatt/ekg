@@ -626,6 +626,10 @@ PATH should already be resolved via `file-truename'."
                  return i)
         (error "Line identifier %s not found in %s" id path))))
 
+(defun ekg-agent--nonempty-string-p (s)
+  "Return non-nil if S is a non-nil, non-empty string."
+  (and (stringp s) (not (string-empty-p s))))
+
 (defun ekg-agent--read-file (path &optional begin end range-type)
   "Read file at PATH, returning contents with line identifiers.
 
@@ -635,10 +639,16 @@ read from the buffer.
 
 BEGIN and END restrict the output to a range.  RANGE-TYPE is
 either \"line_number\" or \"identifier\" and indicates how to
-interpret BEGIN and END.  Returns a string without text
+interpret BEGIN and END.  Empty strings for BEGIN, END, or
+RANGE-TYPE are treated as nil.  Returns a string without text
 properties."
   (ekg-agent--with-error-as-text
-    (let ((truepath (file-truename path)))
+    (let* ((truepath (file-truename path))
+           ;; LLMs sometimes pass empty strings for omitted optional args.
+           (begin (and (ekg-agent--nonempty-string-p begin) begin))
+           (end (and (ekg-agent--nonempty-string-p end) end))
+           (range-type (and (ekg-agent--nonempty-string-p range-type)
+                            range-type)))
       (unless (or (find-buffer-visiting truepath) (file-exists-p truepath))
         (error "File not found: %s" path))
       (unless (or (find-buffer-visiting truepath) (file-readable-p truepath))
@@ -773,6 +783,34 @@ identifiers."
            (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive)." :required t)
            (:name "replacement" :type string :description "The new text to insert in place of the matched region." :required t))))
 
+(defun ekg-agent--write-file (path content)
+  "Write CONTENT to the file at PATH, creating it if necessary.
+If PATH is open in an Emacs buffer, replace the buffer contents
+without saving.  Otherwise write directly to disk, creating parent
+directories as needed.  Returns the file content with line
+identifiers, like `ekg-agent--read-file'."
+  (ekg-agent--with-error-as-text
+    (let ((truepath (file-truename
+                     (expand-file-name path))))
+      (let ((buf (find-buffer-visiting truepath)))
+        (if buf
+            (with-current-buffer buf
+              (erase-buffer)
+              (insert content))
+          (let ((dir (file-name-directory truepath)))
+            (unless (file-directory-p dir)
+              (make-directory dir t))
+            (write-region content nil truepath))))
+      (ekg-agent--read-file truepath))))
+
+(defconst ekg-agent-tool-write-file
+  (make-llm-tool
+   :function #'ekg-agent--write-file
+   :name "write_file"
+   :description "Write content to a file, creating it (and parent directories) if it does not exist.  If the file is already open in an Emacs buffer, replaces the buffer contents without saving.  Returns the new file content with line identifiers."
+   :args '((:name "path" :type string :description "The file path to write." :required t)
+           (:name "content" :type string :description "The full text content to write to the file." :required t))))
+
 (defun ekg-agent--run-command (callback command &optional directory)
   "Run shell COMMAND asynchronously and call CALLBACK with the result.
 DIRECTORY, if given, is used as `default-directory' for the process."
@@ -821,7 +859,8 @@ DIRECTORY, if given, is used as `default-directory' for the process."
    ekg-agent-tool-ask-user
    ekg-agent-tool-read-agents-md
    ekg-agent-tool-read-file
-   ekg-agent-tool-edit-file)
+   ekg-agent-tool-edit-file
+   ekg-agent-tool-write-file)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 
