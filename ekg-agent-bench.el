@@ -211,9 +211,10 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
   "Counter for generating unique server names.")
 
 (defun ekg-agent-bench--start-emacs ()
-  "Start a fresh Emacs subprocess for benchmarking.
+  "Start a fresh Emacs subprocess for benchmarking (synchronous).
 Like `llm-test--start-emacs' but with better error reporting when
-the daemon fails to start."
+the daemon fails to start.  Blocks until the daemon is ready.  Use
+`ekg-agent-bench--start-emacs-async' from timer/callback contexts."
   (let* ((load-paths (ekg-agent-bench--compute-load-paths))
          (error-file (make-temp-file "ekg-bench-init-error-"))
          (init-forms (ekg-agent-bench--init-forms error-file))
@@ -292,6 +293,82 @@ the daemon fails to start."
          (format "(set-frame-size (selected-frame) %d %d)"
                  llm-test-frame-width llm-test-frame-height))
         info))))
+
+(defun ekg-agent-bench--wait-for-socket-async (socket-file process deadline
+                                                           cleanup-fn)
+  "Poll for SOCKET-FILE to appear, returning a futur.
+PROCESS is the daemon process.  DEADLINE is `float-time' cutoff.
+CLEANUP-FN is called with no args on failure to clean up temp files.
+Resolves to t on success; signals error on timeout/failure."
+  (cond
+   ((file-exists-p socket-file) (futur-done t))
+   ((>= (float-time) deadline)
+    (when (process-live-p process) (kill-process process))
+    (funcall cleanup-fn)
+    (futur-failed '(error "Daemon timed out waiting for socket")))
+   ((not (process-live-p process))
+    (funcall cleanup-fn)
+    (futur-failed '(error "Daemon process exited before socket appeared")))
+   (t
+    (futur-let* ((_ <- (futur-timeout 0.2)))
+      (ekg-agent-bench--wait-for-socket-async
+       socket-file process deadline cleanup-fn)))))
+
+(defun ekg-agent-bench--start-emacs-async ()
+  "Start a fresh Emacs subprocess for benchmarking (async).
+Returns a futur that resolves to an emacs-info plist.  Unlike
+`ekg-agent-bench--start-emacs', this never blocks the event loop."
+  (let* ((load-paths (ekg-agent-bench--compute-load-paths))
+         (error-file (make-temp-file "ekg-bench-init-error-"))
+         (init-forms (ekg-agent-bench--init-forms error-file))
+         (server-name (format "ekg-bench-%d-%d"
+                              (emacs-pid)
+                              (cl-incf ekg-agent-bench--server-counter)))
+         (socket-dir (make-temp-file "ekg-bench-socket-" t))
+         (init-file (make-temp-file "ekg-bench-init-" nil ".el"))
+         (buf-name (format " *ekg-bench-emacs-%s*" server-name)))
+    (with-temp-file init-file
+      (insert (format "(setq server-socket-dir %S server-name %S)\n"
+                      socket-dir server-name))
+      (dolist (dir load-paths)
+        (insert (format "(add-to-list 'load-path %S)\n" dir)))
+      (dolist (form init-forms)
+        (insert (format "%S\n" form))))
+    (let* ((emacs-bin (ekg-agent-bench--emacs-executable))
+           (process (start-process
+                     (format "ekg-bench-emacs-%s" server-name)
+                     buf-name emacs-bin "-Q" "-l" init-file
+                     (format "--daemon=%s" server-name)))
+           (socket-file (expand-file-name server-name socket-dir))
+           (deadline (+ (float-time) llm-test-timeout))
+           (cleanup (lambda ()
+                      (ignore-errors (delete-directory socket-dir t))
+                      (ignore-errors (delete-file init-file))
+                      (ignore-errors (delete-file error-file)))))
+      (futur-let*
+          ((_ <- (ekg-agent-bench--wait-for-socket-async
+                  socket-file process deadline cleanup)))
+        ;; Check init error file.
+        (when (and (file-exists-p error-file)
+                   (> (file-attribute-size (file-attributes error-file)) 0))
+          (let ((init-error (with-temp-buffer
+                              (insert-file-contents error-file)
+                              (buffer-string))))
+            (ignore-errors (kill-process process))
+            (funcall cleanup)
+            (error "Daemon started but init failed:\n%s" init-error)))
+        (ignore-errors (delete-file error-file))
+        (let ((info (list :process process
+                          :server-name server-name
+                          :socket-dir socket-dir
+                          :init-file init-file)))
+          ;; Set frame size asynchronously.
+          (futur-let*
+              ((_ <- (llm-test--eval-in-emacs-async
+                      info
+                      (format "(set-frame-size (selected-frame) %d %d)"
+                              llm-test-frame-width llm-test-frame-height))))
+            (futur-done info)))))))
 
 ;;; Agent Polling and Metric Extraction
 
@@ -790,46 +867,43 @@ TASK-SPECS is a list of (group-setup . task) pairs.
 Accumulates results into RESULTS-SO-FAR (in reverse).
 Calls CALLBACK with the final list of results (in order).
 
-The daemon start is synchronous (brief blocking) but all subsequent
-work (setup, trigger, polling, verification) is fully async via futur."
+Fully async: daemon start, setup, trigger, polling, and verification
+all use futur-based non-blocking IO."
   (if (null task-specs)
       (funcall callback (nreverse results-so-far))
     (let* ((spec (car task-specs))
            (group-setup (car spec))
            (task (cdr spec))
            (task-name (ekg-agent-bench-task-name task))
-           (rest (cdr task-specs))
-           (emacs-info
-            (condition-case err
-                (ekg-agent-bench--start-emacs)
-              (error
+           (rest (cdr task-specs)))
+      (futur--register-callback
+       (ekg-agent-bench--start-emacs-async)
+       (lambda (start-err emacs-info)
+         (if start-err
+             ;; Daemon failed to start — record error and continue.
+             (progn
                (message "bench: daemon start failed for %s: %S"
-                        task-name err)
-               nil))))
-      (if (not emacs-info)
-          ;; Daemon failed to start — record error and continue.
-          (progn
-            (push (ekg-agent-bench--make-error-result
-                   task-name (format "Daemon start failed"))
-                  results-so-far)
-            ;; Use run-at-time to avoid deep recursion on the stack.
-            (run-at-time 0 nil
-                         #'ekg-agent-bench--run-tasks-sequentially
-                         rest results-so-far callback))
-        ;; Daemon running — the rest is fully async via futur.
-        (futur--register-callback
-         (ekg-agent-bench--run-task-async emacs-info group-setup task)
-         (lambda (err val)
-           (llm-test--stop-emacs emacs-info)
-           (if err
-               (progn
-                 (message "bench: error running %s: %S" task-name err)
-                 (push (ekg-agent-bench--make-error-result
-                        task-name (format "%S" err))
-                       results-so-far))
-             (push val results-so-far))
-           (ekg-agent-bench--run-tasks-sequentially
-            rest results-so-far callback)))))))
+                        task-name start-err)
+               (push (ekg-agent-bench--make-error-result
+                      task-name
+                      (format "Daemon start failed: %S" start-err))
+                     results-so-far)
+               (ekg-agent-bench--run-tasks-sequentially
+                rest results-so-far callback))
+           ;; Daemon running — run the task async.
+           (futur--register-callback
+            (ekg-agent-bench--run-task-async emacs-info group-setup task)
+            (lambda (err val)
+              (llm-test--stop-emacs emacs-info)
+              (if err
+                  (progn
+                    (message "bench: error running %s: %S" task-name err)
+                    (push (ekg-agent-bench--make-error-result
+                           task-name (format "%S" err))
+                          results-so-far))
+                (push val results-so-far))
+              (ekg-agent-bench--run-tasks-sequentially
+               rest results-so-far callback)))))))))
 
 ;;; Entry Points (synchronous, for ERT and batch use)
 
