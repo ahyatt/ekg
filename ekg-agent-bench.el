@@ -301,7 +301,7 @@ PROCESS is the daemon process.  DEADLINE is `float-time' cutoff.
 CLEANUP-FN is called with no args on failure to clean up temp files.
 Resolves to t on success; signals error on timeout/failure."
   (cond
-   ((file-exists-p socket-file) (futur-done t))
+   ((file-exists-p socket-file) (ekg-agent-bench--resolved t))
    ((>= (float-time) deadline)
     (when (process-live-p process) (kill-process process))
     (funcall cleanup-fn)
@@ -368,7 +368,7 @@ Returns a futur that resolves to an emacs-info plist.  Unlike
                       info
                       (format "(set-frame-size (selected-frame) %d %d)"
                               llm-test-frame-width llm-test-frame-height))))
-            (futur-done info)))))))
+            (ekg-agent-bench--resolved info)))))))
 
 ;;; Agent Polling and Metric Extraction
 
@@ -705,6 +705,27 @@ Reports which libraries load successfully and whether ekg connects."
 
 ;;; Async Task Runner (futur-based)
 
+(defun ekg-agent-bench--resolved (value)
+  "Return a futur that resolves to VALUE on the next timer cycle.
+Unlike `futur-done' (which returns a raw value, causing `futur-bind'
+to dispatch via the background thread if one exists), this always
+delivers VALUE through a timer on the main thread."
+  (let ((f (futur-new #'ignore)))
+    (run-at-time 0 nil #'futur-deliver-value f value)
+    f))
+
+(defun ekg-agent-bench--ensure-no-background-thread ()
+  "Ensure the futur background thread is not active.
+The futur library creates a background thread when `futur-funcall'
+is used.  That thread holds the Emacs GIL during continuations,
+freezing the UI.  We never need it — all our async work goes through
+process sentinels and timers."
+  (when (and (boundp 'futur--background) futur--background)
+    (when (and (fboundp 'thread-alive-p)
+               (thread-alive-p futur--background))
+      (thread-signal futur--background 'quit nil))
+    (setq futur--background nil)))
+
 (defun ekg-agent-bench--eval-async (emacs-info expr)
   "Evaluate EXPR in the subprocess asynchronously.
 Returns a futur that resolves to the result string."
@@ -713,7 +734,7 @@ Returns a futur that resolves to the result string."
 (defun ekg-agent-bench--poll-step-async (emacs-info deadline log-buf)
   "One async poll step.  Returns a futur resolving to \\='done or \\='timeout."
   (if (>= (float-time) deadline)
-      (futur-done 'timeout)
+      (ekg-agent-bench--resolved 'timeout)
     (if (not log-buf)
         ;; Still waiting for log buffer to appear.
         (futur-let*
@@ -744,7 +765,7 @@ Returns a futur that resolves to the result string."
                                log-buf))))
         (if (equal result "\"running\"")
             (ekg-agent-bench--poll-step-async emacs-info deadline log-buf)
-          (futur-done 'done))))))
+          (ekg-agent-bench--resolved 'done))))))
 
 (defun ekg-agent-bench--poll-until-done-async (emacs-info timeout)
   "Poll the subprocess asynchronously until the agent finishes.
@@ -779,7 +800,7 @@ Returns a futur resolving to a plist."
             (dolist (segment (split-string tools-str ", "))
               (when (string-match "Tool: \\([^ ]+\\)" segment)
                 (push (match-string 1 segment) tools))))))
-      (futur-done (list :iterations iterations
+      (ekg-agent-bench--resolved (list :iterations iterations
                         :tools-used (delete-dups (nreverse tools))
                         :log content)))))
 
@@ -787,12 +808,12 @@ Returns a futur resolving to a plist."
   "Async version of `ekg-agent-bench--eval-verify'.
 Returns a futur resolving to t, nil, or \\='skip."
   (if (null verify-expr)
-      (futur-done 'skip)
+      (ekg-agent-bench--resolved 'skip)
     (futur-let*
         ((result <- (ekg-agent-bench--eval-async
                      emacs-info
                      (format "(if (progn %s) \"pass\" \"fail\")" verify-expr))))
-      (futur-done (equal result "\"pass\"")))))
+      (ekg-agent-bench--resolved (equal result "\"pass\"")))))
 
 (defun ekg-agent-bench--run-task-async (emacs-info group-setup task)
   "Run a single benchmark TASK asynchronously.
@@ -808,7 +829,7 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
           <- (if (and group-setup (not (string-empty-p group-setup)))
                  (ekg-agent-bench--eval-async
                   emacs-info (format "(progn %s nil)" group-setup))
-               (futur-done nil)))
+               (ekg-agent-bench--resolved nil)))
          ;; Task-specific setup.
          (task-setup-result
           <- (if (and (ekg-agent-bench-task-setup task)
@@ -816,7 +837,7 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
                  (ekg-agent-bench--eval-async
                   emacs-info
                   (format "(progn %s nil)" (ekg-agent-bench-task-setup task)))
-               (futur-done nil)))
+               (ekg-agent-bench--resolved nil)))
          ;; Trigger.
          (trigger-result
           <- (ekg-agent-bench--eval-async
@@ -842,7 +863,7 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
       (let ((wall-time (- (float-time) start-time)))
         (message "bench: %s completed (%s, %.0fs)"
                  task-name status wall-time)
-        (futur-done
+        (ekg-agent-bench--resolved
          (make-ekg-agent-bench-result
           :name task-name
           :task-passed task-passed
@@ -977,13 +998,11 @@ DIRECTORY defaults to the benchmarks/ subdirectory."
 (defun ekg-agent-bench-run-async (&optional directory)
   "Run all benchmarks asynchronously without blocking Emacs.
 DIRECTORY defaults to the benchmarks/ subdirectory next to this file.
-Results are displayed in *ekg-agent-bench* when all tasks complete.
-
-The daemon start for each task briefly blocks, but all agent
-interaction (setup, trigger, polling, verification) is fully async."
+Results are displayed in *ekg-agent-bench* when all tasks complete."
   (interactive)
   (unless ekg-agent-bench-provider-form
     (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
+  (ekg-agent-bench--ensure-no-background-thread)
   (let* ((dir (or directory
                    (expand-file-name "benchmarks"
                                      (file-name-directory
@@ -1017,6 +1036,7 @@ Results are displayed in *ekg-agent-bench* when the task completes."
   (interactive "sTask name: ")
   (unless ekg-agent-bench-provider-form
     (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
+  (ekg-agent-bench--ensure-no-background-thread)
   (let* ((dir (or directory
                    (expand-file-name "benchmarks"
                                      (file-name-directory
