@@ -364,9 +364,11 @@ Returns a plist (:iterations N :tools-used (TOOL ...) :log STRING)."
           :log content)))
 
 (defun ekg-agent-bench--eval-verify (emacs-info verify-expr)
-  "Evaluate VERIFY-EXPR in the subprocess and return t if it's truthy.
-Returns nil if VERIFY-EXPR is nil (meaning not applicable)."
-  (when verify-expr
+  "Evaluate VERIFY-EXPR in the subprocess.
+Returns t if truthy, `skip' if VERIFY-EXPR is nil (not applicable),
+nil if the expression evaluated to false."
+  (if (null verify-expr)
+      'skip
     (let ((result (llm-test--eval-in-emacs
                    emacs-info
                    (format "(if (progn %s) \"pass\" \"fail\")" verify-expr))))
@@ -464,9 +466,9 @@ Returns an `ekg-agent-bench-result'."
 ;;; Results Display
 
 (defun ekg-agent-bench--format-pass (val)
-  "Format a pass/fail/nil VAL as a short display string."
+  "Format a pass/fail/skip VAL as a short display string."
   (cond
-   ((null val) "n/a")
+   ((eq val 'skip) "n/a")
    (val "PASS")
    (t "FAIL")))
 
@@ -491,9 +493,9 @@ Returns an `ekg-agent-bench-result'."
             (let ((tp (ekg-agent-bench-result-task-passed r))
                   (sp (ekg-agent-bench-result-skill-passed r))
                   (mp (ekg-agent-bench-result-memory-passed r)))
-              (unless (null tp) (cl-incf task-total) (when tp (cl-incf task-pass)))
-              (unless (null sp) (cl-incf skill-total) (when sp (cl-incf skill-pass)))
-              (unless (null mp) (cl-incf memory-total) (when mp (cl-incf memory-pass))))
+              (unless (eq tp 'skip) (cl-incf task-total) (when (eq tp t) (cl-incf task-pass)))
+              (unless (eq sp 'skip) (cl-incf skill-total) (when (eq sp t) (cl-incf skill-pass)))
+              (unless (eq mp 'skip) (cl-incf memory-total) (when (eq mp t) (cl-incf memory-pass))))
             (cl-incf total-iters (ekg-agent-bench-result-iterations r))
             (setq total-time (+ total-time (ekg-agent-bench-result-wall-time r)))
             (insert (format "%-30s %5s %5s %6s %5d %5.0fs  %s\n"
