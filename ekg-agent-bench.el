@@ -74,6 +74,12 @@ Use this for provider-specific dependencies not auto-detected."
   :type '(repeat directory)
   :group 'ekg-agent-bench)
 
+(defun ekg-agent-bench--emacs-executable ()
+  "Return the path to the Emacs binary that should run the subprocess.
+Uses the same binary as the current Emacs process to avoid version
+mismatches between the host and the daemon."
+  (expand-file-name invocation-name invocation-directory))
+
 ;;; Data Structures
 
 (cl-defstruct ekg-agent-bench-task
@@ -145,12 +151,11 @@ Libraries not found are silently skipped.")
 
 (defun ekg-agent-bench--emacs-builtin-p (dir)
   "Return non-nil if DIR is inside an Emacs installation lisp tree.
-These directories should not be added to the subprocess load-path
-because they contain .elc files compiled for a potentially different
-Emacs version.  The subprocess already has its own built-in lisp."
-  (or (string-match-p "/Emacs\\.app/" dir)
-      (string-match-p "/emacs/[0-9].*?/lisp" dir)
-      (string-match-p "/share/emacs/" dir)))
+The subprocess already has the same built-in lisp dirs on its
+default load-path, so adding them explicitly is redundant."
+  (let ((expanded (expand-file-name dir)))
+    (or (string-match-p "/Emacs\\.app/.*/lisp" expanded)
+        (string-match-p "/share/emacs/[0-9]" expanded))))
 
 (defun ekg-agent-bench--compute-load-paths ()
   "Compute load-path entries needed by the test subprocess.
@@ -218,13 +223,14 @@ the daemon fails to start."
         (insert (format "(add-to-list 'load-path %S)\n" dir)))
       (dolist (form init-forms)
         (insert (format "%S\n" form))))
-    (let ((process (start-process
-                    (format "ekg-bench-emacs-%s" server-name)
-                    buf-name
-                    llm-test-emacs-executable
-                    "-Q"
-                    "-l" init-file
-                    (format "--daemon=%s" server-name)))
+    (let* ((emacs-bin (ekg-agent-bench--emacs-executable))
+           (process (start-process
+                     (format "ekg-bench-emacs-%s" server-name)
+                     buf-name
+                     emacs-bin
+                     "-Q"
+                     "-l" init-file
+                     (format "--daemon=%s" server-name)))
           (socket-file (expand-file-name server-name socket-dir))
           (deadline (+ (float-time) llm-test-timeout)))
       ;; Wait for the daemon to be ready.
