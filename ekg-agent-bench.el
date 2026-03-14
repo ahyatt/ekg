@@ -190,6 +190,11 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
               `((setq ekg-llm-provider ,ekg-agent-bench-provider-form)))
           ;; Connect to the temp database.
           (ekg-connect)
+          ;; Isolate the subprocess so it won't find any AGENTS.md
+          ;; from the user's home or project directories.
+          (setenv "HOME" (make-temp-file "ekg-bench-home-" t))
+          (defun ekg-agent--read-agents-md (_dir) nil)
+          (defun ekg-agent--agents-md-context () nil)
           ;; Suppress log window display in the daemon.
           (defun ekg-agent--ensure-log-window ()
             (let ((buf (current-buffer)))
