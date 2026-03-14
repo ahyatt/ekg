@@ -143,13 +143,27 @@ Returns a list of `ekg-agent-bench-group' structs."
   "Libraries whose directories are added to the subprocess load-path.
 Libraries not found are silently skipped.")
 
+(defun ekg-agent-bench--emacs-builtin-p (dir)
+  "Return non-nil if DIR is inside an Emacs installation lisp tree.
+These directories should not be added to the subprocess load-path
+because they contain .elc files compiled for a potentially different
+Emacs version.  The subprocess already has its own built-in lisp."
+  (or (string-match-p "/Emacs\\.app/" dir)
+      (string-match-p "/emacs/[0-9].*?/lisp" dir)
+      (string-match-p "/share/emacs/" dir)))
+
 (defun ekg-agent-bench--compute-load-paths ()
-  "Compute load-path entries needed by the test subprocess."
+  "Compute load-path entries needed by the test subprocess.
+Includes directories for required libraries found via `locate-library',
+but excludes Emacs built-in lisp directories to avoid version mismatches
+between the host Emacs and the subprocess daemon."
   (let ((paths (copy-sequence ekg-agent-bench-extra-load-paths)))
     (dolist (lib ekg-agent-bench--required-libraries)
       (let ((file (locate-library lib)))
         (when file
-          (push (file-name-directory file) paths))))
+          (let ((dir (file-name-directory file)))
+            (unless (ekg-agent-bench--emacs-builtin-p dir)
+              (push dir paths))))))
     (delete-dups paths)))
 
 (defun ekg-agent-bench--init-forms (error-file)
