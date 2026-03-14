@@ -712,7 +712,7 @@ the note.
 
 There is no functionality to remove inline tags that are deleted in the tag
 section. If an inline tag is not deleted in the note text, the tag will be
-re-added. 
+re-added.
 
 Another type of completion is for inline commands, the ">t" completion,
 mentioned in the @ref{Inline commands}.
@@ -1876,16 +1876,18 @@ are unchanged from the last export.
 @node Tags
 @subsection Tags
 
-ekg tags are encoded as @samp{#hashtags} in a metadata line at the bottom of each
-Apple Note.  Apple Notes recognizes these as searchable tags in its UI, so
-you can browse and filter synced notes by tag directly in Apple Notes on any
-device.
+ekg tags are stored as individual @samp{Tag: <tag>} lines at the bottom of each
+Apple Note.  Each tag gets its own line, preserving the full tag text including
+spaces, dots, colons, and other characters.  For example, a note with the tags
+"my project" and "date/2024-01-01" would have:
 
-Because Apple Notes hashtags only support letters, numbers, hyphens,
-underscores, and forward slashes, any other characters in ekg tags (such as
-spaces, dots, or colons) are replaced with underscores.  For example, the ekg
-tag "my project" becomes @samp{#my_project}, and "date/2024-01-01" stays as
-@samp{#date/2024-01-01} (since slashes create nested tags in Apple Notes).
+@example
+Tag: my project
+Tag: date/2024-01-01
+@end example
+
+These tags don't function as native Apple Notes hashtags, but they are visible
+in the note body and can be found via Apple Notes search on any device.
 
 Hidden tags (such as "trash" and "draft") are not synced.
 
@@ -2230,10 +2232,10 @@ Output format (JSON):
 Example workflow:
   # Retrieve recent project notes
   ekg-read --tag "project/current-work" -n 5
-  
+
   # Find notes about specific topic
   ekg-read --search "optimization" -n 10
-  
+
   # Get exact note by ID
   ekg-read 12345678
 
@@ -2253,7 +2255,7 @@ Example:
   # Store a finding
   ekg-add-note --tag "user-preferences" --tag "coding-style" \\
     --note "User prefers descriptive variable names over short abbreviations"
-  
+
   # Later, retrieve preferences
   ekg-read --tag "user-preferences" -n 10
 
@@ -2270,7 +2272,7 @@ Additional tools:
 
   # Soft-delete a note
   ekg-trash <note-id>
-  
+
 @end example
 
 @item
@@ -2327,7 +2329,7 @@ Workflow:
 - At the end of significant interactions, store key information
 - Before starting new tasks, retrieve relevant context
 - Use tags to organize information hierarchically
-- Prefer specific, actionable notes over vague summaries  
+- Prefer specific, actionable notes over vague summaries
 @end example
 @end enumerate
 

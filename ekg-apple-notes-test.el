@@ -12,155 +12,71 @@
 
 ;;; ---- Tag Conversion Tests ----
 
-(ert-deftest ekg-apple-notes-test-tag-simple ()
-  "Simple tags pass through unchanged."
-  (should (equal "food" (ekg-apple-notes--tag-to-hashtag "food"))))
-
-(ert-deftest ekg-apple-notes-test-tag-with-slash ()
-  "Tags with slashes (prefixes) are preserved."
-  (should (equal "date/2024-01-01"
-                 (ekg-apple-notes--tag-to-hashtag "date/2024-01-01"))))
-
-(ert-deftest ekg-apple-notes-test-tag-with-spaces ()
-  "Spaces in tags are replaced with underscores."
-  (should (equal "my_tag" (ekg-apple-notes--tag-to-hashtag "my tag"))))
-
-(ert-deftest ekg-apple-notes-test-tag-with-dots ()
-  "Dots in tags are replaced with underscores."
-  (should (equal "v1_0" (ekg-apple-notes--tag-to-hashtag "v1.0"))))
-
-(ert-deftest ekg-apple-notes-test-tag-with-colons ()
-  "Colons in tags are replaced with underscores."
-  (should (equal "key_value" (ekg-apple-notes--tag-to-hashtag "key:value"))))
-
-(ert-deftest ekg-apple-notes-test-tag-consecutive-invalid ()
-  "Consecutive invalid characters collapse to a single underscore."
-  (should (equal "a_b" (ekg-apple-notes--tag-to-hashtag "a . b"))))
-
-(ert-deftest ekg-apple-notes-test-tag-unicode ()
-  "Unicode letters are preserved in tags."
-  (should (equal "café" (ekg-apple-notes--tag-to-hashtag "café"))))
-
 (ert-deftest ekg-apple-notes-test-tags-to-metadata ()
-  "Tags are converted to a metadata line with hashtags."
+  "Tags are converted to one Tag: line per tag."
   (let ((ekg-hidden-tags '("trash" "draft")))
-    (should (equal "Tags: #food #recipes"
+    (should (equal "Tag: food\nTag: recipes"
                    (ekg-apple-notes--tags-to-metadata '("food" "recipes"))))
     ;; Hidden tags are excluded.
-    (should (equal "Tags: #food"
+    (should (equal "Tag: food"
                    (ekg-apple-notes--tags-to-metadata '("food" "trash"))))))
 
 (ert-deftest ekg-apple-notes-test-tags-to-metadata-empty ()
-  "No metadata line when there are no visible tags."
+  "No metadata lines when there are no visible tags."
   (let ((ekg-hidden-tags '("trash")))
     (should-not (ekg-apple-notes--tags-to-metadata '("trash")))))
 
+(ert-deftest ekg-apple-notes-test-tags-to-metadata-spaces ()
+  "Tags with spaces are preserved as-is."
+  (let ((ekg-hidden-tags nil))
+    (should (equal "Tag: my tag"
+                   (ekg-apple-notes--tags-to-metadata '("my tag"))))))
+
 (ert-deftest ekg-apple-notes-test-parse-tags-from-body ()
-  "Parse hashtags from a Tags: line in HTML body."
-  (should (equal '("food" "date/2024-01-01" "my_tag")
+  "Parse Tag: lines from HTML body."
+  (should (equal '("food" "date/2024-01-01" "my tag")
                  (ekg-apple-notes--parse-tags-from-body
-                  "<div>some content</div>\n<div>Tags: #food #date/2024-01-01 #my_tag</div>"))))
+                  "<div>some content</div>\n<div>Tag: food</div>\n<div>Tag: date/2024-01-01</div>\n<div>Tag: my tag</div>"))))
 
-(ert-deftest ekg-apple-notes-test-parse-tags-anchor-wrapped ()
-  "Parse tags wrapped in anchor elements by Apple Notes."
+(ert-deftest ekg-apple-notes-test-parse-tags-plain-text ()
+  "Parse Tag: lines from plain text body."
   (should (equal '("food" "recipes")
                  (ekg-apple-notes--parse-tags-from-body
-                  "<div>content</div>\n<div>Tags: <a href=\"notes://food\">#food</a> <a href=\"notes://recipes\">#recipes</a></div>"))))
-
-(ert-deftest ekg-apple-notes-test-parse-tags-mixed ()
-  "Parse a mix of plain and anchor-wrapped tags."
-  (should (equal '("food" "recipes")
-                 (ekg-apple-notes--parse-tags-from-body
-                  "<div>content</div>\n<div>Tags: #food <a href=\"notes://recipes\">#recipes</a></div>"))))
-
-(ert-deftest ekg-apple-notes-test-parse-tags-native-inline ()
-  "Parse Apple Notes native tags that appear inline in the body."
-  (should (equal '("inline")
-                 (ekg-apple-notes--parse-tags-from-body
-                  "<div>content <a href=\"notes://inline\">#inline</a></div>"))))
+                  "some content\nTag: food\nTag: recipes"))))
 
 (ert-deftest ekg-apple-notes-test-parse-tags-no-line ()
-  "Return nil when there is no Tags: line."
+  "Return nil when there are no Tag: lines."
   (should-not (ekg-apple-notes--parse-tags-from-body
                "<div>just content without tags</div>")))
 
 (ert-deftest ekg-apple-notes-test-remove-tags-line ()
-  "Remove the Tags: metadata line from text."
+  "Remove Tag: lines from text."
   (should (equal "some content"
                  (ekg-apple-notes--remove-tags-line
-                  "some content\nTags: #food #recipes"))))
+                  "some content\nTag: food\nTag: recipes"))))
 
 ;;; ---- HTML Tag Removal Tests ----
 
 (ert-deftest ekg-apple-notes-test-remove-tags-html ()
-  "Tags div and spacer are removed from HTML."
+  "Tag divs and spacer are removed from HTML."
   (should (equal "<div>content</div>"
                  (string-trim
                   (ekg-apple-notes--remove-tags-html
-                   "<div>content</div>\n<div><br></div>\n<div>Tags: #food #recipes</div>")))))
+                   "<div>content</div>\n<div><br></div>\n<div>Tag: food</div>\n<div>Tag: recipes</div>")))))
 
 (ert-deftest ekg-apple-notes-test-remove-tags-html-no-spacer ()
-  "Tags div without spacer is removed."
+  "Tag divs without spacer are removed."
   (should (equal "<div>content</div>"
                  (string-trim
                   (ekg-apple-notes--remove-tags-html
-                   "<div>content</div>\n<div>Tags: #food</div>")))))
+                   "<div>content</div>\n<div>Tag: food</div>")))))
 
-(ert-deftest ekg-apple-notes-test-remove-tags-html-anchor-tags ()
-  "Tags div with anchor-wrapped tags is removed."
+(ert-deftest ekg-apple-notes-test-remove-tags-html-spaces-in-tag ()
+  "Tag divs with spaces in tag names are removed."
   (should (equal "<div>content</div>"
                  (string-trim
                   (ekg-apple-notes--remove-tags-html
-                   "<div>content</div>\n<div><br></div>\n<div>Tags: <a href=\"notes://food\">#food</a></div>")))))
-
-(ert-deftest ekg-apple-notes-test-remove-tags-html-native-inline ()
-  "Native inline tag anchors are removed from body."
-  (should (equal "<div>content  more</div>"
-                 (ekg-apple-notes--remove-tags-html
-                  "<div>content <a href=\"notes://tag\">#tag</a> more</div>"))))
-
-;;; ---- Tag Wildcard Matching Tests ----
-
-(ekg-deftest ekg-apple-notes-test-wildcard-exact-match ()
-  "Tags without underscores match existing ekg tags exactly."
-  (ekg-save-note (ekg-note-create :text "x" :mode 'org-mode :tags '("food")))
-  (should (equal '("food")
-                 (ekg-apple-notes-convert-tags-default '("food") ""))))
-
-(ekg-deftest ekg-apple-notes-test-wildcard-underscore-match ()
-  "Underscores in Apple Notes tags match any single character in ekg tags."
-  (ekg-save-note (ekg-note-create :text "x" :mode 'org-mode :tags '("my tag")))
-  (should (equal '("my tag")
-                 (ekg-apple-notes-convert-tags-default '("my_tag") ""))))
-
-(ekg-deftest ekg-apple-notes-test-wildcard-multiple-underscores ()
-  "Multiple underscores each match one character."
-  (ekg-save-note (ekg-note-create :text "x" :mode 'org-mode :tags '("a.b.c")))
-  (should (equal '("a.b.c")
-                 (ekg-apple-notes-convert-tags-default '("a_b_c") ""))))
-
-(ekg-deftest ekg-apple-notes-test-wildcard-no-match-passthrough ()
-  "Unmatched tags are passed through as-is."
-  (should (equal '("brand_new_tag")
-                 (ekg-apple-notes-convert-tags-default '("brand_new_tag") ""))))
-
-(ekg-deftest ekg-apple-notes-test-wildcard-no-underscore-passthrough ()
-  "Tags without underscores and no ekg match pass through as-is."
-  (should (equal '("nonexistent")
-                 (ekg-apple-notes-convert-tags-default '("nonexistent") ""))))
-
-(ekg-deftest ekg-apple-notes-test-wildcard-mixed ()
-  "Mix of matched and unmatched tags."
-  (ekg-save-note (ekg-note-create :text "x" :mode 'org-mode :tags '("my tag" "food")))
-  (should (equal '("my tag" "food" "unknown_thing")
-                 (ekg-apple-notes-convert-tags-default
-                  '("my_tag" "food" "unknown_thing") ""))))
-
-(ekg-deftest ekg-apple-notes-test-wildcard-slash-preserved ()
-  "Slashes in tags are preserved, underscores still match."
-  (ekg-save-note (ekg-note-create :text "x" :mode 'org-mode :tags '("project/my thing")))
-  (should (equal '("project/my thing")
-                 (ekg-apple-notes-convert-tags-default '("project/my_thing") ""))))
+                   "<div>content</div>\n<div><br></div>\n<div>Tag: my tag</div>")))))
 
 ;;; ---- HTML Processing Tests ----
 

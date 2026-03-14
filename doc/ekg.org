@@ -307,7 +307,7 @@ the note.
 
 There is no functionality to remove inline tags that are deleted in the tag
 section. If an inline tag is not deleted in the note text, the tag will be
-re-added. 
+re-added.
 
 Another type of completion is for inline commands, the ">t" completion,
 mentioned in the [[#inlines][Inline commands]].
@@ -1318,27 +1318,18 @@ imports can distinguish between notes modified in Apple Notes and notes that
 are unchanged from the last export.
 
 *** Tags
-ekg tags are encoded as =#hashtags= in a metadata line at the bottom of each
-Apple Note.  Apple Notes recognizes these as searchable tags in its UI, so
-you can browse and filter synced notes by tag directly in Apple Notes on any
-device.
+ekg tags are stored as individual =Tag: <tag>= lines at the bottom of each
+Apple Note.  Each tag gets its own line, preserving the full tag text including
+spaces, dots, colons, and other characters.  For example, a note with the tags
+"my project" and "date/2024-01-01" would have:
 
-Because Apple Notes hashtags only support letters, numbers, hyphens,
-underscores, and forward slashes, any other characters in ekg tags (such as
-spaces, dots, or colons) are replaced with underscores on export.  For example,
-the ekg tag "my project" becomes =#my_project=, and "date/2024-01-01" stays as
-=#date/2024-01-01= (since slashes create nested tags in Apple Notes).
+#+begin_example
+Tag: my project
+Tag: date/2024-01-01
+#+end_example
 
-On import, the reverse conversion uses underscore wildcard matching: each
-underscore in an Apple Notes tag is treated as a single-character wildcard and
-matched against existing ekg tags.  So =#my_project= will match the ekg tag
-"my project" (since the underscore matches the space).  If no existing ekg tag
-matches, the Apple Notes tag is used as-is.  This means that tags round-trip
-correctly as long as the original ekg tag still exists.
-
-The tag conversion can be customized via ~ekg-apple-notes-tag-converter~, a
-function that receives a list of Apple Notes tags and the note text, and returns
-a list of ekg tags.
+These tags don't function as native Apple Notes hashtags, but they are visible
+in the note body and can be found via Apple Notes search on any device.
 
 Hidden tags (such as "trash" and "draft") are not synced.
 
@@ -1629,10 +1620,10 @@ Output format (JSON):
 Example workflow:
   # Retrieve recent project notes
   ekg-read --tag "project/current-work" -n 5
-  
+
   # Find notes about specific topic
   ekg-read --search "optimization" -n 10
-  
+
   # Get exact note by ID
   ekg-read 12345678
 
@@ -1652,7 +1643,7 @@ Example:
   # Store a finding
   ekg-add-note --tag "user-preferences" --tag "coding-style" \\
     --note "User prefers descriptive variable names over short abbreviations"
-  
+
   # Later, retrieve preferences
   ekg-read --tag "user-preferences" -n 10
 
@@ -1669,7 +1660,7 @@ Additional tools:
 
   # Soft-delete a note
   ekg-trash <note-id>
-  
+
 #+end_example
 
 ***** Shorter version
@@ -1723,7 +1714,7 @@ Workflow:
 - At the end of significant interactions, store key information
 - Before starting new tasks, retrieve relevant context
 - Use tags to organize information hierarchically
-- Prefer specific, actionable notes over vague summaries  
+- Prefer specific, actionable notes over vague summaries
 #+end_example
 
 **** Technical details
@@ -1859,4 +1850,3 @@ the user might select or bury one of them, and more.  There isn't an obvious
 ideal solution.  It's possible that the design of the capture/edit buffer may
 change in the future to fix some of the issues we see with the current
 implementation.
-

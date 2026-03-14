@@ -17,8 +17,8 @@
 
 ;;; Commentary:
 ;; Bidirectional sync between ekg and Apple Notes on macOS.  Notes are
-;; stored in a configurable Apple Notes folder.  Tags are encoded as
-;; #hashtags in a metadata line.  Content is converted between
+;; stored in a configurable Apple Notes folder.  Tags are stored as
+;; individual "Tag: <tag>" lines.  Content is converted between
 ;; org-mode/markdown and HTML via pandoc.
 ;;
 ;; Usage:
@@ -76,27 +76,6 @@ variables if `ekg-agent' is loaded."
              (list (symbol-value 'ekg-agent-author-tag)))
            (when (boundp 'ekg-agent-self-info-tag)
              (list (symbol-value 'ekg-agent-self-info-tag))))))
-
-(defcustom ekg-apple-notes-tag-converter
-  #'ekg-apple-notes-convert-tags-default
-  "Function to convert Apple Notes tags to ekg tags.
-Called with two arguments: a list of Apple Notes tag strings
-\(without the # prefix) and the note text.  Should return a list
-of ekg tag strings.
-
-The default treats underscores in Apple Notes tags as
-single-character wildcards when matching against existing ekg
-tags, because `ekg-apple-notes--tag-to-hashtag' replaces
-characters invalid in Apple Notes (such as spaces) with
-underscores on export.  Tags that don't match any existing ekg
-tag are passed through unchanged."
-  :type 'function
-  :group 'ekg-apple-notes)
-
-;;; Tag characters valid in Apple Notes hashtags: letters (Unicode),
-;;; numbers, hyphens, underscores, and forward slashes (for nesting).
-(defconst ekg-apple-notes--tag-invalid-chars-re "[^[:alnum:]/_-]"
-  "Regexp matching characters not valid in Apple Notes hashtags.")
 
 ;;; ---- Schema ----
 
@@ -304,98 +283,40 @@ end tell"
 
 ;;; ---- Tag Conversion ----
 
-(defun ekg-apple-notes--tag-to-hashtag (tag)
-  "Convert an ekg TAG to an Apple Notes hashtag string (without #).
-Invalid characters are replaced with underscores."
-  (replace-regexp-in-string
-   "_+" "_"
-   (replace-regexp-in-string
-    ekg-apple-notes--tag-invalid-chars-re "_" tag)))
-
 (defun ekg-apple-notes--tags-to-metadata (tags)
-  "Convert a list of ekg TAGS to a metadata line for the note body.
-Hidden tags are excluded."
-  (let* ((visible-tags (seq-difference tags ekg-hidden-tags))
-         (hashtags (mapcar (lambda (tag)
-                             (concat "#" (ekg-apple-notes--tag-to-hashtag tag)))
-                           visible-tags)))
-    (when hashtags
-      (concat "Tags: " (string-join hashtags " ")))))
+  "Convert a list of ekg TAGS to metadata lines for the note body.
+Hidden tags are excluded.  Each tag gets its own \"Tag: <tag>\" line."
+  (let ((visible-tags (seq-difference tags ekg-hidden-tags)))
+    (when visible-tags
+      (mapconcat (lambda (tag) (concat "Tag: " tag))
+                 visible-tags "\n"))))
 
 (defun ekg-apple-notes--parse-tags-from-body (body)
-  "Parse hashtags from a Tags: metadata line in BODY.
-Returns a list of tag strings (without # prefix).  Handles both
-plain text hashtags and those wrapped in HTML elements (anchors,
-underlines, etc.) by Apple Notes."
+  "Parse \"Tag: <tag>\" lines from BODY.
+Returns a list of tag strings.  Each tag occupies its own line in
+the format \"Tag: <tag>\", possibly wrapped in HTML div elements."
   (let ((tags nil))
-    ;; First try the Tags: metadata line (may contain HTML-wrapped tags).
-    (when (string-match "Tags:.*\\(\\(?:.\\|\n\\)*\\)</div>" body)
-      (let ((tag-section (match-string 0 body)))
-        (with-temp-buffer
-          (insert tag-section)
-          (goto-char (point-min))
-          (while (re-search-forward "#\\([[:alnum:]/_-]+\\)" nil t)
-            (push (match-string 1) tags)))))
-    ;; Also look for Apple Notes native tags outside the Tags: line.
-    ;; These are anchor tags with href containing "tag" schemes.
     (with-temp-buffer
       (insert body)
       (goto-char (point-min))
       (while (re-search-forward
-              "<a[^>]*>#\\([[:alnum:]/_-]+\\)</a>" nil t)
-        (let ((tag (match-string 1)))
-          (unless (member tag tags)
-            (push tag tags)))))
+              "\\(?:<div>\\)?Tag: \\([^<\n]+?\\)\\(?:</div>\\|$\\)" nil t)
+        (push (string-trim (match-string 1)) tags)))
     (nreverse tags)))
 
-(defun ekg-apple-notes--match-tag-with-wildcards (apple-tag all-ekg-tags)
-  "Find an ekg tag matching APPLE-TAG, treating underscores as wildcards.
-ALL-EKG-TAGS is a list of all existing ekg tags.  Returns the
-first matching ekg tag, or nil."
-  (if (not (string-match-p "_" apple-tag))
-      ;; No underscores, check for exact match.
-      (car (member apple-tag all-ekg-tags))
-    (let ((re (concat "\\`"
-                      (replace-regexp-in-string
-                       "_" "."
-                       (regexp-quote apple-tag) t t)
-                      "\\'")))
-      (seq-find (lambda (tag) (string-match-p re tag)) all-ekg-tags))))
-
-(defun ekg-apple-notes-convert-tags-default (apple-tags _note-text)
-  "Convert APPLE-TAGS to ekg tags using underscore wildcard matching.
-Each underscore in an Apple Notes tag matches any single character
-when compared against existing ekg tags.  Unmatched tags are
-passed through as-is.  _NOTE-TEXT is ignored by the default
-implementation but available for custom converters."
-  (let ((all-ekg-tags (seq-uniq
-                       (mapcar #'caddr
-                               (triples-db-select ekg-db nil 'tagged/tag)))))
-    (mapcar (lambda (apple-tag)
-              (or (ekg-apple-notes--match-tag-with-wildcards apple-tag all-ekg-tags)
-                  apple-tag))
-            apple-tags)))
-
 (defun ekg-apple-notes--remove-tags-line (text)
-  "Remove the Tags: metadata line from TEXT."
-  (replace-regexp-in-string
-   "\\(?:\n\\)?Tags:\\s-*\\(?:#[[:alnum:]/_-]+\\s-*\\)+" "" text))
+  "Remove \"Tag: <tag>\" lines from TEXT."
+  (replace-regexp-in-string "\\(?:\n\\)?Tag: [^\n]+" "" text))
 
 (defun ekg-apple-notes--remove-tags-html (html)
-  "Remove the Tags: metadata div and its preceding spacer from HTML.
-Also removes Apple Notes native tag anchors from the body.
+  "Remove \"Tag: <tag>\" divs and their preceding spacer from HTML.
 This should be called before pandoc conversion to avoid artifacts."
   (let ((html (replace-regexp-in-string
-               "<div><br></div>\n?<div>Tags:.*</div>"
+               "<div><br></div>\n?\\(?:<div>Tag: [^<]*</div>\n?\\)+"
                "" html)))
     ;; Handle case where there's no spacer div.
-    (setq html (replace-regexp-in-string
-                "<div>Tags:.*</div>"
-                "" html))
-    ;; Remove Apple Notes native tag anchors (outside of Tags: lines).
-    (setq html (replace-regexp-in-string
-                "<a[^>]*>#[[:alnum:]/_-]+</a>" "" html))
-    html))
+    (replace-regexp-in-string
+     "<div>Tag: [^<]*</div>\n?" "" html)))
 
 ;;; ---- Content Conversion ----
 
@@ -445,10 +366,13 @@ markdown format [text](url)."
                  (_ "markdown")))
          (html (ekg-apple-notes--pandoc text from "html"))
          (html (ekg-apple-notes--html-delink html))
-         (tags-line (ekg-apple-notes--tags-to-metadata (ekg-note-tags note))))
+         (tags-meta (ekg-apple-notes--tags-to-metadata (ekg-note-tags note))))
     (concat html
-            (when tags-line
-              (concat "\n<div><br></div>\n<div>" tags-line "</div>")))))
+            (when tags-meta
+              (concat "\n<div><br></div>\n"
+                      (mapconcat (lambda (line) (concat "<div>" line "</div>"))
+                                 (split-string tags-meta "\n")
+                                 "\n"))))))
 
 (defun ekg-apple-notes--relink-org (text)
   "Convert [text](url) patterns in TEXT to `org-mode' links [[url][text]].
@@ -561,11 +485,9 @@ Returns non-nil if a note was created or updated."
   (let* ((apple-id (ekg-apple-notes--note-id apple-note))
          (body (ekg-apple-notes--note-body apple-note))
          (ekg-id (ekg-apple-notes--get-ekg-id apple-id))
-         (raw-tags (ekg-apple-notes--parse-tags-from-body body))
+         (tags (ekg-apple-notes--parse-tags-from-body body))
          (mode ekg-capture-default-mode)
-         (text (ekg-apple-notes--from-html body mode))
-         (tags (when raw-tags
-                 (funcall ekg-apple-notes-tag-converter raw-tags text))))
+         (text (ekg-apple-notes--from-html body mode)))
     (if ekg-id
         ;; Existing note — only import if modified after our last export.
         (let ((mod-time (ekg-apple-notes--parse-iso-time
