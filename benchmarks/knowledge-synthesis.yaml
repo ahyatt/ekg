@@ -38,9 +38,14 @@ tasks:
                  ;; Contact: should suggest Bob since Alice is on vacation.
                  (string-match-p "bob" content)))))
     verify-memory: |
-      (let ((task-notes (ekg-get-notes-with-tag "agent-task"))
-            (self-notes (ekg-get-notes-with-tag ekg-agent-self-info-tag)))
-        (or (> (length task-notes) 0)
-            (> (length self-notes) 0)))
+      ;; Agent should have documented the briefing task.
+      (let* ((ekg-hidden-tags nil)
+             (all-notes (ekg-get-notes-with-tag "agent")))
+        (and (> (length all-notes) 0)
+             (cl-some (lambda (n)
+                        (let ((text (downcase (ekg-note-text n))))
+                          (or (string-match-p "mercury\\|briefing" text)
+                              (string-match-p "tech.*stack\\|api.*limit\\|team" text))))
+                      all-notes)))
     max-iterations: 15
     timeout: 120

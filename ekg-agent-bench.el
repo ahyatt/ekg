@@ -200,6 +200,15 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
           ;; Isolate the subprocess so it won't find any AGENTS.md
           ;; from the user's home or project directories.
           (setenv "HOME" (make-temp-file "ekg-bench-home-" t))
+          ;; Reset default-directory so subprocesses (e.g., run_elisp)
+          ;; don't inherit the host's working directory which may not
+          ;; exist under the new HOME.  Must update all existing buffers
+          ;; since new buffers inherit from the current buffer, not the
+          ;; default value.
+          (setq-default default-directory "/tmp/")
+          (dolist (buf (buffer-list))
+            (with-current-buffer buf
+              (setq default-directory "/tmp/")))
           (defun ekg-agent--read-agents-md (_dir) nil)
           (defun ekg-agent--agents-md-context () nil)
           ;; Suppress log window display in the daemon.

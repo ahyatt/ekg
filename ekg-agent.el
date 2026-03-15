@@ -1080,7 +1080,16 @@ Before you begin any substantive work on a task:
      skills, or projects mentioned in the task description.  Each of
      these will have a tag cotagged with the prompt tag.  Existing
      cotags with the prompt tag are: %s.
+   - When working with specific files, check for file resource notes.
+     These are notes whose ID is `file:<absolute-path>` and are tagged
+     with `doc/<filename>`.  Use `get_note_by_id` with `file:<path>`
+     or search for notes with the `doc/<filename>` tag.  These notes
+     contain file-specific conventions and instructions.
    - If you find relevant notes, reference them in your task description.
+   - **CONTRADICTION HANDLING**: If your task instructions conflict
+     with conventions stored in ekg notes (especially `prompt`-tagged
+     skill notes), you MUST call `ask_user` to confirm which to follow
+     before proceeding.  Never silently override a stored convention.
 
 2. **CREATE INITIAL TASK NOTE**
    - Create a new note with:
@@ -1122,6 +1131,18 @@ text>]]`.
 
 In markdown mode, there's no way to link directly to notes, but you can
 use [[tag]] to link to a tag.
+
+== SUBAGENT MEMORY HANDOFF ==
+
+When delegating work to a sub-agent via `run_subagent`:
+- **Before** spawning the subagent, ensure all relevant context
+  (project conventions, decisions, file locations) is stored in ekg
+  notes with appropriate tags so the subagent can find them.
+- In the subagent instructions, mention which ekg tags to search for
+  context (e.g., \"Check notes tagged with 'widget-maker' for project
+  conventions\").
+- The subagent has full access to ekg tools and follows the same memory
+  workflow, so it will search for and create notes.
 
 == FINAL STEPS (DO NOT SKIP) ==
 
@@ -1663,6 +1684,11 @@ NUM is the maximum number of notes to return (default 10).
 
 Returns a list of note objects."
   (ekg-connect)
+  ;; The agent must be able to find its own self-info notes even when
+  ;; searching by other tags.  ekg-hidden-tags causes notes with
+  ;; agent/self-info to be filtered out of normal tag queries, so we
+  ;; remove that tag from the hidden list within agent tool context.
+  (let ((ekg-hidden-tags (remove ekg-agent-self-info-tag ekg-hidden-tags)))
   (cond
    ;; Latest modified notes
    (latest
@@ -1705,7 +1731,7 @@ Returns a list of note objects."
 
    ;; No search criteria
    (t
-    (error "Must provide tags, any-tags, note-id, semantic-search, text-search, or latest"))))
+    (error "Must provide tags, any-tags, note-id, semantic-search, text-search, or latest")))))
 
 ;;;###autoload
 (cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search latest (num 10) (max-words 100))

@@ -1,5 +1,8 @@
 group: elisp debugging
-setup: ""
+setup: |
+  ;; Make run_elisp available so the agent can test elisp code.
+  (setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp))
+
 
 tasks:
   - name: fix-elisp-bug
@@ -37,9 +40,14 @@ tasks:
             ;; The function should still exist.
             (string-match-p "ekg-bench-sum-list" content))))
     verify-memory: |
-      (let ((task-notes (ekg-get-notes-with-tag "agent-task"))
-            (self-notes (ekg-get-notes-with-tag ekg-agent-self-info-tag)))
-        (or (> (length task-notes) 0)
-            (> (length self-notes) 0)))
+      ;; Agent should have documented finding and fixing the bug.
+      (let* ((ekg-hidden-tags nil)
+             (all-notes (ekg-get-notes-with-tag "agent")))
+        (and (> (length all-notes) 0)
+             (cl-some (lambda (n)
+                        (let ((text (downcase (ekg-note-text n))))
+                          (or (string-match-p "bug\\|typo\\|numbrs\\|numbers" text)
+                              (string-match-p "fix\\|debug\\|ekg-bench-buggy" text))))
+                      all-notes)))
     max-iterations: 20
     timeout: 120

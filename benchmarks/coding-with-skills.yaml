@@ -35,9 +35,14 @@ tasks:
           (and (string-match-p "ekg-bench-greet" content)
                (string-match-p "\"[^\"]+\"" content))))
     verify-memory: |
-      (let ((task-notes (ekg-get-notes-with-tag "agent-task"))
-            (self-notes (ekg-get-notes-with-tag ekg-agent-self-info-tag)))
-        (or (> (length task-notes) 0)
-            (> (length self-notes) 0)))
+      ;; Agent should have documented the task with relevant details.
+      (let* ((ekg-hidden-tags nil)
+             (all-notes (ekg-get-notes-with-tag "agent")))
+        (and (> (length all-notes) 0)
+             (cl-some (lambda (n)
+                        (let ((text (downcase (ekg-note-text n))))
+                          (or (string-match-p "greet\\|ekg-bench-code" text)
+                              (string-match-p "function\\|docstring\\|skill" text))))
+                      all-notes)))
     max-iterations: 20
     timeout: 180

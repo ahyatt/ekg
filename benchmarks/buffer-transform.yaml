@@ -39,9 +39,15 @@ tasks:
                  (string-match-p "Charlie" content)
                  (string-match-p "Diana" content)))))
     verify-memory: |
-      (let ((task-notes (ekg-get-notes-with-tag "agent-task"))
-            (self-notes (ekg-get-notes-with-tag ekg-agent-self-info-tag)))
-        (or (> (length task-notes) 0)
-            (> (length self-notes) 0)))
+      ;; Agent should have documented the CSV-to-org conversion task.
+      (let* ((ekg-hidden-tags nil)
+             (all-notes (ekg-get-notes-with-tag "agent")))
+        (and (> (length all-notes) 0)
+             (cl-some (lambda (n)
+                        (let ((text (downcase (ekg-note-text n))))
+                          (or (string-match-p "csv\\|org.*table\\|report" text)
+                              (string-match-p "convert\\|transform\\|student" text)
+                              (string-match-p "bench-data\\|bench-report" text))))
+                      all-notes)))
     max-iterations: 20
     timeout: 120
