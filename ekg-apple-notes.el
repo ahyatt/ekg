@@ -149,6 +149,12 @@ Future syncs will use this folder instead of `ekg-apple-notes-folder'."
   (car (triples-subjects-with-predicate-object
         ekg-db 'apple-notes/note-id apple-id)))
 
+(defun ekg-apple-notes-reset-mappings ()
+  "Clear all Apple ID mappings from the database."
+  (interactive)
+  (dolist (subj (triples-subjects-of-type ekg-db 'apple-notes))
+    (triples-remove-type ekg-db subj 'apple-notes)))
+
 ;;; ---- AppleScript Layer ----
 
 (defun ekg-apple-notes--run-applescript (script)
@@ -543,6 +549,7 @@ Returns non-nil if a note was created or updated."
 ;;; ---- Sync ----
 
 ;;;###autoload
+
 (defun ekg-apple-notes-sync (&optional force)
   "Bidirectional sync between ekg and Apple Notes.
 Imports from Apple Notes first, then exports to Apple Notes.
