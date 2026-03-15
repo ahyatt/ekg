@@ -1959,7 +1959,7 @@ TITLE is the title of the URL to browse to."
 (defun ekg--notes-mount (name notes-func)
   "Mount a vui notes view with NAME and NOTES-FUNC into the current buffer."
   (let* ((vnode (vui-component 'ekg-notes-root
-                               :name name :notes-func notes-func))
+                  :name name :notes-func notes-func))
          (instance (vui--create-instance vnode nil))
          (vui--pending-effects nil))
     (setf (vui-instance-buffer instance) (current-buffer))

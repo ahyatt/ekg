@@ -259,6 +259,7 @@ NEW-STATE is one of the standard org states."
       (ekg-org-view--save-tags ekg-note)
       (when (derived-mode-p 'ekg-notes-mode)
         (ekg-notes-refresh)))))
+;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
 
 (defun ekg-org-capture (title)
   "Capture a new org task with TITLE into EKG."
