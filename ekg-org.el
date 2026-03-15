@@ -38,6 +38,11 @@
 (defvar ekg-agent-org-tool-set-status)
 (defvar ekg-agent-org-tool-list-items)
 
+(defvar ekg-org--inhibit-view-refresh nil
+  "When non-nil, suppress `ekg-org-view' refreshes from save hooks.
+Bind this around batch operations that save multiple notes; call
+`ekg-org-view--refresh' once afterward.")
+
 (defconst ekg-org-state-tag-prefix "org/state/"
   "Prefix for EKG tags representing Org TODO states.")
 
@@ -129,20 +134,29 @@ KEY is case-insensitive.  The note is not saved."
 
 If ARCHIVE is non-nil, fetch archived tasks instead.  If nil, fetch
 active, unarchived, tasks."
-  (seq-filter
-   (lambda (note)
-     (and (ekg-note-active-p note)
-          (ekg-note-is-content-p note)
-          (let ((props (ekg-note-properties note)))
-            (and
-             (plist-get props :titled/title)
-             ;; Only top-level tasks
-             (not (plist-get props :org/parent))
-             (let ((tags (ekg-note-tags note)))
-               (if archive
-                   (member ekg-org-archive-tag tags)
-                 (not (member ekg-org-archive-tag tags))))))))
-   (ekg-get-notes-with-parent-tag ekg-org-task-tag)))
+  (ekg-connect)
+  (let* ((all-ids (plist-get (triples-get-type ekg-db ekg-org-task-tag 'tag)
+                             :tagged))
+         ;; Pre-filter: exclude IDs that have a parent, since we only
+         ;; want top-level tasks.  This avoids loading child notes from
+         ;; the database just to discard them.
+         (child-id-set (make-hash-table :test 'equal))
+         (_ (dolist (row (triples-db-select ekg-db nil 'org/parent nil))
+              (puthash (car row) t child-id-set)))
+         (top-ids (seq-remove (lambda (id) (gethash id child-id-set))
+                              all-ids)))
+    (seq-filter
+     (lambda (note)
+       (and (ekg-note-active-p note)
+            (ekg-note-is-content-p note)
+            (let ((props (ekg-note-properties note)))
+              (and
+               (plist-get props :titled/title)
+               (let ((tags (ekg-note-tags note)))
+                 (if archive
+                     (member ekg-org-archive-tag tags)
+                   (not (member ekg-org-archive-tag tags))))))))
+     (mapcar #'ekg-get-note-with-id top-ids))))
 
 (defun ekg-org-get-child-notes-of-id (id)
   "Fetch child notes of a given note ID."
@@ -239,9 +253,10 @@ NEW-STATE is one of the standard org states."
            (seq-remove
             (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
             (ekg-note-tags ekg-note))))
-    ;; We save unless we're currently editing the note.
+    ;; We save unless we're currently editing the note.  Use the
+    ;; lightweight tag-only save since only the state tag changed.
     (unless (member 'ekg-edit-mode local-minor-modes)
-      (ekg-save-note ekg-note)
+      (ekg-org-view--save-tags ekg-note)
       (when (derived-mode-p 'ekg-notes-mode)
         (ekg-notes-refresh)))))
   ;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
@@ -362,14 +377,16 @@ ARGS are additional arguments to the operation."
 
 (defun ekg-org-revert-buffers (note)
   "Revert any buffers visiting the fake ekg org files.
-Optionally check NOTE to only revert when org tasks change."
-  (when (or (null note) (ekg-org--org-note-p note))
-    (dolist (buf (buffer-list))
-      (with-current-buffer buf
-        (when (and buffer-file-name
-                   (string-match "\\`/ekg:" buffer-file-name)
-                   (buffer-modified-p buf))
-          (revert-buffer t t t))))))
+Optionally check NOTE to only revert when org tasks change.
+Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
+  (unless ekg-org--inhibit-view-refresh
+    (when (or (null note) (ekg-org--org-note-p note))
+      (dolist (buf (buffer-list))
+        (with-current-buffer buf
+          (when (and buffer-file-name
+                     (string-match "\\`/ekg:" buffer-file-name)
+                     (buffer-modified-p buf))
+            (revert-buffer t t t)))))))
 
 ;; When we save an org note, any org buffers showing our fake files should
 ;; update to reflect the changes.
@@ -407,6 +424,25 @@ Optionally check NOTE to only revert when org tasks change."
 (defvar-local ekg-org-view--archive nil
   "When non-nil, show archived tasks instead of active ones.")
 
+(defun ekg-org-view--save-tags (note)
+  "Persist the tags of NOTE without triggering full save hooks.
+Only updates the tag triples and runs `ekg-note-save-hook' (not
+`ekg-note-pre-save-hook').  Suitable for state-only changes where
+the text content has not changed and embedding regeneration is
+unnecessary."
+  (let ((id (ekg-note-id note))
+        (tags (mapcar #'ekg--normalize-tag (ekg-note-tags note))))
+    (setf (ekg-note-tags note) tags)
+    (triples-with-transaction ekg-db
+      (triples-set-type ekg-db id 'tagged :tag tags)
+      (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
+      (let ((modified-time (time-convert (current-time) 'integer)))
+        (triples-set-type ekg-db id 'time-tracked
+                          :creation-time (ekg-note-creation-time note)
+                          :modified-time modified-time)
+        (setf (ekg-note-modified-time note) modified-time))
+      (run-hook-with-args 'ekg-note-save-hook note))))
+
 (defun ekg-org-view--sort-order (note)
   "Return the sort-order of NOTE, defaulting to creation time."
   (or (plist-get (ekg-note-properties note) :org/sort-order)
@@ -437,23 +473,29 @@ If ARCHIVE is non-nil, return archived tasks instead."
   (sort (ekg-org-get-tasks archive)
         #'ekg-org-view--sort-predicate))
 
+(defun ekg-org-view--set-sort-order (id order)
+  "Set the sort-order of note ID to ORDER without replacing other org properties."
+  (triples-db-delete ekg-db id 'org/sort-order)
+  (triples-db-insert ekg-db id 'org/sort-order order))
+
 (defun ekg-org-view--assign-order-after (siblings current-id)
   "Return a sort-order value that places a new item after CURRENT-ID in SIBLINGS.
-Also renumbers all SIBLINGS with gaps to ensure consistent spacing."
+Also renumbers all SIBLINGS with gaps to ensure consistent spacing.
+Updates sort-order directly via triples to avoid triggering full
+note save hooks (embedding generation, view refreshes) for each
+sibling."
   (let ((order 0)
         (insert-after nil)
         (found nil))
-    (dolist (sib siblings)
-      (when (and found (not insert-after))
-        ;; Leave a gap for the new item
-        (setq insert-after order)
-        (cl-incf order))
-      (setf (ekg-note-properties sib)
-            (plist-put (ekg-note-properties sib) :org/sort-order order))
-      (ekg-save-note sib)
-      (when (equal (ekg-note-id sib) current-id)
-        (setq found t))
-      (cl-incf order))
+    (triples-with-transaction ekg-db
+      (dolist (sib siblings)
+        (when (and found (not insert-after))
+          (setq insert-after order)
+          (cl-incf order))
+        (ekg-org-view--set-sort-order (ekg-note-id sib) order)
+        (when (equal (ekg-note-id sib) current-id)
+          (setq found t))
+        (cl-incf order)))
     (or insert-after order)))
 
 (defun ekg-org-view--visible-tags (note)
@@ -705,21 +747,22 @@ as the starting heading are skipped."
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (let* ((states (or org-todo-keywords-1 '("TODO" "DONE")))
-           (new-state (completing-read "State: " states nil t)))
+           (new-state (completing-read "State: " states nil t))
+           (ekg-org--inhibit-view-refresh t))
       (setf (ekg-note-tags note)
             (cons (concat ekg-org-state-tag-prefix (downcase new-state))
                   (seq-remove
                    (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
                    (ekg-note-tags note))))
-      (ekg-save-note note)
-      (ekg-org-view--refresh))))
+      (ekg-org-view--save-tags note))
+    (ekg-org-view--refresh)))
 
 (defun ekg-org-view--archive-note (note)
   "Archive NOTE by adding the archive tag if not already present."
   (unless (member ekg-org-archive-tag (ekg-note-tags note))
     (setf (ekg-note-tags note)
           (cons ekg-org-archive-tag (ekg-note-tags note)))
-    (ekg-save-note note))
+    (ekg-org-view--save-tags note))
   (dolist (child (ekg-org-get-child-notes-of-id (ekg-note-id note)))
     (ekg-org-view--archive-note child)))
 
@@ -730,7 +773,8 @@ as the starting heading are skipped."
               (note (ekg-get-note-with-id id)))
     (when (y-or-n-p (format "Archive \"%s\" and all children? "
                             (or (ekg-org--note-title note) "Untitled")))
-      (ekg-org-view--archive-note note)
+      (let ((ekg-org--inhibit-view-refresh t))
+        (ekg-org-view--archive-note note))
       (ekg-org-view--refresh))))
 
 (defun ekg-org-view--trash-note (note)
@@ -748,7 +792,8 @@ trashed, they are permanently deleted."
               (note (ekg-get-note-with-id id)))
     (when (y-or-n-p (format "Delete \"%s\" and all children? "
                             (or (ekg-org--note-title note) "Untitled")))
-      (ekg-org-view--trash-note note)
+      (let ((ekg-org--inhibit-view-refresh t))
+        (ekg-org-view--trash-note note))
       (ekg-org-view--refresh))))
 
 (defun ekg-org-view-create-child ()
@@ -757,22 +802,23 @@ trashed, they are permanently deleted."
   (let* ((parent-id (ekg-org-view--note-at-point))
          (title (read-string "Task title: ")))
     (when (and (not (string-empty-p title)) parent-id)
-      (let* ((siblings (ekg-org-view--sorted-children parent-id))
-             (last-id (when siblings
-                        (ekg-note-id (car (last siblings)))))
-             (sort-order (if siblings
-                             (ekg-org-view--assign-order-after siblings last-id)
-                           0))
-             (note (ekg-note-create
-                    :text ""
-                    :mode 'org-mode
-                    :tags (list ekg-org-task-tag
-                                (concat ekg-org-state-tag-prefix "todo"))
-                    :properties (list :titled/title (list title)
-                                      :org/parent parent-id
-                                      :org/sort-order sort-order))))
-        (ekg-save-note note)
-        (ekg-org-view--refresh)))))
+      (let ((ekg-org--inhibit-view-refresh t))
+        (let* ((siblings (ekg-org-view--sorted-children parent-id))
+               (last-id (when siblings
+                          (ekg-note-id (car (last siblings)))))
+               (sort-order (if siblings
+                               (ekg-org-view--assign-order-after siblings last-id)
+                             0))
+               (note (ekg-note-create
+                      :text ""
+                      :mode 'org-mode
+                      :tags (list ekg-org-task-tag
+                                  (concat ekg-org-state-tag-prefix "todo"))
+                      :properties (list :titled/title (list title)
+                                        :org/parent parent-id
+                                        :org/sort-order sort-order))))
+          (ekg-save-note note)))
+      (ekg-org-view--refresh))))
 
 (defun ekg-org-view-create-sibling ()
   "Create a new sibling task after the task at point."
@@ -786,19 +832,20 @@ trashed, they are permanently deleted."
                      (ekg-org-view--sorted-top-level)))
          (title (read-string "Task title: ")))
     (when (not (string-empty-p title))
-      (let* ((sort-order (ekg-org-view--assign-order-after siblings id))
-             (note (ekg-note-create
-                    :text ""
-                    :mode 'org-mode
-                    :tags (list ekg-org-task-tag
-                                (concat ekg-org-state-tag-prefix "todo"))
-                    :properties (append
-                                 (list :titled/title (list title)
-                                       :org/sort-order sort-order)
-                                 (when parent-id
-                                   (list :org/parent parent-id))))))
-        (ekg-save-note note)
-        (ekg-org-view--refresh)))))
+      (let ((ekg-org--inhibit-view-refresh t))
+        (let* ((sort-order (ekg-org-view--assign-order-after siblings id))
+               (note (ekg-note-create
+                      :text ""
+                      :mode 'org-mode
+                      :tags (list ekg-org-task-tag
+                                  (concat ekg-org-state-tag-prefix "todo"))
+                      :properties (append
+                                   (list :titled/title (list title)
+                                         :org/sort-order sort-order)
+                                   (when parent-id
+                                     (list :org/parent parent-id))))))
+          (ekg-save-note note)))
+      (ekg-org-view--refresh))))
 
 (defun ekg-org-view-open-note ()
   "Open the ekg note at point for editing."
@@ -826,7 +873,8 @@ trashed, they are permanently deleted."
     (let* ((parent-note (ekg-get-note-with-id parent-id))
            (grandparent-id (when parent-note
                              (plist-get (ekg-note-properties parent-note)
-                                        :org/parent))))
+                                        :org/parent)))
+           (ekg-org--inhibit-view-refresh t))
       (triples-with-transaction
         ekg-db
         (if grandparent-id
@@ -837,8 +885,8 @@ trashed, they are permanently deleted."
           (setf (ekg-note-properties note)
                 (ekg-org-view--plist-delete props :org/parent))
           (triples-db-delete ekg-db id 'org/parent))
-        (ekg-save-note note))
-      (ekg-org-view--refresh))))
+        (ekg-save-note note)))
+    (ekg-org-view--refresh)))
 
 (defun ekg-org-view-demote ()
   "Demote the task at point, making it a child of the previous sibling."
@@ -856,9 +904,10 @@ trashed, they are permanently deleted."
                                (cl-return prev))
                              (setq prev sib)))))
       (when prev-sibling
-        (setf (ekg-note-properties note)
-              (plist-put props :org/parent (ekg-note-id prev-sibling)))
-        (ekg-save-note note)
+        (let ((ekg-org--inhibit-view-refresh t))
+          (setf (ekg-note-properties note)
+                (plist-put props :org/parent (ekg-note-id prev-sibling)))
+          (ekg-save-note note))
         (ekg-org-view--refresh)))))
 
 ;;; Task insertion mode
@@ -1094,7 +1143,8 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 (defun ekg-org-view--insert-create-task (slot title)
   "Create a new task from SLOT data with TITLE."
   (let ((parent-id (plist-get slot :parent-id))
-        (after-id (plist-get slot :after-id)))
+        (after-id (plist-get slot :after-id))
+        (ekg-org--inhibit-view-refresh t))
     (let* ((siblings (if parent-id
                          (ekg-org-view--sorted-children parent-id)
                        (ekg-org-view--sorted-top-level)))
@@ -1102,13 +1152,12 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                            (ekg-org-view--assign-order-after siblings after-id)
                          ;; Inserting as first: renumber from 1 and take 0.
                          (when siblings
-                           (let ((order 1))
-                             (dolist (sib siblings)
-                               (setf (ekg-note-properties sib)
-                                     (plist-put (ekg-note-properties sib)
-                                                :org/sort-order order))
-                               (ekg-save-note sib)
-                               (cl-incf order))))
+                           (triples-with-transaction ekg-db
+                             (let ((order 1))
+                               (dolist (sib siblings)
+                                 (ekg-org-view--set-sort-order
+                                  (ekg-note-id sib) order)
+                                 (cl-incf order)))))
                          0))
            (note (ekg-note-create
                   :text ""
@@ -1120,8 +1169,8 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                                      :org/sort-order sort-order)
                                (when parent-id
                                  (list :org/parent parent-id))))))
-      (ekg-save-note note)
-      (ekg-org-view--refresh))))
+      (ekg-save-note note)))
+  (ekg-org-view--refresh))
 
 (defun ekg-org-view-insert-confirm ()
   "Confirm the insertion position and prompt for the task title.
@@ -1205,13 +1254,15 @@ A placeholder shows where the new task will be inserted.  Use
   "Keymap for `ekg-org-view-mode'.")
 
 (defun ekg-org-view--on-note-save (_note)
-  "Refresh all ekg-org-view buffers when any note is saved."
-  (dolist (buf (buffer-list))
-    (when (and (buffer-live-p buf)
-               (with-current-buffer buf
-                 (derived-mode-p 'ekg-org-view-mode)))
-      (with-current-buffer buf
-        (ekg-org-view--refresh)))))
+  "Refresh all ekg-org-view buffers when any note is saved.
+Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
+  (unless ekg-org--inhibit-view-refresh
+    (dolist (buf (buffer-list))
+      (when (and (buffer-live-p buf)
+                 (with-current-buffer buf
+                   (derived-mode-p 'ekg-org-view-mode)))
+        (with-current-buffer buf
+          (ekg-org-view--refresh))))))
 
 (define-derived-mode ekg-org-view-mode vui-mode "EKG-Org"
   "Major mode for viewing ekg org tasks in a hierarchical view.
