@@ -1253,9 +1253,11 @@ A placeholder shows where the new task will be inserted.  Use
     map)
   "Keymap for `ekg-org-view-mode'.")
 
-(defun ekg-org-view--on-note-save (_note)
-  "Refresh all ekg-org-view buffers when any note is saved.
-Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
+(defun ekg-org-view--refresh-all (&rest _args)
+  "Refresh all live `ekg-org-view-mode' buffers.
+Does nothing when `ekg-org--inhibit-view-refresh' is non-nil.
+Accepts and ignores arguments so it can be used directly on
+`ekg-note-save-hook' and `ekg-note-delete-hook'."
   (unless ekg-org--inhibit-view-refresh
     (dolist (buf (buffer-list))
       (when (and (buffer-live-p buf)
@@ -1268,17 +1270,19 @@ Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
   "Major mode for viewing ekg org tasks in a hierarchical view.
 
 \\{ekg-org-view-mode-map}"
-  (add-hook 'ekg-note-save-hook #'ekg-org-view--on-note-save)
+  (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
+  (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)
   (add-hook 'kill-buffer-hook
             (lambda ()
-              ;; Remove the hook when no view buffers remain.
+              ;; Remove the hooks when no view buffers remain.
               (unless (cl-some (lambda (buf)
                                  (and (not (eq buf (current-buffer)))
                                       (buffer-live-p buf)
                                       (with-current-buffer buf
                                         (derived-mode-p 'ekg-org-view-mode))))
                                (buffer-list))
-                (remove-hook 'ekg-note-save-hook #'ekg-org-view--on-note-save)))
+                (remove-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
+                (remove-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)))
             nil t))
 
 (defun ekg-org-view-refresh ()

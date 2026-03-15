@@ -695,6 +695,66 @@ Returns the note ID."
       (should (member '(2 "Child") headings))
       (should (member '(2 "Parent") headings)))))
 
+(ekg-deftest ekg-org-test-view-auto-refresh-on-external-save ()
+  "Test that the view refreshes when notes change outside of user actions.
+An agent saving a new note should cause the view to update automatically."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Initial Task")
+  (ekg-org-view)
+  (should (equal (ekg-org-test--view-titles) '("Initial Task")))
+  ;; Simulate an external agent adding a task by directly saving a note.
+  ;; The save hook should trigger a view refresh.
+  (let ((note (ekg-note-create
+               :text ""
+               :mode 'org-mode
+               :tags (list ekg-org-task-tag
+                           (concat ekg-org-state-tag-prefix "todo"))
+               :properties (list :titled/title '("Agent Task")))))
+    (ekg-save-note note))
+  (let ((titles (ekg-org-test--view-titles)))
+    (should (= (length titles) 2))
+    (should (member "Agent Task" titles))
+    (should (member "Initial Task" titles))))
+
+(ekg-deftest ekg-org-test-view-auto-refresh-on-external-delete ()
+  "Test that the view refreshes when a note is deleted externally."
+  (ekg-org-add-schema)
+  (let ((id (ekg-org-test--add-task "Doomed Task")))
+    (ekg-org-test--add-task "Survivor")
+    (ekg-org-view)
+    (should (= (length (ekg-org-test--view-titles)) 2))
+    ;; Simulate an external agent deleting the note.
+    (ekg-note-delete (ekg-get-note-with-id id))
+    (let ((titles (ekg-org-test--view-titles)))
+      (should (= (length titles) 1))
+      (should (equal (car titles) "Survivor")))))
+
+(ekg-deftest ekg-org-test-view-auto-refresh-on-external-state-change ()
+  "Test that the view updates when a note's state changes externally."
+  (ekg-org-add-schema)
+  (let ((id (ekg-org-test--add-task "My Task" nil "TODO")))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (should (string-match-p "TODO" (buffer-substring
+                                      (line-beginning-position)
+                                      (line-end-position)))))
+    ;; Simulate an external agent changing the state.
+    (let ((note (ekg-get-note-with-id id)))
+      (setf (ekg-note-tags note)
+            (cons (concat ekg-org-state-tag-prefix "done")
+                  (seq-remove
+                   (lambda (tag)
+                     (string-prefix-p ekg-org-state-tag-prefix tag))
+                   (ekg-note-tags note))))
+      (ekg-save-note note))
+    ;; The view should have refreshed automatically.
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (should (string-match-p "DONE" (buffer-substring
+                                      (line-beginning-position)
+                                      (line-end-position)))))))
+
 (ekg-deftest ekg-org-test-properties ()
   "Test generic org property get/set/remove."
   (ekg-org-add-schema)
