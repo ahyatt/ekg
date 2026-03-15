@@ -120,7 +120,7 @@
                    (list (ekg-note-create :text "a" :mode ekg-capture-default-mode :tags '("tag/a"))
                          (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
              (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
-             (should (string= (car (ewoc-get-hf ekg-notes-ewoc)) "tags (any): tag/a, tag/b")))
+             (should (string= ekg-notes-name "tags (any): tag/a, tag/b")))
 
 (ekg-deftest ekg-test-note-roundtrip ()
              (let ((text "foo\n\tbar \"baz\" ☃"))

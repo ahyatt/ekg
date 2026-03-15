@@ -31,7 +31,8 @@
 (require 'triples-upgrade)
 (require 'triples-fts)
 (require 'seq)
-(require 'ewoc)
+(require 'vui)
+(declare-function vui-rerender "vui")
 (require 'cl-lib)
 (require 'map)
 (require 'ffap)
@@ -1142,9 +1143,8 @@ This is needed to identify references to refresh when the subject is changed.")
     (define-key map "k" #'ekg-notes-kill)
     map))
 
-(define-derived-mode ekg-notes-mode fundamental-mode "ekg-notes"
+(define-derived-mode ekg-notes-mode vui-mode "ekg-notes"
   "Major mode for showing a list of notes that can be interacted with."
-  (setq buffer-read-only t)
   (setq truncate-lines t)
   (visual-line-mode 1)
   (if (eq ekg-capture-default-mode 'org-mode)
@@ -1363,8 +1363,8 @@ displayed.")
 (defvar-local ekg-notes-name ""
   "Name displayed at the top of the buffer.")
 
-(defvar-local ekg-notes-ewoc nil
-  "Ewoc for the notes buffer.")
+(defvar-local ekg-notes--instance nil
+  "The vui root instance for the notes buffer.")
 
 (defvar-local ekg-notes-hl nil
   "Highlight for the notes buffer.")
@@ -1658,22 +1658,10 @@ Return the latest `ekg-note' object."
 (defun ekg-edit-save ()
   "Save the edited note and refresh where it appears."
   (interactive nil ekg-edit-mode)
-  (let ((note (ekg--save-note-in-buffer))
-        (orig-id ekg-note-orig-id))
-    (unless ekg-save-no-message
-      (message "Note saved."))
-    (cl-loop for b being the buffers do
-             (with-current-buffer b
-               (when (and (eq major-mode 'ekg-notes-mode) ekg-notes-ewoc)
-                 (let ((n (ewoc-nth ekg-notes-ewoc 0)))
-                   (while n
-                     (when (or (equal (ekg-note-id (ewoc-data n))
-                                      (ekg-note-id note))
-                               (and orig-id
-                                    (equal orig-id (ekg-note-id (ewoc-data n)))))
-                       (ewoc-set-data n note)
-                       (ewoc-invalidate ekg-notes-ewoc n))
-                     (setq n (ewoc-next ekg-notes-ewoc n)))))))))
+  (ekg--save-note-in-buffer)
+  (unless ekg-save-no-message
+    (message "Note saved."))
+  (ekg--refresh-notes-buffers))
 
 (defun ekg-edit-finalize ()
   "Save the edited note and refresh where it appears."
@@ -1688,18 +1676,8 @@ Return the latest `ekg-note' object."
     (setf (ekg-note-tags ekg-note)
           (seq-difference (ekg-note-tags ekg-note) (list ekg-draft-tag))))
   (ekg--save-note-in-buffer)
-  (let ((note ekg-note))
-    (quit-window 'kill)
-    (cl-loop for b being the buffers do
-             (with-current-buffer b
-               (when (and (eq major-mode 'ekg-notes-mode)
-                          (or (seq-intersection (ekg-note-tags note) ekg-notes-tags)
-                              (string-match-p
-                               (rx (or "latest modified" "latest captured"))
-                               (substring-no-properties
-                                (ewoc--node-data
-                                 (ewoc--header ekg-notes-ewoc))))))
-                 (ewoc-enter-first ekg-notes-ewoc note))))))
+  (quit-window 'kill)
+  (ekg--refresh-notes-buffers))
 
 (defun ekg-capture-abort ()
   "Abort the current capture.
@@ -1850,23 +1828,31 @@ tags)."
   "Insert the the display of NOTE into the buffer."
   (insert (ekg-display-note note ekg-display-note-template)))
 
+(defun ekg--note-region-at-point ()
+  "Return (START . END) of the note region at point, or nil."
+  (when (get-text-property (point) :ekg-note-id)
+    (let ((start (or (previous-single-property-change (point) :ekg-note-id)
+                     (point-min)))
+          (end (or (next-single-property-change (point) :ekg-note-id)
+                   (point-max))))
+      ;; If point is at the start of a note region, previous-single
+      ;; returns the end of the prior region; adjust.
+      (when (not (get-text-property start :ekg-note-id))
+        (setq start (point)))
+      (cons start end))))
+
 (defun ekg--note-highlight ()
   "In the buffer, highlight the current note."
-  (let ((node (ewoc-locate ekg-notes-ewoc)))
-    (when (and node (ewoc-location node))
-      (move-overlay ekg-notes-hl
-                    (ewoc-location node)
-                    (- (or (if-let (next (ewoc-next ekg-notes-ewoc node))
-                               (ewoc-location next)
-                             (point-max))) 1)))))
+  (when-let* ((region (ekg--note-region-at-point)))
+    (move-overlay ekg-notes-hl (car region) (cdr region))))
 
 (defun ekg-current-note-or-error ()
   "Return the current `ekg-note'.
 Raise an error if there is no current note."
   (unless (eq major-mode 'ekg-notes-mode)
     (error "This command can only be used in `ekg-notes-mode'"))
-  (if-let (node (ewoc-locate ekg-notes-ewoc))
-      (ewoc-data node)
+  (if-let* ((id (get-text-property (point) :ekg-note-id)))
+      (ekg-get-note-with-id id)
     (error "No current note is available to act on!  Create a new note first with `ekg-capture'")))
 
 (declare-function ekg-org-view--note-at-point "ekg-org")
@@ -1903,21 +1889,20 @@ tags."
 Note is not deleted from the database and will reappear when the
 view is refreshed."
   (interactive nil ekg-notes-mode)
-  (let ((inhibit-read-only t))
-    (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
-    (ekg--note-highlight)))
+  (when-let* ((region (ekg--note-region-at-point)))
+    (let ((inhibit-read-only t))
+      (delete-region (car region) (min (1+ (cdr region)) (point-max)))
+      (ekg--note-highlight))))
 
 (defun ekg-notes-delete (arg)
   "Trash the current note.
 With a `C-u' prefix or when ARG is non-nil, silently delete the
 current note without a prompt."
   (interactive "P" ekg-notes-mode)
-  (let ((note (ekg-current-note-or-error))
-        (inhibit-read-only t))
+  (let ((note (ekg-current-note-or-error)))
     (when (or arg (y-or-n-p "Are you sure you want to delete this note?"))
       (ekg-note-trash note)
-      (ewoc-delete ekg-notes-ewoc (ewoc-locate ekg-notes-ewoc))
-      (ekg--note-highlight))))
+      (ekg-notes-refresh))))
 
 (defun ekg-notes-browse ()
   "If the note is about a browseable resource, browse to it.
@@ -1936,6 +1921,10 @@ Otherwise, open in Emacs with `find-file'."
                (when (and file (> (length file) 0))
                  (find-file file))))))))
 
+(defun ekg-notes--collect-all ()
+  "Return a list of all notes currently displayed in the notes buffer."
+  (funcall ekg-notes-fetch-notes-function))
+
 (defun ekg-notes-select-and-browse-url (title)
   "Browse one of the resources in the current buffer's notes.
 TITLE is the title of the URL to browse to."
@@ -1945,31 +1934,61 @@ TITLE is the title of the URL to browse to."
                  (mapcan (lambda (note)
                            (plist-get (ekg-note-properties note)
                                       :titled/title))
-                         (ewoc-collect ekg-notes-ewoc #'identity)))) ekg-notes-mode)
+                         (ekg-notes--collect-all)))) ekg-notes-mode)
   (when title (ekg-browse-url title)))
+
+(vui-defcomponent ekg-notes-root (name notes-func)
+  "Root component for the notes list view."
+  :render
+  (let ((notes (funcall notes-func)))
+    (apply #'vui-vstack
+           :spacing 1
+           (vui-text (propertize name 'face 'ekg-notes-mode-title)
+             :key 'title)
+           (mapcar (lambda (note)
+                     (vui-text (ekg-display-note note ekg-display-note-template)
+                       :key (intern (format "note-%s" (ekg-note-id note)))
+                       :ekg-note-id (ekg-note-id note)))
+                   notes))))
+
+(defun ekg--notes-mount (name notes-func)
+  "Mount a vui notes view with NAME and NOTES-FUNC into the current buffer."
+  (let* ((vnode (vui-component 'ekg-notes-root
+                               :name name :notes-func notes-func))
+         (instance (vui--create-instance vnode nil))
+         (vui--pending-effects nil))
+    (setf (vui-instance-buffer instance) (current-buffer))
+    (ekg-notes-mode)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (setq-local vui--root-instance instance)
+      (setq-local ekg-notes--instance instance)
+      (let ((vui--root-instance instance)
+            (vui--rendering-p t))
+        (unwind-protect
+            (vui--render-instance instance)
+          (setq vui--rendering-p nil)))
+      (widget-setup)
+      (vui--run-pending-effects)
+      (goto-char (point-min)))
+    instance))
 
 (defun ekg--show-notes (name notes-func tags)
   "Display notes from NOTES-FUNC in buffer.
 New notes are created with additional tags TAGS.
 NAME is displayed at the top of the buffer."
-  (setq buffer-read-only nil)
-  (erase-buffer)
-  (let ((ewoc (ewoc-create #'ekg-display-note-insert
-                           (propertize name 'face 'ekg-notes-mode-title))))
-    (mapc (lambda (note) (ewoc-enter-last ewoc note)) (funcall notes-func))
-    (ekg-notes-mode)
-    (setq-local ekg-notes-ewoc ewoc
-                ekg-notes-fetch-notes-function notes-func
-                ekg-notes-name name
-                ekg-notes-hl (make-overlay 1 1)
-                ekg-notes-tags tags)
-    (overlay-put ekg-notes-hl 'face hl-line-face)
-    ;; Move past the title
-    (forward-line 1)
-    (ekg--note-highlight)
-    (when (eq ekg-capture-default-mode 'org-mode)
-      (ekg--notes-activate-links)
-      (if ekg-notes-display-images (org-redisplay-inline-images))))
+  (ekg--notes-mount name notes-func)
+  (setq-local ekg-notes-fetch-notes-function notes-func
+              ekg-notes-name name
+              ekg-notes-hl (make-overlay 1 1)
+              ekg-notes-tags tags)
+  (overlay-put ekg-notes-hl 'face hl-line-face)
+  ;; Move past the title
+  (forward-line 1)
+  (ekg--note-highlight)
+  (when (eq ekg-capture-default-mode 'org-mode)
+    (ekg--notes-activate-links)
+    (if ekg-notes-display-images (org-redisplay-inline-images)))
   (set-buffer-modified-p nil))
 
 (defun ekg--notes-activate-links()
@@ -1982,6 +2001,15 @@ NAME is displayed at the top of the buffer."
       ;; Go back and activate the first link again as it gets missed in the iteration
       (goto-char (point-min))
       (org-activate-links (point-max)))))
+
+(defun ekg--refresh-notes-buffers ()
+  "Re-render all open `ekg-notes-mode' buffers."
+  (dolist (buf (buffer-list))
+    (when (and (buffer-live-p buf)
+               (with-current-buffer buf
+                 (derived-mode-p 'ekg-notes-mode)))
+      (with-current-buffer buf
+        (ekg-notes-refresh)))))
 
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
@@ -1996,22 +2024,61 @@ NAME is displayed at the top of the buffer."
   (interactive nil ekg-notes-mode)
   (ekg-capture :tags ekg-notes-tags))
 
+(defun ekg--notes-find-note-start (pos direction)
+  "From POS, find the start of a note in DIRECTION (:forward or :backward).
+Returns the position of the start of the note, or nil."
+  (let ((search-fn (if (eq direction :forward)
+                       #'next-single-property-change
+                     #'previous-single-property-change))
+        (result nil))
+    (save-excursion
+      (goto-char pos)
+      (let ((current-id (get-text-property (point) :ekg-note-id)))
+        ;; First, move past the current note (or gap).
+        (when-let* ((boundary (funcall search-fn (point) :ekg-note-id)))
+          (goto-char boundary)
+          ;; If we landed in a gap, move past it.
+          (unless (get-text-property (point) :ekg-note-id)
+            (when-let* ((next (funcall search-fn (point) :ekg-note-id)))
+              (goto-char next)))
+          ;; Now we should be on a different note.
+          (when (and (get-text-property (point) :ekg-note-id)
+                     (not (equal (get-text-property (point) :ekg-note-id)
+                                 current-id)))
+            (if (eq direction :backward)
+                ;; Find the start of this note.  If
+                ;; previous-single-property-change returns a gap
+                ;; position (happens when point is already at the first
+                ;; char), use point itself.
+                (let ((target-id (get-text-property (point) :ekg-note-id))
+                      (start (previous-single-property-change
+                              (point) :ekg-note-id)))
+                  (setq result
+                        (if (and start (equal (get-text-property start :ekg-note-id)
+                                              target-id))
+                            start
+                          (point))))
+              (setq result (point)))))))
+    result))
+
 (defun ekg-notes-next ()
   "Move to the next note, if possible."
   (interactive nil ekg-notes-mode)
-  (ewoc-goto-next ekg-notes-ewoc 1)
+  (when-let* ((pos (ekg--notes-find-note-start (point) :forward)))
+    (goto-char pos))
   (ekg--note-highlight))
 
 (defun ekg-notes-previous ()
   "Move to the previous note, if possible."
   (interactive nil ekg-notes-mode)
-  (ewoc-goto-prev ekg-notes-ewoc 1)
+  (when-let* ((pos (ekg--notes-find-note-start (point) :backward)))
+    (goto-char pos))
   (ekg--note-highlight))
 
 (defun ekg-notes-any-note-tags ()
   "Show notes with any of the tags in the current note."
   (interactive nil ekg-notes-mode)
-  (ekg-show-notes-with-any-tags (ekg-note-tags (ewoc-data (ewoc-locate ekg-notes-ewoc)))))
+  (ekg-show-notes-with-any-tags (ekg-note-tags (ekg-current-note-or-error))))
 
 (defun ekg-notes-any-tags ()
   "Show notes with any of the tags in any of the notes in the buffer."
@@ -2019,7 +2086,7 @@ NAME is displayed at the top of the buffer."
   (ekg-show-notes-with-any-tags
    (seq-uniq (flatten-list
               (mapcar (lambda (n) (ekg-note-tags n))
-                      (ewoc-collect ekg-notes-ewoc #'identity))))))
+                      (ekg-notes--collect-all))))))
 
 (defun ekg-setup-notes-buffer (name notes-func tags)
   "Set up and display new buffer with NAME.
