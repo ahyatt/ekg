@@ -70,12 +70,13 @@ Uses `triples` library for RDF-like storage in SQLite:
 - `llm-chat-async` returns a request handle (curl process from plz) that can be
   cancelled via `llm-cancel-request`. This is stored in `ekg-agent--current-request`.
 - Tool functions that spawn subprocesses should be `:async t` and track their
-  processes in `ekg-agent--tool-processes` for force-cancellation support.
+  processes (or `futur` objects) in `ekg-agent--tool-processes` for force-cancellation support.
 - `ekg-agent--set-stopped` acts as a once-only guard — it returns non-nil only on
   the first running→stopped transition, preventing double-firing of status callbacks.
 - The request chain: `ekg-agent--iterate` → `llm-chat-async` → `llm-request-plz-async`
   → `plz-media-type-request` → `plz` (curl process named "plz-request-curl").
-- `async-start` (used by `run_elisp`) creates a subprocess named "emacs".
+- `futur-process-call` (used by `run_elisp`) creates a subprocess via `futur`;
+  callbacks are bounced to the main thread via `run-at-time`.
 
 ## CLI Tools (`agent_tools/`)
 

@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((emacs "28.1") (ekg "0.8.0") futur)
+;; Package-Requires: ((emacs "28.1") (ekg "0.8.0") (futur "1.2"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.0.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -1689,49 +1689,49 @@ Returns a list of note objects."
   ;; agent/self-info to be filtered out of normal tag queries, so we
   ;; remove that tag from the hidden list within agent tool context.
   (let ((ekg-hidden-tags (remove ekg-agent-self-info-tag ekg-hidden-tags)))
-  (cond
-   ;; Latest modified notes
-   (latest
-    (ekg-get-latest-modified num))
+    (cond
+     ;; Latest modified notes
+     (latest
+      (ekg-get-latest-modified num))
 
-   ;; Read by note ID
-   (note-id
-    (let ((note (ekg-get-note-with-id (if (stringp note-id)
-                                          (string-to-number note-id)
-                                        note-id))))
-      (if note
-          (list note)
-        (error "Note with ID %s not found" note-id))))
+     ;; Read by note ID
+     (note-id
+      (let ((note (ekg-get-note-with-id (if (stringp note-id)
+                                            (string-to-number note-id)
+                                          note-id))))
+        (if note
+            (list note)
+          (error "Note with ID %s not found" note-id))))
 
-   ;; Semantic search (requires embeddings)
-   (semantic-search
-    (unless ekg-embedding-provider
-      (error "Semantic search requires ekg-embedding-provider to be configured"))
-    (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
-      (mapcar #'ekg-get-note-with-id
-              (ekg-embedding-n-most-similar-notes embedding num))))
+     ;; Semantic search (requires embeddings)
+     (semantic-search
+      (unless ekg-embedding-provider
+        (error "Semantic search requires ekg-embedding-provider to be configured"))
+      (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
+        (mapcar #'ekg-get-note-with-id
+                (ekg-embedding-n-most-similar-notes embedding num))))
 
-   ;; Text search (full-text search)
-   (text-search
-    (seq-take
-     (seq-filter #'ekg-note-active-p
-                 (mapcar #'ekg-get-note-with-id
-                         (triples-fts-query-subject ekg-db text-search ekg-query-pred-abbrevs)))
-     num))
+     ;; Text search (full-text search)
+     (text-search
+      (seq-take
+       (seq-filter #'ekg-note-active-p
+                   (mapcar #'ekg-get-note-with-id
+                           (triples-fts-query-subject ekg-db text-search ekg-query-pred-abbrevs)))
+       num))
 
-   ;; Tag-based search with OR logic (already sorted by creation time)
-   (any-tags
-    (seq-take (ekg-get-notes-with-any-tags any-tags) num))
+     ;; Tag-based search with OR logic (already sorted by creation time)
+     (any-tags
+      (seq-take (ekg-get-notes-with-any-tags any-tags) num))
 
-   ;; Tag-based search (AND logic)
-   (tags
-    (seq-take (sort (ekg-get-notes-with-tags tags)
-                    #'ekg-sort-by-creation-time)
-              num))
+     ;; Tag-based search (AND logic)
+     (tags
+      (seq-take (sort (ekg-get-notes-with-tags tags)
+                      #'ekg-sort-by-creation-time)
+                num))
 
-   ;; No search criteria
-   (t
-    (error "Must provide tags, any-tags, note-id, semantic-search, text-search, or latest")))))
+     ;; No search criteria
+     (t
+      (error "Must provide tags, any-tags, note-id, semantic-search, text-search, or latest")))))
 
 ;;;###autoload
 (cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search latest (num 10) (max-words 100))
@@ -1775,7 +1775,7 @@ DEADLINE is the deadline timestamp string (ignored if empty).
 SCHEDULED is the scheduled timestamp string (ignored if empty)."
   (ekg-agent--with-error-as-text
     (let* ((has-parent (and parent-id (not (equal parent-id 0))
-                           (not (string-empty-p (format "%s" parent-id)))))
+                            (not (string-empty-p (format "%s" parent-id)))))
            (note (ekg-note-create :text content
                                   :tags (append (list ekg-org-task-tag) tags
                                                 (when (and status (not (string-empty-p status)))
