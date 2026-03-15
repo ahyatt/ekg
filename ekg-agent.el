@@ -37,12 +37,14 @@
 (require 'seq)
 (require 'json)
 (require 'subr-x)
-;; Disable futur's background thread before loading: on macOS NS port,
-;; `message' (or any redisplay) from a non-main thread causes an
-;; NSException → GIL deadlock.  With this nil, futur dispatches all
-;; callbacks via `run-with-timer' on the main thread instead.
-(defvar futur-use-threads)
-(setq futur-use-threads nil)
+
+(when (featurep 'ns)
+  ;; Disable futur's background thread before loading: on macOS NS port,
+  ;; `message' (or any redisplay) from a non-main thread causes an NSException →
+  ;; GIL deadlock.  With this nil, futur dispatches all callbacks via
+  ;; `run-with-timer' on the main thread instead.
+  (defvar futur-use-threads)
+  (setq futur-use-threads nil))
 (require 'futur)
 
 ;; Forward declarations for variables defined later in this file.
