@@ -312,7 +312,7 @@ the note.
 
 There is no functionality to remove inline tags that are deleted in the tag
 section. If an inline tag is not deleted in the note text, the tag will be
-re-added. 
+re-added.
 
 Another type of completion is for inline commands, the ">t" completion,
 mentioned in the [[#inlines][Inline commands]].
@@ -1261,6 +1261,106 @@ changes before and after export.
 If ekg and denote are both found to be updated after the last export
 which should ideally not happen, denote is updated with ekg. A backup
 is taken based on =ekg-denote-export-backup-on-conflict= setting.
+** Apple Notes
+:PROPERTIES:
+:CUSTOM_ID: apple-notes
+:END:
+ekg can sync bidirectionally with Apple Notes on macOS.  This is useful for
+accessing and editing your notes on an iPhone or iPad, or for collaborating
+with others who use Apple Notes.  The sync uses AppleScript to communicate
+with Apple Notes in the background, without bringing the Notes app to the
+foreground.
+
+To use this module, you need =pandoc= installed for converting between
+org-mode/markdown and HTML (Apple Notes stores content as HTML).
+
+#+begin_src emacs-lisp
+(require 'ekg-apple-notes)
+#+end_src
+
+*** Setup
+Synced notes are stored in a dedicated Apple Notes folder.  By default this
+folder is called "ekg", but you can change it with ~ekg-apple-notes-folder~.
+The folder is created automatically on the first sync.
+
+Each ekg database can sync to a different Apple Notes folder.  To store the
+folder name in the database itself (so it persists and is specific to that
+database), use:
+
+#+begin_src emacs-lisp
+(ekg-apple-notes-set-folder "my-notes")
+#+end_src
+
+If a folder name is stored in the database, it takes precedence over the
+~ekg-apple-notes-folder~ customization variable.
+
+If you have multiple Apple Notes accounts (e.g. iCloud and a work account),
+you can specify which account to use:
+
+#+begin_src emacs-lisp
+(setq ekg-apple-notes-account "iCloud")
+#+end_src
+
+To limit which notes are exported, set ~ekg-apple-notes-export-tags~ to a list
+of tags.  Only notes with at least one of those tags will be exported:
+
+#+begin_src emacs-lisp
+(setq ekg-apple-notes-export-tags '("shared" "mobile"))
+#+end_src
+
+Notes with certain tags are excluded from sync entirely.  If =ekg-agent= is
+loaded, its tag variables (~ekg-agent-author-tag~ and
+~ekg-agent-self-info-tag~) are automatically excluded, so agent notes will
+not be synced.  You can exclude additional tags by customizing
+~ekg-apple-notes-exclude-tags~.
+
+*** Syncing
+The primary command is =ekg-apple-notes-sync=, which performs a bidirectional
+sync: first importing from Apple Notes, then exporting to Apple Notes.  You
+can also run the two directions separately with =ekg-apple-notes-import= and
+=ekg-apple-notes-export=.
+
+The sync tracks timestamps so that only notes modified since the last sync
+are processed.  A content hash is stored for each exported note so that
+imports can distinguish between notes modified in Apple Notes and notes that
+are unchanged from the last export.
+
+*** Tags
+ekg tags are stored as individual =Tag: <tag>= lines at the bottom of each
+Apple Note.  Each tag gets its own line, preserving the full tag text including
+spaces, dots, colons, and other characters.  For example, a note with the tags
+"my project" and "date/2024-01-01" would have:
+
+#+begin_example
+Tag: my project
+Tag: date/2024-01-01
+#+end_example
+
+These tags don't function as native Apple Notes hashtags, but they are visible
+in the note body and can be found via Apple Notes search on any device.
+
+Hidden tags (such as "trash" and "draft") are not synced.
+
+*** Content conversion
+Note content is converted between org-mode or markdown and HTML using =pandoc=.
+The path to pandoc can be customized with ~ekg-apple-notes-pandoc-executable~.
+
+Links require special handling because Apple Notes strips =<a>= tags when
+content is set via AppleScript.  On export, links are converted to markdown
+format =[text](url)=, which appears as readable plain text in Apple Notes
+(and plain URLs are auto-linked by Apple Notes in its UI).  On import back
+to org-mode, these are reconstructed as =[[url][text]]= org links.
+
+*** Limitations
+- *Links*: Named hyperlinks degrade to =[text](url)= plain text in Apple Notes.
+  Plain URLs are auto-linked by Apple Notes.  On re-import, a heuristic
+  reconstructs the links.
+- *Formatting*: Apple Notes normalizes HTML aggressively (e.g., =<h1>= becomes
+  bold text with a larger font size, =<ol>= becomes =<ul>=).  Repeated
+  round-trips may cause minor formatting drift.
+- *Attachments*: Images and other attachments in Apple Notes are not synced.
+- *Deletion*: Deleting a note in Apple Notes does not automatically delete it
+  in ekg (and vice versa).  Deletion sync may be added in the future.
 ** Email
 The =ekg-email= module adds schema for storing the =to=, =from=, and =cc= email
 addresses associated with an email, and a way to import an email into notes from
@@ -1710,10 +1810,10 @@ Output format (JSON):
 Example workflow:
   # Retrieve recent project notes
   ekg-read --tag "project/current-work" -n 5
-  
+
   # Find notes about specific topic
   ekg-read --search "optimization" -n 10
-  
+
   # Get exact note by ID
   ekg-read 12345678
 
@@ -1733,7 +1833,7 @@ Example:
   # Store a finding
   ekg-add-note --tag "user-preferences" --tag "coding-style" \\
     --note "User prefers descriptive variable names over short abbreviations"
-  
+
   # Later, retrieve preferences
   ekg-read --tag "user-preferences" -n 10
 
@@ -1750,7 +1850,7 @@ Additional tools:
 
   # Soft-delete a note
   ekg-trash <note-id>
-  
+
 #+end_example
 
 ***** Shorter version
@@ -1804,7 +1904,7 @@ Workflow:
 - At the end of significant interactions, store key information
 - Before starting new tasks, retrieve relevant context
 - Use tags to organize information hierarchically
-- Prefer specific, actionable notes over vague summaries  
+- Prefer specific, actionable notes over vague summaries
 #+end_example
 
 **** Technical details
@@ -1940,4 +2040,3 @@ the user might select or bury one of them, and more.  There isn't an obvious
 ideal solution.  It's possible that the design of the capture/edit buffer may
 change in the future to fix some of the issues we see with the current
 implementation.
-
