@@ -4,7 +4,9 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
+;; Package-Requires: ((emacs "28.1") (ekg "0.8.0") async)
 ;; Keywords: outlines, hypermedia
+;; Version: 0.0.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -31,6 +33,7 @@
 (require 'llm-vertex)
 (require 'ekg-llm)
 (require 'ekg-embedding)
+(require 'ekg-org)
 (require 'seq)
 (require 'json)
 (require 'subr-x)
@@ -43,6 +46,7 @@
 ;; Forward declarations for optional external packages.
 (declare-function flycheck-mode "flycheck")
 (declare-function org-ql-search "org-ql")
+(declare-function markdown-mode "markdown-mode")
 
 (defgroup ekg-agent nil
   "Agentic actions for ekg."
@@ -288,8 +292,7 @@ but we'll only get strings from the LLM."
                                (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
                                  (error "Unsupported mode: %s" mode))
                                ;; Use ekg-agent-add-note for consistency (includes auto-tags)
-                               (let ((note (ekg-agent-add-note content (append tags nil) mode)))
-                                 (format "Created note with ID %s" (ekg-note-id note)))))
+                               (format "Created note with ID %s" (ekg-agent-add-note content (append tags nil) mode))))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
                  :args `((:name "tags" :type array :items (:type string)
@@ -535,10 +538,7 @@ non-string content in the assistant role."
 
 (defun ekg-agent--timeout-warning-message ()
   "Return a message instructing the agent to save state before stopping."
-  (format (concat
-           "Time limit reached. Before this session ends, immediately create a note with your current state "
-           "using `create_note` (tag it with `%s`). Also call `summarize_state` with a brief update. "
-           "Then finish by calling `end` or the appropriate completion tool.")
+  (format "Time limit reached. Before this session ends, immediately create a note with your current state using `create_note` (tag it with `%s`). Also call `summarize_state` with a brief update. Then finish by calling `end` or the appropriate completion tool."
           ekg-agent-self-info-tag))
 
 (defun ekg-agent--summarize-state (state)
@@ -1535,7 +1535,8 @@ If MAX-WORDS is specified, truncate the text to that many words."
       (mode . ,(symbol-name (ekg-note-mode note)))
       (tags . ,(ekg-note-tags note))
       (creation_time . ,(ekg-note-creation-time note))
-      (modified_time . ,(ekg-note-modified-time note)))))
+      (modified_time . ,(ekg-note-modified-time note))
+      (properties . ,(ekg-note-properties note)))))
 
 (defun ekg-agent--notes-to-json (notes &optional max-words)
   "Convert list of NOTES to a JSON array string.
@@ -1634,6 +1635,191 @@ notes from ekg."
                                      :latest latest
                                      :num num)))
     (ekg-agent--notes-to-json notes max-words)))
+
+;; ekg-org integration
+
+(defun ekg-agent-org--tool-add-item (title content tags parent-id status deadline scheduled)
+  "Add a new org task item to EKG.
+
+TITLE is the task title.
+CONTENT is the task content/description.
+TAGS is a list of additional tags.
+PARENT-ID is the parent task ID (nil for no parent)
+STATUS is the task status (will be converted to uppercase).
+DEADLINE is the deadline timestamp string (ignored if empty).
+SCHEDULED is the scheduled timestamp string (ignored if empty)."
+  (ekg-agent--with-error-as-text
+    (let* ((has-parent (and parent-id (not (equal parent-id 0))
+                           (not (string-empty-p (format "%s" parent-id)))))
+           (note (ekg-note-create :text content
+                                  :tags (append (list ekg-org-task-tag) tags
+                                                (when (and status (not (string-empty-p status)))
+                                                  (list (concat ekg-org-state-tag-prefix (downcase status)))))
+                                  :properties (list :titled/title (list title)))))
+      (when has-parent
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/parent parent-id)))
+      ;; Assign sort-order at the end of existing siblings.
+      (let* ((siblings (if has-parent
+                           (ekg-org-view--sorted-children parent-id)
+                         (ekg-org-view--sorted-top-level)))
+             (last-id (when siblings
+                        (ekg-note-id (car (last siblings)))))
+             (sort-order (if siblings
+                             (ekg-org-view--assign-order-after siblings last-id)
+                           0)))
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/sort-order sort-order)))
+      (when (and deadline (not (string-empty-p deadline)))
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/deadline (ekg-org--to-timestamp deadline))))
+      (when (and scheduled (not (string-empty-p scheduled)))
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note) :org/scheduled (ekg-org--to-timestamp scheduled))))
+      (ekg-save-note note)
+      (format "Added note with ID %s" (ekg-note-id note)))))
+
+(defconst ekg-agent-org-tool-add-task
+  (llm-make-tool
+   :function #'ekg-agent-org--tool-add-item
+   :name "add_org_item"
+   :description "Add a new org-mode task item"
+   :args
+   '((:name "title" :type string :description "The title/headline of the task" :require t)
+     (:name "content" :type string :description "The content/description of the task" :required t)
+     (:name "tags" :type array :items (:type string)
+            :description "Additional tags for the task (org tags and agent tags will be added automatically)")
+     (:name "parent_id" :type integer :description "The parent task ID if exists")
+     (:name "status" :type string :description "The task status (TODO, DONE, etc.), will default to TODO if not set")
+     (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format")
+     (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format"))))
+
+(defun ekg-agent-org--tool-set-status (id status)
+  "Set the status of an org task item.
+
+ID is the note ID.
+STATUS is the new status (will be converted to uppercase)."
+  (ekg-agent--with-error-as-text
+    (let ((note (ekg-get-note-with-id id)))
+      (unless note
+        (error "No note found with ID %s" id))
+      (setf (ekg-note-tags note)
+            (cons
+             (concat ekg-org-state-tag-prefix (downcase status))
+             (seq-remove
+              (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
+              (ekg-note-tags note))))
+      (ekg-save-note note)
+      (format "Set status of note ID %s to %s" id status))))
+
+(defconst ekg-agent-org-tool-set-status
+  (llm-make-tool
+   :function #'ekg-agent-org--tool-set-status
+   :name "set_org_item_status"
+   :description "Set the status of an org-mode task item.  Use this when you want to change the status of an existing task, for example setting it to DONE when completing it, or marking it WAITING if it's on hold."
+   :args
+   '((:name "id" :type integer :description "The ID of the task item" :required t)
+     (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)" :required t))))
+
+(defun ekg-agent-org--tool-list-items (&optional state)
+  "List all org task items.
+
+STATE if non-nil, filter by status (e.g., \"TODO\", \"DONE\").
+Returns text in Org format, as if they were in an Org file."
+  (ekg-agent--with-error-as-text
+    (let ((result (ekg-org-generate-org-content
+                   nil (when state
+                         (lambda (note)
+                           (string-equal
+                            (downcase state)
+                            (downcase (ekg-org--state note))))))))
+      (if (string-empty-p result)
+          (if state
+              (format "No org items found with state %s." state)
+            "No org items found.")
+        result))))
+
+(defconst ekg-agent-org-tool-list-items
+  (llm-make-tool
+   :function #'ekg-agent-org--tool-list-items
+   :name "list_org_items"
+   :description "Return all matching org-mode task items as an Org formatted string."
+   :args
+   '((:name "state" :type string
+            :description "Filter tasks by state (TODO, DONE, etc.)"))))
+
+(defun ekg-agent-org-plan-task ()
+  "Plan the current task and add the plan as child tasks using the agent."
+  (interactive)
+  (let* ((ekg-note (ekg-current-note-or-error-expanded))
+         (parent-id (ekg-note-id ekg-note))
+         (parent-note (ekg-get-note-with-id parent-id))
+         (question (format "Given the task '%s', create a plan to accomplish it by creating subtasks using the tool to add ekg org tasks or add information to existing ekg note tasks. The parent ekg note id is '%s'."
+                           (ekg-org--note-title parent-note)
+                           parent-id)))
+    (ekg-agent-ask-with-note question parent-id (list ekg-agent-org-tool-add-task))))
+
+(defun ekg-agent-org-run-task ()
+  "Execute the current org task autonomously using the agent.
+The agent receives the full org hierarchy as context (current task,
+parent, grandparent, etc.) and instructions to complete the task.
+When finished, the agent sets the task status (typically DONE),
+which ends the agent session.  No human input is required."
+  (interactive)
+  (let* ((ekg-note (ekg-current-note-or-error-expanded))
+         (task-id (ekg-note-id ekg-note))
+         (note (ekg-get-note-with-id task-id))
+         (hierarchy (ekg-org--get-hierarchy note))
+         (hierarchy-text (ekg-org--hierarchy-to-text hierarchy))
+         (title (or (ekg-org--note-title note) "(untitled)"))
+         (children (ekg-org-get-child-notes-of-id task-id))
+         (children-text (when children
+                          (concat "\n\nChild tasks:\n"
+                                  (mapconcat
+                                   (lambda (child)
+                                     (format "  - [%s] %s (id: %s)"
+                                             (condition-case nil (ekg-org--state child) (error "UNKNOWN"))
+                                             (or (ekg-org--note-title child) "(untitled)")
+                                             (ekg-note-id child)))
+                                   children "\n"))))
+         (prompt-notes (ekg-get-notes-cotagged-with-tags
+                        (ekg-note-tags note) ekg-llm-prompt-tag))
+         (prompt-context (when prompt-notes
+                           (concat "\n\nPrompt instructions from co-tagged notes:\n"
+                                   (mapconcat (lambda (n)
+                                                (string-trim
+                                                 (substring-no-properties
+                                                  (ekg-display-note-text n nil 'plaintext))))
+                                              prompt-notes "\n"))))
+         (context (concat
+                   "You are executing an org task autonomously. Here is the full task hierarchy, "
+                   "from the root task down to the current task you must execute:\n\n"
+                   hierarchy-text
+                   (or children-text "")
+                   (or prompt-context "")
+                   "\n\n"
+                   (format "The current date and time is %s." (format-time-string "%F %R"))))
+         (question (concat
+                    (format "Execute the following task: '%s' (note id: %s).\n\n" title task-id)
+                    "Complete this task using the tools available to you. "
+                    "You should NOT ask the user for input. Work autonomously.\n\n"
+                    "When you are done, you MUST call the `set_org_item_status` tool to "
+                    "set this task's status (typically to DONE, or WAITING if blocked). "
+                    "Calling `set_org_item_status` will end your session.\n\n"
+                    "Before setting the status, use `display_result_in_popup` to tell the user what you did.")))
+    (ekg-agent--iterate (llm-make-chat-prompt
+                         question
+                         :context (concat (ekg-agent-instructions-intro) "\n\n" context)
+                         :tools (ekg-agent--tools
+                                 (list ekg-agent-tool-popup-result
+                                       ekg-agent-org-tool-add-task
+                                       ekg-agent-org-tool-set-status
+                                       ekg-agent-org-tool-list-items))
+                         :tool-options (make-llm-tool-options :tool-choice 'any))
+                        0
+                        (ekg-agent--make-status-callback)
+                        '("set_org_item_status")
+                        (ekg-agent--timeout-deadline))))
 
 (provide 'ekg-agent)
 

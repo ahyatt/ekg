@@ -1,0 +1,143 @@
+#!/bin/bash
+# ekg-org-add-child - Create a child org task under a parent task
+#
+# Usage: ekg-org-add-child <parent-id> --title "title" [--note "content"] [--tag tag1]
+#        [--status TODO] [--property KEY=VALUE]
+
+set -e
+
+PARENT_ID=""
+TITLE=""
+NOTE_TEXT=""
+TAGS=()
+STATUS="TODO"
+PROPERTIES=()
+DAEMON_NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --title)
+            TITLE="$2"
+            shift 2
+            ;;
+        --note)
+            NOTE_TEXT="$2"
+            shift 2
+            ;;
+        --tag)
+            TAGS+=("$2")
+            shift 2
+            ;;
+        --status)
+            STATUS="$2"
+            shift 2
+            ;;
+        --property)
+            PROPERTIES+=("$2")
+            shift 2
+            ;;
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-org-add-child <parent-id> --title \"title\" [OPTIONS]"
+            echo ""
+            echo "Create a child org task under an existing parent task."
+            echo ""
+            echo "Options:"
+            echo "  --title TEXT        Task title/headline (required)"
+            echo "  --note TEXT         Task content/description (default: empty)"
+            echo "  --tag TAG           Additional tags (repeatable)"
+            echo "  --status STATUS     Task status: TODO, DONE, WAITING, etc. (default: TODO)"
+            echo "  --property KEY=VAL  Set an org property (repeatable, e.g. --property CATEGORY=work)"
+            echo "  --daemon NAME       Emacs daemon name (optional)"
+            exit 0
+            ;;
+        *)
+            if [[ -z "$PARENT_ID" ]]; then
+                PARENT_ID="$1"
+            else
+                echo "Error: Unexpected argument: $1"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$PARENT_ID" ]]; then
+    echo "Error: Parent task ID is required"
+    exit 1
+fi
+
+if [[ -z "$TITLE" ]]; then
+    echo "Error: --title is required"
+    exit 1
+fi
+
+# Build extra tags elisp list
+TAGS_ELISP="("
+for tag in "${TAGS[@]}"; do
+    escaped="${tag//\"/\\\"}"
+    TAGS_ELISP+="\"$escaped\" "
+done
+TAGS_ELISP="${TAGS_ELISP% })"
+
+# Escape strings for elisp
+TITLE_ELISP="${TITLE//\\/\\\\}"
+TITLE_ELISP="${TITLE_ELISP//\"/\\\"}"
+
+NOTE_ELISP="${NOTE_TEXT//\\/\\\\}"
+NOTE_ELISP="${NOTE_ELISP//\"/\\\"}"
+NOTE_ELISP="${NOTE_ELISP//$'\n'/\\n}"
+
+STATUS_LOWER=$(echo "$STATUS" | tr '[:upper:]' '[:lower:]')
+
+# Build property-setting expressions
+PROP_EXPRS=""
+for prop in "${PROPERTIES[@]}"; do
+    KEY="${prop%%=*}"
+    VALUE="${prop#*=}"
+    if [[ "$KEY" == "$prop" ]]; then
+        echo "Error: --property requires KEY=VALUE format, got: $prop" >&2
+        exit 1
+    fi
+    KEY_ELISP="${KEY//\\/\\\\}"
+    KEY_ELISP="${KEY_ELISP//\"/\\\"}"
+    VALUE_ELISP="${VALUE//\\/\\\\}"
+    VALUE_ELISP="${VALUE_ELISP//\"/\\\"}"
+    PROP_EXPRS+="
+        (ekg-org-set-property note \"$KEY_ELISP\" \"$VALUE_ELISP\")"
+done
+
+ELISP_EXPR="(progn
+  (require 'ekg)
+  (require 'ekg-org)
+  (ekg-connect)
+  (let ((parent (ekg-get-note-with-id $PARENT_ID)))
+    (if (null parent)
+        (error \"Parent note %s not found\" $PARENT_ID)
+      (let ((note (ekg-note-create
+                   :text \"$NOTE_ELISP\"
+                   :mode 'org-mode
+                   :tags (append (list ekg-org-task-tag
+                                       (concat ekg-org-state-tag-prefix \"$STATUS_LOWER\"))
+                                 '$TAGS_ELISP)
+                   :properties (list :titled/title (list \"$TITLE_ELISP\")
+                                     :org/parent $PARENT_ID))))$PROP_EXPRS
+        (ekg-save-note note)
+        (format \"%s\" (ekg-note-id note))))))"
+
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
+    echo "Error: Failed to create child task. Is the Emacs daemon running?" >&2
+    echo "$OUTPUT" >&2
+    exit 1
+fi
+
+echo "$OUTPUT" | sed 's/^"//; s/"$//'

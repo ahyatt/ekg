@@ -1,10 +1,10 @@
 ;;; ekg.el --- A system for recording and linking information -*- lexical-binding: t -*-
 
-;; Copyright (c) 2022-2025  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2022-2026  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.6.1") (emacs "28.1") (llm "0.18.0"))
+;; Package-Requires: ((triples "0.6.1") (emacs "28.1") (llm "0.18.0") (vui "1.0.0"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.8.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -46,6 +46,7 @@
 (declare-function markdown-follow-thing-at-point "markdown-mode")
 (declare-function markdown-wiki-link-p "markdown-mode")
 (declare-function markdown-wiki-link-link "markdown-mode")
+(declare-function ekg-org-view--note-at-point "ekg-org")
 
 ;;; Code:
 
@@ -184,6 +185,14 @@ Otherwise the same format as `ekg-display-note-template'."
 (defcustom ekg-notes-display-images t
   "Whether images are displayed by default."
   :type 'boolean
+  :group 'ekg)
+
+(defcustom ekg-header-hidden-properties nil
+  "List of property keywords to hide from the header line.
+Each element should be a keyword like `:embedding/embedding'.
+Packages that add properties unsuitable for display (such as
+large vectors or internal IDs) should add entries via `add-to-list'."
+  :type '(repeat symbol)
   :group 'ekg)
 
 (defcustom ekg-save-no-message nil
@@ -342,8 +351,11 @@ This will be the location of the database file."
                      (when (or (null (plist-get ekg-plist :version))
                                (version-list-< (plist-get ekg-plist :version) (version-to-list ekg-version)))
                        (ekg-add-schema)
-                       (ekg-upgrade-db (plist-get ekg-plist :version))
-                       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))))
+                       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version)))
+                     ;; Always run upgrades — they are idempotent and
+                     ;; handle invariants that may need to be
+                     ;; re-established even without a version change.
+                     (ekg-upgrade-db (plist-get ekg-plist :version)))
                    (unless (triples-backups-configuration ekg-db)
                      (triples-backups-setup ekg-db ekg-default-num-backups
                                             ekg-default-backups-strategy)))
@@ -413,6 +425,17 @@ This is not suitable for generating a large number of IDs in a
 small time frame.  About one ID per second is reasonable."
   (sxhash (cons (time-convert (current-time) 'integer)  (random 100))))
 
+(defun ekg--plist-without-key (plist key)
+  "Return a copy of PLIST with all occurrences of KEY removed."
+  (let (result)
+    (while plist
+      (if (eq (car plist) key)
+          (setq plist (cddr plist))
+        (push (car plist) result)
+        (push (cadr plist) result)
+        (setq plist (cddr plist))))
+    (nreverse result)))
+
 (defun ekg--normalize-tag (tag)
   "Return a normalized version of TAG.
 No tag should be input from the user without being normalized
@@ -456,6 +479,20 @@ if it is time for one, according to the settings in
            (error msg (cdr err))
          (lwarn :error 'ekg msg (cdr err)))))))
 
+(defun ekg--virtual-reversed-p (combined-prop)
+  "Return non-nil if COMBINED-PROP is a virtual-reversed property."
+  (plist-get (triples-properties-for-predicate ekg-db combined-prop)
+             :base/virtual-reversed))
+
+(defun ekg--filter-virtual-reversed (properties)
+  "Return PROPERTIES with virtual-reversed properties removed."
+  (let ((result nil))
+    (cl-loop for (key value) on properties by #'cddr do
+             (let ((cpred (intern (substring (symbol-name key) 1))))
+               (unless (ekg--virtual-reversed-p cpred)
+                 (setq result (plist-put result key value)))))
+    result))
+
 (defun ekg-save-note (note)
   "Save NOTE in database, replacing note information there."
   (ekg-connect)
@@ -464,45 +501,48 @@ if it is time for one, according to the settings in
     (ekg--convert-inline-tags-to-links note))
   (ekg--populate-inline-tags note)
   (run-hook-with-args 'ekg-note-pre-save-hook note)
-  (triples-with-transaction
-    ekg-db
-    (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
-    (triples-set-type ekg-db (ekg-note-id note) 'text
-                      :text (ekg-note-text note)
-                      :mode (ekg-note-mode note))
-    ;; Delete any previous linked inlines.
-    (cl-loop for inline-id in (triples-subjects-with-predicate-object
-                               ekg-db 'inline/for-text (ekg-note-id note))
-             do (triples-remove-type ekg-db inline-id 'inline))
-    ;; Now store the new inlines.
-    (cl-loop for inline in (ekg-note-inlines note) do
-             (triples-set-type ekg-db (format "%S/pos:%d" (ekg-note-id note)
-                                              (ekg-inline-pos inline))
-                               'inline
-                               :command (car (ekg-inline-command inline))
-                               :args (cdr (ekg-inline-command inline))
-                               :pos (ekg-inline-pos inline)
-                               :for-text (ekg-note-id note)
-                               :type (ekg-inline-type inline)))
-    ;; Note that we recalculate modified time here, since we are modifying the
-    ;; entity.
-    (let ((modified-time (time-convert (current-time) 'integer)))
-      (triples-set-type ekg-db (ekg-note-id note) 'time-tracked
-                        :creation-time (ekg-note-creation-time note)
-                        :modified-time modified-time)
-      (setf (ekg-note-modified-time note) modified-time))
-    (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
-    (apply #'triples-set-types ekg-db (ekg-note-id note) (ekg-note-properties note))
-    ;; For any properties that no longer have a value, delete the type.  Iterate
-    ;; over the plist, and for each key, if the value is nil, delete the type.
-    (let ((empty-types)
-          (nonempty-types))
-      (cl-loop for (key value) on (ekg-note-properties note) by #'cddr do
-               (push (car (triples-combined-to-type-and-prop key))
-                     (if value nonempty-types empty-types)))
-      (mapc (lambda (type) (triples-remove-type ekg-db (ekg-note-id note) type))
-            (seq-difference empty-types nonempty-types)))
-    (run-hook-with-args 'ekg-note-save-hook note))
+  (let ((saveable-props (ekg--filter-virtual-reversed
+                         (ekg-note-properties note))))
+    (triples-with-transaction
+      ekg-db
+      (triples-set-type ekg-db (ekg-note-id note) 'tagged :tag (ekg-note-tags note))
+      (triples-set-type ekg-db (ekg-note-id note) 'text
+                        :text (ekg-note-text note)
+                        :mode (ekg-note-mode note))
+      ;; Delete any previous linked inlines.
+      (cl-loop for inline-id in (triples-subjects-with-predicate-object
+                                 ekg-db 'inline/for-text (ekg-note-id note))
+               do (triples-remove-type ekg-db inline-id 'inline))
+      ;; Now store the new inlines.
+      (cl-loop for inline in (ekg-note-inlines note) do
+               (triples-set-type ekg-db (format "%S/pos:%d" (ekg-note-id note)
+                                                (ekg-inline-pos inline))
+                                 'inline
+                                 :command (car (ekg-inline-command inline))
+                                 :args (cdr (ekg-inline-command inline))
+                                 :pos (ekg-inline-pos inline)
+                                 :for-text (ekg-note-id note)
+                                 :type (ekg-inline-type inline)))
+      ;; Note that we recalculate modified time here, since we are modifying the
+      ;; entity.
+      (let ((modified-time (time-convert (current-time) 'integer)))
+        (triples-set-type ekg-db (ekg-note-id note) 'time-tracked
+                          :creation-time (ekg-note-creation-time note)
+                          :modified-time modified-time)
+        (setf (ekg-note-modified-time note) modified-time))
+      (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) (ekg-note-tags note))
+      (apply #'triples-set-types ekg-db (ekg-note-id note) saveable-props)
+      ;; For any properties that no longer have a value, delete the type.
+      ;; Iterate over the plist, and for each key, if the value is nil, delete
+      ;; the type.
+      (let ((empty-types)
+            (nonempty-types))
+        (cl-loop for (key value) on saveable-props by #'cddr do
+                 (push (car (triples-combined-to-type-and-prop key))
+                       (if value nonempty-types empty-types)))
+        (mapc (lambda (type) (triples-remove-type ekg-db (ekg-note-id note) type))
+              (seq-difference empty-types nonempty-types)))
+      (run-hook-with-args 'ekg-note-save-hook note)))
   (ekg-backup)
   (set-buffer-modified-p nil))
 
@@ -568,6 +608,8 @@ Draft notes are not returned, unless TAGS contains the draft tag."
 If the ID does not exist, create a new note with that ID."
   (ekg-connect)
   (let* ((v (triples-get-subject ekg-db id))
+         (stored-types (triples-get-types ekg-db id))
+         (core-types '(text time-tracked inline titled tagged))
          (inlines (mapcar (lambda (iid)
                             (let ((iv (triples-get-type ekg-db iid
                                                         'inline)))
@@ -576,7 +618,20 @@ If the ID does not exist, create a new note with that ID."
                                                          (plist-get iv :command)
                                                          (plist-get iv :args))
                                                :type (plist-get iv :type))))
-                          (plist-get v :text/inlines))))
+                          (plist-get v :text/inlines)))
+         ;; Query extension types not already returned by triples-get-subject,
+         ;; to pick up virtual reversed properties like org/children.
+         (extra-props
+          (mapcan (lambda (type)
+                    (unless (or (memq type stored-types)
+                                (memq type core-types))
+                      (let ((type-data (triples-get-type ekg-db id type)))
+                        (when type-data
+                          (cl-loop for (k v) on type-data by #'cddr
+                                   nconc (list (intern (format ":%s/%s" type
+                                                               (substring (symbol-name k) 1)))
+                                               v))))))
+                  (ekg-note-cotypes))))
     (make-ekg-note :id id
                    :text (plist-get v :text/text)
                    :mode (plist-get v :text/mode)
@@ -584,17 +639,19 @@ If the ID does not exist, create a new note with that ID."
                    :tags (plist-get v :tagged/tag)
                    :creation-time (plist-get v :time-tracked/creation-time)
                    :modified-time (plist-get v :time-tracked/modified-time)
-                   :properties (map-into
-                                (map-filter
-                                 (lambda (plist-key _)
-                                   (not (member plist-key
-                                                '(:text/text
-                                                  :text/mode
-                                                  :text/inlines
-                                                  :tagged/tag
-                                                  :time-tracked/creation-time
-                                                  :time-tracked/modified-time)))) v)
-                                'plist))))
+                   :properties (append
+                                (map-into
+                                 (map-filter
+                                  (lambda (plist-key _)
+                                    (not (member plist-key
+                                                 '(:text/text
+                                                   :text/mode
+                                                   :text/inlines
+                                                   :tagged/tag
+                                                   :time-tracked/creation-time
+                                                   :time-tracked/modified-time)))) v)
+                                 'plist)
+                                extra-props))))
 
 (defun ekg-get-notes-with-title (title)
   "Get a list of note structs with TITLE."
@@ -1114,9 +1171,9 @@ This is needed to identify references to refresh when the subject is changed.")
           (push (ekg-truncate-at tags-part remaining-width) parts)
           (cl-decf remaining-width (length tags-part))))
 
-      ;; Add all other properties except vectors
+      ;; Add all other properties that are either text or lists of text.
       (map-do (lambda (prop value)
-                (unless (vectorp value)
+                (unless (memq prop ekg-header-hidden-properties)
                   (push (ekg-truncate-at
                          (concat (propertize (ekg-property-name-for prop) 'face 'bold)
                                  ": "
@@ -1812,6 +1869,8 @@ Raise an error if there is no current note."
       (ewoc-data node)
     (error "No current note is available to act on!  Create a new note first with `ekg-capture'")))
 
+(declare-function ekg-org-view--note-at-point "ekg-org")
+
 (defun ekg-current-note-or-error-expanded ()
   "Return the current note based on context, or signal an error if none found.
 
@@ -1821,6 +1880,10 @@ intended to be used in any context where a note might be available."
            (ekg-current-note-or-error))
       (and (derived-mode-p 'ekg-note-mode)
            ekg-note)
+      (and (derived-mode-p 'ekg-org-view-mode)
+           (let ((id (ekg-org-view--note-at-point)))
+             (if id (ekg-get-note-with-id id)
+               (error "No task at point"))))
       (error "No current note found in context")))
 
 (defun ekg-notes-tag (&optional tag)
@@ -2362,7 +2425,12 @@ the database after the upgrade, in list form."
                        (ekg-note-trash note)))))
           (cl-loop for tag in trash-ids do
                    (triples-remove-type ekg-db tag 'tag)
-                   (triples-set-type ekg-db ekg-trash-tag 'tag)))))))
+                   (triples-set-type ekg-db ekg-trash-tag 'tag))))))
+  ;; Always ensure core note types are registered.  These can be
+  ;; lost when the develop branch changes without incrementing the
+  ;; version number.
+  (dolist (type '(text time-tracked inline titled tagged))
+    (triples-set-type ekg-db type 'ekg-note-type)))
 
 (defun ekg-tag-used-p (tag)
   "Return non-nil if TAG has useful information."

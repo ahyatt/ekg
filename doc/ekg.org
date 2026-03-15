@@ -75,6 +75,7 @@ triples library is already installed.
 * Changelog
 ** Version 0.9.0
 - Added =ekg-agent=, an autonomous agent that can help you with your notes, and =ekg-agent-note-response= to allow the agent to help with individual notes.
+- Added =ekg-org=, an org-mode task integration module.  Tasks are stored in the ekg database and appear in the org agenda via a virtual file.  Includes =ekg-org-view=, an interactive hierarchical task view for collaborating with AI agents on task management.
 - Changed how note metadata is represented in the note editing UI.
 - Pushed more configuration into the triple database itself.
 ** Version 0.8.0
@@ -249,7 +250,11 @@ with their tag.
 The note buffer is a buffer of the particular mode for the node, which can change based off the setting, and can be different for different notes.  It acts mosty just like that mode, but has a header that displays some of the properties of the note, and lets you edit those properties.
 
 The properties shown in the note property area come from the data stored in the
-database for the entity.  At a minimum, there will be tags.
+database for the entity. At a minimum, there will be tags. Some properties are
+not useful to display (for example, embedding vectors or internal parent/child
+IDs). These can be hidden by adding the property keyword to
+~ekg-header-hidden-properties~. Packages such as =ekg-embedding= and =ekg-org=
+automatically add their internal properties to this list.
 
 For the common cases, there are special commands, available under the =C-c /= prefix keymap:
 
@@ -335,8 +340,9 @@ Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
 of funtionality, but much of it depends on the assumption that the buffer is all
 for use by org-mode (not true in this case, because of the properties portion),
 and the assumption that the buffer is visiting a file, which is also not
-true.  In particular, attachments will not work, and ekg-notes cannot be added to
-the agenda.
+true.  In particular, attachments will not work.  However, the =ekg-org= module
+(see [[#org-tasks][Org Tasks]]) provides org-agenda integration by presenting ekg tasks as a
+virtual org file.
 * Capturing notes
 =ekg-capture= is the command to capture a note.  In ekg this is probably the most
 frequently used command.  It will create a new buffer called =*EKG Capture*=.  By
@@ -1206,8 +1212,10 @@ In the capture mode, this. is equivalent to saving periodically (to drafts).  In
 :END:
 ekg can export notes as denotes. Denote is a note taking and file
 naming tool. Primary reason for export is taking backup of your notes
-in a git backed repository. Import is in road map (PR is welcome). To
-export to denote, =ekg-denote= module is required.
+in a git backed repository. Import is in road map (PR is welcome).
+
+To export to denote, =ekg-denote= module is required, which is a separate package
+from ekg in MELPA.
 
 #+begin_src emacs-lisp
   (use-package ekg-denote
@@ -1361,6 +1369,178 @@ Gnus.  Other importing methods may be available in the future.
 While in a Gnus article buffer, you can execute the command =ekg-email-from-gnus=.
 
 Once mails are imported, you can search for email addresses associated with them with =ekg-email-show-notes-with-address=.
+** Org Tasks
+:PROPERTIES:
+:CUSTOM_ID: org-tasks
+:END:
+The =ekg-org= module integrates ekg with =org-mode=, allowing ekg notes to serve
+as a source of tasks for the org agenda and providing a dedicated task view.
+This is not a substitute for =org-mode= --- it is a lightweight, experimental
+alternative designed for situations where a human and an AI agent need to
+collaborate on a set of tasks, with either party able to create, update, or
+reorganize tasks at any time.  The module includes full org-agenda integration,
+so tasks managed in ekg appear alongside your regular org tasks.
+
+=ekg-org= is part of the main =ekg= package and does not need to be installed
+separately, but it does need to be required:
+
+#+begin_src emacs-lisp
+(require 'ekg-org)
+#+end_src
+
+*** Data model
+
+Tasks in =ekg-org= are ordinary ekg notes with special tags and properties:
+
+- *Tags*: Every task has the =org/task= tag.  Its TODO state is stored as a tag
+  with the prefix =org/state/= (e.g., =org/state/todo=, =org/state/done=).
+  Archived tasks additionally carry the =org/archive= tag.  Any other tags are
+  preserved as regular ekg tags.
+
+- *Title*: Each task must have a title (stored in the =:titled/title= property),
+  which becomes the org headline when rendered.
+
+- *Hierarchy*: Tasks can have parent-child relationships via the =:org/parent=
+  property (an integer note ID).  Children are discovered through a virtual
+  reversed property =:org/children=.  There is no limit to nesting depth.
+
+- *Scheduling*: Tasks can have =:org/deadline= and =:org/scheduled= properties
+  (stored as unix timestamps), which appear as standard org timestamps.
+
+- *Ordering*: Sibling tasks are ordered by the =:org/sort-order= property
+  (defaulting to creation time when unset).
+
+- *Org properties*: Arbitrary org-style properties (uppercase key/value pairs
+  following org property syntax) can be attached to tasks via the
+  =:org/property= property, and manipulated with =ekg-org-get-property=,
+  =ekg-org-set-property=, and =ekg-org-remove-property=.
+
+*** Org agenda integration
+
+When =ekg-org= is loaded, it registers a virtual file =/ekg:tasks.org= with the
+org agenda.  This file is generated on the fly from your ekg tasks and is
+automatically added to =org-agenda-files=.  No actual file is written to disk;
+a file-name handler intercepts Emacs's file operations and returns the generated
+content.
+
+This means that =M-x org-agenda= will include your ekg tasks alongside any
+other org files you use.  The virtual file is re-generated whenever it is
+read, and its modification time tracks the ekg database file, so the agenda
+picks up changes automatically.
+
+Archived tasks are served from a separate virtual file =/ekg:tasks.org_archive=.
+
+*** Capturing tasks
+
+You can capture a new org task interactively with =ekg-org-capture=, which
+prompts for a title and creates a new note pre-tagged with =org/task= and
+=org/state/todo=.  You can also create tasks programmatically:
+
+#+begin_src emacs-lisp
+(ekg-save-note
+ (ekg-note-create
+  :text "Description of the work."
+  :mode 'org-mode
+  :tags '("org/task" "org/state/todo" "my-project")
+  :properties '(:titled/title ("Implement feature X"))))
+#+end_src
+
+*** Changing task state
+
+The command =ekg-org-change-state= (available in note editing buffers and
+=ekg-notes-mode= buffers) prompts for a new TODO state from
+=org-todo-keywords-1= and updates the task's state tag accordingly.
+
+*** The ekg-org-view
+
+=ekg-org-view-mode= is a read-only, interactive view of your task hierarchy,
+built with the =vui= library.  It presents tasks as an indented outline that
+looks like an org buffer (with fontified headings, TODO keywords, and tags) but
+is backed entirely by the ekg database.
+
+To open the view, call =ekg-org-view=.  For archived tasks, call
+=ekg-org-archive-view=.  To focus on a single task and its subtree, call
+=ekg-org-view-task=.
+
+The view refreshes automatically whenever any ekg note is saved, so changes
+made by you, by an agent, or by the command-line tools are reflected
+immediately.
+
+The keybindings are modeled after org-mode's speed keys (the single-letter
+shortcuts available when point is at the beginning of a headline), so they
+should feel familiar to org-mode users.
+
+**** Navigation
+
+The following keybindings are available in =ekg-org-view-mode=:
+
+| Key     | Command                          | Description                       |
+|---------+----------------------------------+-----------------------------------|
+| =n=     | =ekg-org-view-next-heading=      | Move to the next heading          |
+| =p=     | =ekg-org-view-previous-heading=  | Move to the previous heading      |
+| =f=     | =ekg-org-view-next-sibling=      | Move to the next same-level heading |
+| =b=     | =ekg-org-view-previous-sibling=  | Move to the previous same-level heading |
+| =u=     | =ekg-org-view-up-heading=        | Move to the parent heading        |
+
+**** Actions
+
+| Key     | Command                          | Description                       |
+|---------+----------------------------------+-----------------------------------|
+| =t=     | =ekg-org-view-cycle-state=       | Change the TODO state             |
+| =TAB=   | =ekg-org-view-toggle-collapse=   | Collapse or expand the subtree    |
+| =RET=   | =ekg-org-view-open-note=         | Open the note for editing in ekg  |
+| =c=     | =ekg-org-view-create-child=      | Create a child task under point   |
+| =C=     | =ekg-org-view-create-sibling=    | Create a sibling task after point |
+| =a=     | =ekg-org-view-archive=           | Archive the task at point         |
+| =d=     | =ekg-org-view-delete=            | Trash (soft-delete) the task      |
+| =L=     | =ekg-org-view-promote=           | Promote: make task a sibling of its parent |
+| =R=     | =ekg-org-view-demote=            | Demote: make task a child of its previous sibling |
+| =g=     | =ekg-org-view-refresh=           | Manually refresh the view         |
+
+**** How it differs from org-mode
+
+=ekg-org-view= is intentionally simpler than a full org-mode buffer:
+
+- Tasks are stored in the ekg database, not in files.  This makes them
+  accessible to agents, command-line tools, and programmatic APIs without
+  needing to parse org syntax.
+- The view is read-only.  To edit a task's body text, press =RET= to open it in
+  ekg's normal note-editing buffer.
+- There is no in-buffer text editing, column view, clocking, or other advanced
+  org features.  The focus is on task organization (creating, reordering,
+  re-parenting, and state changes).
+- Because tasks live in the database, both a human in Emacs and an external
+  agent can modify tasks concurrently.  The view auto-refreshes to reflect all
+  changes.
+
+*** Agent integration
+
+When =ekg-agent= is loaded alongside =ekg-org=, the agent gains tools for
+working with org tasks:
+
+- *add_org_task*: Create a new task with a title, description, tags, optional
+  parent, state, deadline, and scheduled date.
+- *set_org_task_status*: Change the TODO state of an existing task.
+- *list_org_items*: List all active tasks, optionally filtered by state.
+
+These tools are registered automatically by =ekg-org-initialize= when
+=ekg-agent= is available.  This allows the agent to create sub-tasks, mark
+items done, and review your task list as part of its autonomous operation.
+
+*** Command-line tools
+
+Two command-line scripts are provided in =agent_tools/= for use by external
+agents:
+
+- =ekg-org-add-child=: Create a child task under an existing parent.  Supports
+  =--title=, =--note=, =--tag=, =--status=, and =--property KEY=VALUE= options.
+- =ekg-org-edit=: Edit an existing task's title, content, status, or org
+  properties.  Supports =--title=, =--note=, =--append=, =--status=,
+  =--set-property KEY=VALUE=, and =--remove-property KEY= options.
+
+These complement the general =ekg-add-note= and =ekg-read= scripts.  See the
+=agent_tools/skill.md= file for complete usage documentation.
+
 ** Agent
 :PROPERTIES:
 :CUSTOM_ID: agent
@@ -1370,6 +1550,16 @@ notes.  This agent can review your notes and org-mode agenda, searching across
 notes by embeddings or tags as appropriate, and proactively create new notes to
 help you, such as offering advice, pointing out connections, or suggesting
 resources.
+
+=ekg-agent= is a separate package from =ekg= and must be installed separately.
+
+#+begin_src emacs-lisp
+(use-package ekg-agent
+  :init
+  (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
+  (add-to-list 'ekg-agent-extra-tools (list ekg-agent-tool-run-elisp
+                                            ekg-agent-tool-code)))
+#+end_src
 
 To use this module, you must have an LLM provider configured as described in the
 [[#llm][LLM]] section.  You can then load the agent:

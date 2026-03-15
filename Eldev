@@ -1,7 +1,9 @@
                                         ; -*- mode: emacs-lisp; lexical-binding: t -*-
 
 (eldev-use-package-archive 'gnu-elpa)
+(eldev-use-package-archive 'melpa-unstable)
 (eldev-use-plugin 'maintainer)
 (eldev-add-extra-dependencies 'test '(:package markdown-mode :archive melpa))
 (eldev-add-extra-dependencies 'test 'denote)
 (eldev-add-extra-dependencies 'test '(:package async :archive melpa))
+(eldev-add-extra-dependencies 'test '(:package vui :archive melpa-unstable))
