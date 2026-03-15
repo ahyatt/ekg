@@ -44,6 +44,12 @@
 (require 'llm-test)
 (require 'yaml)
 (require 'ert)
+;; Disable futur's background thread before loading: on macOS NS port,
+;; `message' (or any redisplay) from a non-main thread causes an
+;; NSException → GIL deadlock.  With this nil, futur dispatches all
+;; callbacks via `run-with-timer' on the main thread instead.
+(defvar futur-use-threads)
+(setq futur-use-threads nil)
 (require 'futur)
 
 (defgroup ekg-agent-bench nil
@@ -143,7 +149,7 @@ Returns a list of `ekg-agent-bench-group' structs."
 
 (defconst ekg-agent-bench--required-libraries
   '("ekg" "ekg-agent" "ekg-llm" "ekg-embedding" "ekg-org"
-    "llm" "llm-openai" "llm-claude" "llm-vertex" "llm-ollama"
+    "llm" "llm-openai" "llm-claude" "llm-vertex" "llm-gemini" "llm-ollama"
     "llm-prompt"
     "plz" "plz-media-type" "plz-event-source"
     "triples" "triples-backups"
@@ -215,32 +221,36 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
 Like `llm-test--start-emacs' but with better error reporting when
 the daemon fails to start.  Blocks until the daemon is ready.  Use
 `ekg-agent-bench--start-emacs-async' from timer/callback contexts."
+  ;; Use `bench-server-name' not `server-name': the latter is a
+  ;; defcustom from server.el (special/dynamic variable), so a
+  ;; let-binding would NOT be captured by closures that run outside
+  ;; this dynamic extent (e.g. futur callbacks, timers).
   (let* ((load-paths (ekg-agent-bench--compute-load-paths))
          (error-file (make-temp-file "ekg-bench-init-error-"))
          (init-forms (ekg-agent-bench--init-forms error-file))
-         (server-name (format "ekg-bench-%d-%d"
-                              (emacs-pid)
-                              (cl-incf ekg-agent-bench--server-counter)))
+         (bench-server-name (format "ekg-bench-%d-%d"
+                                    (emacs-pid)
+                                    (cl-incf ekg-agent-bench--server-counter)))
          (socket-dir (make-temp-file "ekg-bench-socket-" t))
          (init-file (make-temp-file "ekg-bench-init-" nil ".el"))
-         (buf-name (format " *ekg-bench-emacs-%s*" server-name)))
+         (buf-name (format " *ekg-bench-emacs-%s*" bench-server-name)))
     (with-temp-file init-file
       (insert (format "(setq server-socket-dir %S server-name %S)\n"
-                      socket-dir server-name))
+                      socket-dir bench-server-name))
       (dolist (dir load-paths)
         (insert (format "(add-to-list 'load-path %S)\n" dir)))
       (dolist (form init-forms)
         (insert (format "%S\n" form))))
     (let* ((emacs-bin (ekg-agent-bench--emacs-executable))
            (process (start-process
-                     (format "ekg-bench-emacs-%s" server-name)
+                     (format "ekg-bench-emacs-%s" bench-server-name)
                      buf-name
                      emacs-bin
                      "-Q"
                      "-l" init-file
-                     (format "--daemon=%s" server-name)))
-          (socket-file (expand-file-name server-name socket-dir))
-          (deadline (+ (float-time) llm-test-timeout)))
+                     (format "--daemon=%s" bench-server-name)))
+           (socket-file (expand-file-name bench-server-name socket-dir))
+           (deadline (+ (float-time) llm-test-timeout)))
       ;; Wait for the daemon to be ready.
       (while (and (< (float-time) deadline)
                   (process-live-p process)
@@ -285,7 +295,7 @@ the daemon fails to start.  Blocks until the daemon is ready.  Use
           (error "Daemon started but init failed:\n%s" init-error)))
       (ignore-errors (delete-file error-file))
       (let ((info (list :process process
-                        :server-name server-name
+                        :server-name bench-server-name
                         :socket-dir socket-dir
                         :init-file init-file)))
         (llm-test--eval-in-emacs
@@ -321,25 +331,29 @@ Returns a futur that resolves to an emacs-info plist.  Unlike
   (let* ((load-paths (ekg-agent-bench--compute-load-paths))
          (error-file (make-temp-file "ekg-bench-init-error-"))
          (init-forms (ekg-agent-bench--init-forms error-file))
-         (server-name (format "ekg-bench-%d-%d"
-                              (emacs-pid)
-                              (cl-incf ekg-agent-bench--server-counter)))
+         ;; Use `bench-server-name' not `server-name': the latter is a
+         ;; defcustom from server.el (special/dynamic variable), so a
+         ;; let-binding would NOT be captured by futur-let* closures
+         ;; that run outside this dynamic extent.
+         (bench-server-name (format "ekg-bench-%d-%d"
+                                    (emacs-pid)
+                                    (cl-incf ekg-agent-bench--server-counter)))
          (socket-dir (make-temp-file "ekg-bench-socket-" t))
          (init-file (make-temp-file "ekg-bench-init-" nil ".el"))
-         (buf-name (format " *ekg-bench-emacs-%s*" server-name)))
+         (buf-name (format " *ekg-bench-emacs-%s*" bench-server-name)))
     (with-temp-file init-file
       (insert (format "(setq server-socket-dir %S server-name %S)\n"
-                      socket-dir server-name))
+                      socket-dir bench-server-name))
       (dolist (dir load-paths)
         (insert (format "(add-to-list 'load-path %S)\n" dir)))
       (dolist (form init-forms)
         (insert (format "%S\n" form))))
     (let* ((emacs-bin (ekg-agent-bench--emacs-executable))
            (process (start-process
-                     (format "ekg-bench-emacs-%s" server-name)
+                     (format "ekg-bench-emacs-%s" bench-server-name)
                      buf-name emacs-bin "-Q" "-l" init-file
-                     (format "--daemon=%s" server-name)))
-           (socket-file (expand-file-name server-name socket-dir))
+                     (format "--daemon=%s" bench-server-name)))
+           (socket-file (expand-file-name bench-server-name socket-dir))
            (deadline (+ (float-time) llm-test-timeout))
            (cleanup (lambda ()
                       (ignore-errors (delete-directory socket-dir t))
@@ -359,7 +373,7 @@ Returns a futur that resolves to an emacs-info plist.  Unlike
             (error "Daemon started but init failed:\n%s" init-error)))
         (ignore-errors (delete-file error-file))
         (let ((info (list :process process
-                          :server-name server-name
+                          :server-name bench-server-name
                           :socket-dir socket-dir
                           :init-file init-file)))
           ;; Set frame size asynchronously.
@@ -716,15 +730,40 @@ delivers VALUE through a timer on the main thread."
 
 (defun ekg-agent-bench--ensure-no-background-thread ()
   "Ensure the futur background thread is not active.
-The futur library creates a background thread when `futur-funcall'
-is used.  That thread holds the Emacs GIL during continuations,
-freezing the UI.  We never need it — all our async work goes through
-process sentinels and timers."
+The futur library creates a background thread when `futur-use-threads'
+is non-nil.  That thread holds the Emacs GIL during continuations,
+and calling `message' from it crashes the macOS NS port.  We never
+need it — all our async work goes through process sentinels and timers.
+
+Uses `error' signal instead of `quit' because the thread runs with
+`inhibit-quit' t."
   (when (and (boundp 'futur--background) futur--background)
     (when (and (fboundp 'thread-alive-p)
                (thread-alive-p futur--background))
-      (thread-signal futur--background 'quit nil))
+      ;; Signal `error' not `quit' — the thread has (inhibit-quit t).
+      (thread-signal futur--background 'error
+                     '("futur background thread killed by ekg-agent-bench"))
+      ;; Give the thread a moment to die.
+      (sit-for 0.1))
     (setq futur--background nil)))
+
+(defun ekg-agent-bench--safe-message (fmt &rest args)
+  "Like `message' but safe to call from any thread.
+On the main thread, calls `message' directly.  On a background thread,
+bounces via `run-at-time' to avoid the macOS NS port deadlock where
+`message' triggers redisplay from a non-main thread."
+  (if (eq (current-thread) main-thread)
+      (apply #'message fmt args)
+    (apply #'run-at-time 0 nil #'message fmt args)))
+
+(defun ekg-agent-bench--safe-funcall (fn &rest args)
+  "Like `funcall' but guaranteed to run FN on the main thread.
+If already on the main thread, calls directly.  Otherwise bounces
+via `run-at-time'.  Use for callbacks that do UI work (e.g.
+`pop-to-buffer', `ekg-agent-bench--display-results')."
+  (if (eq (current-thread) main-thread)
+      (apply fn args)
+    (apply #'run-at-time 0 nil fn args)))
 
 (defun ekg-agent-bench--eval-async (emacs-info expr)
   "Evaluate EXPR in the subprocess asynchronously.
@@ -801,8 +840,8 @@ Returns a futur resolving to a plist."
               (when (string-match "Tool: \\([^ ]+\\)" segment)
                 (push (match-string 1 segment) tools))))))
       (ekg-agent-bench--resolved (list :iterations iterations
-                        :tools-used (delete-dups (nreverse tools))
-                        :log content)))))
+                                       :tools-used (delete-dups (nreverse tools))
+                                       :log content)))))
 
 (defun ekg-agent-bench--eval-verify-async (emacs-info verify-expr)
   "Async version of `ekg-agent-bench--eval-verify'.
@@ -822,7 +861,7 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
         (timeout (or (ekg-agent-bench-task-timeout task)
                      ekg-agent-bench-default-timeout))
         (task-name (or (ekg-agent-bench-task-name task) "unnamed")))
-    (message "bench: running %s..." task-name)
+    (ekg-agent-bench--safe-message "bench: running %s..." task-name)
     (futur-let*
         ;; Group setup.
         ((setup-result
@@ -861,8 +900,8 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
       ;; Suppress byte-compiler warnings for unused variables.
       (ignore setup-result task-setup-result trigger-result)
       (let ((wall-time (- (float-time) start-time)))
-        (message "bench: %s completed (%s, %.0fs)"
-                 task-name status wall-time)
+        (ekg-agent-bench--safe-message "bench: %s completed (%s, %.0fs)"
+                                       task-name status wall-time)
         (ekg-agent-bench--resolved
          (make-ekg-agent-bench-result
           :name task-name
@@ -891,7 +930,7 @@ Calls CALLBACK with the final list of results (in order).
 Fully async: daemon start, setup, trigger, polling, and verification
 all use futur-based non-blocking IO."
   (if (null task-specs)
-      (funcall callback (nreverse results-so-far))
+      (ekg-agent-bench--safe-funcall callback (nreverse results-so-far))
     (let* ((spec (car task-specs))
            (group-setup (car spec))
            (task (cdr spec))
@@ -903,8 +942,9 @@ all use futur-based non-blocking IO."
          (if start-err
              ;; Daemon failed to start — record error and continue.
              (progn
-               (message "bench: daemon start failed for %s: %S"
-                        task-name start-err)
+               (ekg-agent-bench--safe-message
+                "bench: daemon start failed for %s: %S"
+                task-name start-err)
                (push (ekg-agent-bench--make-error-result
                       task-name
                       (format "Daemon start failed: %S" start-err))
@@ -918,7 +958,8 @@ all use futur-based non-blocking IO."
               (llm-test--stop-emacs emacs-info)
               (if err
                   (progn
-                    (message "bench: error running %s: %S" task-name err)
+                    (ekg-agent-bench--safe-message
+                     "bench: error running %s: %S" task-name err)
                     (push (ekg-agent-bench--make-error-result
                            task-name (format "%S" err))
                           results-so-far))
@@ -936,10 +977,10 @@ DIRECTORY defaults to the benchmarks/ subdirectory next to this file."
   (unless ekg-agent-bench-provider-form
     (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (let* ((dir (or directory
-                   (expand-file-name "benchmarks"
-                                     (file-name-directory
-                                      (or load-file-name
-                                          (locate-library "ekg-agent-bench"))))))
+                  (expand-file-name "benchmarks"
+                                    (file-name-directory
+                                     (or load-file-name
+                                         (locate-library "ekg-agent-bench"))))))
          (groups (ekg-agent-bench--load-directory dir))
          (all-results nil))
     (dolist (group groups)
@@ -964,10 +1005,10 @@ DIRECTORY defaults to the benchmarks/ subdirectory."
   (unless ekg-agent-bench-provider-form
     (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (let* ((dir (or directory
-                   (expand-file-name "benchmarks"
-                                     (file-name-directory
-                                      (or load-file-name
-                                          (locate-library "ekg-agent-bench"))))))
+                  (expand-file-name "benchmarks"
+                                    (file-name-directory
+                                     (or load-file-name
+                                         (locate-library "ekg-agent-bench"))))))
          (groups (ekg-agent-bench--load-directory dir))
          (found nil))
     (catch 'found
@@ -1004,10 +1045,10 @@ Results are displayed in *ekg-agent-bench* when all tasks complete."
     (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (ekg-agent-bench--ensure-no-background-thread)
   (let* ((dir (or directory
-                   (expand-file-name "benchmarks"
-                                     (file-name-directory
-                                      (or load-file-name
-                                          (locate-library "ekg-agent-bench"))))))
+                  (expand-file-name "benchmarks"
+                                    (file-name-directory
+                                     (or load-file-name
+                                         (locate-library "ekg-agent-bench"))))))
          (groups (ekg-agent-bench--load-directory dir))
          (task-specs nil))
     ;; Build a flat list of (group-setup . task) pairs.
@@ -1025,8 +1066,9 @@ Results are displayed in *ekg-agent-bench* when all tasks complete."
                  (lambda (results)
                    (ekg-agent-bench--display-results
                     results (format "%S" ekg-agent-bench-provider-form))
-                   (message "ekg-agent-bench: complete (%d tasks)"
-                            (length results))))))
+                   (ekg-agent-bench--safe-message
+                    "ekg-agent-bench: complete (%d tasks)"
+                    (length results))))))
 
 ;;;###autoload
 (defun ekg-agent-bench-run-one-async (task-name &optional directory)
@@ -1038,10 +1080,10 @@ Results are displayed in *ekg-agent-bench* when the task completes."
     (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (ekg-agent-bench--ensure-no-background-thread)
   (let* ((dir (or directory
-                   (expand-file-name "benchmarks"
-                                     (file-name-directory
-                                      (or load-file-name
-                                          (locate-library "ekg-agent-bench"))))))
+                  (expand-file-name "benchmarks"
+                                    (file-name-directory
+                                     (or load-file-name
+                                         (locate-library "ekg-agent-bench"))))))
          (groups (ekg-agent-bench--load-directory dir))
          (found nil))
     (catch 'found
@@ -1063,7 +1105,8 @@ Results are displayed in *ekg-agent-bench* when the task completes."
                    (lambda (results)
                      (ekg-agent-bench--display-results
                       results (format "%S" ekg-agent-bench-provider-form))
-                     (message "ekg-agent-bench: %s complete" task-name))))))
+                     (ekg-agent-bench--safe-message
+                      "ekg-agent-bench: %s complete" task-name))))))
 
 (provide 'ekg-agent-bench)
 
