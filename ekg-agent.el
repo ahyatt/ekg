@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((emacs "28.1") (ekg "0.8.0") async)
+;; Package-Requires: ((emacs "28.1") (ekg "0.8.0") (futur "1.2"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.0.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -37,7 +37,7 @@
 (require 'seq)
 (require 'json)
 (require 'subr-x)
-(require 'async)
+(require 'futur)
 
 ;; Forward declarations for variables defined later in this file.
 (defvar ekg-agent-base-tools)
@@ -376,20 +376,52 @@ CALLBACK is called with the result string when the process finishes."
 
 (defconst ekg-agent-tool-run-elisp
   (make-llm-tool :function (lambda (callback elisp return)
-                             (let ((proc
-                                    (async-start (lambda ()
-                                                   (let* (e
-                                                          (result
-                                                           (condition-case err
-                                                               (eval (read elisp))
-                                                             (error (setq e (format "%S" err))))))
-                                                     (or e
-                                                         (if (equal return "result")
-                                                             (format "%S" result)
-                                                           (buffer-substring-no-properties (point-min) (point-max))))))
-                                                 callback)))
-                               (when (processp proc)
-                                 (push proc ekg-agent--tool-processes))))
+                             (condition-case err
+                                 (let* ((output-buf (generate-new-buffer " *ekg-agent-elisp*" t))
+                                        (eval-expr
+                                         (prin1-to-string
+                                          `(princ
+                                            (let* (e
+                                                   (result
+                                                    (condition-case err
+                                                        (eval (read ,elisp))
+                                                      (error (setq e (format "%S" err))))))
+                                              (or e
+                                                  (if (equal ,return "result")
+                                                      (format "%S" result)
+                                                    (buffer-substring-no-properties
+                                                     (point-min) (point-max))))))))
+                                        (f (futur-process-call
+                                            (expand-file-name invocation-name
+                                                              invocation-directory)
+                                            nil output-buf nil
+                                            "--batch" "--eval" eval-expr)))
+                                   (push f ekg-agent--tool-processes)
+                                   (futur-bind
+                                    f
+                                    (lambda (exit-code)
+                                      (let ((output (with-current-buffer output-buf
+                                                      (buffer-string))))
+                                        (kill-buffer output-buf)
+                                        (run-at-time
+                                         0 nil
+                                         (lambda ()
+                                           (funcall callback
+                                                    (if (zerop exit-code)
+                                                        output
+                                                      (format "Error: Process exited with %d: %s"
+                                                              exit-code output)))))
+                                        nil))
+                                    (lambda (err)
+                                      (when (buffer-live-p output-buf)
+                                        (kill-buffer output-buf))
+                                      (run-at-time
+                                       0 nil
+                                       (lambda ()
+                                         (funcall callback (format "Error: %S" err))))
+                                      nil)))
+                               (error
+                                (funcall callback (format "Error: %s" (error-message-string err))))))
                  :name "run_elisp"
                  :description "Evaluate arbitrary Emacs Lisp and return the printed result of the final form."
                  :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate." :required t)
@@ -1342,10 +1374,14 @@ subprocesses.  Use \\[ekg-agent-continue] to resume."
   (when ekg-agent--current-request
     (ignore-errors (llm-cancel-request ekg-agent--current-request))
     (setq ekg-agent--current-request nil))
-  ;; Kill any active tool subprocesses.
-  (dolist (proc ekg-agent--tool-processes)
-    (when (process-live-p proc)
-      (ignore-errors (delete-process proc))))
+  ;; Kill any active tool subprocesses or abort futures.
+  (dolist (item ekg-agent--tool-processes)
+    (cond
+     ((futur-p item)
+      (ignore-errors (futur-abort item "force-cancelled")))
+     ((processp item)
+      (when (process-live-p item)
+        (ignore-errors (delete-process item))))))
   (setq ekg-agent--tool-processes nil)
   ;; Clean up orphaned tool-use interactions from the prompt.
   (when ekg-agent--prompt
@@ -1650,7 +1686,7 @@ DEADLINE is the deadline timestamp string (ignored if empty).
 SCHEDULED is the scheduled timestamp string (ignored if empty)."
   (ekg-agent--with-error-as-text
     (let* ((has-parent (and parent-id (not (equal parent-id 0))
-                           (not (string-empty-p (format "%s" parent-id)))))
+                            (not (string-empty-p (format "%s" parent-id)))))
            (note (ekg-note-create :text content
                                   :tags (append (list ekg-org-task-tag) tags
                                                 (when (and status (not (string-empty-p status)))
