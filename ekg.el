@@ -608,52 +608,53 @@ Draft notes are not returned, unless TAGS contains the draft tag."
 (defun ekg-get-note-with-id (id)
   "Get the note with ID, or nil if it does not exist."
   (ekg-connect)
-  (let* ((v (triples-get-subject ekg-db id))
-         (stored-types (triples-get-types ekg-db id))
-         (core-types '(text time-tracked inline titled tagged))
-         (inlines (mapcar (lambda (iid)
-                            (let ((iv (triples-get-type ekg-db iid
-                                                        'inline)))
-                              (make-ekg-inline :pos (plist-get iv :pos)
-                                               :command (cons
-                                                         (plist-get iv :command)
-                                                         (plist-get iv :args))
-                                               :type (plist-get iv :type))))
-                          (plist-get v :text/inlines)))
-         ;; Query extension types not already returned by triples-get-subject,
-         ;; to pick up virtual reversed properties like org/children.
-         (extra-props
-          (mapcan (lambda (type)
-                    (unless (or (memq type stored-types)
-                                (memq type core-types))
-                      (let ((type-data (triples-get-type ekg-db id type)))
-                        (when type-data
-                          (cl-loop for (k v) on type-data by #'cddr
-                                   nconc (list (intern (format ":%s/%s" type
-                                                               (substring (symbol-name k) 1)))
-                                               v))))))
-                  (ekg-note-cotypes))))
+  (let ((v (triples-get-subject ekg-db id)))
     (when v
-      (make-ekg-note :id id
-                     :text (plist-get v :text/text)
-                     :mode (plist-get v :text/mode)
-                     :inlines inlines
-                     :tags (plist-get v :tagged/tag)
-                     :creation-time (plist-get v :time-tracked/creation-time)
-                     :modified-time (plist-get v :time-tracked/modified-time)
-                     :properties (append
-                                  (map-into
-                                   (map-filter
-                                    (lambda (plist-key _)
-                                      (not (member plist-key
-                                                   '(:text/text
-                                                     :text/mode
-                                                     :text/inlines
-                                                     :tagged/tag
-                                                     :time-tracked/creation-time
-                                                     :time-tracked/modified-time)))) v)
-                                   'plist)
-                                  extra-props)))))
+      (let* ((stored-types (triples-get-types ekg-db id))
+             (core-types '(text time-tracked inline titled tagged))
+             (inlines (mapcar (lambda (iid)
+                                (let ((iv (triples-get-type ekg-db iid
+                                                            'inline)))
+                                  (make-ekg-inline :pos (plist-get iv :pos)
+                                                   :command (cons
+                                                             (plist-get iv :command)
+                                                             (plist-get iv :args))
+                                                   :type (plist-get iv :type))))
+                              (plist-get v :text/inlines)))
+             ;; Query extension types not already returned by
+             ;; triples-get-subject, to pick up virtual reversed
+             ;; properties like org/children.
+             (extra-props
+              (mapcan (lambda (type)
+                        (unless (or (memq type stored-types)
+                                    (memq type core-types))
+                          (let ((type-data (triples-get-type ekg-db id type)))
+                            (when type-data
+                              (cl-loop for (k v) on type-data by #'cddr
+                                       nconc (list (intern (format ":%s/%s" type
+                                                                   (substring (symbol-name k) 1)))
+                                                   v))))))
+                      (ekg-note-cotypes))))
+        (make-ekg-note :id id
+                       :text (plist-get v :text/text)
+                       :mode (plist-get v :text/mode)
+                       :inlines inlines
+                       :tags (plist-get v :tagged/tag)
+                       :creation-time (plist-get v :time-tracked/creation-time)
+                       :modified-time (plist-get v :time-tracked/modified-time)
+                       :properties (append
+                                    (map-into
+                                     (map-filter
+                                      (lambda (plist-key _)
+                                        (not (member plist-key
+                                                     '(:text/text
+                                                       :text/mode
+                                                       :text/inlines
+                                                       :tagged/tag
+                                                       :time-tracked/creation-time
+                                                       :time-tracked/modified-time)))) v)
+                                     'plist)
+                                    extra-props))))))
 
 (defun ekg-get-notes-with-title (title)
   "Get a list of note structs with TITLE."
@@ -2555,7 +2556,9 @@ as long as those notes aren't on resources that are interesting.
                (if (or (null note) (null (ekg-note-creation-time note)))
                    (progn
                      (message "ekg-clean-db: Deleting note %s, reason: no text or creation date" id)
-                     (ekg-note-delete note)
+                     (if note
+                         (ekg-note-delete note)
+                       (triples-delete-subject ekg-db id))
                      (setq deleted t))
                  (message "ekg-clean-db: Fixed nil text for note %s" id)
                  (setf (ekg-note-text note) "")

@@ -826,8 +826,9 @@ trashed, they are permanently deleted."
   "Create a new sibling task after the task at point."
   (interactive)
   (let* ((id (ekg-org-view--note-at-point))
-         (parent-id (when id
-                      (plist-get (ekg-note-properties (ekg-get-note-with-id id))
+         (note (when id (ekg-get-note-with-id id)))
+         (parent-id (when note
+                      (plist-get (ekg-note-properties note)
                                  :org/parent)))
          (siblings (if parent-id
                        (ekg-org-view--sorted-children parent-id)
@@ -930,10 +931,9 @@ skipped."
             (unless (member id seen-ids)
               (push id seen-ids)
               (push (list (point) id level
-                          (when id
-                            (plist-get (ekg-note-properties
-                                       (ekg-get-note-with-id id))
-                                      :org/parent)))
+                          (when-let* ((note (and id (ekg-get-note-with-id id))))
+                            (plist-get (ekg-note-properties note)
+                                       :org/parent)))
                     headings))))
         (forward-line 1)))
     (nreverse headings)))
