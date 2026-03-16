@@ -819,6 +819,258 @@ identifiers, like `ekg-agent--read-file'."
    :args '((:name "path" :type string :description "The file path to write." :required t)
            (:name "content" :type string :description "The full text content to write to the file." :required t))))
 
+(defun ekg-agent--buffer-line-id (buffer-name line-num)
+  "Return a 3-char base64 identifier unique to BUFFER-NAME and LINE-NUM."
+  (let* ((input (format "buf:%s:%d" buffer-name line-num))
+         (hash (secure-hash 'md5 input))
+         (raw (unibyte-string (string-to-number (substring hash 0 2) 16)
+                              (string-to-number (substring hash 2 4) 16))))
+    (substring (base64-encode-string raw t) 0 3)))
+
+(defun ekg-agent--resolve-buffer-line-id (buffer-name id)
+  "Resolve line identifier ID to a line number for the buffer BUFFER-NAME."
+  (let* ((buf (get-buffer buffer-name))
+         (total (with-current-buffer buf
+                  (count-lines (point-min) (point-max)))))
+    ;; count-lines can undercount when the buffer doesn't end with a
+    ;; newline, so add 1 to ensure we check the last line.
+    (or (cl-loop for i from 1 to (1+ total)
+                 when (string= (ekg-agent--buffer-line-id buffer-name i) id)
+                 return i)
+        (error "Line identifier %s not found in buffer %s" id buffer-name))))
+
+(defun ekg-agent--list-buffers (&optional regex-filter)
+  "List buffers, optionally filtering names by REGEX-FILTER.
+Returns a string with one buffer per line showing name, size, major
+mode, and file (if any).  Internal buffers (names starting with space)
+are excluded."
+  (ekg-agent--with-error-as-text
+    (let* ((regex-filter (and (ekg-agent--nonempty-string-p regex-filter)
+                              regex-filter))
+           (bufs (seq-filter
+                  (lambda (b)
+                    (let ((name (buffer-name b)))
+                      (and (not (string-prefix-p " " name))
+                           (or (null regex-filter)
+                               (string-match-p regex-filter name)))))
+                  (buffer-list)))
+           (lines (mapcar
+                   (lambda (b)
+                     (with-current-buffer b
+                       (format "%s  (%d bytes, %s%s)"
+                               (buffer-name b)
+                               (buffer-size)
+                               major-mode
+                               (if buffer-file-name
+                                   (format ", file: %s" buffer-file-name)
+                                 ""))))
+                   bufs)))
+      (if lines
+          (mapconcat #'identity lines "\n")
+        "No buffers found."))))
+
+(defconst ekg-agent-tool-list-buffers
+  (make-llm-tool
+   :function #'ekg-agent--list-buffers
+   :name "list_buffers"
+   :description "List open Emacs buffers.  Returns one line per buffer showing name, size, major mode, and associated file (if any).  Internal buffers (names starting with a space) are excluded."
+   :args '((:name "regex_filter" :type string
+                   :description "Optional regex to filter buffer names by."))))
+
+(defun ekg-agent--read-buffer (buffer-name &optional begin end range-type)
+  "Read BUFFER-NAME, returning contents with line identifiers.
+
+Each line is prefixed with a 3-char identifier derived from the
+buffer name and line number.  The overall begin and end buffer
+positions of the returned content are included at the top as a
+header line.
+
+BEGIN and END restrict the output to a range.  RANGE-TYPE is
+either \"line_number\" or \"identifier\" and indicates how to
+interpret BEGIN and END.  Empty strings for BEGIN, END, or
+RANGE-TYPE are treated as nil."
+  (ekg-agent--with-error-as-text
+    (let* ((begin (and (ekg-agent--nonempty-string-p begin) begin))
+           (end (and (ekg-agent--nonempty-string-p end) end))
+           (range-type (and (ekg-agent--nonempty-string-p range-type)
+                            range-type))
+           (buf (get-buffer buffer-name)))
+      (unless buf
+        (error "Buffer not found: %s" buffer-name))
+      (with-current-buffer buf
+        (let* ((content (buffer-substring-no-properties (point-min) (point-max)))
+               (lines (split-string content "\n"))
+               (total (length lines))
+               (start (cond
+                       ((null begin) 1)
+                       ((or (null range-type) (string= range-type "line_number"))
+                        (max 1 (if (stringp begin) (string-to-number begin) begin)))
+                       ((string= range-type "identifier")
+                        (ekg-agent--resolve-buffer-line-id buffer-name begin))
+                       (t (error "Unknown range_type: %s" range-type))))
+               (finish (cond
+                        ((null end) total)
+                        ((or (null range-type) (string= range-type "line_number"))
+                         (min total (if (stringp end) (string-to-number end) end)))
+                        ((string= range-type "identifier")
+                         (ekg-agent--resolve-buffer-line-id buffer-name end))
+                        (t total)))
+               ;; Compute buffer positions for the returned range.
+               (begin-pos (save-excursion
+                            (goto-char (point-min))
+                            (forward-line (1- start))
+                            (point)))
+               (end-pos (save-excursion
+                          (goto-char (point-min))
+                          (forward-line (1- finish))
+                          (line-end-position)))
+               (selected (cl-loop for i from start to finish
+                                  for line in (nthcdr (1- start) lines)
+                                  collect (format "%s: %s"
+                                                  (ekg-agent--buffer-line-id buffer-name i)
+                                                  line))))
+          (format "begin_pos: %d  end_pos: %d\n%s"
+                  begin-pos end-pos
+                  (substring-no-properties
+                   (mapconcat #'identity selected "\n"))))))))
+
+(defconst ekg-agent-tool-read-buffer
+  (make-llm-tool
+   :function #'ekg-agent--read-buffer
+   :name "read_buffer"
+   :description "Read an Emacs buffer and return its contents.  Each line is prefixed with a unique 3-character identifier.  The first line of the output shows the overall begin_pos and end_pos (buffer point positions) of the returned range.  Use these identifiers when calling edit_buffer.  Optionally restrict to a range by passing begin/end as either line numbers or identifiers."
+   :args '((:name "buffer_name" :type string :description "The name of the buffer to read." :required t)
+           (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning.")
+           (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end.")
+           (:name "range_type" :type string :enum ["line_number" "identifier"]
+                  :description "How to interpret begin and end.  Required when begin or end is set."))))
+
+(defun ekg-agent--edit-buffer (buffer-name begin-id begin-text
+                                           end-id end-text replacement)
+  "Edit BUFFER-NAME by replacing a region between boundary markers.
+
+BEGIN-ID is the line identifier where BEGIN-TEXT starts.
+END-ID is the line identifier where END-TEXT starts.
+REPLACEMENT replaces from the start of BEGIN-TEXT through the end
+of END-TEXT (inclusive).
+
+Returns the buffer content around the edited region with line
+identifiers."
+  (ekg-agent--with-error-as-text
+    (let ((buf (get-buffer buffer-name)))
+      (unless buf
+        (error "Buffer not found: %s" buffer-name))
+      (let ((begin-line (ekg-agent--resolve-buffer-line-id buffer-name begin-id))
+            (end-line (ekg-agent--resolve-buffer-line-id buffer-name end-id)))
+        (with-current-buffer buf
+          (goto-char (point-min))
+          (forward-line (1- begin-line))
+          (let ((region-start (point))
+                (line-indent (current-indentation)))
+            (unless (search-forward begin-text (line-end-position) t)
+              (error "Begin text not found on line %d" begin-line))
+            (setq region-start (match-beginning 0))
+            ;; Expand to include leading whitespace so the replacement
+            ;; controls the full indentation.
+            (let ((line-start (line-beginning-position)))
+              (when (string-match-p
+                     "\\`[ \t]*\\'"
+                     (buffer-substring-no-properties line-start region-start))
+                (setq region-start line-start)))
+            (goto-char (point-min))
+            (forward-line (1- end-line))
+            (unless (search-forward end-text (line-end-position) t)
+              (error "End text not found on line %d" end-line))
+            (let ((region-end (match-end 0)))
+              (delete-region region-start region-end)
+              (goto-char region-start)
+              (insert (ekg-agent--adjust-indentation
+                       replacement line-indent)))))
+        (ekg-agent--read-buffer buffer-name
+                                (number-to-string (max 1 (- begin-line 2)))
+                                (number-to-string (+ end-line 5))
+                                "line_number")))))
+
+(defconst ekg-agent-tool-edit-buffer
+  (make-llm-tool
+   :function #'ekg-agent--edit-buffer
+   :name "edit_buffer"
+   :description "Edit a buffer by replacing text between two boundary markers.  The begin and end positions are specified using the unique line identifiers returned by read_buffer.  The begin_text on the begin line and end_text on the end line are both included in the replacement.  Returns the edited region with surrounding context, including begin_pos/end_pos."
+   :args '((:name "buffer_name" :type string :description "The name of the buffer to edit." :required t)
+           (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts." :required t)
+           (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace." :required t)
+           (:name "end_id" :type string :description "The 3-character line identifier where the replacement region ends." :required t)
+           (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive)." :required t)
+           (:name "replacement" :type string :description "The new text to insert in place of the matched region." :required t))))
+
+(defun ekg-agent--resolve-buffer-point (buffer-name point line-id text)
+  "Resolve a point in BUFFER-NAME from either POINT, or LINE-ID + TEXT.
+Returns a buffer position (integer).  At least one of POINT or
+LINE-ID must be provided."
+  (let ((point (and (ekg-agent--nonempty-string-p point) point))
+        (line-id (and (ekg-agent--nonempty-string-p line-id) line-id))
+        (text (and (ekg-agent--nonempty-string-p text) text)))
+    (cond
+     (point
+      (let ((pos (if (stringp point) (string-to-number point) point)))
+        (with-current-buffer (get-buffer buffer-name)
+          (when (or (< pos (point-min)) (> pos (point-max)))
+            (error "Point %d is outside buffer range [%d, %d]"
+                   pos (point-min) (point-max))))
+        pos))
+     (line-id
+      (let ((line-num (ekg-agent--resolve-buffer-line-id buffer-name line-id)))
+        (with-current-buffer (get-buffer buffer-name)
+          (save-excursion
+            (goto-char (point-min))
+            (forward-line (1- line-num))
+            (if text
+                (progn
+                  (unless (search-forward text (line-end-position) t)
+                    (error "Text %S not found on line %d" text line-num))
+                  (match-beginning 0))
+              (point))))))
+     (t (error "Must provide either point or line_id")))))
+
+(defun ekg-agent--run-interactive-command (buffer-name command &optional point line-id text)
+  "Run interactive COMMAND in BUFFER-NAME at a resolved position.
+
+The position is resolved from either POINT (a buffer position) or
+LINE-ID (a 3-char identifier from read_buffer) optionally refined by
+TEXT on that line.  If both POINT and LINE-ID are given, POINT takes
+precedence.
+
+Returns the buffer content around the position after the command
+executes, including begin_pos/end_pos."
+  (ekg-agent--with-error-as-text
+    (let ((buf (get-buffer buffer-name)))
+      (unless buf
+        (error "Buffer not found: %s" buffer-name))
+      (let ((pos (ekg-agent--resolve-buffer-point buffer-name point line-id text))
+            (cmd (if (stringp command) (intern command) command)))
+        (unless (commandp cmd)
+          (error "Not an interactive command: %s" command))
+        (with-current-buffer buf
+          (goto-char pos)
+          (call-interactively cmd)
+          ;; Return context: ~10 lines around the position.
+          (let ((current-line (line-number-at-pos pos)))
+            (ekg-agent--read-buffer buffer-name
+                                    (number-to-string (max 1 (- current-line 5)))
+                                    (number-to-string (+ current-line 5))
+                                    "line_number")))))))
+
+(defconst ekg-agent-tool-run-interactive-command
+  (make-llm-tool
+   :function #'ekg-agent--run-interactive-command
+   :name "run_interactive_command"
+   :description "Execute an interactive Emacs command in a buffer at a specific position.  The position can be specified as either a buffer point (integer) or a line identifier (from read_buffer) optionally refined by text on that line.  If both point and line_id are given, point takes precedence.  Returns the buffer content around the position after the command executes."
+   :args '((:name "buffer_name" :type string :description "The name of the buffer." :required t)
+           (:name "command" :type string :description "The interactive Emacs command to run (e.g. \"org-todo\", \"indent-region\")." :required t)
+           (:name "point" :type string :description "Buffer position (integer as string) where the command should be executed.  Takes precedence over line_id if both are given.")
+           (:name "line_id" :type string :description "A 3-character line identifier from read_buffer to locate the position.")
+           (:name "text" :type string :description "Text on the identified line to refine the position.  Point is placed at the start of this text.  Only used with line_id."))))
+
 (defun ekg-agent--run-command (callback command &optional directory)
   "Run shell COMMAND asynchronously and call CALLBACK with the result.
 DIRECTORY, if given, is used as `default-directory' for the process."
@@ -868,7 +1120,11 @@ DIRECTORY, if given, is used as `default-directory' for the process."
    ekg-agent-tool-read-agents-md
    ekg-agent-tool-read-file
    ekg-agent-tool-edit-file
-   ekg-agent-tool-write-file)
+   ekg-agent-tool-write-file
+   ekg-agent-tool-list-buffers
+   ekg-agent-tool-read-buffer
+   ekg-agent-tool-edit-buffer
+   ekg-agent-tool-run-interactive-command)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 

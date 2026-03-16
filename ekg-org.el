@@ -561,7 +561,9 @@ Reuses a hidden buffer to avoid repeated `org-mode' initialization."
                (indent (make-string (1+ level) ?\s))
                (body (ekg-org-view--indent-text fontified indent)))
           (push (vui-text body
-                  :key (intern (format "body-%s" id)))
+                  :key (intern (format "body-%s" id))
+                  :ekg-org-note-id id
+                  :ekg-org-level level)
                 body-nodes)))
       (dolist (child children)
         (push (ekg-org-view--render-task child (1+ level) collapsed-ids)
