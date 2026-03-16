@@ -1574,15 +1574,30 @@ ARG, if non-nil, allows editing the instructions."
                                  (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
            (current-note-json (let ((ekg-llm-note-numwords 10000))
                                 (ekg-llm-note-to-text ekg-note)))
-           (prompt (concat (ekg-agent-instructions-intro)
-                           "\n\nYour instructions:\n"
+           (prompt (concat "You are a note-response agent for ekg, an Emacs knowledge base.
+Your job is to respond to the user's current note by appending or
+replacing its content.  You have tools to search existing notes for
+context if needed, but your primary goal is to produce a response
+for the current note.
+
+Do NOT create separate notes (via `create_note`) unless there is a
+compelling reason — your response belongs in the current note.
+
+Your instructions:\n"
                            instructions-for-use
-                           "\n\nYou have access to tools to help you.
-After each tool call you will be given a chance to make more tool calls.
-Your work will end after you create a note or rewrite the
-note.  Prefer to append to the note by default, unless the user is asking
-for a rewritten or new note.\nThe user input will be the note they are
-currently editing.\n\n"
+                           "\n\nYou have access to tools to search and read existing notes
+for context.  After each tool call you will be given a chance to make
+more tool calls.
+
+IMPORTANT: You MUST end your session by calling one of these two tools:
+- `append_to_current_note`: Appends your response to the current note.
+- `replace_current_note`: Replaces the current note content entirely.
+
+Calling either of these tools will end your session.  There is no other
+way to end the session.  Prefer `append_to_current_note` by default,
+unless the user is explicitly asking for a rewrite or replacement.
+
+The user input will be the note they are currently editing.\n\n"
                            (format "The current date and time is %s.\n"
                                    (format-time-string "%F %R"))
                            (format "Some notes matching the tags or context: %s\n"
