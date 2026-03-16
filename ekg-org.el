@@ -156,13 +156,13 @@ active, unarchived, tasks."
                  (if archive
                      (member ekg-org-archive-tag tags)
                    (not (member ekg-org-archive-tag tags))))))))
-     (mapcar #'ekg-get-note-with-id top-ids))))
+     (delq nil (mapcar #'ekg-get-note-with-id top-ids)))))
 
 (defun ekg-org-get-child-notes-of-id (id)
   "Fetch child notes of a given note ID."
   (seq-filter #'ekg-note-active-p
-              (mapcar (lambda (row) (ekg-get-note-with-id (car row)))
-                      (triples-db-select ekg-db nil 'org/parent id))))
+              (delq nil (mapcar (lambda (row) (ekg-get-note-with-id (car row)))
+                                (triples-db-select ekg-db nil 'org/parent id)))))
 
 (defun ekg-org--format-timestamp (timestamp)
   "Parse TIMESTAMP integer into an Org timestamp string."

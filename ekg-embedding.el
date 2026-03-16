@@ -289,7 +289,7 @@ printed when everything is finished."
                                                  (ekg-embedding-get id)))))
                       (ekg-active-note-ids)))
          (notes-to-generate
-          (seq-filter (lambda (note) (> (length (ekg-note-text note)) 0))
+          (seq-filter (lambda (note) (and note (> (length (ekg-note-text note)) 0)))
                       (mapcar #'ekg-get-note-with-id to-generate))))
     (cl-labels ((complete-id (num)
                   (cl-incf count num)
@@ -317,7 +317,8 @@ printed when everything is finished."
 
         ;; Process empty notes
         (cl-loop for id in to-generate
-                 when (= (length (ekg-note-text (ekg-get-note-with-id id))) 0)
+                 for note = (ekg-get-note-with-id id)
+                 when (or (null note) (= (length (ekg-note-text note)) 0))
                  collect id into ids
                  finally
                  do (complete-id (length ids)))
@@ -451,10 +452,11 @@ The results are in order of most similar to least similar."
   (let ((note (ekg-current-note-or-error)))
     (ekg-setup-notes-buffer
      (format "similar to note \"%s\"" (ekg-note-snippet note))
-     (lambda () (mapcar #'ekg-get-note-with-id
-                        ;; remove the first match, since the current note will
-                        ;; always be the most similar.
-                        (cdr (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size))))
+     (lambda () (delq nil
+                      (mapcar #'ekg-get-note-with-id
+                              ;; remove the first match, since the current note will
+                              ;; always be the most similar.
+                              (cdr (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size)))))
      (ekg-note-tags note))))
 
 (defun ekg-embedding-search (&optional text)
@@ -463,9 +465,10 @@ The results are in order of most similar to least similar."
   (ekg-embedding-connect)
   (ekg-setup-notes-buffer
    (format "similar to \"%s\"" text)
-   (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
-                                              (llm-embedding ekg-embedding-provider text)
-                                              ekg-notes-size)))
+   (lambda () (delq nil
+                    (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
+                                                    (llm-embedding ekg-embedding-provider text)
+                                                    ekg-notes-size))))
    nil))
 
 (defun ekg-embedding-show-similar-to-current-buffer ()
@@ -474,12 +477,13 @@ The results are in order of most similar to least similar."
   (ekg-embedding-connect)
   (ekg-setup-notes-buffer
    (format "similar to buffer \"%s\"" (buffer-name (current-buffer)))
-   (lambda () (mapcar #'ekg-get-note-with-id
-                      (ekg-embedding-n-most-similar-notes
-                       (llm-embedding ekg-embedding-provider
-                                      (funcall ekg-embedding-text-selector
-                                               (substring-no-properties (buffer-string))))
-                       ekg-notes-size)))
+   (lambda () (delq nil
+                    (mapcar #'ekg-get-note-with-id
+                            (ekg-embedding-n-most-similar-notes
+                             (llm-embedding ekg-embedding-provider
+                                            (funcall ekg-embedding-text-selector
+                                                     (substring-no-properties (buffer-string))))
+                             ekg-notes-size))))
    nil))
 
 (defun ekg-embedding-generate-on-save ()

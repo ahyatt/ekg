@@ -123,10 +123,10 @@ an email address that is part of what we store in the triples."
   (ekg-setup-notes-buffer
    (format "with address: %s" addr)
    (lambda () (sort
-               (mapcar #'ekg-get-note-with-id
-                       (seq-filter
-                        #'ekg-active-id-p
-                        (ekg-email-get-notes-ids-with-address addr)))
+               (delq nil (mapcar #'ekg-get-note-with-id
+                                 (seq-filter
+                                  #'ekg-active-id-p
+                                  (ekg-email-get-notes-ids-with-address addr))))
                #'ekg-sort-by-creation-time))
    nil))
 
