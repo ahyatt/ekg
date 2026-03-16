@@ -1053,8 +1053,9 @@ executes, including begin_pos/end_pos."
         (with-current-buffer buf
           (goto-char pos)
           (call-interactively cmd)
-          ;; Return context: ~10 lines around the position.
-          (let ((current-line (line-number-at-pos pos)))
+          ;; Return context: ~10 lines around the post-command point,
+          ;; since the command may have moved point.
+          (let ((current-line (line-number-at-pos (point))))
             (ekg-agent--read-buffer buffer-name
                                     (number-to-string (max 1 (- current-line 5)))
                                     (number-to-string (+ current-line 5))

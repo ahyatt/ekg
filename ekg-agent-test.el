@@ -537,6 +537,29 @@ result when the agent finishes."
             (should (string-match-p "line1" result))))
       (kill-buffer buf))))
 
+(ert-deftest ekg-agent-test-run-interactive-command-post-move-context ()
+  "Context is centered on the post-command point, not the original position."
+  (let ((buf (get-buffer-create "*ekg-agent-test-cmd-move*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            ;; 20 lines so we can distinguish which lines are returned.
+            (dotimes (i 20)
+              (insert (format "line-%02d\n" (1+ i)))))
+          ;; Start at line 1 (point 1), run forward-line which moves to line 2.
+          ;; With 20 lines, if context is centered on post-command point
+          ;; (line 2), we should NOT see line-15 through line-20.
+          (let ((result (ekg-agent--run-interactive-command
+                         "*ekg-agent-test-cmd-move*" "end-of-buffer"
+                         "1" nil nil)))
+            ;; end-of-buffer moves to the end; context should include
+            ;; the last lines, not the first ones.
+            (should (string-match-p "line-20" result))
+            ;; Line 1 should NOT be in a 10-line window around line 20.
+            (should-not (string-match-p "line-01" result))))
+      (kill-buffer buf))))
+
 (ert-deftest ekg-agent-test-run-interactive-command-nonexistent-buffer ()
   "Running a command in a nonexistent buffer returns an error string."
   (let ((result (ekg-agent--run-interactive-command
