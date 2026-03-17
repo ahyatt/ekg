@@ -791,4 +791,175 @@ An agent saving a new note should cause the view to update automatically."
     (should (equal "other-branch" (ekg-org-get-property note "WORKTREE")))
     (should (= 1 (length (ekg-org-properties-alist note))))))
 
+;; Agenda sync tests
+
+(ekg-deftest ekg-org-test-sync-todo-state ()
+  "Test that TODO state changes in the ekg org buffer sync back to ekg."
+  (ekg-org-add-schema)
+  (let* ((note-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "Sync Task" "" nil nil "TODO" nil nil)))
+         (buf (get-buffer-create "/ekg:tasks.org")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (setq-local buffer-file-name "/ekg:tasks.org")
+            (erase-buffer)
+            (insert (ekg-org-generate-org-content))
+            (org-mode)
+            (goto-char (point-min))
+            (search-forward "Sync Task")
+            (beginning-of-line)
+            ;; Simulate org-todo changing the state.
+            (let ((org-todo-keywords-1 '("TODO" "DONE")))
+              (org-todo "DONE")))
+          ;; Verify the ekg note was updated.
+          (let ((note (ekg-get-note-with-id note-id)))
+            (should (equal "DONE" (ekg-org--state note)))))
+      (kill-buffer buf))))
+
+(ekg-deftest ekg-org-test-sync-schedule ()
+  "Test that scheduling in the ekg org buffer syncs back to ekg."
+  (ekg-org-add-schema)
+  (let* ((note-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "Schedule Task" "" nil nil "TODO" nil nil)))
+         (buf (get-buffer-create "/ekg:tasks.org")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (setq-local buffer-file-name "/ekg:tasks.org")
+            (erase-buffer)
+            (insert (ekg-org-generate-org-content))
+            (org-mode)
+            (goto-char (point-min))
+            (search-forward "Schedule Task")
+            (beginning-of-line)
+            ;; Simulate org-schedule setting a date.
+            (org-schedule nil "2026-06-15"))
+          ;; Verify the ekg note was updated.
+          (let* ((note (ekg-get-note-with-id note-id))
+                 (scheduled (plist-get (ekg-note-properties note)
+                                       :org/scheduled)))
+            (should scheduled)
+            (should (string-match-p
+                     "2026-06-15"
+                     (format-time-string "%F" (seconds-to-time scheduled))))))
+      (kill-buffer buf))))
+
+(ekg-deftest ekg-org-test-sync-deadline ()
+  "Test that setting a deadline in the ekg org buffer syncs back to ekg."
+  (ekg-org-add-schema)
+  (let* ((note-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "Deadline Task" "" nil nil "TODO" nil nil)))
+         (buf (get-buffer-create "/ekg:tasks.org")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (setq-local buffer-file-name "/ekg:tasks.org")
+            (erase-buffer)
+            (insert (ekg-org-generate-org-content))
+            (org-mode)
+            (goto-char (point-min))
+            (search-forward "Deadline Task")
+            (beginning-of-line)
+            ;; Simulate org-deadline setting a date.
+            (org-deadline nil "2026-07-20"))
+          ;; Verify the ekg note was updated.
+          (let* ((note (ekg-get-note-with-id note-id))
+                 (deadline (plist-get (ekg-note-properties note)
+                                      :org/deadline)))
+            (should deadline)
+            (should (string-match-p
+                     "2026-07-20"
+                     (format-time-string "%F" (seconds-to-time deadline))))))
+      (kill-buffer buf))))
+
+;; View schedule/deadline tests
+
+(ekg-deftest ekg-org-test-view-schedule ()
+  "Test that scheduling a task in ekg-org-view updates the note."
+  (ekg-org-add-schema)
+  (let* ((note-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "View Schedule" "" nil nil "TODO" nil nil))))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view--ensure-on-heading)
+      (search-forward "View Schedule")
+      (beginning-of-line)
+      ;; Mock org-read-date to return a fixed time.
+      (cl-letf (((symbol-function 'org-read-date)
+                 (lambda (&rest _)
+                   (encode-time 0 0 12 1 8 2026))))
+        (ekg-org-view-schedule)))
+    (let* ((note (ekg-get-note-with-id note-id))
+           (scheduled (plist-get (ekg-note-properties note) :org/scheduled)))
+      (should scheduled)
+      (should (string-match-p
+               "2026-08-01"
+               (format-time-string "%F" (seconds-to-time scheduled)))))))
+
+(ekg-deftest ekg-org-test-view-deadline ()
+  "Test that setting a deadline in ekg-org-view updates the note."
+  (ekg-org-add-schema)
+  (let* ((note-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "View Deadline" "" nil nil "TODO" nil nil))))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view--ensure-on-heading)
+      (search-forward "View Deadline")
+      (beginning-of-line)
+      (cl-letf (((symbol-function 'org-read-date)
+                 (lambda (&rest _)
+                   (encode-time 0 0 12 15 9 2026))))
+        (ekg-org-view-deadline)))
+    (let* ((note (ekg-get-note-with-id note-id))
+           (deadline (plist-get (ekg-note-properties note) :org/deadline)))
+      (should deadline)
+      (should (string-match-p
+               "2026-09-15"
+               (format-time-string "%F" (seconds-to-time deadline)))))))
+
+(ekg-deftest ekg-org-test-view-remove-schedule ()
+  "Test that removing a scheduled date in ekg-org-view clears the property."
+  (ekg-org-add-schema)
+  (let* ((note-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "Remove Schedule" "" nil nil "TODO" nil
+                    "2026-06-15T12:00:00"))))
+    ;; Verify it starts with a schedule.
+    (let* ((note (ekg-get-note-with-id note-id))
+           (scheduled (plist-get (ekg-note-properties note) :org/scheduled)))
+      (should scheduled))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view--ensure-on-heading)
+      (search-forward "Remove Schedule")
+      (beginning-of-line)
+      ;; Call with prefix arg to remove.
+      (ekg-org-view-schedule t))
+    (let* ((note (ekg-get-note-with-id note-id))
+           (scheduled (plist-get (ekg-note-properties note) :org/scheduled)))
+      (should-not scheduled))))
+
+(ekg-deftest ekg-org-test-view-timestamps-displayed ()
+  "Test that scheduled and deadline timestamps appear in the view."
+  (ekg-org-add-schema)
+  (ekg-agent-org--tool-add-item
+   "Timestamped Task" "" nil nil "TODO"
+   "2026-12-25T00:00:00" "2026-11-01T00:00:00")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (let ((content (buffer-substring-no-properties (point-min) (point-max))))
+      (should (string-match-p "SCHEDULED:" content))
+      (should (string-match-p "DEADLINE:" content))
+      (should (string-match-p "2026-12-25" content))
+      (should (string-match-p "2026-11-01" content)))))
+
 (provide 'ekg-org-test)

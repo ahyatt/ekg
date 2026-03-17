@@ -410,6 +410,83 @@ Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
           (upcase (string-replace ekg-org-state-tag-prefix "" tag))
         (error "No org state tag found for note ID %s" (ekg-note-id note))))))
 
+;;; Agenda sync — propagate org-agenda changes back to ekg
+
+(defun ekg-org--in-ekg-buffer-p ()
+  "Return non-nil if the current buffer is visiting an ekg org file."
+  (and buffer-file-name (string-match-p "\\`/ekg:" buffer-file-name)))
+
+(defun ekg-org--note-at-heading ()
+  "Return the ekg note for the org heading at point, or nil.
+Reads the EKG_ID property from the current heading's property drawer."
+  (when-let* ((id-str (org-entry-get nil "EKG_ID")))
+    (or (ekg-get-note-with-id id-str)
+        (let ((num (string-to-number id-str)))
+          (when (> num 0)
+            (ekg-get-note-with-id num))))))
+
+(defun ekg-org--sync-todo-state ()
+  "Sync a TODO state change back to ekg.
+Intended for use on `org-after-todo-state-change-hook'."
+  (when (ekg-org--in-ekg-buffer-p)
+    (when-let* ((note (ekg-org--note-at-heading))
+                (new-state (org-get-todo-state)))
+      (let ((ekg-org--inhibit-view-refresh t))
+        (setf (ekg-note-tags note)
+              (cons (concat ekg-org-state-tag-prefix (downcase new-state))
+                    (seq-remove
+                     (lambda (tag)
+                       (string-prefix-p ekg-org-state-tag-prefix tag))
+                     (ekg-note-tags note))))
+        (ekg-org-view--save-tags note))
+      (set-buffer-modified-p nil))))
+
+(defun ekg-org--sync-schedule (&rest _args)
+  "Sync a SCHEDULED change back to ekg.
+Intended as :after advice on `org-schedule'."
+  (when (ekg-org--in-ekg-buffer-p)
+    (when-let* ((note (ekg-org--note-at-heading)))
+      (let ((ekg-org--inhibit-view-refresh t)
+            (scheduled (org-entry-get nil "SCHEDULED")))
+        (if scheduled
+            (let ((ts (time-convert
+                       (org-time-string-to-time scheduled) 'integer)))
+              (setf (ekg-note-properties note)
+                    (plist-put (ekg-note-properties note) :org/scheduled ts))
+              (ekg-save-note note))
+          ;; SCHEDULED was removed.
+          (setf (ekg-note-properties note)
+                (ekg-org-view--plist-delete
+                 (ekg-note-properties note) :org/scheduled))
+          (triples-db-delete ekg-db (ekg-note-id note) 'org/scheduled)
+          (ekg-save-note note)))
+      (set-buffer-modified-p nil))))
+
+(defun ekg-org--sync-deadline (&rest _args)
+  "Sync a DEADLINE change back to ekg.
+Intended as :after advice on `org-deadline'."
+  (when (ekg-org--in-ekg-buffer-p)
+    (when-let* ((note (ekg-org--note-at-heading)))
+      (let ((ekg-org--inhibit-view-refresh t)
+            (deadline (org-entry-get nil "DEADLINE")))
+        (if deadline
+            (let ((ts (time-convert
+                       (org-time-string-to-time deadline) 'integer)))
+              (setf (ekg-note-properties note)
+                    (plist-put (ekg-note-properties note) :org/deadline ts))
+              (ekg-save-note note))
+          ;; DEADLINE was removed.
+          (setf (ekg-note-properties note)
+                (ekg-org-view--plist-delete
+                 (ekg-note-properties note) :org/deadline))
+          (triples-db-delete ekg-db (ekg-note-id note) 'org/deadline)
+          (ekg-save-note note)))
+      (set-buffer-modified-p nil))))
+
+(add-hook 'org-after-todo-state-change-hook #'ekg-org--sync-todo-state)
+(advice-add 'org-schedule :after #'ekg-org--sync-schedule)
+(advice-add 'org-deadline :after #'ekg-org--sync-deadline)
+
 ;;; ekg-org-view — vui-based hierarchical task view
 
 (defvar-local ekg-org-view--hl nil
@@ -547,14 +624,41 @@ Reuses a hidden buffer to avoid repeated `org-mode' initialization."
 
 
 
+(defun ekg-org-view--render-timestamps (note level)
+  "Return a propertized timestamp string for NOTE at LEVEL, or nil."
+  (let* ((props (ekg-note-properties note))
+         (scheduled (plist-get props :org/scheduled))
+         (deadline (plist-get props :org/deadline))
+         (indent (make-string (1+ level) ?\s))
+         (parts nil))
+    (when deadline
+      (push (propertize
+             (concat "DEADLINE: " (ekg-org--format-timestamp deadline))
+             'face 'org-special-keyword)
+            parts))
+    (when scheduled
+      (push (propertize
+             (concat "SCHEDULED: " (ekg-org--format-timestamp scheduled))
+             'face 'org-special-keyword)
+            parts))
+    (when parts
+      (concat indent (string-join parts "  ")))))
+
 (defun ekg-org-view--render-task (note level collapsed-ids)
   "Return a vui vnode tree for NOTE at LEVEL with COLLAPSED-IDS."
   (let* ((id (ekg-note-id note))
          (collapsed (member id collapsed-ids))
          (heading (ekg-org-view--render-heading note level))
+         (timestamps (ekg-org-view--render-timestamps note level))
          (children (ekg-org-view--sorted-children id))
          (text (ekg-note-text note))
          (body-nodes nil))
+    (when timestamps
+      (push (vui-text timestamps
+              :key (intern (format "ts-%s" id))
+              :ekg-org-note-id id
+              :ekg-org-level level)
+            body-nodes))
     (unless collapsed
       (when (and text (not (string-empty-p (string-trim text))))
         (let* ((fontified (string-trim-right (ekg-org-view--fontify-org text)))
@@ -567,8 +671,8 @@ Reuses a hidden buffer to avoid repeated `org-mode' initialization."
                 body-nodes)))
       (dolist (child children)
         (push (ekg-org-view--render-task child (1+ level) collapsed-ids)
-              body-nodes))
-      (setq body-nodes (nreverse body-nodes)))
+              body-nodes)))
+    (setq body-nodes (nreverse body-nodes))
     (apply #'vui-vstack
            :key (intern (format "task-%s" id))
            (vui-text heading
@@ -875,6 +979,42 @@ trashed, they are permanently deleted."
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (ekg-edit note)))
+
+(defun ekg-org-view--set-timestamp (property &optional remove)
+  "Set or remove a timestamp PROPERTY on the note at point.
+PROPERTY is a keyword like :org/scheduled or :org/deadline.
+If REMOVE is non-nil, remove the timestamp instead of setting it."
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (let ((ekg-org--inhibit-view-refresh t))
+      (if remove
+          (progn
+            (setf (ekg-note-properties note)
+                  (ekg-org-view--plist-delete
+                   (ekg-note-properties note) property))
+            (triples-db-delete ekg-db id
+                               (intern (substring (symbol-name property) 1)))
+            (ekg-save-note note))
+        (let* ((default (plist-get (ekg-note-properties note) property))
+               (default-time (when default (seconds-to-time default)))
+               (time (org-read-date nil t nil nil default-time))
+               (ts (time-convert time 'integer)))
+          (setf (ekg-note-properties note)
+                (plist-put (ekg-note-properties note) property ts))
+          (ekg-save-note note))))
+    (ekg-org-view--refresh)))
+
+(defun ekg-org-view-schedule (&optional arg)
+  "Set the scheduled date for the task at point.
+With a prefix ARG, remove the scheduled date."
+  (interactive "P")
+  (ekg-org-view--set-timestamp :org/scheduled arg))
+
+(defun ekg-org-view-deadline (&optional arg)
+  "Set the deadline for the task at point.
+With a prefix ARG, remove the deadline."
+  (interactive "P")
+  (ekg-org-view--set-timestamp :org/deadline arg))
 
 (defun ekg-org-view--plist-delete (plist key)
   "Return a copy of PLIST with KEY and its value removed."
@@ -1284,6 +1424,8 @@ A placeholder shows where the new task will be inserted.  Use
     (define-key map (kbd "L") #'ekg-org-view-promote)
     (define-key map (kbd "R") #'ekg-org-view-demote)
     (define-key map (kbd "g") #'ekg-org-view-refresh)
+    (define-key map (kbd "C-c C-s") #'ekg-org-view-schedule)
+    (define-key map (kbd "C-c C-d") #'ekg-org-view-deadline)
     map)
   "Keymap for `ekg-org-view-mode'.")
 
