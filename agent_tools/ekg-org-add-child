@@ -2,7 +2,7 @@
 # ekg-org-add-child - Create a child org task under a parent task
 #
 # Usage: ekg-org-add-child <parent-id> --title "title" [--note "content"] [--tag tag1]
-#        [--status TODO] [--property KEY=VALUE]
+#        [--status TODO] [--mode org-mode] [--property KEY=VALUE]
 
 set -e
 
@@ -11,6 +11,7 @@ TITLE=""
 NOTE_TEXT=""
 TAGS=()
 STATUS="TODO"
+MODE="org-mode"
 PROPERTIES=()
 DAEMON_NAME=""
 
@@ -32,6 +33,10 @@ while [[ $# -gt 0 ]]; do
             STATUS="$2"
             shift 2
             ;;
+        --mode)
+            MODE="$2"
+            shift 2
+            ;;
         --property)
             PROPERTIES+=("$2")
             shift 2
@@ -47,9 +52,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --title TEXT        Task title/headline (required)"
-            echo "  --note TEXT         Task content/description (default: empty)"
+            echo "  --note TEXT         Task content/description (default: empty)."
+            echo "                      Text must be formatted for the --mode (e.g. org markup"
+            echo "                      for org-mode, markdown for markdown-mode)."
             echo "  --tag TAG           Additional tags (repeatable)"
             echo "  --status STATUS     Task status: TODO, DONE, WAITING, etc. (default: TODO)"
+            echo "  --mode MODE         Major mode: org-mode (default), markdown-mode, or text-mode"
             echo "  --property KEY=VAL  Set an org property (repeatable, e.g. --property CATEGORY=work)"
             echo "  --daemon NAME       Emacs daemon name (optional)"
             exit 0
@@ -73,6 +81,21 @@ fi
 
 if [[ -z "$TITLE" ]]; then
     echo "Error: --title is required"
+    exit 1
+fi
+
+# Validate MODE against allowed values
+ALLOWED_MODES=("org-mode" "markdown-mode" "text-mode")
+MODE_VALID=false
+for allowed_mode in "${ALLOWED_MODES[@]}"; do
+    if [[ "$MODE" == "$allowed_mode" ]]; then
+        MODE_VALID=true
+        break
+    fi
+done
+
+if [[ "$MODE_VALID" != "true" ]]; then
+    echo "Error: Invalid mode '$MODE'. Must be one of: ${ALLOWED_MODES[*]}"
     exit 1
 fi
 
@@ -120,7 +143,7 @@ ELISP_EXPR="(progn
         (error \"Parent note %s not found\" $PARENT_ID)
       (let ((note (ekg-note-create
                    :text \"$NOTE_ELISP\"
-                   :mode 'org-mode
+                   :mode '$MODE
                    :tags (append (list ekg-org-task-tag
                                        (concat ekg-org-state-tag-prefix \"$STATUS_LOWER\"))
                                  '$TAGS_ELISP)

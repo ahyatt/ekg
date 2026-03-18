@@ -1,0 +1,83 @@
+#!/bin/bash
+# ekg-append-note - Append text to an existing ekg note
+#
+# Usage: ekg-append-note <note-id> --text "text to append"
+
+set -e
+
+NOTE_ID=""
+APPEND_TEXT=""
+DAEMON_NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --text)
+            APPEND_TEXT="$2"
+            shift 2
+            ;;
+        --daemon)
+            DAEMON_NAME="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: ekg-append-note <note-id> --text \"text to append\""
+            echo ""
+            echo "Append text to an existing ekg note. Works with any note type."
+            echo ""
+            echo "Options:"
+            echo "  --text TEXT       Text to append (required). The text MUST be formatted"
+            echo "                    for the note's mode (e.g. org markup for org-mode notes,"
+            echo "                    markdown for markdown-mode notes)."
+            echo "  --daemon NAME     Emacs daemon name (optional)"
+            exit 0
+            ;;
+        *)
+            if [[ -z "$NOTE_ID" ]]; then
+                NOTE_ID="$1"
+            else
+                echo "Error: Unexpected argument: $1"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$NOTE_ID" ]]; then
+    echo "Error: Note ID is required"
+    exit 1
+fi
+
+if [[ -z "$APPEND_TEXT" ]]; then
+    echo "Error: --text is required"
+    exit 1
+fi
+
+# Escape strings for elisp
+APPEND_ELISP="${APPEND_TEXT//\\/\\\\}"
+APPEND_ELISP="${APPEND_ELISP//\"/\\\"}"
+APPEND_ELISP="${APPEND_ELISP//$'\n'/\\n}"
+
+ELISP_EXPR="(progn
+  (require 'ekg)
+  (ekg-connect)
+  (let ((note (ekg-get-note-with-id $NOTE_ID)))
+    (if (null note)
+        (error \"Note %s not found\" $NOTE_ID)
+      (setf (ekg-note-text note)
+            (concat (ekg-note-text note) \"\\n\" \"$APPEND_ELISP\"))
+      (ekg-save-note note)
+      (format \"Appended to note %s\" $NOTE_ID))))"
+
+EMACSCLIENT_CMD="emacsclient"
+if [[ -n "$DAEMON_NAME" ]]; then
+    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+fi
+
+if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
+    echo "Error: Failed to append to note. Is the Emacs daemon running?" >&2
+    echo "$OUTPUT" >&2
+    exit 1
+fi
+
+echo "$OUTPUT" | sed 's/^"//; s/"$//'

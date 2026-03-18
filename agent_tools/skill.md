@@ -45,6 +45,8 @@ ekg-add-note --title "Title" --tag tag1 --tag tag2 --note "content" --mode org-m
 - `--tag TAG` — Tags (repeatable, at least one required).
 - `--note TEXT` — Note content (required).
 - `--mode MODE` — `org-mode` (default), `markdown-mode`, or `text-mode`.
+  The `--note` text **must be formatted for this mode** (e.g. org markup for
+  `org-mode`, markdown for `markdown-mode`).
 - Returns the numeric note ID on success.
 - The note is automatically tagged with `agent` and the current date (`date/YYYY-MM-DD`).
 - Content is automatically wrapped in LLM output markers.
@@ -115,6 +117,19 @@ ekg-tags --prefix "project/" --co-tagged moltbot
 
 Output is a JSON array of tag strings.
 
+## ekg-append-note
+
+Append text to an existing note. Works with any note type (not just org tasks).
+
+```sh
+ekg-append-note <note-id> --text "text to append"
+```
+
+- `<note-id>` — The note's ID (required, positional).
+- `--text TEXT` — Text to append (required). The text **must be formatted for
+  the note's mode** (e.g. org markup for org-mode notes, markdown for
+  markdown-mode notes).
+
 ## ekg-trash
 
 Soft-delete a note (trash it). Running again on a trashed note permanently
@@ -130,14 +145,17 @@ Create a child org task under an existing parent task.
 
 ```sh
 ekg-org-add-child <parent-id> --title "Subtask title" [--note "description"] \
-  [--tag extra-tag] [--status TODO] [--property KEY=VALUE]
+  [--tag extra-tag] [--status TODO] [--mode org-mode] [--property KEY=VALUE]
 ```
 
 - `<parent-id>` — The parent task's note ID (required, positional).
 - `--title TEXT` — Task title/headline (required).
-- `--note TEXT` — Task content/description (default: empty).
+- `--note TEXT` — Task content/description (default: empty). Text **must be
+  formatted for the `--mode`** (e.g. org markup for `org-mode`, markdown for
+  `markdown-mode`).
 - `--tag TAG` — Additional tags (repeatable).
 - `--status STATUS` — Task status: TODO, DONE, WAITING, etc. (default: TODO).
+- `--mode MODE` — `org-mode` (default), `markdown-mode`, or `text-mode`.
 - `--property KEY=VALUE` — Set an org property (repeatable). Keys are
   case-insensitive and stored uppercase.
 - Returns the new note's ID on success.
@@ -155,9 +173,11 @@ ekg-org-edit <note-id> [--title "new title"] [--note "new content"] \
 
 - `<note-id>` — The task's note ID (required, positional).
 - `--title TEXT` — Set the task title/headline.
-- `--note TEXT` — Replace the task content/body.
+- `--note TEXT` — Replace the task content/body. Text **must be formatted for
+  the note's mode** (e.g. org markup for org-mode notes, markdown for
+  markdown-mode).
 - `--append TEXT` — Append text to the existing content (cannot combine with
-  `--note`).
+  `--note`). Text must match the note's mode format.
 - `--status STATUS` — Set the status (TODO, DONE, WAITING, STARTED, etc.).
 - `--set-property KEY=VALUE` — Set an org property (repeatable). Keys are
   case-insensitive and stored uppercase.
