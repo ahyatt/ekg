@@ -455,12 +455,7 @@ EXTRA-TOOLS is a list of additional tools beyond
   (seq-uniq
    (append ekg-agent-base-tools
            ekg-agent-extra-tools
-           extra-tools
-           (when (llm-google-p (ekg-agent--provider))
-             (list (make-llm-tool :function #'ignore
-                                  :name "google_search"
-                                  :description "Google Search built-in tool"
-                                  :args nil))))
+           extra-tools)
    (lambda (a b) (string-equal (llm-tool-name a) (llm-tool-name b)))))
 
 (defconst ekg-agent-tool-subagent
@@ -878,7 +873,7 @@ are excluded."
    :name "list_buffers"
    :description "List open Emacs buffers.  Returns one line per buffer showing name, size, major mode, and associated file (if any).  Internal buffers (names starting with a space) are excluded."
    :args '((:name "regex_filter" :type string
-                   :description "Optional regex to filter buffer names by."))))
+                  :description "Optional regex to filter buffer names by."))))
 
 (defun ekg-agent--read-buffer (buffer-name &optional begin end range-type)
   "Read BUFFER-NAME, returning contents with line identifiers.
@@ -2082,7 +2077,7 @@ Returns a list of note objects."
         (error "Semantic search requires ekg-embedding-provider to be configured"))
       (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
         (delq nil (mapcar #'ekg-get-note-with-id
-                         (ekg-embedding-n-most-similar-notes embedding num)))))
+                          (ekg-embedding-n-most-similar-notes embedding num)))))
 
      ;; Text search (full-text search)
      (text-search
