@@ -254,7 +254,7 @@ embeddings of notes with the given tag."
                           (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
                           (let ((note (ekg-get-note-with-id tagged)))
                             (ekg-embedding-generate-for-note-sync note)
-                            (if (ekg-embedding-valid-p note)
+                            (if (ekg-embedding-valid-p (ekg-embedding-note-get note))
                                 (progn
                                   (ekg-save-note note)
                                   (setf embedding (ekg-embedding-note-get note)))
