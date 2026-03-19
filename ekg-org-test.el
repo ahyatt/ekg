@@ -441,35 +441,6 @@ Returns the note ID."
                                       (line-beginning-position)
                                       (line-end-position)))))))
 
-(ekg-deftest ekg-org-test-view-create-sibling-after-current ()
-  "Test that creating a sibling inserts it after the current item."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "First")
-  (ekg-org-test--add-task "Third")
-  (ekg-org-view)
-  ;; Point on "First", create sibling "Second"
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    (cl-letf (((symbol-function 'read-string)
-               (lambda (_prompt &rest _) "Second")))
-      (ekg-org-view-create-sibling)))
-  (let ((titles (ekg-org-test--view-titles)))
-    (should (equal titles '("First" "Second" "Third")))))
-
-(ekg-deftest ekg-org-test-view-create-child ()
-  "Test that creating a child adds it under the parent."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "Parent")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    (cl-letf (((symbol-function 'read-string)
-               (lambda (_prompt &rest _) "New Child")))
-      (ekg-org-view-create-child)))
-  (let ((headings (ekg-org-test--view-headings)))
-    (should (equal headings
-                   '((1 "Parent") (2 "New Child"))))))
-
 (ekg-deftest ekg-org-test-view-insert-mode-sibling ()
   "Test that insert mode creates a sibling after the current task."
   (ekg-org-add-schema)
@@ -573,6 +544,63 @@ Returns the note ID."
     (let ((text (buffer-substring-no-properties (point-min) (point-max))))
       (should (string-match-p "\n\n\\*" text)
               ))))
+
+(ekg-deftest ekg-org-test-view-insert-point-on-new-item ()
+  "Test that point lands on the newly created item after insertion."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-create)
+    (let ((first-id (ekg-org-test--task-id-by-title "First"))
+          (target-slot nil))
+      (cl-loop for slot in ekg-org-view--insert-slots
+               when (and (= (plist-get slot :level) 1)
+                         (equal (plist-get slot :after-id) first-id))
+               do (setq target-slot slot))
+      (ekg-org-view--insert-cleanup)
+      (ekg-org-view--insert-create-task target-slot "Second"))
+    (should (ekg-org-view--on-heading-p))
+    (let* ((id (ekg-org-view--note-at-point))
+           (note (ekg-get-note-with-id id))
+           (title (car (plist-get (ekg-note-properties note)
+                                  :titled/title))))
+      (should (equal title "Second")))))
+
+(ekg-deftest ekg-org-test-view-insert-slot-after-subtree ()
+  "Test that the sibling-after slot is placed after the full subtree."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (_child-id (ekg-org-test--add-task "Child" parent-id)))
+    (ekg-org-test--add-task "Next")
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view-create)
+      ;; Find the sibling-after slot for "Parent" at level 1.
+      (let ((parent-note-id (ekg-org-test--task-id-by-title "Parent"))
+            (next-note-id (ekg-org-test--task-id-by-title "Next"))
+            (target-slot nil)
+            (next-heading-pos nil))
+        ;; Find the heading position for "Next".
+        (save-excursion
+          (goto-char (point-min))
+          (while (not (eobp))
+            (when (and (ekg-org-view--on-heading-p)
+                       (equal (ekg-org-view--note-at-point) next-note-id))
+              (setq next-heading-pos (point)))
+            (forward-line 1)))
+        (cl-loop for slot in ekg-org-view--insert-slots
+                 when (and (= (plist-get slot :level) 1)
+                           (equal (plist-get slot :after-id) parent-note-id))
+                 do (setq target-slot slot))
+        (ekg-org-view--insert-cleanup)
+        ;; The slot's buffer-pos should be at "Next", not at "Child".
+        (should target-slot)
+        (should (equal (plist-get target-slot :buffer-pos)
+                       next-heading-pos))))))
 
 (ekg-deftest ekg-org-test-view-trash ()
   "Test that trashing a task removes it from the view."
