@@ -37,6 +37,8 @@
 (require 'seq)
 (require 'json)
 (require 'subr-x)
+(require 'shr)
+(require 'url)
 
 (when (featurep 'ns)
   ;; Disable futur's background thread before loading: on macOS NS port,
@@ -55,6 +57,7 @@
 (declare-function flycheck-mode "flycheck")
 (declare-function org-ql-search "org-ql")
 (declare-function markdown-mode "markdown-mode")
+(defvar eww-search-prefix)
 
 (defgroup ekg-agent nil
   "Agentic actions for ekg."
@@ -1105,6 +1108,100 @@ DIRECTORY, if given, is used as `default-directory' for the process."
            (:name "directory" :type string :description "Working directory for the command.  Defaults to the current buffer's directory."))
    :async t))
 
+(defcustom ekg-agent-web-max-chars 20000
+  "Maximum number of characters to return from web page content.
+Content beyond this limit is truncated with a notice."
+  :type 'integer
+  :group 'ekg-agent)
+
+(defun ekg-agent--web-render-html (html-string url)
+  "Render HTML-STRING as readable text using shr, as eww does.
+URL is used for resolving relative links."
+  (with-temp-buffer
+    (insert html-string)
+    (let ((dom (libxml-parse-html-region (point-min) (point-max))))
+      (erase-buffer)
+      (let ((shr-width 80)
+            (shr-use-fonts nil)
+            (shr-bullet "- ")
+            (shr-current-font 'default)
+            (shr-base (when url (url-generic-parse-url url))))
+        (shr-insert-document dom))
+      (let ((text (string-trim (buffer-substring-no-properties
+                                (point-min) (point-max)))))
+        (if (> (length text) ekg-agent-web-max-chars)
+            (concat (substring text 0 ekg-agent-web-max-chars)
+                    "\n\n[Content truncated at "
+                    (number-to-string ekg-agent-web-max-chars) " characters]")
+          text)))))
+
+(defun ekg-agent--web-browse (callback url)
+  "Fetch URL and return its rendered text content via CALLBACK.
+Uses `url-retrieve' for async fetching and `shr' for rendering,
+the same engine that powers eww.  Only http and https URLs are
+supported."
+  (if (not (string-match-p "\\`https?://" url))
+      (funcall callback "Error: Only http and https URLs are supported.")
+    (condition-case err
+        (let ((buf (url-retrieve
+                    url
+                    (lambda (status)
+                      (let ((url-buf (current-buffer)))
+                        (condition-case err
+                            (if-let ((err-val (plist-get status :error)))
+                                (progn
+                                  (kill-buffer url-buf)
+                                  (funcall callback
+                                           (format "Error fetching URL: %S"
+                                                   err-val)))
+                              (goto-char (point-min))
+                              (let ((header-end
+                                     (or (search-forward "\n\n" nil t)
+                                         (point-min))))
+                                (let* ((html (buffer-substring-no-properties
+                                              header-end (point-max)))
+                                       (text (ekg-agent--web-render-html
+                                              html url)))
+                                  (kill-buffer url-buf)
+                                  (funcall callback
+                                           (if (string-empty-p text)
+                                               "Page loaded but no readable text content found."
+                                             (format "Content from %s:\n\n%s"
+                                                     url text))))))
+                          (error
+                           (kill-buffer url-buf)
+                           (funcall callback
+                                    (format "Error rendering page: %s"
+                                            (error-message-string err)))))))
+                    nil t)))
+          (when-let ((proc (get-buffer-process buf)))
+            (push proc ekg-agent--tool-processes)))
+      (error (funcall callback (format "Error: %s"
+                                       (error-message-string err)))))))
+
+(defconst ekg-agent-tool-web-browse
+  (make-llm-tool
+   :function #'ekg-agent--web-browse
+   :name "web_browse"
+   :description "Fetch a web page and return its content as readable text.  Uses the same rendering engine as Emacs eww browser."
+   :args '((:name "url" :type string :description "The URL to fetch." :required t))
+   :async t))
+
+(defun ekg-agent--web-search (callback query)
+  "Search the web for QUERY and return results via CALLBACK.
+Uses `eww-search-prefix' to construct the search URL."
+  (require 'eww)
+  (let ((search-url (concat eww-search-prefix (url-hexify-string query))))
+    (ekg-agent--web-browse callback search-url)))
+
+(defconst ekg-agent-tool-web-search
+  (make-llm-tool
+   :function #'ekg-agent--web-search
+   :name "web_search"
+   :description "Search the web for a query and return the search results page as text.  Uses the search engine configured in `eww-search-prefix' (DuckDuckGo by default)."
+   :args '((:name "query" :type string :description "The search query." :required t))
+   :async t))
+
 (defconst ekg-agent-base-tools
   (list
    ekg-agent-tool-all-tags
@@ -1125,7 +1222,9 @@ DIRECTORY, if given, is used as `default-directory' for the process."
    ekg-agent-tool-list-buffers
    ekg-agent-tool-read-buffer
    ekg-agent-tool-edit-buffer
-   ekg-agent-tool-run-interactive-command)
+   ekg-agent-tool-run-interactive-command
+   ekg-agent-tool-web-browse
+   ekg-agent-tool-web-search)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 
