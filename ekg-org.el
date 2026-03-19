@@ -761,9 +761,19 @@ re-rendering and ensure it is visible."
   (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
     (vui-rerender ekg-org-view--instance)
     (if (and restore-id (ekg-org-view--goto-note-id restore-id))
-        (when-let* ((win (get-buffer-window (current-buffer))))
-          (unless (pos-visible-in-window-p (point) win)
-            (with-selected-window win (recenter))))
+        (let ((windows (get-buffer-window-list (current-buffer) nil t)))
+          (dolist (win windows)
+            (set-window-point win (point))
+            (unless (pos-visible-in-window-p (point) win)
+              (with-selected-window win (recenter))))
+          ;; When the buffer is not visible, update the saved point in
+          ;; each window's prev-buffer history so that `quit-window'
+          ;; restores point to the right heading.
+          (unless windows
+            (dolist (win (window-list nil 'no-mini))
+              (when-let* ((entry (assq (current-buffer)
+                                       (window-prev-buffers win))))
+                (setcar (cddr entry) (point))))))
       (goto-char (point-min))
       (ekg-org-view--ensure-on-heading))
     (ekg-org-view--highlight)))
