@@ -758,11 +758,23 @@ Returns non-nil if found."
   "Re-render the view in place without switching windows.
 If TARGET-ID is non-nil, move point to that note's heading after
 re-rendering and ensure it is visible."
-  (let ((pos (point)))
+  (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
     (vui-rerender ekg-org-view--instance)
-    (if (and target-id (ekg-org-view--goto-note-id target-id))
-        (recenter)
-      (goto-char (min pos (point-max)))
+    (if (and restore-id (ekg-org-view--goto-note-id restore-id))
+        (let ((windows (get-buffer-window-list (current-buffer) nil t)))
+          (dolist (win windows)
+            (set-window-point win (point))
+            (unless (pos-visible-in-window-p (point) win)
+              (with-selected-window win (recenter))))
+          ;; When the buffer is not visible, update the saved point in
+          ;; each window's prev-buffer history so that `quit-window'
+          ;; restores point to the right heading.
+          (unless windows
+            (dolist (win (window-list nil 'no-mini))
+              (when-let* ((entry (assq (current-buffer)
+                                       (window-prev-buffers win))))
+                (setcar (cddr entry) (point))))))
+      (goto-char (point-min))
       (ekg-org-view--ensure-on-heading))
     (ekg-org-view--highlight)))
 
@@ -833,58 +845,6 @@ trashed, they are permanently deleted."
                             (or (ekg-org--note-title note) "Untitled")))
       (let ((ekg-org--inhibit-view-refresh t))
         (ekg-org-view--trash-note note))
-      (ekg-org-view--refresh))))
-
-(defun ekg-org-view-create-child ()
-  "Create a new child task under the task at point, at the end."
-  (interactive)
-  (let* ((parent-id (ekg-org-view--note-at-point))
-         (title (read-string "Task title: ")))
-    (when (and (not (string-empty-p title)) parent-id)
-      (let ((ekg-org--inhibit-view-refresh t))
-        (let* ((siblings (ekg-org-view--sorted-children parent-id))
-               (last-id (when siblings
-                          (ekg-note-id (car (last siblings)))))
-               (sort-order (if siblings
-                               (ekg-org-view--assign-order-after siblings last-id)
-                             0))
-               (note (ekg-note-create
-                      :text ""
-                      :mode 'org-mode
-                      :tags (list ekg-org-task-tag
-                                  (concat ekg-org-state-tag-prefix "todo"))
-                      :properties (list :titled/title (list title)
-                                        :org/parent parent-id
-                                        :org/sort-order sort-order))))
-          (ekg-save-note note)))
-      (ekg-org-view--refresh))))
-
-(defun ekg-org-view-create-sibling ()
-  "Create a new sibling task after the task at point."
-  (interactive)
-  (let* ((id (ekg-org-view--note-at-point))
-         (note (when id (ekg-get-note-with-id id)))
-         (parent-id (when note
-                      (plist-get (ekg-note-properties note)
-                                 :org/parent)))
-         (siblings (if parent-id
-                       (ekg-org-view--sorted-children parent-id)
-                     (ekg-org-view--sorted-top-level)))
-         (title (read-string "Task title: ")))
-    (when (not (string-empty-p title))
-      (let ((ekg-org--inhibit-view-refresh t))
-        (let* ((sort-order (ekg-org-view--assign-order-after siblings id))
-               (note (ekg-note-create
-                      :text ""
-                      :mode 'org-mode
-                      :tags (list ekg-org-task-tag
-                                  (concat ekg-org-state-tag-prefix "todo"))
-                      :properties (append
-                                   (list :titled/title (list title)
-                                         :org/sort-order sort-order)
-                                   (when parent-id
-                                     (list :org/parent parent-id))))))
-          (ekg-save-note note)))
       (ekg-org-view--refresh))))
 
 (defun ekg-org-view-open-note ()
@@ -1084,22 +1044,26 @@ nil to insert as first child/first top-level."
                (next (when (< (1+ i) len) (nth (1+ i) headings)))
                (next-pos (when next (nth 0 next)))
                (next-level (when next (nth 2 next)))
-               ;; The display position for slots after this heading is
-               ;; the next heading's pos, or end of buffer.
-               (after-pos (or next-pos (point-max))))
+               ;; Find where this heading's subtree ends: the next
+               ;; heading at the same level or shallower.
+               (tree-end-pos
+                (or (cl-loop for j from (1+ i) below len
+                             for candidate = (nth j headings)
+                             when (<= (nth 2 candidate) h-level)
+                             return (nth 0 candidate))
+                    (point-max))))
           ;; Slot: sibling after this heading (same level, same parent).
-          (push (list :buffer-pos after-pos
+          (push (list :buffer-pos tree-end-pos
                       :level h-level
                       :parent-id (nth 3 h)
                       :after-id h-id)
                 slots)
           ;; Slot: first child of this heading (one level deeper).
-          ;; Only if the next heading isn't already a child — we want
-          ;; to offer "first child" when there are existing children
-          ;; (insert before them) or none.
+          ;; When children exist, place before the first child.
+          ;; Otherwise, place at the subtree end.
           (let ((child-pos (if (and next-level (> next-level h-level))
                                next-pos
-                             after-pos)))
+                             tree-end-pos)))
             (push (list :buffer-pos child-pos
                         :level (1+ h-level)
                         :parent-id h-id
@@ -1156,13 +1120,14 @@ If TITLE is non-nil and non-empty, show it; otherwise show hint text."
 (defvar-local ekg-org-view--insert-overlay nil
   "Overlay showing the insertion placeholder.")
 
-(defun ekg-org-view--insert-update-overlay (ov pos level &optional title)
+(defun ekg-org-view--insert-update-overlay (ov pos level spacing &optional title)
   "Update overlay OV at POS to show insertion placeholder at LEVEL.
+SPACING is the number of blank lines between items at this level,
+matching the vui-vstack spacing of the containing layout (1 for
+top-level items, 0 for children).
 If TITLE is given, display it in the placeholder."
   (let ((placeholder (ekg-org-view--insert-placeholder-string level title))
-        (at-end (>= pos (point-max)))
-        ;; Top-level items have blank-line spacing between them.
-        (top-level-p (= level 1)))
+        (at-end (>= pos (point-max))))
     (move-overlay ov pos pos)
     ;; At end of buffer, we need a preceding newline since there's no
     ;; following line to attach before-string to.  Use after-string
@@ -1171,19 +1136,26 @@ If TITLE is given, display it in the placeholder."
         (progn
           (overlay-put ov 'before-string nil)
           (overlay-put ov 'after-string
-                       (concat (if top-level-p "\n\n" "\n") placeholder)))
+                       (concat "\n" (make-string spacing ?\n) placeholder)))
       (overlay-put ov 'after-string nil)
       (overlay-put ov 'before-string
-                   (concat placeholder (if top-level-p "\n\n" "\n"))))))
+                   (concat placeholder "\n" (make-string spacing ?\n))))))
+
+(defun ekg-org-view--insert-slot-spacing (slot)
+  "Return the inter-item spacing for SLOT's context.
+Top-level items (no parent) use spacing 1 to match the outer
+vui-vstack.  Child items use spacing 0."
+  (if (plist-get slot :parent-id) 0 1))
 
 (defun ekg-org-view--insert-show ()
   "Display the placeholder overlay at the current insertion slot."
   (when ekg-org-view--insert-overlay
     (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
            (level (plist-get slot :level))
-           (pos (plist-get slot :buffer-pos)))
+           (pos (plist-get slot :buffer-pos))
+           (spacing (ekg-org-view--insert-slot-spacing slot)))
       (ekg-org-view--insert-update-overlay
-       ekg-org-view--insert-overlay pos level)
+       ekg-org-view--insert-overlay pos level spacing)
       (goto-char (min pos (point-max))))))
 
 (defun ekg-org-view--insert-find-nearest-index (pos &optional prefer-parent-id)
@@ -1309,6 +1281,7 @@ The placeholder remains visible and updates live as you type."
   (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
          (level (plist-get slot :level))
          (pos (plist-get slot :buffer-pos))
+         (spacing (ekg-org-view--insert-slot-spacing slot))
          (ov ekg-org-view--insert-overlay)
          (buf (current-buffer)))
     ;; Release the positioning keymap so the minibuffer works normally.
@@ -1324,7 +1297,7 @@ The placeholder remains visible and updates live as you type."
                           (let ((input (minibuffer-contents)))
                             (with-current-buffer buf
                               (ekg-org-view--insert-update-overlay
-                               ov pos level input)))))
+                               ov pos level spacing input)))))
                       nil t))
                  (read-string "Task title: "))))
           (ekg-org-view--insert-cleanup)
