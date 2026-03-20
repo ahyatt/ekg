@@ -506,15 +506,16 @@ sibling."
   (let ((order 0)
         (insert-after nil)
         (found nil))
-    (triples-with-transaction ekg-db
-                              (dolist (sib siblings)
-                                (when (and found (not insert-after))
-                                  (setq insert-after order)
-                                  (cl-incf order))
-                                (ekg-org-view--set-sort-order (ekg-note-id sib) order)
-                                (when (equal (ekg-note-id sib) current-id)
-                                  (setq found t))
-                                (cl-incf order)))
+    (triples-with-transaction
+      ekg-db
+      (dolist (sib siblings)
+        (when (and found (not insert-after))
+          (setq insert-after order)
+          (cl-incf order))
+        (ekg-org-view--set-sort-order (ekg-note-id sib) order)
+        (when (equal (ekg-note-id sib) current-id)
+          (setq found t))
+        (cl-incf order)))
     (or insert-after order)))
 
 (defun ekg-org-view--visible-tags (note)
