@@ -259,7 +259,7 @@ NEW-STATE is one of the standard org states."
       (ekg-org-view--save-tags ekg-note)
       (when (derived-mode-p 'ekg-notes-mode)
         (ekg-notes-refresh)))))
-  ;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
+;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
 
 (defun ekg-org-capture (title)
   "Capture a new org task with TITLE into EKG."
@@ -452,14 +452,14 @@ unnecessary."
         (tags (mapcar #'ekg--normalize-tag (ekg-note-tags note))))
     (setf (ekg-note-tags note) tags)
     (triples-with-transaction ekg-db
-      (triples-set-type ekg-db id 'tagged :tag tags)
-      (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
-      (let ((modified-time (time-convert (current-time) 'integer)))
-        (triples-set-type ekg-db id 'time-tracked
-                          :creation-time (ekg-note-creation-time note)
-                          :modified-time modified-time)
-        (setf (ekg-note-modified-time note) modified-time))
-      (run-hook-with-args 'ekg-note-save-hook note))))
+                              (triples-set-type ekg-db id 'tagged :tag tags)
+                              (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
+                              (let ((modified-time (time-convert (current-time) 'integer)))
+                                (triples-set-type ekg-db id 'time-tracked
+                                                  :creation-time (ekg-note-creation-time note)
+                                                  :modified-time modified-time)
+                                (setf (ekg-note-modified-time note) modified-time))
+                              (run-hook-with-args 'ekg-note-save-hook note))))
 
 (defun ekg-org-view--sort-order (note)
   "Return the sort-order of NOTE, defaulting to creation time."
@@ -506,14 +506,14 @@ sibling."
         (insert-after nil)
         (found nil))
     (triples-with-transaction ekg-db
-      (dolist (sib siblings)
-        (when (and found (not insert-after))
-          (setq insert-after order)
-          (cl-incf order))
-        (ekg-org-view--set-sort-order (ekg-note-id sib) order)
-        (when (equal (ekg-note-id sib) current-id)
-          (setq found t))
-        (cl-incf order)))
+                              (dolist (sib siblings)
+                                (when (and found (not insert-after))
+                                  (setq insert-after order)
+                                  (cl-incf order))
+                                (ekg-org-view--set-sort-order (ekg-note-id sib) order)
+                                (when (equal (ekg-note-id sib) current-id)
+                                  (setq found t))
+                                (cl-incf order)))
     (or insert-after order)))
 
 (defun ekg-org-view--visible-tags (note)
@@ -949,26 +949,28 @@ among the new siblings."
 (defun ekg-org-view--all-tasks-for-refile (exclude-id)
   "Return an alist of (DISPLAY-STRING . ID) for refile targets.
 EXCLUDE-ID and its descendants are excluded to prevent cycles.
-A \"Top level\" entry is included to allow refiling to the root."
+A \"Top level\" entry is included to allow refiling to the root.
+Each display string shows the full hierarchy path, e.g.
+\"Parent/Child/Target\", so the list remains meaningful even when a
+completion framework reorders candidates."
   (let ((exclude-set (cons exclude-id
                            (ekg-org-view--descendant-ids exclude-id)))
         (result (list (cons "Top level" nil))))
     (letrec
         ((collect
-          (lambda (notes level)
+          (lambda (notes path)
             (dolist (note notes)
               (let ((id (ekg-note-id note)))
                 (unless (member id exclude-set)
                   (let* ((title (or (ekg-org--note-title note) "Untitled"))
-                         (state (condition-case nil
-                                    (ekg-org--state note) (error "?")))
-                         (indent (make-string (* 2 level) ?\s))
-                         (display (format "%s%s %s" indent state title)))
+                         (display (if path
+                                      (concat path "/" title)
+                                    title)))
                     (push (cons display id) result)
                     (funcall collect
                              (ekg-org-view--sorted-children id)
-                             (1+ level)))))))))
-      (funcall collect (ekg-org-view--sorted-top-level) 0))
+                             display))))))))
+      (funcall collect (ekg-org-view--sorted-top-level) nil))
     (nreverse result)))
 
 (defun ekg-org-view-refile ()
@@ -986,31 +988,31 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
            (target-id (cdr (assoc selection choices)))
            (ekg-org--inhibit-view-refresh t))
       (triples-with-transaction ekg-db
-        (if target-id
-            (setf (ekg-note-properties note)
-                  (plist-put (ekg-note-properties note)
-                             :org/parent target-id))
-          ;; Moving to top level: remove parent.
-          (setf (ekg-note-properties note)
-                (ekg-org-view--plist-delete (ekg-note-properties note)
-                                            :org/parent))
-          (triples-db-delete ekg-db id 'org/parent))
-        ;; Place at the end of the new siblings.
-        (let* ((new-siblings (if target-id
-                                 (ekg-org-view--sorted-children target-id)
-                               (ekg-org-view--sorted-top-level)))
-               ;; Exclude self from siblings when computing order.
-               (new-siblings (seq-remove
-                              (lambda (s) (equal (ekg-note-id s) id))
-                              new-siblings))
-               (last-id (when new-siblings
-                          (ekg-note-id (car (last new-siblings)))))
-               (sort-order (if new-siblings
-                               (ekg-org-view--assign-order-after
-                                new-siblings last-id)
-                             0)))
-          (ekg-org-view--set-sort-order id sort-order))
-        (ekg-save-note note)))
+                                (if target-id
+                                    (setf (ekg-note-properties note)
+                                          (plist-put (ekg-note-properties note)
+                                                     :org/parent target-id))
+                                  ;; Moving to top level: remove parent.
+                                  (setf (ekg-note-properties note)
+                                        (ekg-org-view--plist-delete (ekg-note-properties note)
+                                                                    :org/parent))
+                                  (triples-db-delete ekg-db id 'org/parent))
+                                ;; Place at the end of the new siblings.
+                                (let* ((new-siblings (if target-id
+                                                         (ekg-org-view--sorted-children target-id)
+                                                       (ekg-org-view--sorted-top-level)))
+                                       ;; Exclude self from siblings when computing order.
+                                       (new-siblings (seq-remove
+                                                      (lambda (s) (equal (ekg-note-id s) id))
+                                                      new-siblings))
+                                       (last-id (when new-siblings
+                                                  (ekg-note-id (car (last new-siblings)))))
+                                       (sort-order (if new-siblings
+                                                       (ekg-org-view--assign-order-after
+                                                        new-siblings last-id)
+                                                     0)))
+                                  (ekg-org-view--set-sort-order id sort-order))
+                                (ekg-save-note note)))
     (ekg-org-view--refresh id)))
 
 (defun ekg-org-view-demote ()
@@ -1281,11 +1283,11 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                          ;; Inserting as first: renumber from 1 and take 0.
                          (when siblings
                            (triples-with-transaction ekg-db
-                             (let ((order 1))
-                               (dolist (sib siblings)
-                                 (ekg-org-view--set-sort-order
-                                  (ekg-note-id sib) order)
-                                 (cl-incf order)))))
+                                                     (let ((order 1))
+                                                       (dolist (sib siblings)
+                                                         (ekg-org-view--set-sort-order
+                                                          (ekg-note-id sib) order)
+                                                         (cl-incf order)))))
                          0))
            (note (ekg-note-create
                   :text ""
