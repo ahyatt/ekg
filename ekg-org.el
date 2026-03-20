@@ -451,15 +451,16 @@ unnecessary."
   (let ((id (ekg-note-id note))
         (tags (mapcar #'ekg--normalize-tag (ekg-note-tags note))))
     (setf (ekg-note-tags note) tags)
-    (triples-with-transaction ekg-db
-                              (triples-set-type ekg-db id 'tagged :tag tags)
-                              (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
-                              (let ((modified-time (time-convert (current-time) 'integer)))
-                                (triples-set-type ekg-db id 'time-tracked
-                                                  :creation-time (ekg-note-creation-time note)
-                                                  :modified-time modified-time)
-                                (setf (ekg-note-modified-time note) modified-time))
-                              (run-hook-with-args 'ekg-note-save-hook note))))
+    (triples-with-transaction
+      ekg-db
+      (triples-set-type ekg-db id 'tagged :tag tags)
+      (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
+      (let ((modified-time (time-convert (current-time) 'integer)))
+        (triples-set-type ekg-db id 'time-tracked
+                          :creation-time (ekg-note-creation-time note)
+                          :modified-time modified-time)
+        (setf (ekg-note-modified-time note) modified-time))
+      (run-hook-with-args 'ekg-note-save-hook note))))
 
 (defun ekg-org-view--sort-order (note)
   "Return the sort-order of NOTE, defaulting to creation time."
