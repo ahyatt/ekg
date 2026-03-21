@@ -1246,35 +1246,36 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 
 (defun ekg-org-view--insert-create-task (slot title)
   "Create a new task from SLOT data with TITLE."
-  (let ((parent-id (plist-get slot :parent-id))
-        (after-id (plist-get slot :after-id))
-        (ekg-org--inhibit-view-refresh t))
-    (let* ((siblings (if parent-id
-                         (ekg-org-view--sorted-children parent-id)
-                       (ekg-org-view--sorted-top-level)))
-           (sort-order (if after-id
-                           (ekg-org-view--assign-order-after siblings after-id)
-                         ;; Inserting as first: renumber from 1 and take 0.
-                         (when siblings
-                           (triples-with-transaction ekg-db
-                                                     (let ((order 1))
-                                                       (dolist (sib siblings)
-                                                         (ekg-org-view--set-sort-order
-                                                          (ekg-note-id sib) order)
-                                                         (cl-incf order)))))
-                         0))
-           (note (ekg-note-create
-                  :text ""
-                  :mode 'org-mode
-                  :tags (list ekg-org-task-tag
-                              (concat ekg-org-state-tag-prefix "todo"))
-                  :properties (append
-                               (list :titled/title (list title)
-                                     :org/sort-order sort-order)
-                               (when parent-id
-                                 (list :org/parent parent-id))))))
-      (ekg-save-note note)))
-  (ekg-org-view--refresh))
+  (let* ((parent-id (plist-get slot :parent-id))
+         (after-id (plist-get slot :after-id))
+         (ekg-org--inhibit-view-refresh t)
+         (siblings (if parent-id
+                       (ekg-org-view--sorted-children parent-id)
+                     (ekg-org-view--sorted-top-level)))
+         (sort-order (if after-id
+                         (ekg-org-view--assign-order-after siblings after-id)
+                       ;; Inserting as first: renumber from 1 and take 0.
+                       (when siblings
+                         (triples-with-transaction
+                           ekg-db
+                           (let ((order 1))
+                             (dolist (sib siblings)
+                               (ekg-org-view--set-sort-order
+                                (ekg-note-id sib) order)
+                               (cl-incf order)))))
+                       0))
+         (note (ekg-note-create
+                :text ""
+                :mode 'org-mode
+                :tags (list ekg-org-task-tag
+                            (concat ekg-org-state-tag-prefix "todo"))
+                :properties (append
+                             (list :titled/title (list title)
+                                   :org/sort-order sort-order)
+                             (when parent-id
+                               (list :org/parent parent-id))))))
+    (ekg-save-note note)
+    (ekg-org-view--refresh (ekg-note-id note))))
 
 (defun ekg-org-view-insert-confirm ()
   "Confirm the insertion position and prompt for the task title.
