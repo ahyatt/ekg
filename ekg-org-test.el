@@ -783,6 +783,66 @@ An agent saving a new note should cause the view to update automatically."
                                       (line-beginning-position)
                                       (line-end-position)))))))
 
+(ekg-deftest ekg-org-test-view-refile-to-new-parent ()
+  "Test that refiling moves a task under a new parent."
+  (ekg-org-add-schema)
+  (let* ((p1 (ekg-org-test--add-task "Parent A"))
+         (p2 (ekg-org-test--add-task "Parent B"))
+         (child (ekg-org-test--add-task "Child" p1)))
+    (ekg-org-view)
+    ;; Navigate to "Child" and refile it under "Parent B".
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (while (not (equal (ekg-org-view--note-at-point) child))
+        (forward-line 1))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (car (cl-find-if
+                         (lambda (c) (string-match-p "Parent B" (car c)))
+                         choices)))))
+        (ekg-org-view-refile)))
+    ;; Child should now be under Parent B.
+    (let ((headings (ekg-org-test--view-headings)))
+      (should (equal headings
+                     '((1 "Parent A") (1 "Parent B") (2 "Child")))))))
+
+(ekg-deftest ekg-org-test-view-refile-to-top-level ()
+  "Test that refiling to top level removes the parent."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent)))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (while (not (equal (ekg-org-view--note-at-point) child))
+        (forward-line 1))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (car (cl-find-if
+                         (lambda (c) (string= "Top level" (car c)))
+                         choices)))))
+        (ekg-org-view-refile)))
+    ;; Both tasks should now be top-level.
+    (let ((headings (ekg-org-test--view-headings)))
+      (should (= (length headings) 2))
+      (should (member '(1 "Parent") headings))
+      (should (member '(1 "Child") headings)))))
+
+(ekg-deftest ekg-org-test-view-refile-excludes-descendants ()
+  "Test that refile targets exclude the task itself and its descendants."
+  (ekg-org-add-schema)
+  (let* ((p (ekg-org-test--add-task "Parent"))
+         (c (ekg-org-test--add-task "Child" p))
+         (gc (ekg-org-test--add-task "Grandchild" c)))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      ;; Get refile choices for "Parent" — should not include itself,
+      ;; Child, or Grandchild.
+      (let ((choices (ekg-org-view--all-tasks-for-refile p)))
+        (should (= (length choices) 1))
+        (should (string= "Top level" (caar choices)))))))
+
 (ekg-deftest ekg-org-test-properties ()
   "Test generic org property get/set/remove."
   (ekg-org-add-schema)

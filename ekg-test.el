@@ -461,6 +461,30 @@
         ;; The primary check is that fewer words are returned than originally present.
         (should (= (ekg-test-count-words-in-string selected-text) 5460))))))
 
+(ekg-deftest ekg-test-embedding-refresh-skips-unfixable ()
+  "Refreshing a tag embedding skips notes whose embeddings can't be fixed."
+  (let* ((good-embedding [0.1 0.2 0.3])
+         (bad-embedding [0 0 0])
+         (ekg-embedding-provider 'fake)
+         (ekg-vecdb-provider nil))
+    ;; Create two notes under the same tag.
+    (let ((good-note (ekg-note-create :text "good note" :mode 'text-mode :tags '("test-tag")))
+          (bad-note (ekg-note-create :text "" :mode 'text-mode :tags '("test-tag"))))
+      (ekg-save-note good-note)
+      (ekg-save-note bad-note)
+      ;; Store a valid embedding for the good note and an invalid one for the bad note.
+      (ekg-embedding-add-schema)
+      (triples-set-type ekg-db (ekg-note-id good-note) 'embedding :embedding good-embedding)
+      (triples-set-type ekg-db (ekg-note-id bad-note) 'embedding :embedding bad-embedding)
+      ;; Mock llm-embedding to always return an invalid embedding, so the
+      ;; fix attempt for the bad note will fail.
+      (cl-letf (((symbol-function 'llm-embedding)
+                 (lambda (_provider _text) bad-embedding)))
+        ;; This should NOT error -- it should skip the unfixable note.
+        (ekg-embedding-refresh-tag-embedding "test-tag")
+        ;; The good note's embedding should still be retrievable.
+        (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id good-note))))))))
+
 (ekg-deftest ekg-test-always-have-header-line ()
              (ekg-capture)
              (should header-line-format)

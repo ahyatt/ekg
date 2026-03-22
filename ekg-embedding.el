@@ -171,9 +171,12 @@ wait for the embedding to return and be set."
                              (substring-no-properties
                               (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))))
     (if (ekg-embedding-valid-p embedding)
-        (triples-set-type ekg-db (ekg-note-id note) 'embedding
-                          :embedding embedding)
-      (lwarn 'ekg :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
+        (if ekg-vecdb-provider
+            (ekg-embedding-batch-store
+             (list (ekg-embedding--note-to-embed-item note embedding)))
+          (triples-set-type ekg-db (ekg-note-id note) 'embedding
+                            :embedding embedding))
+      (lwarn '(ekg embedding-generation) :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
              (ekg-note-id note) embedding))))
 
 (defun ekg-embedding-batch-store (items)
@@ -248,17 +251,23 @@ embeddings of notes with the given tag."
       (let ((embeddings
              (cl-loop for tagged in
                       (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
+                      for note = (ekg-get-note-with-id tagged)
+                      ;; Skip deleted notes that are still in the tag list.
+                      when note
                       collect
                       (let ((embedding (ekg-embedding-get tagged)))
                         (unless (ekg-embedding-valid-p embedding)
                           (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
-                          (let ((note (ekg-get-note-with-id tagged)))
-                            (ekg-embedding-generate-for-note-sync note)
-                            (if (ekg-embedding-valid-p (ekg-embedding-note-get note))
-                                (progn
-                                  (ekg-save-note note)
-                                  (setf embedding (ekg-embedding-note-get note)))
-                              (error "In ekg-embedding: could not fix invalid embedding for note %s, can't refresh tag %s" tagged tag))))
+                          (condition-case nil
+                              (progn
+                                (ekg-embedding-generate-for-note-sync note)
+                                (let ((new-embedding (ekg-embedding-note-get note)))
+                                  (when (ekg-embedding-valid-p new-embedding)
+                                    (ekg-save-note note)
+                                    (setf embedding new-embedding))))
+                            (error nil))
+                          (unless (ekg-embedding-valid-p embedding)
+                            (warn "ekg-embedding: could not fix invalid embedding for note %s, skipping" tagged)))
                         embedding))))
         (let ((avg (ekg-embedding-average
                     (seq-filter #'ekg-embedding-valid-p embeddings))))
