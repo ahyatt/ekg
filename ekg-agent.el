@@ -627,27 +627,63 @@ the line intact."
           (delete-char ekg-agent--status-width)
           (insert (propertize " DONE  " 'face 'ekg-agent-log-done)))))))
 
+(defun ekg-agent--sanitize-tool-result (result)
+  "Ensure RESULT is safe to include in a JSON-serialized LLM request.
+Strips Emacs raw-byte characters (U+3FFF80 and above) that cause
+`json-serialize' to fail, and converts non-string results to
+strings."
+  (let ((s (if (stringp result)
+               result
+             (format "%s" result))))
+    (replace-regexp-in-string "[\x3fff80-\x3fffff]" "" s)))
+
 (defun ekg-agent--wrap-tool-function (tool log-buf)
-  "Return a copy of TOOL with its function wrapped to log in LOG-BUF.
-The wrapper logs STARTED when the tool is called and DONE when it
-returns (sync) or calls back (async)."
+  "Return a copy of TOOL with its function wrapped for resilience.
+
+The wrapper provides three layers of protection:
+
+1. LOGGING: Logs STARTED when the tool is called and DONE when it
+   returns (sync) or calls back (async).
+
+2. ONCE-ONLY CALLBACK: For async tools, the callback is guarded so
+   it can only fire once.  If a tool\\'s error handling accidentally
+   calls the callback a second time, it is silently ignored.
+
+3. RESULT SANITIZATION: All tool results are passed through
+   `ekg-agent--sanitize-tool-result' to strip characters that would
+   cause `json-serialize' to fail downstream."
   (let* ((original-fn (llm-tool-function tool))
          (tool-name (llm-tool-name tool))
          (async-p (llm-tool-async tool)))
     (make-llm-tool
      :function (if async-p
                    (lambda (callback &rest args)
-                     (let ((marker (ekg-agent--log-tool-start log-buf tool-name)))
-                       (apply original-fn
-                              (lambda (result)
-                                (ekg-agent--log-tool-done log-buf marker)
-                                (funcall callback result))
-                              args)))
+                     (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
+                           (called nil))
+                       (condition-case err
+                           (apply original-fn
+                                  (lambda (result)
+                                    (unless called
+                                      (setq called t)
+                                      (ekg-agent--log-tool-done log-buf marker)
+                                      (funcall callback
+                                               (ekg-agent--sanitize-tool-result result))))
+                                  args)
+                         (error
+                          (unless called
+                            (setq called t)
+                            (ekg-agent--log-tool-done log-buf marker)
+                            (funcall callback
+                                     (format "Error: %s" (error-message-string err))))))))
                  (lambda (&rest args)
                    (let ((marker (ekg-agent--log-tool-start log-buf tool-name)))
-                     (let ((result (apply original-fn args)))
-                       (ekg-agent--log-tool-done log-buf marker)
-                       result))))
+                     (condition-case err
+                         (let ((result (apply original-fn args)))
+                           (ekg-agent--log-tool-done log-buf marker)
+                           (ekg-agent--sanitize-tool-result result))
+                       (error
+                        (ekg-agent--log-tool-done log-buf marker)
+                        (format "Error: %s" (error-message-string err)))))))
      :name (llm-tool-name tool)
      :description (llm-tool-description tool)
      :args (llm-tool-args tool)
@@ -1861,48 +1897,59 @@ session.  At iteration 0 the log buffer is created and
                    (ekg-agent--provider)
                    prompt
                    (lambda (result)
-                     (if (and (buffer-live-p log-buf)
-                              (buffer-local-value 'ekg-agent--cancelled-p log-buf))
-                         ;; Cancelled by user
-                         (when (ekg-agent--set-stopped log-buf)
-                           (with-current-buffer log-buf
-                             (ekg-agent--log "Agent stopped (cancelled by user)"))
-                           (when status-callback (funcall status-callback "stopped by user")))
-                       ;; Normal processing of result
-                       (let ((result-alist (plist-get result :tool-results))
-                             (end-tools (or end-tools '("end"))))
-                         (unless result-alist
-                           ;; Everything must be a tool call, by default if it just gets
-                           ;; non-tool output we'll log it, and then instruct it to use
-                           ;; tools to end if needed.
-                           (when (and log-buf (buffer-live-p log-buf))
-                             (with-current-buffer log-buf
-                               (ekg-agent--log (plist-get :text result))))
-                           (llm-chat-prompt-append-response
-                            prompt
-                            (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
-                                    (string-join end-tools ", "))))
+                     ;; Guard the entire callback body: this runs in a
+                     ;; process sentinel context where uncaught errors
+                     ;; vanish silently, leaving the agent hung.
+                     (condition-case err
+                         (if (and (buffer-live-p log-buf)
+                                  (buffer-local-value 'ekg-agent--cancelled-p log-buf))
+                             ;; Cancelled by user
+                             (when (ekg-agent--set-stopped log-buf)
+                               (with-current-buffer log-buf
+                                 (ekg-agent--log "Agent stopped (cancelled by user)"))
+                               (when status-callback (funcall status-callback "stopped by user")))
+                           ;; Normal processing of result
+                           (let ((result-alist (plist-get result :tool-results))
+                                 (end-tools (or end-tools '("end"))))
+                             (unless result-alist
+                               ;; Everything must be a tool call, by default if it just gets
+                               ;; non-tool output we'll log it, and then instruct it to use
+                               ;; tools to end if needed.
+                               (when (and log-buf (buffer-live-p log-buf))
+                                 (with-current-buffer log-buf
+                                   (ekg-agent--log (plist-get :text result))))
+                               (llm-chat-prompt-append-response
+                                prompt
+                                (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
+                                        (string-join end-tools ", "))))
 
-                         (cond
-                          (timeout-final
-                           (when (ekg-agent--set-stopped log-buf)
-                             (when status-callback (funcall status-callback "stopped by timeout"))))
-                          ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
-                           (when (ekg-agent--set-stopped log-buf)
-                             (when status-callback
-                               (funcall
-                                status-callback
-                                (mapconcat (lambda (end-tool)
-                                             (format "%s" (assoc-default end-tool result-alist)))
-                                           (seq-filter (lambda (end-tool) (assoc-default end-tool result-alist))
-                                                       end-tools)
-                                           ", ")))))
-                          (t
-                           (ekg-agent--iterate prompt
-                                               (+ 1 iteration-num)
-                                               status-callback
-                                               end-tools
-                                               deadline))))))
+                             (cond
+                              (timeout-final
+                               (when (ekg-agent--set-stopped log-buf)
+                                 (when status-callback (funcall status-callback "stopped by timeout"))))
+                              ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
+                               (when (ekg-agent--set-stopped log-buf)
+                                 (when status-callback
+                                   (funcall
+                                    status-callback
+                                    (mapconcat (lambda (end-tool)
+                                                 (format "%s" (assoc-default end-tool result-alist)))
+                                               (seq-filter (lambda (end-tool) (assoc-default end-tool result-alist))
+                                                           end-tools)
+                                               ", ")))))
+                              (t
+                               (ekg-agent--iterate prompt
+                                                   (+ 1 iteration-num)
+                                                   status-callback
+                                                   end-tools
+                                                   deadline)))))
+                       (error
+                        (when (ekg-agent--set-stopped log-buf)
+                          (when (and log-buf (buffer-live-p log-buf))
+                            (with-current-buffer log-buf
+                              (ekg-agent--log "Error in callback: %s"
+                                              (error-message-string err))))
+                          (when status-callback (funcall status-callback 'error))))))
                    (lambda (_ err)
                      (when (ekg-agent--set-stopped log-buf)
                        (when status-callback (funcall status-callback 'error))
