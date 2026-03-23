@@ -140,45 +140,47 @@ same size.  There must be at least one embedding passed in."
 (defun ekg-embedding-generate-for-note-async (note &optional success-callback error-callback)
   "Calculate and set the embedding for NOTE.
 The embedding is calculated asynchronously and the data is
-updated afterwards.
+updated afterwards.  Notes with no text are silently skipped.
 
 If SUCCESS-CALLBACK is non-nil, call it after setting the value,
 with NOTE as the argument.
 
 If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
   (ekg-embedding-connect)
-  (llm-embedding-async
-   ekg-embedding-provider
-   (funcall ekg-embedding-text-selector
-            (substring-no-properties
-             (ekg-display-note-text note ekg-embedding-max-words 'plaintext)))
-   (lambda (embedding)
-     (ekg-connect)
-     (ekg-embedding-batch-store
-      (list (ekg-embedding--note-to-embed-item note embedding)))
-     (when success-callback (funcall success-callback note)))
-   (or error-callback
-       (lambda (error-type msg)
-         (message "ekg-embedding: error %s: %s" error-type msg)))))
+  (when-let ((text (ekg-embedding--note-embeddable-text note)))
+    (llm-embedding-async
+     ekg-embedding-provider
+     text
+     (lambda (embedding)
+       (if (ekg-embedding-valid-p embedding)
+           (progn
+             (ekg-connect)
+             (ekg-embedding-batch-store
+              (list (ekg-embedding--note-to-embed-item note embedding)))
+             (when success-callback (funcall success-callback note)))
+         (lwarn '(ekg embedding-generation) :error
+                "Invalid embedding from async generation of note %s"
+                (ekg-note-id note))))
+     (or error-callback
+         (lambda (error-type msg)
+           (message "ekg-embedding: error %s: %s" error-type msg))))))
 
 (defun ekg-embedding-generate-for-note-sync (note)
   "Calculate and set the embedding for NOTE.
 The embedding is calculated synchronously, and the caller will
-wait for the embedding to return and be set."
+wait for the embedding to return and be set.  Notes with no text
+are silently skipped."
   (ekg-embedding-connect)
-  (let ((embedding (llm-embedding
-                    ekg-embedding-provider
-                    (funcall ekg-embedding-text-selector
-                             (substring-no-properties
-                              (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))))
-    (if (ekg-embedding-valid-p embedding)
-        (if ekg-vecdb-provider
-            (ekg-embedding-batch-store
-             (list (ekg-embedding--note-to-embed-item note embedding)))
-          (triples-set-type ekg-db (ekg-note-id note) 'embedding
-                            :embedding embedding))
-      (lwarn '(ekg embedding-generation) :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
-             (ekg-note-id note) embedding))))
+  (when-let ((text (ekg-embedding--note-embeddable-text note)))
+    (let ((embedding (llm-embedding ekg-embedding-provider text)))
+      (if (ekg-embedding-valid-p embedding)
+          (if ekg-vecdb-provider
+              (ekg-embedding-batch-store
+               (list (ekg-embedding--note-to-embed-item note embedding)))
+            (triples-set-type ekg-db (ekg-note-id note) 'embedding
+                              :embedding embedding))
+        (lwarn '(ekg embedding-generation) :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
+               (ekg-note-id note) embedding)))))
 
 (defun ekg-embedding-batch-store (items)
   "Store a batch of ITEMS in the embedding database."
@@ -207,6 +209,7 @@ ERROR-CALLBACK is called with error-type and message on errors."
        (ekg-connect)
        (cl-loop for note in notes
                 for embedding in embeddings
+                when (ekg-embedding-valid-p embedding)
                 collect (ekg-embedding--note-to-embed-item note embedding) into items
                 finally
                 (ekg-embedding-batch-store items)
@@ -244,6 +247,18 @@ NOTE is the note to create an embedding for."
   (and (vectorp embedding) (> (length embedding) 0)
        (not (seq-contains-p embedding 0))))
 
+(defun ekg-embedding--note-embeddable-text (note)
+  "Return the text of NOTE suitable for embedding, or nil if empty.
+This extracts, truncates, and strips properties from the note
+text.  Returns nil when the note has no meaningful content, since
+embedding an empty string would produce an invalid result."
+  (let ((text (string-trim
+               (funcall ekg-embedding-text-selector
+                        (substring-no-properties
+                         (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))))
+    (when (> (length text) 0)
+      text)))
+
 (defun ekg-embedding-refresh-tag-embedding (tag)
   "Refresh the embedding for TAG.
 The embedding for TAG is recomputed by averaging all the
@@ -257,19 +272,30 @@ embeddings of notes with the given tag."
                       when note
                       collect
                       (let ((embedding (ekg-embedding-get tagged)))
-                        (unless (ekg-embedding-valid-p embedding)
+                        (cond
+                         ;; Valid embedding, use it.
+                         ((ekg-embedding-valid-p embedding) embedding)
+                         ;; No embedding stored - silently generate if possible.
+                         ((null embedding)
+                          (condition-case nil
+                              (progn
+                                (ekg-embedding-generate-for-note-sync note)
+                                (ekg-embedding-note-get note))
+                            (error nil)))
+                         ;; Invalid stored embedding - try to fix, delete on failure.
+                         (t
                           (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
                           (condition-case nil
                               (progn
                                 (ekg-embedding-generate-for-note-sync note)
                                 (let ((new-embedding (ekg-embedding-note-get note)))
-                                  (when (ekg-embedding-valid-p new-embedding)
-                                    (ekg-save-note note)
-                                    (setf embedding new-embedding))))
-                            (error nil))
-                          (unless (ekg-embedding-valid-p embedding)
-                            (warn "ekg-embedding: could not fix invalid embedding for note %s, skipping" tagged)))
-                        embedding))))
+                                  (if (ekg-embedding-valid-p new-embedding)
+                                      new-embedding
+                                    (ekg-embedding-delete tagged)
+                                    nil)))
+                            (error
+                             (ekg-embedding-delete tagged)
+                             nil))))))))
         (let ((avg (ekg-embedding-average
                     (seq-filter #'ekg-embedding-valid-p embeddings))))
           (if (ekg-embedding-valid-p avg)

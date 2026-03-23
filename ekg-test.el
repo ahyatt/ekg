@@ -461,29 +461,67 @@
         ;; The primary check is that fewer words are returned than originally present.
         (should (= (ekg-test-count-words-in-string selected-text) 5460))))))
 
-(ekg-deftest ekg-test-embedding-refresh-skips-unfixable ()
-  "Refreshing a tag embedding skips notes whose embeddings can't be fixed."
+(ekg-deftest ekg-test-embedding-refresh-deletes-unfixable ()
+  "Refreshing a tag embedding deletes invalid embeddings that can't be fixed."
   (let* ((good-embedding [0.1 0.2 0.3])
          (bad-embedding [0 0 0])
          (ekg-embedding-provider 'fake)
          (ekg-vecdb-provider nil))
-    ;; Create two notes under the same tag.
     (let ((good-note (ekg-note-create :text "good note" :mode 'text-mode :tags '("test-tag")))
-          (bad-note (ekg-note-create :text "" :mode 'text-mode :tags '("test-tag"))))
+          (bad-note (ekg-note-create :text "bad note" :mode 'text-mode :tags '("test-tag"))))
       (ekg-save-note good-note)
       (ekg-save-note bad-note)
-      ;; Store a valid embedding for the good note and an invalid one for the bad note.
       (ekg-embedding-add-schema)
       (triples-set-type ekg-db (ekg-note-id good-note) 'embedding :embedding good-embedding)
       (triples-set-type ekg-db (ekg-note-id bad-note) 'embedding :embedding bad-embedding)
-      ;; Mock llm-embedding to always return an invalid embedding, so the
-      ;; fix attempt for the bad note will fail.
+      (should (ekg-embedding-get (ekg-note-id bad-note)))
       (cl-letf (((symbol-function 'llm-embedding)
                  (lambda (_provider _text) bad-embedding)))
-        ;; This should NOT error -- it should skip the unfixable note.
         (ekg-embedding-refresh-tag-embedding "test-tag")
-        ;; The good note's embedding should still be retrievable.
-        (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id good-note))))))))
+        (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id good-note))))
+        ;; The invalid embedding should have been deleted, not just skipped.
+        (should-not (ekg-embedding-get (ekg-note-id bad-note)))))))
+
+(ekg-deftest ekg-test-embedding-refresh-generates-missing ()
+  "Refreshing a tag embedding generates embeddings for notes that lack one."
+  (let* ((good-embedding [0.1 0.2 0.3])
+         (generated-embedding [0.4 0.5 0.6])
+         (ekg-embedding-provider 'fake)
+         (ekg-vecdb-provider nil))
+    (let ((has-embedding (ekg-note-create :text "has embedding" :mode 'text-mode :tags '("test-tag")))
+          (missing-embedding (ekg-note-create :text "needs embedding" :mode 'text-mode :tags '("test-tag"))))
+      (ekg-save-note has-embedding)
+      (ekg-save-note missing-embedding)
+      (ekg-embedding-add-schema)
+      (triples-set-type ekg-db (ekg-note-id has-embedding) 'embedding :embedding good-embedding)
+      ;; No embedding stored for missing-embedding.
+      (should-not (ekg-embedding-get (ekg-note-id missing-embedding)))
+      (cl-letf (((symbol-function 'llm-embedding)
+                 (lambda (_provider _text) generated-embedding)))
+        (ekg-embedding-refresh-tag-embedding "test-tag")
+        (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id has-embedding))))
+        (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id missing-embedding))))))))
+
+(ekg-deftest ekg-test-embedding-refresh-skips-empty-text ()
+  "Refreshing a tag embedding silently skips notes with no text."
+  (let* ((good-embedding [0.1 0.2 0.3])
+         (ekg-embedding-provider 'fake)
+         (ekg-vecdb-provider nil)
+         (llm-called nil))
+    (let ((has-text (ekg-note-create :text "has text" :mode 'text-mode :tags '("test-tag")))
+          (empty-note (ekg-note-create :text "" :mode 'text-mode :tags '("test-tag"))))
+      (ekg-save-note has-text)
+      (ekg-save-note empty-note)
+      (ekg-embedding-add-schema)
+      (triples-set-type ekg-db (ekg-note-id has-text) 'embedding :embedding good-embedding)
+      (cl-letf (((symbol-function 'llm-embedding)
+                 (lambda (_provider _text) (setq llm-called t) good-embedding)))
+        (ekg-embedding-refresh-tag-embedding "test-tag")
+        (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id has-text))))
+        ;; LLM should not have been called for the empty note.
+        (should-not llm-called)
+        ;; Empty note should have no embedding.
+        (should-not (ekg-embedding-get (ekg-note-id empty-note)))))))
 
 (ekg-deftest ekg-test-always-have-header-line ()
              (ekg-capture)
