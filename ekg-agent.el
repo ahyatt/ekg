@@ -640,6 +640,8 @@ strings."
 (defun ekg-agent--wrap-tool-function (tool log-buf)
   "Return a copy of TOOL with its function wrapped for resilience.
 
+LOG-BUF is the buffer to log to.
+
 The wrapper provides three layers of protection:
 
 1. LOGGING: Logs STARTED when the tool is called and DONE when it
