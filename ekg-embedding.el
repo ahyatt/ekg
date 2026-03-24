@@ -39,6 +39,7 @@
 (declare-function vecdb-get-item "vecdb")
 (declare-function vecdb-search-by-vector "vecdb")
 (declare-function vecdb-item-payload "vecdb")
+(declare-function vecdb-item-vector "vecdb")
 (declare-function make-vecdb-item "vecdb")
 
 ;;; Code:
@@ -273,8 +274,11 @@ embeddings of notes with the given tag."
         (let ((avg (ekg-embedding-average
                     (seq-filter #'ekg-embedding-valid-p embeddings))))
           (if (ekg-embedding-valid-p avg)
-              (ekg-embedding-batch-store (ekg-embedding--note-to-embed-item
-                                          (ekg-get-note-with-id tag) avg))
+              (if ekg-vecdb-provider
+                  (ekg-embedding-batch-store
+                   (list (ekg-embedding--note-to-embed-item
+                          (ekg-get-note-with-id tag) avg)))
+                (triples-set-type ekg-db tag 'embedding :embedding avg))
             (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
     (error (message "ekg-embedding: error when trying to refresh tag %s: %S" tag err))))
 
@@ -417,8 +421,10 @@ defined in `ekg.el`."
   "Return the embedding of entity with ID.
 If there is no embedding, return nil."
   (if ekg-vecdb-provider
-      (vecdb-get-item (car ekg-vecdb-provider)
-                      (cdr ekg-vecdb-provider) (ekg-embedding-id-to-embed-id id))
+      (let ((item (vecdb-get-item (car ekg-vecdb-provider)
+                                  (cdr ekg-vecdb-provider)
+                                  (ekg-embedding-id-to-embed-id id))))
+        (when item (vecdb-item-vector item)))
     (plist-get (triples-get-type ekg-db id 'embedding) :embedding)))
 
 (defun ekg-embedding-get-all-notes ()
