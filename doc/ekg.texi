@@ -1,7 +1,7 @@
 \input texinfo    @c -*- texinfo -*-
 @c %**start of header
 @setfilename ekg.info
-@settitle ekg@comma{} the Emacs Knowledge Graph
+@settitle ekg, the Emacs Knowledge Graph
 @documentencoding UTF-8
 @documentlanguage en
 @set MAINTAINER Andrew Hyatt
@@ -16,7 +16,7 @@
 
 @finalout
 @titlepage
-@title ekg@comma{} the Emacs Knowledge Graph
+@title ekg, the Emacs Knowledge Graph
 @author Andrew Hyatt (@email{ahyatt@@gmail.com})
 @end titlepage
 
@@ -24,16 +24,16 @@
 
 @ifnottex
 @node Top
-@top ekg@comma{} the Emacs Knowledge Graph
+@top ekg, the Emacs Knowledge Graph
 
 author:                Andrew Hyatt
 @insertcopying
 
-This is the ekg manual@comma{} which describes the operation and customization of the
+This is the ekg manual, which describes the operation and customization of the
 ekg package.  All information here is relevant to the released version only.
 
-The README is also informative@comma{} has screenshots@comma{} and can be found in the source
-and in the git repository@comma{} which is at @uref{https://github.com/ahyatt/ekg}.
+The README is also informative, has screenshots, and can be found in the source
+and in the git repository, which is at @uref{https://github.com/ahyatt/ekg}.
 
 @end ifnottex
 
@@ -170,13 +170,13 @@ Design
 @node Introduction
 @chapter Introduction
 
-The ekg module is a simple but opinionated note taking application@comma{} for emacs.
+The ekg module is a simple but opinionated note taking application, for emacs.
 It is a substitute for such other emacs applications such as org-roam or denote.
 ekg stands for @emph{emacs knowledge graph}.
 
 Data is completely stored in a sqlite database.  Notes are organized around
-tags@comma{} and you can view many notes by looking at one or more tags.  This provides
-a read-only view of various notes@comma{} which you can navigate between and choose to
+tags, and you can view many notes by looking at one or more tags.  This provides
+a read-only view of various notes, which you can navigate between and choose to
 edit in a separate buffer.
 
 The editing of notes combines the editing of the text of the note with various
@@ -194,23 +194,23 @@ properties stored in the database such as the tags of the note.
 @node Sqlite dependency
 @section Sqlite dependency
 
-If using Emacs version 29@comma{} you likely have @samp{sqlite} as a library compiled into
+If using Emacs version 29, you likely have @samp{sqlite} as a library compiled into
 Emacs.  Prior versions use @samp{emacsql} for access to sqlite.  If you are using a
-pre-Emacs 29 version@comma{} you need to have @samp{sqlite} installed on your system.
+pre-Emacs 29 version, you need to have @samp{sqlite} installed on your system.
 
 @node Installing via Melpa
 @section Installing via Melpa
 
 This is the easiest and recommended way to install ekg.  If you have not set up
-Melpa yet@comma{} follow the instructions at @uref{https://melpa.org/#/getting-started}.
+Melpa yet, follow the instructions at @uref{https://melpa.org/#/getting-started}.
 
-There is no need to use Melpa Stable@comma{} because development happens in a branch
-and is not integrated until it is deemed stable.  When bugs are discovered@comma{}
-fixes are pushed to the main branch soon@comma{} so it is usually a good idea to keep
+There is no need to use Melpa Stable, because development happens in a branch
+and is not integrated until it is deemed stable.  When bugs are discovered,
+fixes are pushed to the main branch soon, so it is usually a good idea to keep
 your version up to date.
 
-There are many ways to use Melpa to download ekg@comma{} but using @samp{use-package} is the
-easiest way@comma{} and recommended because it allows you to get the pacakge and
+There are many ways to use Melpa to download ekg, but using @samp{use-package} is the
+easiest way, and recommended because it allows you to get the pacakge and
 configure it in one place.  An example use is below.
 
 @lisp
@@ -221,13 +221,13 @@ configure it in one place.  An example use is below.
 @node Installing by hand
 @section Installing by hand
 
-If you wish to install by hand@comma{} you need to make sure to install the triples
-library@comma{} found in GNU ELPA@comma{} and at @uref{https://github.com/ahyatt/triples}.
+If you wish to install by hand, you need to make sure to install the triples
+library, found in GNU ELPA, and at @uref{https://github.com/ahyatt/triples}.
 
-Clone the ekg library@comma{} from whatever branch you would like to use (@samp{main}
-corresponds to the release version@comma{} and @samp{develop} is where development of the
+Clone the ekg library, from whatever branch you would like to use (@samp{main}
+corresponds to the release version, and @samp{develop} is where development of the
 next version happens).  Add your source directory and require ekg.  The
-following is an example assuming you cloned ekg into @samp{~/src/ekg}@comma{} and the
+following is an example assuming you cloned ekg into @samp{~/src/ekg}, and the
 triples library is already installed.
 
 @lisp
@@ -271,9 +271,9 @@ Added the ability to sync with Apple Notes.
 @item
 Changed how note metadata is represented in the note editing UI@.
 @item
-Added @samp{ekg-agent}@comma{} an autonomous agent that can help you with your notes@comma{} and perform other tasks using notes as memory.
+Added @samp{ekg-agent}, an autonomous agent that can help you with your notes, and perform other tasks using notes as memory.
 @item
-Added @samp{ekg-org}@comma{} an org-mode task integration module.  Tasks are stored in the ekg database and appear in the org agenda via a virtual file.  Includes @samp{ekg-org-view}@comma{} an interactive hierarchical task view for collaborating with AI agents on task management.
+Added @samp{ekg-org}, an org-mode task integration module.  Tasks are stored in the ekg database and appear in the org agenda via a virtual file.  Includes @samp{ekg-org-view}, an interactive hierarchical task view for collaborating with AI agents on task management.
 @item
 Pushed more configuration into the triple database itself.
 @end itemize
@@ -283,11 +283,11 @@ Pushed more configuration into the triple database itself.
 
 @itemize
 @item
-Add support for the @samp{vecdb} package@comma{} for embedding storing and retrieval.
+Add support for the @samp{vecdb} package, for embedding storing and retrieval.
 @item
 Add @samp{ekg-truncation-method} variable to control how truncation happens.
 @item
-Fix various truncation issues with quotes@comma{} underscores and all sorts of other symbols.
+Fix various truncation issues with quotes, underscores and all sorts of other symbols.
 @end itemize
 
 @node Version 071
@@ -341,7 +341,7 @@ Generate embeddings in batch in @samp{ekg-embedding-generate-all}.
 @item
 Fix issue in trying to get a single-valued item to show up in the metadata line.
 @item
-Remove the never-used named@comma{} email@comma{} and person schema.
+Remove the never-used named, email, and person schema.
 @item
 Fix issue with tag completions triggering incorrectly if they contained spaces.
 @item
@@ -363,7 +363,7 @@ Add export to @uref{https://github.com/protesilaos/denote, denote} (by @uref{htt
 
 @itemize
 @item
-Run tag hooks when a valid tag is typed@comma{} instead of relying on completion@comma{} which often doesn't work.
+Run tag hooks when a valid tag is typed, instead of relying on completion, which often doesn't work.
 @item
 Fix issue in @samp{markdown-mode} where the beginning of the tag values was incorrectly read-only.
 @item
@@ -376,10 +376,10 @@ Allow emojis as tags.
 @itemize
 @item
 Add tag and similar notes to the context when having LLMs add to or replace
-notes.  @code{ekg-llm-default-instructions} replaces the previous variable@comma{}
+notes.  @code{ekg-llm-default-instructions} replaces the previous variable,
 @code{ekg-llm-default-prompt} (because the prompt now contains the instructions).
 @item
-Add inline links for Markdown@comma{} as wiki links.
+Add inline links for Markdown, as wiki links.
 @end itemize
 
 @node Version 051
@@ -389,7 +389,7 @@ Add inline links for Markdown@comma{} as wiki links.
 @item
 Improve regex for inline tag linkification so we linkify more valid inline tags.
 @item
-Improve logseq import to import notes without org structure@comma{} and use filetags.
+Improve logseq import to import notes without org structure, and use filetags.
 @item
 Fix inline tag bug that test and real failures.
 @end itemize
@@ -405,17 +405,17 @@ Added @samp{ekg-show-notes-with-tag-prefix}.
 @item
 Add tags while writing the body of notes by completing with "#".  See @ref{Understanding and editing the note buffer, , Note text} section for details.
 @item
-Added functionality so that org-mode commands@comma{} and potentially others@comma{} narrow automatically so the metadata line and the read-only nature don't mess things up.  See @ref{Understanding and editing the note buffer, , Note text} section for details.
+Added functionality so that org-mode commands, and potentially others, narrow automatically so the metadata line and the read-only nature don't mess things up.  See @ref{Understanding and editing the note buffer, , Note text} section for details.
 @item
-@samp{ekg-auto-save}@comma{} a new module by @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
+@samp{ekg-auto-save}, a new module by @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
 @item
-Added canceling a note as an actual command@comma{} also by  @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
+Added canceling a note as an actual command, also by  @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
 @item
 Fix issue with trashing notes with tags that are partially trashed.
 @item
-Saving while editing a note will no longer add the draft tag.  This means that if you are editing a draft@comma{} it will not keep it as a draft@comma{} so it will become a normal note.
+Saving while editing a note will no longer add the draft tag.  This means that if you are editing a draft, it will not keep it as a draft, so it will become a normal note.
 @item
-Fix issue with using ekg-llm with vertex@comma{} which doesn't understand system prompts.
+Fix issue with using ekg-llm with vertex, which doesn't understand system prompts.
 @item
 Fix metadata face which didn't work well with all themes - now the metadata section is just bolded.
 @item
@@ -423,9 +423,9 @@ Improve display regenerating embeddings via @samp{ekg-embedding-generate-all}.
 @item
 Change multi-title note display from using newlines to commas
 @item
-Made deleting titles and resources possible@comma{} and properly skipped empty properties for multi-line propeties.
+Made deleting titles and resources possible, and properly skipped empty properties for multi-line propeties.
 @item
-Handle backup errors better@comma{} warning and proceding if not a forced backup@comma{} erroring out with a better message if forced.
+Handle backup errors better, warning and proceding if not a forced backup, erroring out with a better message if forced.
 @item
 Don't show trashed notes in drafts.
 @end itemize
@@ -447,13 +447,13 @@ Fixed issue that could occur when saving with malformed buffers.
 @item
 Switch LLM chat output to streaming when available.
 @item
-Fix inclusion of title-based transclusion ">t"@comma{} which included the "t" as part of the completion.
+Fix inclusion of title-based transclusion ">t", which included the "t" as part of the completion.
 @item
 Fix tag renaming possibly causing duplication.
 @item
 Ensure renamed tags are normalized.
 @item
-Support metadata where fields are specified via multiple property lines and make "title" such a field@comma{} so now titles can have commas.
+Support metadata where fields are specified via multiple property lines and make "title" such a field, so now titles can have commas.
 @end itemize
 
 @node Version 041
@@ -461,7 +461,7 @@ Support metadata where fields are specified via multiple property lines and make
 
 @itemize
 @item
-Fix issues using default emacs in-buffer completion@comma{} and allowing completion in places we shouldn't.
+Fix issues using default emacs in-buffer completion, and allowing completion in places we shouldn't.
 @item
 Add @samp{ekg-embedding-generate-on-save} and @samp{ekg-embedding-disable-generate-on-save} to turn off generating embeddings for notes.
 @end itemize
@@ -473,13 +473,13 @@ Add @samp{ekg-embedding-generate-on-save} and @samp{ekg-embedding-disable-genera
 @item
 Added ability to save in-progress notes.
 @item
-Added "magic tags"@comma{} tags that cause elisp to be executed.  See the @ref{Magic tags, , magic tags} section for more detail.
+Added "magic tags", tags that cause elisp to be executed.  See the @ref{Magic tags, , magic tags} section for more detail.
 @item
-Added @samp{ekg-llm}@comma{} a separate module@comma{} so LLMs can append to or rewrite notes@comma{} using other notes as prompts.  As with ekg-embeddings@comma{} a Open API key is required.
+Added @samp{ekg-llm}, a separate module, so LLMs can append to or rewrite notes, using other notes as prompts.  As with ekg-embeddings, a Open API key is required.
 @item
-Added @samp{ekg-capture-file} to save notes associated with a file@comma{} or go that same note.
+Added @samp{ekg-capture-file} to save notes associated with a file, or go that same note.
 @item
-Depend on the @uref{https://github.com/ahyatt/llm, llm package} for embeddings and llm functionality@comma{} so the user can choose different providers.
+Depend on the @uref{https://github.com/ahyatt/llm, llm package} for embeddings and llm functionality, so the user can choose different providers.
 @item
 Improved @samp{ekg-clean-db} to fix bugs and change empty-note deletion logic.
 @item
@@ -491,11 +491,11 @@ Made separator in @samp{ekg-capture-mode} and @samp{ekg-edit-mode} customizable.
 @item
 Fixed display of org notes to have properly formatted links and images.  Links can be opened with @samp{[C-c o]}.
 @item
-Fixed bug where in embedding search and buffer similarity@comma{} the highest match was discarded.
+Fixed bug where in embedding search and buffer similarity, the highest match was discarded.
 @item
 Fixed bug in title transclusion for company users.
 @item
-Changed template behavior to also use parent tags (so templates on "foo" tag@comma{} will work if the note tag is "foo/bar").
+Changed template behavior to also use parent tags (so templates on "foo" tag, will work if the note tag is "foo/bar").
 
 Thanks to contributors @uref{https://github.com/Gleek, Gleek} and @uref{https://github.com/qingshuizheng, Qingshui Zheng}.
 @end itemize
@@ -505,7 +505,7 @@ Thanks to contributors @uref{https://github.com/Gleek, Gleek} and @uref{https://
 
 @itemize
 @item
-Fix native compilation errors.  Upgrade to triples version 0.3.5@comma{} which contains more important bug fixes.
+Fix native compilation errors.  Upgrade to triples version 0.3.5, which contains more important bug fixes.
 @end itemize
 
 @node Version 032
@@ -513,7 +513,7 @@ Fix native compilation errors.  Upgrade to triples version 0.3.5@comma{} which c
 
 @itemize
 @item
-Upgrade to triples version 0.3.2@comma{} which contains important bug fixes.
+Upgrade to triples version 0.3.2, which contains important bug fixes.
 @end itemize
 
 @node Version 031
@@ -521,7 +521,7 @@ Upgrade to triples version 0.3.2@comma{} which contains important bug fixes.
 
 @itemize
 @item
-Upgrade to triples module 0.3@comma{} which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of sqlite will have their database automatically upgraded.  A backup will always be made beforehand - you may want to find it (alongside your normal emacs backups)@comma{} and make sure to keep it around in case the upgrade went wrong in some way.  @strong{Important: if you created your database before this version on the built-in sqlite@comma{} and afterwards switched to emacsql@comma{} you must switch back to the built-in sqlite for the upgrade.}
+Upgrade to triples module 0.3, which changes how integers are stored in the built-in sqlite (for users of Emacs 29+).  Users of sqlite will have their database automatically upgraded.  A backup will always be made beforehand - you may want to find it (alongside your normal emacs backups), and make sure to keep it around in case the upgrade went wrong in some way.  @strong{Important: if you created your database before this version on the built-in sqlite, and afterwards switched to emacsql, you must switch back to the built-in sqlite for the upgrade.}
 @item
 Store the ekg version in the database so we know when we need to do updates in the future.
 @item
@@ -533,13 +533,13 @@ Make ekg-close interactive.
 @item
 Fixes to ignore bad embeddings which otherwise would cause errors.
 @item
-Added the ability to kill notes in a notes view@comma{} which does not change the database@comma{} it only alters the view.  Thanks to Jay Rajput for the contribution!
+Added the ability to kill notes in a notes view, which does not change the database, it only alters the view.  Thanks to Jay Rajput for the contribution!
 @item
-Fix for tag cleanups@comma{} which were sometimes not cleaned up if the tag had other data (such as embeddings).
+Fix for tag cleanups, which were sometimes not cleaned up if the tag had other data (such as embeddings).
 @item
 Added variable @samp{ekg-embedding-text-selector} with a default function so that large notes can have their embeddings taken.
 @item
-Added @samp{ekg-get-notes-with-title}@comma{} which is offered as a useful function for clients.
+Added @samp{ekg-get-notes-with-title}, which is offered as a useful function for clients.
 @end itemize
 
 @node Version 03
@@ -547,35 +547,35 @@ Added @samp{ekg-get-notes-with-title}@comma{} which is offered as a useful funct
 
 @itemize
 @item
-Added inline commands@comma{} see the @ref{Inline commands, , inlines} section for more detail.
+Added inline commands, see the @ref{Inline commands, , inlines} section for more detail.
 @item
-Added customization of note display@comma{} using inline commands.
+Added customization of note display, using inline commands.
 @item
-Added logseq import / export in its own module@comma{} and removed it from the @samp{ekg-org-roam} module.  See the @ref{Logseq, , logseq} section for more details.
+Added logseq import / export in its own module, and removed it from the @samp{ekg-org-roam} module.  See the @ref{Logseq, , logseq} section for more details.
 @item
-Improve window management@comma{} now we play nicer with customized window configuration@comma{} and now opening a list of notes will also switch to that window.
+Improve window management, now we play nicer with customized window configuration, and now opening a list of notes will also switch to that window.
 @item
-Improved metadata overlay look and function@comma{} it now looks just like @samp{message-mode}@comma{} which hopefully will help with people's intuitions on how it works.
+Improved metadata overlay look and function, it now looks just like @samp{message-mode}, which hopefully will help with people's intuitions on how it works.
 @item
-Added a blank line between notes in notes list buffers@comma{} for a cleaner look.
+Added a blank line between notes in notes list buffers, for a cleaner look.
 @item
 Renamed @samp{ekg-rename-tag} to @samp{ekg-global-rename-tag} to clarify this isn't for changing an individual tag in a note.
 @item
 Added arg prefix behavior to @samp{ekg-notes-delete} to allow deleting notes without a warning.
 @item
-Made @samp{ekg-capture} have unique buffer names@comma{} so the user can capture multiple notes at the same time.
+Made @samp{ekg-capture} have unique buffer names, so the user can capture multiple notes at the same time.
 @end itemize
 
-Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}@comma{} @uref{https://github.com/qingshuizheng, Qingshui Zheng}@comma{} And @uref{https://github.com/cuprum, cuprum}.
+Thanks especially to users and contributors: @uref{https://github.com/jayrajput, Jay Rajput}, @uref{https://github.com/qingshuizheng, Qingshui Zheng}, And @uref{https://github.com/cuprum, cuprum}.
 
 @node Version 021
 @section Version 0.2.1
 
 @itemize
 @item
-Removed @samp{ekg-notes-remove}@comma{} which removed one or more tags from a note from a note list buffer.
+Removed @samp{ekg-notes-remove}, which removed one or more tags from a note from a note list buffer.
 @item
-New keybinding@comma{} "q" in the notes buffer@comma{} which kills the buffer (thanks to Jay Rajput for the idea).
+New keybinding, "q" in the notes buffer, which kills the buffer (thanks to Jay Rajput for the idea).
 @end itemize
 
 @node Version 02
@@ -583,21 +583,21 @@ New keybinding@comma{} "q" in the notes buffer@comma{} which kills the buffer (t
 
 @itemize
 @item
-Added hooks @code{ekg-add-schema-hook}@comma{} @code{ekg-note-pre-save-hook}@comma{} @code{ekg-note-save-hook}@comma{} @code{ekg-note-delete-hook}@comma{} and @code{ekg-note-add-tag-hook}  to enable customization.
+Added hooks @code{ekg-add-schema-hook}, @code{ekg-note-pre-save-hook}, @code{ekg-note-save-hook}, @code{ekg-note-delete-hook}, and @code{ekg-note-add-tag-hook}  to enable customization.
 @item
-New commands @samp{ekg-show-notes-latest-captured}@comma{} @samp{ekg-show-notes-latest-modified}@comma{} for showing notes created or modified recently.
+New commands @samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, for showing notes created or modified recently.
 @item
 Introduced variable @code{ekg-notes-size} to control the default page size for limited views such as @samp{ekg-show-notes-latest-captured}.
 @item
 Added templating.
 @item
-Added embedding as an optional add-on@comma{} to enable note similarity and note search; requires an account at OpenAI or similar embedding provider.
+Added embedding as an optional add-on, to enable note similarity and note search; requires an account at OpenAI or similar embedding provider.
 @item
 Added new function @code{ekg-active-notes} to easily get all non-trashed notes.
 @item
-Improved ability to have note list buffers that have flexible titles and operation@comma{} notably improving the @samp{ekg-show-notes-in-trash} command.
+Improved ability to have note list buffers that have flexible titles and operation, notably improving the @samp{ekg-show-notes-in-trash} command.
 @item
-Standardized buffer names for @samp{ekg-notes-mode} buffers@comma{} which all are prepended with "ekg" and surrounded by asterisks@comma{} to denote that they are non-file-based.
+Standardized buffer names for @samp{ekg-notes-mode} buffers, which all are prepended with "ekg" and surrounded by asterisks, to denote that they are non-file-based.
 @item
 Added the documentation you are reading right now.
 @item
@@ -609,140 +609,148 @@ Fix for @code{ekg-notes-refresh} incorrectly calling @code{ekg--show-notes}.
 @node Database
 @chapter Database
 
-By default@comma{} ekg uses the default triple database@comma{} which is set in the variable
+By default, ekg uses the default triple database, which is set in the variable
 @code{triples-default-database-filename}.  The default value of this is
 @samp{~/.emacs.d/triples.db}.  You can specify a different name if you want the ekg
-database to not be shared with any other user of the triple package@comma{} by
-customizing the variable @code{ekg-db-file}.  When this is @code{nil}@comma{} it leaves the
+database to not be shared with any other user of the triple package, by
+customizing the variable @code{ekg-db-file}.  When this is @code{nil}, it leaves the
 filename up to the triples package.
 
 @node Concepts and data model in ekg
 @chapter Concepts and data model in ekg
 
-The ekg package is built on a flexible database scheme called "triples"@comma{} where
-everything is stored as a graph structure: a subject@comma{} a predicate@comma{} and an
+The ekg package is built on a flexible database scheme called "triples", where
+everything is stored as a graph structure: a subject, a predicate, and an
 object.  The implication for the ekg package is that new kinds of data are easy
-to add@comma{} and live alongside other data.  Values of properties@comma{} stored as "objects"@comma{}
+to add, and live alongside other data.  Values of properties, stored as "objects",
 can themselves have values by adding data where the same value is the
-"subject".  If you plan to do extensive integration work in elisp@comma{} it will help
-to understand these concepts@comma{} and the best way to do so is reading the triples
+"subject".  If you plan to do extensive integration work in elisp, it will help
+to understand these concepts, and the best way to do so is reading the triples
 package README@.
 
-For notes@comma{} we can think of the subject of the triples as an ID@.  Notes are
-created@comma{} and have the following types by default@comma{} with the type having
+For notes, we can think of the subject of the triples as an ID@.  Notes are
+created, and have the following types by default, with the type having
 properties.
 @itemize
 @item
 @samp{tagged}: Tags
 @item
-@samp{text}: Text@comma{} its major mode@comma{} and any inline commands.
+@samp{text}: Text, its major mode, and any inline commands.
 @item
 @samp{time-tracked}: Creation time and modification time
 @item
 @samp{titled}: Title
 @end itemize
 
-The ID for notes is by default an integer UUID@.  However@comma{} you can have notes
-about anything.  In EKG an ID can be a resource identifier as well@comma{} such as a
-URL@.  When this happens@comma{} the ID is interesting data in its own right.
+The ID for notes is by default an integer UUID@.  However, you can have notes
+about anything.  In EKG an ID can be a resource identifier as well, such as a
+URL@.  When this happens, the ID is interesting data in its own right.
 
-Tags may have spaces@comma{} but cannot have commas@comma{} which are used to separate them
+Tags may have spaces, but cannot have commas, which are used to separate them
 when showing them to the user and parsing them back out into properties to
 store.  Tags also may not contain uppercase letters.
 
-Because of the triples model@comma{} there is data about the tags for each note.  Tags
-themselves just have type markers indicating they are tags@comma{} and can dynamically
-query for all notes with their tag@comma{} so tags always have a current list of notes
+Because of the triples model, there is data about the tags for each note.  Tags
+themselves just have type markers indicating they are tags, and can dynamically
+query for all notes with their tag, so tags always have a current list of notes
 with their tag.
 
 @node Understanding and editing the note buffer
 @chapter Understanding and editing the note buffer
 
-The note buffer is a buffer of the particular mode for the node@comma{} which can change based off the setting@comma{} and can be different for different notes.  It acts mosty just like that mode@comma{} but has a header that displays some of the properties of the note@comma{} and lets you edit those properties.
+The note buffer is a buffer of the particular mode for the node, which can change based off the setting, and can be different for different notes.  It acts mosty just like that mode, but has a header that displays some of the properties of the note, and lets you edit those properties.
 
 The properties shown in the note property area come from the data stored in the
-database for the entity. At a minimum@comma{} there will be tags. Some properties are
-not useful to display (for example@comma{} embedding vectors or internal parent/child
+database for the entity. At a minimum, there will be tags. Some properties are
+not useful to display (for example, embedding vectors or internal parent/child
 IDs). These can be hidden by adding the property keyword to
 @code{ekg-header-hidden-properties}. Packages such as @samp{ekg-embedding} and @samp{ekg-org}
 automatically add their internal properties to this list.
 
-For the common cases@comma{} there are special commands@comma{} available under the @samp{C-c /} prefix keymap:
+Some properties need formatting before display. For example, in the @samp{ekg-org}
+module, scheduled dates and deadlines are stored as epoch seconds but should
+appear as human-readable dates. The variable @code{ekg-property-format-functions} is an
+alist mapping property keywords (e.g. @code{:org/scheduled}) to functions that take a
+single value and return a display string. Packages can register their own
+formatters by adding entries to this alist; @samp{ekg-org} does this automatically for
+@code{:org/scheduled} and @code{:org/deadline}.
+
+For the common cases, there are special commands, available under the @samp{C-c /} prefix keymap:
 
 @itemize
 @item
-@samp{a}: @samp{ekg-note-add-tag}@comma{} to add a tag.
+@samp{a}: @samp{ekg-note-add-tag}, to add a tag.
 @item
-@samp{r}: @samp{ekg-note-remove-tag}@comma{} to remove a tag.
+@samp{r}: @samp{ekg-note-remove-tag}, to remove a tag.
 @item
-@samp{t}: @samp{ekg-note-add-title}@comma{} to add a title.
+@samp{t}: @samp{ekg-note-add-title}, to add a title.
 @item
-@samp{T}: @samp{ekg-note-remove-title}@comma{} to remove a title.
+@samp{T}: @samp{ekg-note-remove-title}, to remove a title.
 @item
-@samp{p}: @samp{ekg-note-edit-property}@comma{} to edit any property@comma{} including the "resource" of the note@comma{} which is its ID@.  For editing@comma{} multi-values properties are editable as a list with values separated by @samp{"@comma{} "}.  Maintain the space after the comma when editing.
+@samp{p}: @samp{ekg-note-edit-property}, to edit any property, including the "resource" of the note, which is its ID@.  For editing, multi-values properties are editable as a list with values separated by @samp{", "}.  Maintain the space after the comma when editing.
 @item
-@samp{i}: @samp{ekg-edit-add-inline}@comma{} to add an inline command.
+@samp{i}: @samp{ekg-edit-add-inline}, to add an inline command.
 
-When altering properties@comma{} nothing is saved until the note is saved.
+When altering properties, nothing is saved until the note is saved.
 @end itemize
 
 The buffer has the text of the note.
 
-There are three modes for the note text: @samp{text-mode}@comma{} @samp{markdown-mode}@comma{} and @samp{org-mode}.
-More can be added by customizing the variable @code{ekg-acceptable-modes}@comma{} just make
+There are three modes for the note text: @samp{text-mode}, @samp{markdown-mode}, and @samp{org-mode}.
+More can be added by customizing the variable @code{ekg-acceptable-modes}, just make
 sure its a mode that makes sense for notes. The default mode is configured in
-@code{ekg-capture-default-mode}@comma{} but can be changed when capturing with the command
+@code{ekg-capture-default-mode}, but can be changed when capturing with the command
 @samp{ekg-change-mode}.
 
 The note text provides various options for completions. The most common
 completion is typing tags inline while writing notes. These tags will be added
-to the note automatically upon saving@comma{} regardless of whether completion is used
-or not. The tag completion is triggered by the "#" symbol. In @samp{org-mode}@comma{} if
-@samp{ekg-linkify-inline-tags} is set to non-nil (which is the default)@comma{} the tag will
+to the note automatically upon saving, regardless of whether completion is used
+or not. The tag completion is triggered by the "#" symbol. In @samp{org-mode}, if
+@samp{ekg-linkify-inline-tags} is set to non-nil (which is the default), the tag will
 be turned into an org link to the tag. It is necessary to enclose the tag in
-square brackets to be detected as an inline tag.  In @samp{markdown-mode}@comma{} the tag will
+square brackets to be detected as an inline tag.  In @samp{markdown-mode}, the tag will
 be turned into a wiki link (denoted by double square brackets).  It is
-acceptable to finish the completion with a tag that is not currently defined@comma{} as
+acceptable to finish the completion with a tag that is not currently defined, as
 the tag will be added when the note is saved. The detection of plaintext tags of
 various types can be turned off by setting @samp{ekg-inline-populate-inline-text-tags}
-to @samp{nil}. There are other customizable tag symbols available@comma{} indicating different
-prefixes. By default@comma{} in addition to the "#" symbol (representing a tag with
-that name)@comma{} there is also the "@@" symbol for tags prefixed with "person/"@comma{} and
+to @samp{nil}. There are other customizable tag symbols available, indicating different
+prefixes. By default, in addition to the "#" symbol (representing a tag with
+that name), there is also the "@@" symbol for tags prefixed with "person/", and
 the "!" symbol for tags prefixed with "idea/".  These other symbols and the
 prefixes they mean are controlled by
-@samp{ekg-inline-custom-tag-completion-symbols}. By default@comma{} we have "@@" which will
-denote a tag with the "person/" prefix@comma{} and "!" which will denote a tag with the
-"idea/" prefix.  So if@comma{} in either @samp{org-mode} or @samp{markdown-mode}@comma{} the text has the
+@samp{ekg-inline-custom-tag-completion-symbols}. By default, we have "@@" which will
+denote a tag with the "person/" prefix, and "!" which will denote a tag with the
+"idea/" prefix.  So if, in either @samp{org-mode} or @samp{markdown-mode}, the text has the
 following:
 
 @example
 Everything related to #[emacs] should be colored #ffa500.  This is the opinion of @@[rms].
 @end example
 
-the tags that will be detected are "emacs" and@comma{} because of the special "@@"
-prefix that indicates a tag prefix@comma{} "person/rms". The color will not be picked
-up as a tag@comma{} because it is not enclosed in brackets. This helps us avoid false
+the tags that will be detected are "emacs" and, because of the special "@@"
+prefix that indicates a tag prefix, "person/rms". The color will not be picked
+up as a tag, because it is not enclosed in brackets. This helps us avoid false
 positives.
 
-In @samp{org-mode} and @samp{markdown-mode}@comma{} linkified links@comma{} which you get with tag
-completion if @samp{ekg-linkify-inline-tags} is true@comma{} the links will be detected as
-tags@comma{} and the tags will be added to the list of note tags on saving and exiting
+In @samp{org-mode} and @samp{markdown-mode}, linkified links, which you get with tag
+completion if @samp{ekg-linkify-inline-tags} is true, the links will be detected as
+tags, and the tags will be added to the list of note tags on saving and exiting
 the note.
 
 There is no functionality to remove inline tags that are deleted in the tag
-section. If an inline tag is not deleted in the note text@comma{} the tag will be
+section. If an inline tag is not deleted in the note text, the tag will be
 re-added.
 
-Another type of completion is for inline commands@comma{} the ">t" completion@comma{}
-mentioned in the @ref{Inline commands, , Inline commands}.
+Another type of completion is for inline commands, the ">t" completion,
+mentioned in the @ref{Inline commands}.
 
-The metadata section above the notes often can be problematic for some commands@comma{}
-especially org commands. Because of this@comma{} before commands are executed@comma{} we check
-the command name against the @samp{ekg-command-regex-for-narrowing}@comma{} and if there is a
-match to one of the regexes@comma{} we narrow to the note section just when the command
-is running. It defaults to all org-insert commands and @code{org-meta-return}@comma{} but if
-there are any weird behaviors caused by the metadata section@comma{} consider
-customizing this variable. Right now this just works for keybindings@comma{} and not
+The metadata section above the notes often can be problematic for some commands,
+especially org commands. Because of this, before commands are executed, we check
+the command name against the @samp{ekg-command-regex-for-narrowing}, and if there is a
+match to one of the regexes, we narrow to the note section just when the command
+is running. It defaults to all org-insert commands and @code{org-meta-return}, but if
+there are any weird behaviors caused by the metadata section, consider
+customizing this variable. Right now this just works for keybindings, and not
 using @code{execute-extended-command}.
 
 @menu
@@ -753,25 +761,25 @@ using @code{execute-extended-command}.
 @node Drafts
 @section Drafts
 
-Notes can be saved midway through editing@comma{} both for capturing and editing notes.
+Notes can be saved midway through editing, both for capturing and editing notes.
 The normal buffer-save keybinding (typically C-x C-s) will save a draft.  A
-draft is like a normal note@comma{} but has a special tag@comma{} by default "draft".  (This
+draft is like a normal note, but has a special tag, by default "draft".  (This
 can be customized in @samp{ekg-draft-tag}.)  Having this tag means the note doesn't
-show up in most views@comma{} much like the notes in "trash".  Once a note is saved
-normally@comma{} it loses the draft tag.
+show up in most views, much like the notes in "trash".  Once a note is saved
+normally, it loses the draft tag.
 
-See also the section on the @ref{Auto save, , auto save}@comma{} to see how to turn on and set up auto
-save@comma{} which can automatically save drafts for new notes.
+See also the section on the @ref{Auto save, , auto save}, to see how to turn on and set up auto
+save, which can automatically save drafts for new notes.
 
 @node A warning about org-mode
 @section A warning about org-mode
 
 Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
-of funtionality@comma{} but much of it depends on the assumption that the buffer is all
-for use by org-mode (not true in this case@comma{} because of the properties portion)@comma{}
-and the assumption that the buffer is visiting a file@comma{} which is also not
-true.  In particular@comma{} attachments will not work.  However@comma{} the @samp{ekg-org} module
-(see @ref{Org Tasks, , Org Tasks}) provides org-agenda integration by presenting ekg tasks as a
+of funtionality, but much of it depends on the assumption that the buffer is all
+for use by org-mode (not true in this case, because of the properties portion),
+and the assumption that the buffer is visiting a file, which is also not
+true.  In particular, attachments will not work.  However, the @samp{ekg-org} module
+(see @ref{Org Tasks}) provides org-agenda integration by presenting ekg tasks as a
 virtual org file.
 
 @node Capturing notes
@@ -779,24 +787,24 @@ virtual org file.
 
 @samp{ekg-capture} is the command to capture a note.  In ekg this is probably the most
 frequently used command.  It will create a new buffer called @samp{*EKG Capture*}.  By
-default@comma{} it will have the current date tag@comma{} such as "date/2023-02-21".
+default, it will have the current date tag, such as "date/2023-02-21".
 
 @noindent
-@samp{ekg-capture-url} will capture a note associated with a URL resource@comma{} and with
+@samp{ekg-capture-url} will capture a note associated with a URL resource, and with
 a given title as the title of the page.  The idea is that the note is annotating
-the reference itself as a "literature note".  The title also appears as a tag@comma{}
-so other notes can reference this if needed.  For example@comma{} if the URL is
-@uref{http://example.com}@comma{} and the title is "An example URL"@comma{} the properties will be:
+the reference itself as a "literature note".  The title also appears as a tag,
+so other notes can reference this if needed.  For example, if the URL is
+@uref{http://example.com}, and the title is "An example URL", the properties will be:
 
 @quotation
 Resource: @uref{http://example.com}
-Tags: doc/an example url@comma{} date/2023-02-25
+Tags: doc/an example url, date/2023-02-25
 Title: An example URL
 
 @end quotation
 
 Capturing URLs is a bit clunky as is.  If you can wrap it in a function to
-supply the name and url of the active browser tab@comma{} then you can create a much
+supply the name and url of the active browser tab, then you can create a much
 easier experience.  The following is an example for users of Google Chrome on
 Mac OS X@.
 
@@ -810,20 +818,20 @@ Mac OS X@.
 @end lisp
 
 @noindent
-URL can also point to local files@comma{} which will be browsed using @samp{find-file} by
+URL can also point to local files, which will be browsed using @samp{find-file} by
 default.  The idea is that you can tag files and folders to make them easier to
 find.  Here is an example note similar to web address URL:
 
 @quotation
-Resource: @uref{file:///Users/andrewhyatt/notes/20230510T162600__emacs_init-file.org}
-Tags: doc/emacs config@comma{} date/2023-05-13@comma{} emacs/init
+Resource: @uref{file:///Users/ahyatt/notes/20230510T162600__emacs_init-file.org}
+Tags: doc/emacs config, date/2023-05-13, emacs/init
 Title: Emacs Config
 
 @end quotation
 
 You can use the function @samp{ekg-capture-file} to either capture or edit a note
 associated with a file from a buffer visiting that file.  (If there is already a
-note associated with the buffer's file@comma{} the note will be opened.)  You can use
+note associated with the buffer's file, the note will be opened.)  You can use
 this to store TODOs and other notes about a file.
 
 ekg opens web addresses in a browser using @samp{browse-url} and everything else in
@@ -831,12 +839,12 @@ Emacs using @samp{find-file}.
 
 @noindent
 A final way to capture notes comes from a buffer that is viewing a list of
-notes@comma{} in @samp{ekg-notes-mode}.  You can call @samp{ekg-notes-create}@comma{} which will capture
+notes, in @samp{ekg-notes-mode}.  You can call @samp{ekg-notes-create}, which will capture
 a new note with whatever tags (if any) are associated with the notes buffer.
 
 @noindent
-To save any note that is being captured@comma{} press @samp{C-c C-c} or call
-@samp{ekg-capture-finalize}.  To cancel@comma{} just kill the buffer.  You can also abort with @samp{C-c C-k}@comma{} or @samp{ekg-capture-abort}@comma{} which will not only kill the buffer but delete any draft saved.
+To save any note that is being captured, press @samp{C-c C-c} or call
+@samp{ekg-capture-finalize}.  To cancel, just kill the buffer.  You can also abort with @samp{C-c C-k}, or @samp{ekg-capture-abort}, which will not only kill the buffer but delete any draft saved.
 
 @menu
 * Templates::
@@ -847,29 +855,29 @@ To save any note that is being captured@comma{} press @samp{C-c C-c} or call
 @node Templates
 @section Templates
 
-Ekg comes with a built-in way to have templates.  When you add a tag to a note@comma{}
-ekg searches for notes with both the tag being added@comma{} and the tag "template".
+Ekg comes with a built-in way to have templates.  When you add a tag to a note,
+ekg searches for notes with both the tag being added, and the tag "template".
 Any note with those two tags will be added by default to the text of the buffer.
 
-For example@comma{} if there is a note with tags "daily reflection" and "template"@comma{}
-with the text "What did you learn today?"@comma{} adding the tag "daily reflection" to
+For example, if there is a note with tags "daily reflection" and "template",
+with the text "What did you learn today?", adding the tag "daily reflection" to
 a note will cause the text "What did you learn today?" to appear.  The parents
-of tags are also searched@comma{} so the same thing will happen if the tag you add is
+of tags are also searched, so the same thing will happen if the tag you add is
 "daily reflection/morning" - it will get the template for "daily reflection" as
 long as it exists.
 
 The adding of templates happens whether intially when setting up the capture
-buffer@comma{} or later when the user types a tag that is a valid tag.  Because of
-this@comma{} it's best to avoid adding templates to tags that are prefixes of other
-tags you'd like to use@comma{} but don't want the template on@comma{} because as soon as ekg
-sees the prefix that's a valid tag being typed@comma{} it will trigger that tag's
+buffer, or later when the user types a tag that is a valid tag.  Because of
+this, it's best to avoid adding templates to tags that are prefixes of other
+tags you'd like to use, but don't want the template on, because as soon as ekg
+sees the prefix that's a valid tag being typed, it will trigger that tag's
 templates.
 
 You can choose a tag other than "template" as the trigger for this templating
-behavior@comma{} by customizing @code{ekg-template-tag}.
+behavior, by customizing @code{ekg-template-tag}.
 
 This functionality is enabled through the function
-@samp{ekg-on-add-tag-insert-template} in the variable @code{ekg-note-add-tag-hook}@comma{} and
+@samp{ekg-on-add-tag-insert-template} in the variable @code{ekg-note-add-tag-hook}, and
 can be turned off by removing it from that hook.
 
 @lisp
@@ -880,68 +888,68 @@ can be turned off by removing it from that hook.
 @section Changing the initial tags of a note
 
 The variable @code{ekg-capture-auto-tag-funcs} has a list of functions to call to add
-tags.  Each function is called@comma{} and returns a list of tags (or @code{nil}@comma{} the empty
-list)@comma{} which are all added to a new note.  By default@comma{} this variable has the
-function @samp{ekg-date-tag}@comma{} which returns the tag of today's date.  If you do not
-want this@comma{} you can remove this function.  You can also add your own functions to
-add the year@comma{} the week number@comma{} or any tag you feel is appropriate.
+tags.  Each function is called, and returns a list of tags (or @code{nil}, the empty
+list), which are all added to a new note.  By default, this variable has the
+function @samp{ekg-date-tag}, which returns the tag of today's date.  If you do not
+want this, you can remove this function.  You can also add your own functions to
+add the year, the week number, or any tag you feel is appropriate.
 
 @node Inline commands
 @section Inline commands
 
 An inline command is a way to insert generated content into notes.  A command
-has a representation@comma{} and can be evaluated.  The representation is an
+has a representation, and can be evaluated.  The representation is an
 s-expression limited to a subset of functions.  An example of a representation
 is "My .emacs file: %(transclude-file \"~/.emacs.d/init.el\")".  When you are
-capturing or editing the note@comma{} you can create this representation@comma{} or see one
-already created.  When viewing the note in a notes buffer@comma{} the inline command is
+capturing or editing the note, you can create this representation, or see one
+already created.  When viewing the note in a notes buffer, the inline command is
 evaluated and the results are inserted into the note.
 
-There are two kinds of inline commands: a normal command@comma{} and a note command.  A
-normal command can do anything@comma{} and takes the form "%(<command> <arg 1> <arg 2>
-@dots{} <arg n>)".  In other words@comma{} this is just like an elisp function call@comma{} except
+There are two kinds of inline commands: a normal command, and a note command.  A
+normal command can do anything, and takes the form "%(<command> <arg 1> <arg 2>
+@dots{} <arg n>)".  In other words, this is just like an elisp function call, except
 with a "%" in front.  When executing one of these we look for a function
-starting with @samp{ekg-inline-command-}.  So@comma{} for example@comma{} we have the following
+starting with @samp{ekg-inline-command-}.  So, for example, we have the following
 commands available for use:
 
 @itemize
 @item
 @samp{%(transclude-note id <numwords>)}: Include the contents of another note.
-@samp{numwords} is optional@comma{} and controls the maximum number of words to include.
-If not included@comma{} there is no limit.
+@samp{numwords} is optional, and controls the maximum number of words to include.
+If not included, there is no limit.
 @item
 @samp{%(transclude-file filename <numwords>)}: Include the contents of a file.
 @samp{numwords} functions the same here as in @samp{transclude-note}.
 @item
 @samp{%(transclude-website url <numwords>)}: Include the contents of a website.  As
-of now@comma{} no attempt is made to only include the "main content"@comma{} so this is best
+of now, no attempt is made to only include the "main content", so this is best
 suited to simple text sites that have content without any navigational
 elements.
 @end itemize
 
-These are defined in @code{ekg-inline-command-transclude-note}@comma{} and so on.  A user
+These are defined in @code{ekg-inline-command-transclude-note}, and so on.  A user
 can define new commands just by creating new functions that fit this pattern.
 All of these will be executed and content calculated every time the note
 containing them is re-displayed.  Note that there is currently no automatic
 refresh when the content being transcluded changes.
 
 The other kind of inline command is a note command.  These function similarly to
-normal inline commands@comma{} with the key difference that the form is now
+normal inline commands, with the key difference that the form is now
 "%n(<command> <arg 1> <arg 2> @dots{} <arg n>)"; note the "n" in front.  The
 difference here is that there is an implicit first argument that is the note
 that is being displayed in the current context.  After that note argument "<arg
 1>" and so on will be added.  These are used primarily for controlling the
 read-only display of notes in notes lists.  The note commands are primarily
-driven by types@comma{} with the idea that a note can have many types@comma{} and each type
+driven by types, with the idea that a note can have many types, and each type
 has a note command that displays information related to that type.  Note
 commands are defined in functions with the prefix @samp{ekg-display-note-}.  The
 following note commands exist:
 
 @itemize
 @item
-@samp{%n(id <force>)}: Shows the ID of the note@comma{} if it is interesting.  Interesting
-mainly means it isn't a random-seeming ID that we normally generate for notes@comma{}
-and is instead some sort of resource.  If @samp{force} is true@comma{} then show it
+@samp{%n(id <force>)}: Shows the ID of the note, if it is interesting.  Interesting
+mainly means it isn't a random-seeming ID that we normally generate for notes,
+and is instead some sort of resource.  If @samp{force} is true, then show it
 whether it is interesting or not.
 @item
 @samp{%n(text <numwords> <format1> <format2> ... <formatn>)}: The text of a note (with any inline commands calculated
@@ -950,50 +958,50 @@ and their results displayed inline).  @samp{numwords} functions as noted above. 
 @samp{%n(tagged <numwords> <format1> <format2> ... <formatn>)}: The tags of a note.
 @item
 @samp{%n(time-tracked <format-str> <format1> <format2> ... <formatn>)}: The created and modified time of a note.
-@samp{format-str}@comma{} if passed@comma{} controls how the times are formatted (see
-documentation for @code{format-time-string}@comma{} default is @code{%Y-%m-%d}).
+@samp{format-str}, if passed, controls how the times are formatted (see
+documentation for @code{format-time-string}, default is @code{%Y-%m-%d}).
 @item
 @samp{%n(titled <numwords> <format1> <format2> ... <formatn>)}: The title of a note.
 @item
 @samp{%n(other)}: A special note command that will substitute itself with all
-type-relevant note commands that haven't already appeared.  So@comma{} for example@comma{}
-if there is a type such as @samp{person}@comma{} and a note has information with this
-type@comma{} that information will be shown in the @samp{other} command@comma{} as if it was
-substituted by @samp{%n(person)}.  However@comma{} if @samp{%n(person)} already appears as a
-command@comma{} it will not add it again in the @samp{other} command.
+type-relevant note commands that haven't already appeared.  So, for example,
+if there is a type such as @samp{person}, and a note has information with this
+type, that information will be shown in the @samp{other} command, as if it was
+substituted by @samp{%n(person)}.  However, if @samp{%n(person)} already appears as a
+command, it will not add it again in the @samp{other} command.
 @end itemize
 
-The formatting options can be left out@comma{} as can @samp{numwords}@comma{} for the default implementation.  However@comma{} if you want to control the formatting@comma{} there is a set of formatting options that exist.  That set is:
+The formatting options can be left out, as can @samp{numwords}, for the default implementation.  However, if you want to control the formatting, there is a set of formatting options that exist.  That set is:
 @itemize
 @item
-@samp{oneline}@comma{} the results must be on one line only.  To see an example of this in use@comma{} see @code{ekg-oneliner-note-template}.
+@samp{oneline}, the results must be on one line only.  To see an example of this in use, see @code{ekg-oneliner-note-template}.
 @item
-@samp{plaintext}@comma{} the result must not have any string properties.
+@samp{plaintext}, the result must not have any string properties.
 @end itemize
 
-The @samp{%n(id <force>)} is implemented in @code{ekg-display-note-id}@comma{} @samp{%n(text
-<numwords>)} is implemented in @code{ekg-display-note-text}@comma{} and so on.  All these
+The @samp{%n(id <force>)} is implemented in @code{ekg-display-note-id}, @samp{%n(text
+<numwords>)} is implemented in @code{ekg-display-note-text}, and so on.  All these
 are designed to be useful for customizing the note display (see @ref{Customizing note display in @samp{ekg-notes-mode}, , Customizing note
 display in ekg-notes-mode}).  Because we want to have these possibly not insert
-anything@comma{} each function must end with a newline if the content is likely to be
+anything, each function must end with a newline if the content is likely to be
 needing a line to itself.  The functions must always return a string.  Although
-the default note commands are all based around types@comma{} a note command could be
+the default note commands are all based around types, a note command could be
 anything that needs a note.
 
-Inlines can be added by simply typing them@comma{} or a few special commands.
-@samp{ekg-edit-add-inline} will add an inline note or file.  For notes@comma{} it will
-prompt to select a note by title or tag and then text.  For files@comma{} it will
-prompt for the file name.  The other way is to use completion at point@comma{} by
-typing ">t" and completing by notes with titles.  After completion@comma{} the ">t"
+Inlines can be added by simply typing them, or a few special commands.
+@samp{ekg-edit-add-inline} will add an inline note or file.  For notes, it will
+prompt to select a note by title or tag and then text.  For files, it will
+prompt for the file name.  The other way is to use completion at point, by
+typing ">t" and completing by notes with titles.  After completion, the ">t"
 will be replaced with the correct @samp{transclude-note} command that refers to the
-titled note selected.  This is only useful for notes with titles@comma{} since they are
+titled note selected.  This is only useful for notes with titles, since they are
 more easily selected by completion.
 
 @node Viewing tags or notes
 @chapter Viewing tags or notes
 
 There are several functions to view notes in various ways.  All of these show a
-list of notes in read-only view@comma{} that can be navigated and interacted with.
+list of notes in read-only view, that can be navigated and interacted with.
 This is a @samp{ekg-notes-mode} buffer.
 
 @samp{ekg-show-notes-with-tag} will show all notes tagged with the given tag.
@@ -1002,16 +1010,16 @@ This is a @samp{ekg-notes-mode} buffer.
 
 @samp{ekg-show-notes-with-all-tags} will show all notes that have all of the tags given.
 
-@samp{ekg-show-notes-for-query} will do a ranked text search@comma{} showing all results.  The query is token-based so querying for individual characters and syntax will not work; the query has to be words.  Prefixes such as "tag"@comma{} "title" and "text" can be used to restrict matches to tags@comma{} titles and text respectively.  For example@comma{} the query "tag:apartment sink" will show any article with "sink" in it (it could be anywhere@comma{} even a tag)@comma{} but it also has to have a tag with "apartment" in it.  Every term is ANDed together.  Use quotes if you want to quote a phrase such as "tag:\"apartment problems\" sink".  This does not search anything included via inline commands.  This is only possible for those using the built-in sqlite backend in Emacs 29.1 or later.
+@samp{ekg-show-notes-for-query} will do a ranked text search, showing all results.  The query is token-based so querying for individual characters and syntax will not work; the query has to be words.  Prefixes such as "tag", "title" and "text" can be used to restrict matches to tags, titles and text respectively.  For example, the query "tag:apartment sink" will show any article with "sink" in it (it could be anywhere, even a tag), but it also has to have a tag with "apartment" in it.  Every term is ANDed together.  Use quotes if you want to quote a phrase such as "tag:\"apartment problems\" sink".  This does not search anything included via inline commands.  This is only possible for those using the built-in sqlite backend in Emacs 29.1 or later.
 
 @samp{ekg-show-notes-for-today} will show the notes taken today.
 
 @samp{ekg-show-notes-latest-captured} will show a number of notes from newest to
-oldest.  The number is 20 by default@comma{} but can be changed by customizing
+oldest.  The number is 20 by default, but can be changed by customizing
 @code{ekg-notes-size}.
 
 @samp{ekg-show-notes-latest-modified} will show a number of notes from newest to
-oldest@comma{} but by modification time@comma{} not by creation time.  The number is also 20
+oldest, but by modification time, not by creation time.  The number is also 20
 by default and can be changed by customizing @code{ekg-notes-size}.
 
 @samp{ekg-show-notes-in-trash} will show the notes in the trash (see the @ref{The trash, , trash}
@@ -1028,100 +1036,100 @@ section for details on how this works).
 The notes buffer is navigated via the following commands (the default binding is
 also given):
 
-@samp{ekg-notes-tag} (@samp{t})@comma{} open another notes buffer showing notes with one of the
+@samp{ekg-notes-tag} (@samp{t}), open another notes buffer showing notes with one of the
 tags of current note.
 
-@samp{ekg-notes-open} (@samp{o})@comma{} edit the currently selected note.
+@samp{ekg-notes-open} (@samp{o}), edit the currently selected note.
 
-@samp{ekg-notes-delete} (@samp{d})@comma{} trash the current note (or@comma{} if this is the trash list@comma{}
+@samp{ekg-notes-delete} (@samp{d}), trash the current note (or, if this is the trash list,
 truly delete it).
 
-@samp{ekg-notes-browse} (@samp{b})@comma{} open the resource attached to the current note@comma{} if it
-exists@comma{} otherwise do nothing.
+@samp{ekg-notes-browse} (@samp{b}), open the resource attached to the current note, if it
+exists, otherwise do nothing.
 
-@samp{ekg-notes-select-and-browse-url} (@samp{B})@comma{} select from all the titles of URL
-resources in the any of the notes@comma{} and browse the URL@.
+@samp{ekg-notes-select-and-browse-url} (@samp{B}), select from all the titles of URL
+resources in the any of the notes, and browse the URL@.
 
-@samp{ekg-notes-refresh} (@samp{g})@comma{} refresh the list of notes in the current buffer@comma{} to
+@samp{ekg-notes-refresh} (@samp{g}), refresh the list of notes in the current buffer, to
 make sure any new notes or removed notes are updated in the list.
 
-@samp{ekg-notes-create} (@samp{c})@comma{} capture a new note with all the tags associated with
+@samp{ekg-notes-create} (@samp{c}), capture a new note with all the tags associated with
 the list.
 
-@samp{ekg-notes-next} (@samp{n})@comma{} move selection to the next note.
+@samp{ekg-notes-next} (@samp{n}), move selection to the next note.
 
-@samp{ekg-notes-previous} (@samp{p})@comma{} move selection to the previous node.
+@samp{ekg-notes-previous} (@samp{p}), move selection to the previous node.
 
-@samp{ekg-notes-any-note-tags} (@samp{a})@comma{} open a new notes list showing any of the tags
+@samp{ekg-notes-any-note-tags} (@samp{a}), open a new notes list showing any of the tags
 that appear in the selected note.
 
-@samp{ekg-notes-any-tags} (@samp{A})@comma{} open a new notes list showing any of the tags that
-appear in any of the notes in the note list.  For example@comma{} if the buffer was
-displaying notes with tag @samp{emacs}@comma{} and there are two notes displayed@comma{} one with
-tags @samp{emacs} and @samp{org-mode}@comma{} and the other with @samp{emacs} and @samp{ekg}@comma{} a new buffer
-displaying notes with any of the tags @samp{emacs}@comma{} @samp{org-mode}@comma{} or @samp{ekg} is created.
+@samp{ekg-notes-any-tags} (@samp{A}), open a new notes list showing any of the tags that
+appear in any of the notes in the note list.  For example, if the buffer was
+displaying notes with tag @samp{emacs}, and there are two notes displayed, one with
+tags @samp{emacs} and @samp{org-mode}, and the other with @samp{emacs} and @samp{ekg}, a new buffer
+displaying notes with any of the tags @samp{emacs}, @samp{org-mode}, or @samp{ekg} is created.
 
-@samp{ekg-notes-kill} (@samp{k})@comma{} kill a note from the current view.  This only removes
+@samp{ekg-notes-kill} (@samp{k}), kill a note from the current view.  This only removes
 the note from the current buffer; the database is not changed.  If the view is
-refreshed@comma{} the note will come back.
+refreshed, the note will come back.
 
 @samp{q} will kill the notes buffer.
 
 Many of these commands use the notion that notes lists have associated lists of
-tags.  That is the case for many commands@comma{} but not all.  For example@comma{}
-@samp{ekg-show-notes-latest-captured}@comma{} @samp{ekg-show-notes-latest-modified}@comma{} and
+tags.  That is the case for many commands, but not all.  For example,
+@samp{ekg-show-notes-latest-captured}, @samp{ekg-show-notes-latest-modified}, and
 @samp{ekg-show-notes-in-trash} have no associated tags.
 
 @node Customizing note display in @samp{ekg-notes-mode}
 @section Customizing note display in @samp{ekg-notes-mode}
 
 The main way to customize displays is via the variable
-@code{ekg-display-note-template}@comma{} which is a string that has inline commands in it
+@code{ekg-display-note-template}, which is a string that has inline commands in it
 (normally inline note commands).  See the @ref{Inline commands, , inlines} section for more details on
-these commands.  Through changing this@comma{} the ordering or inclusion of various
-type-related information can be configured@comma{} or extra text added@comma{} or anything@comma{}
+these commands.  Through changing this, the ordering or inclusion of various
+type-related information can be configured, or extra text added, or anything,
 really.
 
 The variable @code{ekg-format-funcs} has functions to run to format what ekg displays
 to the user.  Each format function runs in turn on a temporary buffer with the
-note text in it@comma{} and can make whatever changes it needs to before the buffer's
+note text in it, and can make whatever changes it needs to before the buffer's
 contents are displayed in a note list.
 
 @node Searching for notes
 @chapter Searching for notes
 
-There are a few different ways to search for notes@comma{} each with their own advantages and disadvantages.
+There are a few different ways to search for notes, each with their own advantages and disadvantages.
 
-@code{ekg-search} will perform an incrementally displaying list of notes where the text or title matches the query.  It is intended to be used as a quick way to find text.  After the notes have been narrow down to the extent you want@comma{} you can press the enter key to make a notes buffer out of the remaining items.  There is no ranking or any semantic sophistication here@comma{} it's a straight text match.
+@code{ekg-search} will perform an incrementally displaying list of notes where the text or title matches the query.  It is intended to be used as a quick way to find text.  After the notes have been narrow down to the extent you want, you can press the enter key to make a notes buffer out of the remaining items.  There is no ranking or any semantic sophistication here, it's a straight text match.
 
-@code{ekg-show-notes-for-query} will display a notes buffer with entries matching the query@comma{} in order of relevance.  This searches for text and titles.  It has some sophistication due to the use of @uref{https://www.sqlite.org/fts5.html, SQLite's FTS5 extension}.  This should work essentially like a Google query@comma{} except it does not accept @samp{AND}@comma{} @samp{OR}@comma{} or any other search operators.  All terms are treated as required.
+@code{ekg-show-notes-for-query} will display a notes buffer with entries matching the query, in order of relevance.  This searches for text and titles.  It has some sophistication due to the use of @uref{https://www.sqlite.org/fts5.html, SQLite's FTS5 extension}.  This should work essentially like a Google query, except it does not accept @samp{AND}, @samp{OR}, or any other search operators.  All terms are treated as required.
 
-In the optional @samp{ekg-embedding} module@comma{} there is a third option: @samp{ekg-embedding-search}@comma{} which displays a notes buffer similar to @samp{ekg-show-notes-for-query}@comma{} but with everything ranked by semantic relevance according to their embeddings.  See the @ref{Embeddings, , embeddings} section for more details.
+In the optional @samp{ekg-embedding} module, there is a third option: @samp{ekg-embedding-search}, which displays a notes buffer similar to @samp{ekg-show-notes-for-query}, but with everything ranked by semantic relevance according to their embeddings.  See the @ref{Embeddings, , embeddings} section for more details.
 
 @node Magic tags
 @chapter Magic tags
 
 Sometimes you want to have behaviors that are associated with particular tags.
-For example@comma{} if some of your notes are in Chinese@comma{} you may want to tag them all
-with the same tag.  Going further@comma{} it would be nice if all notes tagged with
+For example, if some of your notes are in Chinese, you may want to tag them all
+with the same tag.  Going further, it would be nice if all notes tagged with
 "chinese" had your favorite Chinese input method on by default.  With magic
-tags@comma{} you can enable this tag-based customization.
+tags, you can enable this tag-based customization.
 
-This works in a similar manner to @ref{Templates, , templates}@comma{} except that a template tag only
-takes effect when you add it@comma{} while a magic tag takes effect both when first
+This works in a similar manner to @ref{Templates, , templates}, except that a template tag only
+takes effect when you add it, while a magic tag takes effect both when first
 adding it and when editing a note with the tag.  But they also share the same
-shortcoming: if the tag is a prefix@comma{} it will trigger as soon as typed@comma{} even if
+shortcoming: if the tag is a prefix, it will trigger as soon as typed, even if
 you wanted to use a different tag that is prefixed with the tag.
 
 Creating magic tags is also like creating templates.  You create a note and use
 a special tag that indicates this tag is a magic tag.  That special tag is
 "tag-defun" (but the name can be changed by customizing the variable
-@samp{ekg-function-tag}).  This tag is itself a "magic tag"@comma{} and once you add it to a
-note@comma{} the note will change to be in @samp{emacs-lisp-mode}.  Notes co-tagged with
-this will take effect for any notes with those co-tags (again@comma{} just like
-templates).  For this reason@comma{} it's probably best to avoid having any date tags
-co-tagged@comma{} since users probably don't want them to be magic tags.  To illustrate
-the example that in this section@comma{} you could have a note with tags "chinese" and
+@samp{ekg-function-tag}).  This tag is itself a "magic tag", and once you add it to a
+note, the note will change to be in @samp{emacs-lisp-mode}.  Notes co-tagged with
+this will take effect for any notes with those co-tags (again, just like
+templates).  For this reason, it's probably best to avoid having any date tags
+co-tagged, since users probably don't want them to be magic tags.  To illustrate
+the example that in this section, you could have a note with tags "chinese" and
 "tag-defun".  This note could have the following content:
 
 @lisp
@@ -1129,38 +1137,38 @@ the example that in this section@comma{} you could have a note with tags "chines
 @end lisp
 
 @noindent
-In this example@comma{} once a note is added with "chinese"@comma{} this function will be run@comma{}
+In this example, once a note is added with "chinese", this function will be run,
 and all subsequent editing of the note will have this function run.  Note that
-there can be only one elisp expression in the note; if you have multiple@comma{} only
-the first will be used.  It is not advised to have complicated elisp here@comma{} since
+there can be only one elisp expression in the note; if you have multiple, only
+the first will be used.  It is not advised to have complicated elisp here, since
 it is not amenable to debugging.  The code is run in the context of the note
-buffer@comma{} after the text has been inserted.
+buffer, after the text has been inserted.
 
-For tags that are a hierarchy@comma{} each level in the hierarchy is tried in order@comma{}
-from least specific to most specific.  So@comma{} for example@comma{} if the tag was
-"chinese/writing practice"@comma{} first we would try "chinese"@comma{} apply any functions
-found there@comma{} then try "chinese/writing practice"@comma{} and apply any functions found
+For tags that are a hierarchy, each level in the hierarchy is tried in order,
+from least specific to most specific.  So, for example, if the tag was
+"chinese/writing practice", first we would try "chinese", apply any functions
+found there, then try "chinese/writing practice", and apply any functions found
 there.
 
 @node The trash
 @chapter The trash
 
-Notes deleted from note lists (@samp{ekg-notes-mode}) buffers are not deleted outright@comma{}
-but rather put in the trash@comma{} which is done by adding the @samp{ekg-trash-tag}@comma{} by
-default@comma{} "trash"@comma{} to the note. Any note with the "trash" tag will not be shown
+Notes deleted from note lists (@samp{ekg-notes-mode}) buffers are not deleted outright,
+but rather put in the trash, which is done by adding the @samp{ekg-trash-tag}, by
+default, "trash", to the note. Any note with the "trash" tag will not be shown
 in normal tag buffers.
 
 Trashed notes can be seen by calling @samp{ekg-show-notes-in-trash}. If notes are
-deleted from this list via @samp{ekg-notes-delete} again@comma{} they are deleted permanently.
+deleted from this list via @samp{ekg-notes-delete} again, they are deleted permanently.
 The function @samp{ekg-notes-delete} will always delete a note if the note is in the
-trash@comma{} and trash it otherwise. If you want to un-trash the note@comma{} you can remove
+trash, and trash it otherwise. If you want to un-trash the note, you can remove
 the trash tag.
 
 @node Links to ekg in org-mode
 @chapter Links to ekg in org-mode
 
 Both notes in ekg and certain note list buffers can be stored and linked to in
-org-mode.  To store a link to a note@comma{} you have to edit that note and call
+org-mode.  To store a link to a note, you have to edit that note and call
 @samp{org-store-link}.  That function can also be called in a @samp{ekg-notes-mode} buffer
 created by @samp{ekg-show-notes-with-any-tags}.  Other list types currently will just
 store their tags assuming the user wants a link to a list with any of the tags
@@ -1169,69 +1177,69 @@ in the list.
 @node Importing from org-roam
 @chapter Importing from org-roam
 
-You can import your notes from org-roam.  This will turn all titles into tags@comma{}
-and all links will become tags as well@comma{} as well as any tags org-roam thought
-were in the document.  At the moment@comma{} the import is started via executing elisp@comma{}
-since importing can be fairly idiosyncratic@comma{} and ekg and org-roam have different
+You can import your notes from org-roam.  This will turn all titles into tags,
+and all links will become tags as well, as well as any tags org-roam thought
+were in the document.  At the moment, the import is started via executing elisp,
+since importing can be fairly idiosyncratic, and ekg and org-roam have different
 ways of expressing the same thing that you may want to change.  It's best if you
-looked over @samp{ekg-org-roam.el} and see what is going on@comma{} but at least read the
+looked over @samp{ekg-org-roam.el} and see what is going on, but at least read the
 following description before manually executing @code{(ekg-org-roam-import)}.
 
-The import is idempotent@comma{} so it always will import to the same entities@comma{}
-overwriting older data with new data.  If you want to update what is in ekg@comma{} you
-can just rerun the import.  In the import@comma{} titles and links will be normalized
+The import is idempotent, so it always will import to the same entities,
+overwriting older data with new data.  If you want to update what is in ekg, you
+can just rerun the import.  In the import, titles and links will be normalized
 to ekg's tag format (they will be downcased and have any commas removed).  If
 you have tags you want to turn into prefixes (which is a good idea for tags
-widely applied@comma{} which essentially act as a categorization)@comma{} you can add those
-tags to the list at @code{ekg-org-roam-import-tag-to-prefix}.  For example@comma{}
+widely applied, which essentially act as a categorization), you can add those
+tags to the list at @code{ekg-org-roam-import-tag-to-prefix}.  For example,
 
 @lisp
 (setq ekg-org-roam-import-tag-to-prefix (append ekg-org-roam-import-tag-to-prefix '("idea" "person")))
 @end lisp
 
-Then@comma{} when a note is found that is tagged with "idea"@comma{} but with title "emacs is
-a powerful tool"@comma{} then the title in org-roam will be turned into the ekg tag
-"idea/emacs is a powerful tool"@comma{} and anything linked to it will also get the
+Then, when a note is found that is tagged with "idea", but with title "emacs is
+a powerful tool", then the title in org-roam will be turned into the ekg tag
+"idea/emacs is a powerful tool", and anything linked to it will also get the
 same prefix.
 
 @node Backups
 @chapter Backups
 
-By default@comma{} the ekg package will back up its database@comma{} using the backup
+By default, the ekg package will back up its database, using the backup
 functionality built into the triples library.  The backup behavior is controlled
-by @code{ekg-default-num-backups}@comma{} set to @samp{5} by default@comma{} and
-@code{ekg-default-backups-strategy}@comma{} set to @samp{daily}.  These are@comma{} on first use of ekg@comma{}
-stored in the database itself@comma{} but it can be set again at any time by running:
+by @code{ekg-default-num-backups}, set to @samp{5} by default, and
+@code{ekg-default-backups-strategy}, set to @samp{daily}.  These are, on first use of ekg,
+stored in the database itself, but it can be set again at any time by running:
 
 @lisp
 (triples-backups-setup ekg-db ekg-default-num-backups ekg-default-backups-strategy)
 @end lisp
 
-The strategy can be one of the defaults of @samp{daily}@comma{} @samp{weekly}@comma{} @samp{every-change}@comma{} or
-@samp{never}@comma{} and new methods can be defined as well.  See the implementation in
+The strategy can be one of the defaults of @samp{daily}, @samp{weekly}, @samp{every-change}, or
+@samp{never}, and new methods can be defined as well.  See the implementation in
 @samp{triples-backups.el} for more information.
 
 @node Database maintenance
 @chapter Database maintenance
 
-You may occasionally notice that certain tags are obsolete and have no notes@comma{} or
-notes exist that are empty@comma{} or various other annoyances.  You can call
-@samp{ekg-clean-db}@comma{} which will:
+You may occasionally notice that certain tags are obsolete and have no notes, or
+notes exist that are empty, or various other annoyances.  You can call
+@samp{ekg-clean-db}, which will:
 
 @itemize
 @item
-First@comma{} force a backup.
+First, force a backup.
 @item
 Remove all tags with no uses.
 @item
-Remove notes with no text@comma{} or just a "*"@comma{} which is something that often
+Remove notes with no text, or just a "*", which is something that often
 happens with org-mode buffers.
 @end itemize
 
 Tags may need to be renamed because the concept has changed in some way.  The
 command @samp{ekg-global-rename-tag} can quickly rename one tag to another globally
-across the database@comma{} so all tags with the old tag now have the new tag.  (Note
-that the new tag may already exist@comma{} in which case this operation cannot be
+across the database, so all tags with the old tag now have the new tag.  (Note
+that the new tag may already exist, in which case this operation cannot be
 easily undone.)
 
 @node Customizing ekg
@@ -1239,22 +1247,22 @@ easily undone.)
 
 You can customize the behavior of ekg in a number of ways.
 
-First@comma{} you can create your own schema to store your own data.  The hook
+First, you can create your own schema to store your own data.  The hook
 @code{ekg-add-schema-hook} is called whenver the database is connected to.  At that
-point@comma{} ekg adds all of its schema@comma{} and runs the hooks in this variable.  Adding
-schema is idempotent@comma{} so it can be called any number of times without causing
+point, ekg adds all of its schema, and runs the hooks in this variable.  Adding
+schema is idempotent, so it can be called any number of times without causing
 problems.  Adding schema can be done by calling the triples library.  For
-details on how to create schema@comma{} you can either look at the ekg implementation
-for example@comma{} or the triples library README for an overview of how it works.
+details on how to create schema, you can either look at the ekg implementation
+for example, or the triples library README for an overview of how it works.
 
-The @code{ekg-note-pre-save-hook} is called before saving a note@comma{} and
-@code{ekg-note-save-hook} is called after saving@comma{} but in the same database
+The @code{ekg-note-pre-save-hook} is called before saving a note, and
+@code{ekg-note-save-hook} is called after saving, but in the same database
 transaction as the save.
 
 The @code{ekg-note-delete-hook} is called when deleting a note.
 
-The @code{ekg-note-add-tag-hook} is called when adding a tag@comma{} either via the initial
-tags added to a new note@comma{} or tags added after completing a new tag in the note's
+The @code{ekg-note-add-tag-hook} is called when adding a tag, either via the initial
+tags added to a new note, or tags added after completing a new tag in the note's
 property list.
 
 @menu
@@ -1269,14 +1277,14 @@ EKG allows modules or users to hide certain tags from normal view by adding them
 to the @samp{ekg-hidden-tags} list. Notes containing any of these tags will not appear
 in standard note lists unless that specific tag is explicitly searched for.
 
-By default@comma{} tags like @samp{ekg-draft-tag} and @samp{ekg-trash-tag} are already treated as
-hidden. Other modules@comma{} such as @samp{ekg-agent}@comma{} use this list to hide internal
+By default, tags like @samp{ekg-draft-tag} and @samp{ekg-trash-tag} are already treated as
+hidden. Other modules, such as @samp{ekg-agent}, use this list to hide internal
 metadata notes.
 
 @node Text Truncation Method
 @section Text Truncation Method
 
-EKG provides a way to customize how text is truncated for display (e.g.@comma{} in note
+EKG provides a way to customize how text is truncated for display (e.g., in note
 lists or inline transclusions) and for generating embeddings. This is controlled
 by the @samp{ekg-truncation-method} variable.
 
@@ -1287,7 +1295,7 @@ You can set @samp{ekg-truncation-method} to one of the following values:
 for languages that use spaces to separate words.
 @item
 @samp{'character}: Text is truncated based on character counts. This method is
-recommended for Asian languages (such as Chinese@comma{} Japanese@comma{} Korean) that do
+recommended for Asian languages (such as Chinese, Japanese, Korean) that do
 not rely on spaces for word segmentation.
 @end itemize
 
@@ -1295,75 +1303,75 @@ When @samp{ekg-truncation-method} is set to @samp{'character}:
 @itemize
 @item
 Functions like @samp{ekg-truncate-at} will interpret their numerical argument
-(e.g.@comma{} @samp{numwords} or @samp{num}) as a character limit.
+(e.g., @samp{numwords} or @samp{num}) as a character limit.
 @item
-Numbers used in display templates (e.g.@comma{} @samp{%n(text 500)}) will refer to
+Numbers used in display templates (e.g., @samp{%n(text 500)}) will refer to
 character limits.
 @item
 The @samp{ekg-embedding-text-selector-initial} function (used by the @samp{ekg-embedding}
 module) will select text for embeddings based on a character limit.
 @end itemize
 
-Users working with Asian languages@comma{} or those who prefer character-based limits
-for other reasons@comma{} should set @samp{ekg-truncation-method} in their Emacs
+Users working with Asian languages, or those who prefer character-based limits
+for other reasons, should set @samp{ekg-truncation-method} in their Emacs
 configuration:
 @lisp
 (setq ekg-truncation-method 'character)
 @end lisp
 
-Be mindful that if you switch to @samp{'character} mode@comma{} numerical limits you might
-have previously set for word counts (e.g.@comma{} in @samp{ekg-display-note-template} or
+Be mindful that if you switch to @samp{'character} mode, numerical limits you might
+have previously set for word counts (e.g., in @samp{ekg-display-note-template} or
 @samp{ekg-note-inline-max-words}) will now be interpreted as character counts. This
 might require adjusting those numbers to achieve your desired display
-length. For example@comma{} a limit of 500 words is very different from 500 characters.
+length. For example, a limit of 500 words is very different from 500 characters.
 
 @node Integration with ekg
 @chapter Integration with ekg
 
-The ekg package is designed to be easy to integrate with.  For example@comma{} if you
-want to create a note automatically in one of your functions@comma{} you can write:
+The ekg package is designed to be easy to integrate with.  For example, if you
+want to create a note automatically in one of your functions, you can write:
 
 @lisp
 (defun my/log-to-ekg (text)
   "Log TEXT as a note to EKG's date"
-  (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(@comma{}(ekg-tag-for-date) "log"))))
+  (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(,(ekg-tag-for-date) "log"))))
 @end lisp
 
 @noindent
-If you wanted to re-use an existing note and append to it@comma{} you can do that as well.
+If you wanted to re-use an existing note and append to it, you can do that as well.
 
 @lisp
 (defun my/log-to-ekg (text)
-  "Log TEXT as a note to EKG's date@comma{} appending if possible."
+  "Log TEXT as a note to EKG's date, appending if possible."
   (let ((notes (ekg-get-notes-with-tags (list (ekg-tag-for-date) "log"))))
     (if notes
         (progn
           (setf (ekg-note-text (car notes)) (concat (ekg-note-text (car notes)) "\n" text))
           (ekg-save-note (car notes)))
-      (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(@comma{}(ekg-tag-for-date) "log"))))))
+      (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(,(ekg-tag-for-date) "log"))))))
 @end lisp
 
-There isn't a special API@comma{} but the basic defuns such as @code{ekg-save-note}@comma{}
-@code{ekg-note-create-text}@comma{} @code{ekg-get-notes-with-tags}@comma{} @code{ekg-get-note-with-id}@comma{} along
+There isn't a special API, but the basic defuns such as @code{ekg-save-note},
+@code{ekg-note-create-text}, @code{ekg-get-notes-with-tags}, @code{ekg-get-note-with-id}, along
 with the struct @code{ekg-note} are good starting points.  Capturing notes in
-different ways can be done by wrapping @code{ekg-capture}@comma{} and is how functions such
+different ways can be done by wrapping @code{ekg-capture}, and is how functions such
 as @code{ekg-capture-url} work.
 
 @noindent
-If you add schema and you want the user to be able to modify it@comma{} you should
+If you add schema and you want the user to be able to modify it, you should
 supply new alist entries to @code{ekg-metadata-parsers} and @code{ekg-metadata-labels}.
 
 @noindent
-Because inline commands exist@comma{} the complete text of a note should be retrieved
-with @code{ekg-display-note}.  The function @code{ekg-note-text}@comma{} will only get the text
-as stored@comma{} which is missing mode related text properties and any text generated
+Because inline commands exist, the complete text of a note should be retrieved
+with @code{ekg-display-note}.  The function @code{ekg-note-text}, will only get the text
+as stored, which is missing mode related text properties and any text generated
 from inline commands.
 
 @node Extras
 @chapter Extras
 
 The ekg module can have any number of functionality additions.  These may appear
-as other packages with other maintainers@comma{} but some are included as part of this
+as other packages with other maintainers, but some are included as part of this
 package.
 
 @menu
@@ -1381,8 +1389,8 @@ package.
 @node Embeddings
 @section Embeddings
 
-The embeddings functionality@comma{} for integration with an LLM@comma{} can be turned on by
-requiring the ekg-embeddings file and enabling it@comma{} such as:
+The embeddings functionality, for integration with an LLM, can be turned on by
+requiring the ekg-embeddings file and enabling it, such as:
 
 @lisp
 (require 'ekg-embedding)
@@ -1391,26 +1399,26 @@ requiring the ekg-embeddings file and enabling it@comma{} such as:
 
 This module contains functionality to explore similar notes and search using
 techniques associated with large language models.  Embeddings let you do
-searches at a semantic level@comma{} based on an understood meaning that is separate
-from the words used.  For example@comma{} if I have a note with a recipe for linguini@comma{}
-embeddings will let me see that it is similar to notes about spaghetti@comma{} and not
-similar to notes about cold fusion.  Because the search is not based on words@comma{}
-but meaning derived from those words@comma{} notes that describe the same thing in two
+searches at a semantic level, based on an understood meaning that is separate
+from the words used.  For example, if I have a note with a recipe for linguini,
+embeddings will let me see that it is similar to notes about spaghetti, and not
+similar to notes about cold fusion.  Because the search is not based on words,
+but meaning derived from those words, notes that describe the same thing in two
 different languages should be very similar.  In ekg these let you find notes
-similar to a current note@comma{} or in fact any buffer.  You can also do a query via
+similar to a current note, or in fact any buffer.  You can also do a query via
 embeddings.
 
-The idea behind an embedding is that it is an abstract representation of text@comma{}
-represented as a multi-dimensional vector.  Because it is just a vector@comma{} you can
-compare the distance between different embeddings@comma{} and embedding vectors that
+The idea behind an embedding is that it is an abstract representation of text,
+represented as a multi-dimensional vector.  Because it is just a vector, you can
+compare the distance between different embeddings, and embedding vectors that
 are similar should represent similar concepts.  This can be used to find similar
-notes@comma{} but also to search@comma{} where the search string is transformed into an
+notes, but also to search, where the search string is transformed into an
 embedding.
 
 The embedding interfaces with your preferred LLM provider via the @samp{llm} package.
-This package allows the user to define their preferred llm backends@comma{} which will
+This package allows the user to define their preferred llm backends, which will
 be stored in @code{ekg-embedding-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for
-a complete description on how to do this@comma{} but an example would be the following:
+a complete description on how to do this, but an example would be the following:
 
 @lisp
 (use-package ekg
@@ -1425,84 +1433,84 @@ a complete description on how to do this@comma{} but an example would be the fol
 @end lisp
 
 The embedding provider must be the same for all notes.  If you want to switch to
-a new provider@comma{} you will need to call @samp{ekg-embedding-generate-all} with a prefix
-argument (@samp{C-u M-x ekg-embedding-generate-all})@comma{} which will regenerate all
+a new provider, you will need to call @samp{ekg-embedding-generate-all} with a prefix
+argument (@samp{C-u M-x ekg-embedding-generate-all}), which will regenerate all
 embeddings asynchronously.  The embedding provider does not have to be the same
-as the LLM provider (if you also use the @ref{LLM, , LLM} add-on.)  Also note that the
-provider will get the text of all your notes@comma{} so if that bothers you@comma{} do not use
+as the LLM provider (if you also use the @ref{LLM} add-on.)  Also note that the
+provider will get the text of all your notes, so if that bothers you, do not use
 any provider on a server.
 
-It is highly recommended to install the @samp{vecdb} package (installable on GNU ELPA)@comma{}
+It is highly recommended to install the @samp{vecdb} package (installable on GNU ELPA),
 to get access to fast embeddings from a variety of possible backends.  An
 example of configuration to do that would be:
 
 @lisp
 (use-package vecdb
   :config
-  ;; Config for qdrant@comma{} other providers for other backends are available@comma{} see
-  ;; https://github.com/ahyatt/vecdb for details.  For this provider@comma{} you will
+  ;; Config for qdrant, other providers for other backends are available, see
+  ;; https://github.com/ahyatt/vecdb for details.  For this provider, you will
   ;; need a key and a URL.
   (defvar my-vecdb-provider (make-vecdb-qdrant-provider :api-key <yourkey> :url <url>))
   (setq ekg-vecdb-provider (cons ash/vecdb-provider (make-vecdb-collection :name "ekg" :vector-size 1536))))
 @end lisp
 
-If @samp{ekg-vecdb-provider} is not set@comma{} the SQLite database is used@comma{} which can get
+If @samp{ekg-vecdb-provider} is not set, the SQLite database is used, which can get
 fairly slow when there is a lot of data.
 
-Once you have this set up@comma{} and you have already called @code{(require
+Once you have this set up, and you have already called @code{(require
 'ekg-embedding)} and @code{(ekg-embedding-generate-on-save)} you can call @samp{M-x
 ekg-embedding-generate-all}.  This may take a long time as each embedding has to
-be generated separately with its own API call.  Once you've done this@comma{} you can
-call@comma{} in @samp{ekg-notes-mode}@comma{} @samp{ekg-embedding-show-similar} to get a list of similar
+be generated separately with its own API call.  Once you've done this, you can
+call, in @samp{ekg-notes-mode}, @samp{ekg-embedding-show-similar} to get a list of similar
 notes.  You can also call @samp{ekg-embedding-search} to perform a search over your
-notes using embeddings.  In any buffer@comma{} you can call
+notes using embeddings.  In any buffer, you can call
 @samp{ekg-embedding-show-similar-to-current-buffer} to show notes similar to whatever
 the text is in the current buffer.
 
 The variable @samp{ekg-embedding-text-selector} has a function that will pre-process
 all text that is sent for embeddings.  The default value is
-@samp{ekg-embedding-text-selector-initial}@comma{} which will estimate the size of the
+@samp{ekg-embedding-text-selector-initial}, which will estimate the size of the
 tokens sent and limit the text to the first 8k tokens.  Right now the function
-is tuned to the limits of Open AI's embedding framework@comma{} and a different
+is tuned to the limits of Open AI's embedding framework, and a different
 function may be needed for other embedding APIs.
 
-If you would like to stop generating embeddings for notes in a session@comma{} you can
+If you would like to stop generating embeddings for notes in a session, you can
 call @code{(ekg-embedding-disable-generate-on-save)}.
 
 @node Logseq
 @section Logseq
 
-ekg can sync with logseq@comma{} a PKMS application that can run on a laptop or phone.
-Logseq is particularly convenient as a way to view or enter notes on your phone@comma{}
+ekg can sync with logseq, a PKMS application that can run on a laptop or phone.
+Logseq is particularly convenient as a way to view or enter notes on your phone,
 and various synchronization solutions exist to sync local files with your phone.
-Because ekg and logseq have different designs@comma{} these apps are not perfectly
+Because ekg and logseq have different designs, these apps are not perfectly
 compatible.  The ekg and logseq syncing is designed to favor ekg's system when a
 conflict arises.
 
 There are two ways to use logseq with ekg.  One is maintaining logseq as an
-export-only copy of ekg data@comma{} where you don't plan to modify anything in logseq@comma{}
+export-only copy of ekg data, where you don't plan to modify anything in logseq,
 just using it to access your notes on other platforms.  Exporting from ekg is
-destructive@comma{} though@comma{} so without an initial import@comma{} @strong{exporting will overwrite
-logseq files with data from ekg@comma{} so it may destroy data}.  The other way is to
+destructive, though, so without an initial import, @strong{exporting will overwrite
+logseq files with data from ekg, so it may destroy data}.  The other way is to
 sync bidirectionally.  This starts by importing anything from logseq that has
-never been imported before@comma{} and then writing ekg's data on top.  This will
-preserve data@comma{} but will lose the initial ordering of pages.  Both of these
-methods@comma{} then@comma{} will significantly impact your logseq notes.  @strong{It is highly
+never been imported before, and then writing ekg's data on top.  This will
+preserve data, but will lose the initial ordering of pages.  Both of these
+methods, then, will significantly impact your logseq notes.  @strong{It is highly
 advised to back up your logseq files before starting}.
 
-To export to logseq@comma{} start by requiring the @samp{ekg-logseq} module and setting up
-@code{ekg-logseq-dir}@comma{} which points to the base directory of your logseq data (where
+To export to logseq, start by requiring the @samp{ekg-logseq} module and setting up
+@code{ekg-logseq-dir}, which points to the base directory of your logseq data (where
 there is a "pages" and "journals" directory):
 @lisp
 (require 'ekg-logseq)
 (setq ekg-logseq-dir "~/my/logseq")
 @end lisp
 
-If you wish to maintain logseq as a read-only copy of ekg@comma{} just run
+If you wish to maintain logseq as a read-only copy of ekg, just run
 @samp{ekg-logseq-export} when you wish to export data.  This currently may take a few
-seconds to a minute@comma{} depending on how much data you have.  We attempt to not
-write any files that are unchanged.  To have a bidirectional synchronization@comma{}
-run @samp{ekg-logseq-sync}@comma{} which will first import data from logseq@comma{} then export
+seconds to a minute, depending on how much data you have.  We attempt to not
+write any files that are unchanged.  To have a bidirectional synchronization,
+run @samp{ekg-logseq-sync}, which will first import data from logseq, then export
 data.
 
 @menu
@@ -1513,28 +1521,28 @@ data.
 @node Exporting
 @subsection Exporting
 
-When exporting@comma{} it's important to understand the differences between ekg and
-logseq.  Logseq is organized by pages@comma{} where one page is one file.  Within the
-page there are many sections@comma{} which can be individually referenced.  The ekg
-integration treats logseq pages like ekg tags@comma{} and logseq sections like ekg
-notes.  In logseq@comma{} the user mostly sees one page at a time.  In ekg@comma{} notes are
-shown in a variety of contexts@comma{} mostly tag related@comma{} but not always.  In logseq@comma{}
-a note lives in one page and is referenced from other pages.  In ekg@comma{} each note
+When exporting, it's important to understand the differences between ekg and
+logseq.  Logseq is organized by pages, where one page is one file.  Within the
+page there are many sections, which can be individually referenced.  The ekg
+integration treats logseq pages like ekg tags, and logseq sections like ekg
+notes.  In logseq, the user mostly sees one page at a time.  In ekg, notes are
+shown in a variety of contexts, mostly tag related, but not always.  In logseq,
+a note lives in one page and is referenced from other pages.  In ekg, each note
 has its own identity and is tied to other notes solely via the tags it shares
-with them.  To compensate for this difference@comma{} we export notes based on their
-first non-date tag as the page where the text will apear@comma{} and reference other
-tags@comma{} where they will appear as backlinks.  In addition@comma{} in org-mode@comma{} notes in a
-page appear as top-level outlines@comma{} which are supposed to have text for the
-outline node.  If there is an ekg note with a title@comma{} the title will appear as
-the text@comma{} otherwise the outline node will just read "Untitled note".  Because
-this initial headline is where various properties are stored@comma{} and is followed
-immediately by tags@comma{} it makes sense that this is a title instead of just part of
+with them.  To compensate for this difference, we export notes based on their
+first non-date tag as the page where the text will apear, and reference other
+tags, where they will appear as backlinks.  In addition, in org-mode, notes in a
+page appear as top-level outlines, which are supposed to have text for the
+outline node.  If there is an ekg note with a title, the title will appear as
+the text, otherwise the outline node will just read "Untitled note".  Because
+this initial headline is where various properties are stored, and is followed
+immediately by tags, it makes sense that this is a title instead of just part of
 the content.
 
 @noindent
-For example@comma{} take the following note:
+For example, take the following note:
 @example
-Tags: date/2023-04-05@comma{} ekg@comma{} logseq
+Tags: date/2023-04-05, ekg, logseq
 
 ekg can export into logseq!
 @end example
@@ -1555,31 +1563,31 @@ ekg can export into logseq
 @end example
 
 @noindent
-Each node points to its ID which is from ekg (but@comma{} if it was originally
-imported@comma{} the ekg ID might originally be from logseq).  We also encode the hash
-of the exported data.  This is to keep track of what was exported@comma{} so we do not
-re-import it unless it has changed.  For now@comma{} even if the data is changed@comma{} it is
+Each node points to its ID which is from ekg (but, if it was originally
+imported, the ekg ID might originally be from logseq).  We also encode the hash
+of the exported data.  This is to keep track of what was exported, so we do not
+re-import it unless it has changed.  For now, even if the data is changed, it is
 not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will
-also be created@comma{} although they won't have any content from this note.
+also be created, although they won't have any content from this note.
 
 @noindent
-When exporting@comma{} inline commands (see @ref{Inline commands, , inlines} section)@comma{} are evaluated before
-exporting to logseq@comma{} with the exception of note transclusions@comma{} which turn into
-logseq embeds to the same ID@.  So@comma{} other kinds of transclusions or any other
+When exporting, inline commands (see @ref{Inline commands, , inlines} section), are evaluated before
+exporting to logseq, with the exception of note transclusions, which turn into
+logseq embeds to the same ID@.  So, other kinds of transclusions or any other
 commands will evaluate to whatever text they normally evaluate to when viewing
-the note before exporting to logseq.  For example@comma{} if the note has a file
-tranclusion inline command@comma{} the file contents will be exported to logseq.
-Logseq embeds are roughly equivalent to note transclusions@comma{} but only roughly@comma{}
+the note before exporting to logseq.  For example, if the note has a file
+tranclusion inline command, the file contents will be exported to logseq.
+Logseq embeds are roughly equivalent to note transclusions, but only roughly,
 since a key difference is that logseq embeds occupy their own lines and appear
-visually distinct@comma{} and ekg transclusions don't.  Because of this@comma{} some
+visually distinct, and ekg transclusions don't.  Because of this, some
 formatting strangeness between the two may happen.
 
 @node Importing
 @subsection Importing
 
 @noindent
-Imports from logseq will return all top-level items as separate notes.  So@comma{} for
-example@comma{} assuming we're reading from the logseq file "pages/logseq.org":
+Imports from logseq will return all top-level items as separate notes.  So, for
+example, assuming we're reading from the logseq file "pages/logseq.org":
 
 @example
 * This is my first time trying logseq  #testing
@@ -1589,17 +1597,17 @@ example@comma{} assuming we're reading from the logseq file "pages/logseq.org":
 @end example
 
 @noindent
-This will turn into two notes@comma{} one that has text "* This is my first time trying
-logseq #testing"@comma{} and with tags @samp{logseq}@comma{} and @samp{testing}@comma{} and the other with the
-rest of the text@comma{} with the tags @samp{logseq} and @samp{org}.
+This will turn into two notes, one that has text "* This is my first time trying
+logseq #testing", and with tags @samp{logseq}, and @samp{testing}, and the other with the
+rest of the text, with the tags @samp{logseq} and @samp{org}.
 
 @noindent
-There are a few things to be aware of.  In logseq@comma{} any level of the hierarchy
-can have an id and be referenced separately.  In ekg@comma{} we don't support notes
-inside of other notes@comma{} so these will be imported in the context of the parent
-note@comma{} and won't be available to reference as its own separate note.  Also@comma{}
-logseq has other functionality not supported by ekg@comma{} such as queries and
-potentially anything provided by plugins.  These will be imported as-is to ekg@comma{}
+There are a few things to be aware of.  In logseq, any level of the hierarchy
+can have an id and be referenced separately.  In ekg, we don't support notes
+inside of other notes, so these will be imported in the context of the parent
+note, and won't be available to reference as its own separate note.  Also,
+logseq has other functionality not supported by ekg, such as queries and
+potentially anything provided by plugins.  These will be imported as-is to ekg,
 but without any corresponding functionality.
 
 @noindent
@@ -1610,15 +1618,15 @@ Logseq embeds are imported as note transclusions.
 
 @noindent
 The ekg-llm module provides a second way to use large language models (LLMs)
-with ekg@comma{} separately from the ekg-embeddings integration.  While the
-ekg-embeddings module lets you find notes based on their meanings@comma{} the ekg-llm
-module lets you prompt an LLM with the contents of a note@comma{} and then capture the
+with ekg, separately from the ekg-embeddings integration.  While the
+ekg-embeddings module lets you find notes based on their meanings, the ekg-llm
+module lets you prompt an LLM with the contents of a note, and then capture the
 LLM's response in the note.
 
-As with ekg-embeddings@comma{} this is based on the @samp{llm} package@comma{} which allows the
-user to define their preferred llm backends@comma{} which will be stored in
+As with ekg-embeddings, this is based on the @samp{llm} package, which allows the
+user to define their preferred llm backends, which will be stored in
 @code{ekg-llm-provider}.  Please see the @uref{https://github.com/ahyatt/llm, LLM module project page} for a complete
-description of how to do this@comma{} but an example would be the following:
+description of how to do this, but an example would be the following:
 
 @lisp
 (use-package ekg
@@ -1632,14 +1640,14 @@ description of how to do this@comma{} but an example would be the following:
 @end lisp
 
 The embedding and LLM providers can be different.  The LLM provider can change
-at will@comma{} while the embedding provider must be the same for all embeddings in the
-database.  It is necessary to create both of these providers@comma{} because some LLM
+at will, while the embedding provider must be the same for all embeddings in the
+database.  It is necessary to create both of these providers, because some LLM
 functionality depends on having embeddings.
 
-The variable @code{ekg-llm-provider}@comma{} can be a single provider@comma{} similar to
-@code{ekg-embedding-provider}@comma{} or a list.  If it is a list@comma{} the first element will be
-used by default. However@comma{} when the user invokes @samp{ekg-llm-send-and-append-note} or
-@samp{ekg-llm-send-and-replace-note} with a prefix argument (normally via @samp{C-u M-x})@comma{} the
+The variable @code{ekg-llm-provider}, can be a single provider, similar to
+@code{ekg-embedding-provider}, or a list.  If it is a list, the first element will be
+used by default. However, when the user invokes @samp{ekg-llm-send-and-append-note} or
+@samp{ekg-llm-send-and-replace-note} with a prefix argument (normally via @samp{C-u M-x}), the
 user can select among the different providers.
 
 @menu
@@ -1651,32 +1659,32 @@ user can select among the different providers.
 @node Augmenting notes with LLM output
 @subsection Augmenting notes with LLM output
 
-To send a note to an LLM and capture its response@comma{} call
-@samp{ekg-llm-send-and-append-note}@comma{} which is by default bound to @samp{[C-c .]}.  A prefix
-argument (@samp{[C-u C-c .]}) will let you edit the prompt@comma{} temperature@comma{} and possibly
+To send a note to an LLM and capture its response, call
+@samp{ekg-llm-send-and-append-note}, which is by default bound to @samp{[C-c .]}.  A prefix
+argument (@samp{[C-u C-c .]}) will let you edit the prompt, temperature, and possibly
 the provider used before it is sent.  The output from the LLM is appended at the
-end of the note@comma{} in a special section.
+end of the note, in a special section.
 
-In addition to the contents of the note@comma{} ekg will construct a larger prompt for
+In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM@.  The prompt consists of context about previous notes that contain the
-tags of your note@comma{} and similar notes@comma{} which is what will generate high-quality
+tags of your note, and similar notes, which is what will generate high-quality
 content that is appropriate in the context of your notes.  It also contains
 instructions to the LLM to how to generate the note text to be added or
 replaced. The default instructions are a fixed string you can configure in
-@code{ekg-llm-default-instructions}.  But alternatively@comma{} you can create alternative
-prompts for different ekg tags in the same way that @ref{Templates, , templates} work@comma{} by creating
+@code{ekg-llm-default-instructions}.  But alternatively, you can create alternative
+prompts for different ekg tags in the same way that @ref{Templates, , templates} work, by creating
 a note tagged with "prompt" and any other tag (the special "prompt" tag can be
 changed by customizing @code{ekg-llm-prompt-tag}).  The alternate prompt is created by
-appending all "prompt"-tagged notes.  Note that@comma{} as with templates@comma{} hierarchical
+appending all "prompt"-tagged notes.  Note that, as with templates, hierarchical
 tags can have prompts attached at any or all levels of the hierarchy.
 
-To take an example@comma{} imagine that you have a note tagged with @samp{prompt} and @samp{recipe}@comma{}
+To take an example, imagine that you have a note tagged with @samp{prompt} and @samp{recipe},
 containing instructions saying the LLM should imagine itself an authority on
 cooking and provide you helpful tips to improve your recipes.  You then create a
-note with a child tag of @samp{recipe}@comma{} let's say @samp{recipe/monkfish}@comma{} with some details of
-your attempt to cook monkfish@comma{} and then hit @samp{[C-c .]}.  Because @samp{recipe} is a parent
-of @samp{recipe/monkfish}@comma{} ekg-llm will use these instructions instead of the default
-one@comma{} and will also append your note@comma{} and place the LLM's response in a special
+note with a child tag of @samp{recipe}, let's say @samp{recipe/monkfish}, with some details of
+your attempt to cook monkfish, and then hit @samp{[C-c .]}.  Because @samp{recipe} is a parent
+of @samp{recipe/monkfish}, ekg-llm will use these instructions instead of the default
+one, and will also append your note, and place the LLM's response in a special
 section at the end of your note.  For example:
 
 @example
@@ -1687,53 +1695,53 @@ sear on.  Maybe I should sous vide it and then blast it with the searzall torch?
 Monkfish can indeed be challenging to sear properly due to its high water
 content.  Sous-vide cooking followed by searing with a torch can be a great
 technique to achieve the desired result.  The sous-vide process will help to cook
-the fish evenly and retain moisture@comma{} while the searzall torch can give it a
+the fish evenly and retain moisture, while the searzall torch can give it a
 beautiful caramelized crust.  Just be sure to pat the fish dry before searing for
 better browning and use high heat to quickly sear the exterior without
 overcooking the inside.  Happy cooking!
 #+END_LLM_OUTPUT
 @end example
 
-Instead of appending@comma{} the note can be replaced with the output of the LLM by
-using @samp{ekg-llm-send-and-replace-note} which is bound to @samp{[C-c @comma{}]}.  As with the
-append command@comma{} using a prefix argument will let you edit the instructions
+Instead of appending, the note can be replaced with the output of the LLM by
+using @samp{ekg-llm-send-and-replace-note} which is bound to @samp{[C-c ,]}.  As with the
+append command, using a prefix argument will let you edit the instructions
 before sending it.
 
 All prompts sent from a note in org or markdown modes have a prelude that notes
-the format of the input and expected output.  However@comma{} LLMs typically will
-produce markdown regardless of what you ask it to do@comma{} so if you want to use
-LLMs@comma{} you may want to use markdown as a default note format.
+the format of the input and expected output.  However, LLMs typically will
+produce markdown regardless of what you ask it to do, so if you want to use
+LLMs, you may want to use markdown as a default note format.
 
 @node Using ekg notes as prompts
 @subsection Using ekg notes as prompts
 
-ekg notes are especially well suited for LLM prompting@comma{} both because of the
-ability to create prompts for different tags@comma{} and the ability to transclude one
+ekg notes are especially well suited for LLM prompting, both because of the
+ability to create prompts for different tags, and the ability to transclude one
 note's contents within another note.  While each "prompt"-tagged note should
-work as a standalone LLM prompt@comma{} it may be helpful to build up a set of partial
+work as a standalone LLM prompt, it may be helpful to build up a set of partial
 prompts that you can share among many full prompts using transclusion.
 
-For example@comma{} imagine a prompt that is designed to give an Aristotelian response
+For example, imagine a prompt that is designed to give an Aristotelian response
 to a note.  A note with tags "aristotle" and "prompt" could have the basics:
 "You are Aristotle.  Give a response to the note using Aristotle's writing style
-and ideas@comma{} referencing existing works when possible."  But perhaps you also want
-some standard behaviors found in other prompts@comma{} such as a prompt to encourage
+and ideas, referencing existing works when possible."  But perhaps you also want
+some standard behaviors found in other prompts, such as a prompt to encourage
 the LLM to ask you questions when appropriate.  There may be many prompts in
 which that sub-prompt may be applicable.  You can use transclusion @ref{Inline commands, , inlines} for
-this@comma{} adding the transclusion to the appropriate part of the prompt.  You can
-then iterate on each sub-part@comma{} trying to get the best behavior.
+this, adding the transclusion to the appropriate part of the prompt.  You can
+then iterate on each sub-part, trying to get the best behavior.
 
-Additionally@comma{} transclusion or other inline commands could help in other ways in
-forming the prompt@comma{} by sharing your schedule@comma{} or your current org agenda items
+Additionally, transclusion or other inline commands could help in other ways in
+forming the prompt, by sharing your schedule, or your current org agenda items
 as context to the LLM when it is necessary.  These advanced uses will require
-inline commands that are not part of the base ekg package@comma{} but once written@comma{}
+inline commands that are not part of the base ekg package, but once written,
 they can be seamlessly used in prompts.
 
 @node Querying your ekg database
 @subsection Querying your ekg database
 
-If you also use embeddings@comma{} you can use the interactive function
-@samp{ekg-llm-query-with-notes} to find your notes that best match a query@comma{} and send
+If you also use embeddings, you can use the interactive function
+@samp{ekg-llm-query-with-notes} to find your notes that best match a query, and send
 the LLM a prompt consisting of those notes.  This essentially will let your
 notes act as a natural language queryable knowledge base.  It will work for
 queries in which you have the relevant information.  The answer to the query
@@ -1744,22 +1752,22 @@ The initial part of the prompt instructing the LLM for this case is defined in
 to the query.
 
 Note that anything in your database could potentially be retrieved and sent to
-the LLM@comma{} so if you have notes that you consider too private to send for
-processing@comma{} you may not want to use this.
+the LLM, so if you have notes that you consider too private to send for
+processing, you may not want to use this.
 
 @node Auto save
 @section Auto save
 
-The @samp{ekg-auto-save} module is useful for users who enter longer notes@comma{} so that the notes are protected against accidentally killing the buffer@comma{} or emacs crashing@comma{} or any similar problem.  It is designed to work similarly to the built-in auto-save functionality@comma{} and has it's own variables that default to the auto-save equivalent.  So@comma{} for example@comma{} there is @code{ekg-auto-save-timeout}@comma{} which defaults to the value of @code{auto-save-timeout}.
+The @samp{ekg-auto-save} module is useful for users who enter longer notes, so that the notes are protected against accidentally killing the buffer, or emacs crashing, or any similar problem.  It is designed to work similarly to the built-in auto-save functionality, and has it's own variables that default to the auto-save equivalent.  So, for example, there is @code{ekg-auto-save-timeout}, which defaults to the value of @code{auto-save-timeout}.
 
-To start using this@comma{} you need to require the module and turn on @samp{ekg-auto-save-mode} in the @samp{ekg-edit-mode} and @samp{ekg-capture-mode}.  For example:
+To start using this, you need to require the module and turn on @samp{ekg-auto-save-mode} in the @samp{ekg-edit-mode} and @samp{ekg-capture-mode}.  For example:
 @lisp
 (require 'ekg-auto-save)
 (add-hook 'ekg-capture-mode-hook 'ekg-auto-save-mode)
 (add-hook 'ekg-edit-mode-hook 'ekg-auto-save-mode)
 @end lisp
 
-In the capture mode@comma{} this. is equivalent to saving periodically (to drafts).  In edit mode@comma{} it will save the latest version while editing.
+In the capture mode, this. is equivalent to saving periodically (to drafts).  In edit mode, it will save the latest version while editing.
 
 @node Denote
 @section Denote
@@ -1768,7 +1776,7 @@ ekg can export notes as denotes. Denote is a note taking and file
 naming tool. Primary reason for export is taking backup of your notes
 in a git backed repository. Import is in road map (PR is welcome).
 
-To export to denote@comma{} @samp{ekg-denote} module is required@comma{} which is a separate package
+To export to denote, @samp{ekg-denote} module is required, which is a separate package
 from ekg in MELPA@.
 
 @lisp
@@ -1780,9 +1788,9 @@ from ekg in MELPA@.
   (setq ekg-denote-export-combined-keywords-len 150))
 @end lisp
 
-To export@comma{} call @samp{ekg-denote-export} which will export any modified
+To export, call @samp{ekg-denote-export} which will export any modified
 note after the last export as a denote in the @samp{denote-directory}
-defined by @samp{denote} package. If it is your first time exporting@comma{} all
+defined by @samp{denote} package. If it is your first time exporting, all
 the notes will be exported to the @samp{denote-directory}.
 
 @samp{ekg-denote} keeps record of the last export time in the ekg db and
@@ -1796,7 +1804,7 @@ denotes by setting @samp{ekg-denote-export-add-front-matter} to
 function defined by @samp{denote} package which open note in an emacs
 buffer and requires manual execution of @samp{save-buffer} by the user.
 
-Ekg and denote have differences@comma{} due to which following customization
+Ekg and denote have differences, due to which following customization
 are made available:
 
 @itemize
@@ -1818,19 +1826,19 @@ by keeping denotes in a git repository and making sure to check-in any
 changes before and after export.
 
 If ekg and denote are both found to be updated after the last export
-which should ideally not happen@comma{} denote is updated with ekg. A backup
+which should ideally not happen, denote is updated with ekg. A backup
 is taken based on @samp{ekg-denote-export-backup-on-conflict} setting.
 
 @node Apple Notes
 @section Apple Notes
 
 ekg can sync bidirectionally with Apple Notes on macOS@.  This is useful for
-accessing and editing your notes on an iPhone or iPad@comma{} or for collaborating
+accessing and editing your notes on an iPhone or iPad, or for collaborating
 with others who use Apple Notes.  The sync uses AppleScript to communicate
-with Apple Notes in the background@comma{} without bringing the Notes app to the
+with Apple Notes in the background, without bringing the Notes app to the
 foreground.
 
-To use this module@comma{} you need @samp{pandoc} installed for converting between
+To use this module, you need @samp{pandoc} installed for converting between
 org-mode/markdown and HTML (Apple Notes stores content as HTML).
 
 @lisp
@@ -1849,28 +1857,28 @@ org-mode/markdown and HTML (Apple Notes stores content as HTML).
 @subsection Setup
 
 Synced notes are stored in a dedicated Apple Notes folder.  By default this
-folder is called "ekg"@comma{} but you can change it with @code{ekg-apple-notes-folder}.
+folder is called "ekg", but you can change it with @code{ekg-apple-notes-folder}.
 The folder is created automatically on the first sync.
 
 Each ekg database can sync to a different Apple Notes folder.  To store the
 folder name in the database itself (so it persists and is specific to that
-database)@comma{} use:
+database), use:
 
 @lisp
 (ekg-apple-notes-set-folder "my-notes")
 @end lisp
 
-If a folder name is stored in the database@comma{} it takes precedence over the
+If a folder name is stored in the database, it takes precedence over the
 @code{ekg-apple-notes-folder} customization variable.
 
-If you have multiple Apple Notes accounts (e.g. iCloud and a work account)@comma{}
+If you have multiple Apple Notes accounts (e.g. iCloud and a work account),
 you can specify which account to use:
 
 @lisp
 (setq ekg-apple-notes-account "iCloud")
 @end lisp
 
-To limit which notes are exported@comma{} set @code{ekg-apple-notes-export-tags} to a list
+To limit which notes are exported, set @code{ekg-apple-notes-export-tags} to a list
 of tags.  Only notes with at least one of those tags will be exported:
 
 @lisp
@@ -1878,16 +1886,16 @@ of tags.  Only notes with at least one of those tags will be exported:
 @end lisp
 
 Notes with certain tags are excluded from sync entirely.  If @samp{ekg-agent} is
-loaded@comma{} its tag variables (@code{ekg-agent-author-tag} and
-@code{ekg-agent-self-info-tag}) are automatically excluded@comma{} so agent notes will
+loaded, its tag variables (@code{ekg-agent-author-tag} and
+@code{ekg-agent-self-info-tag}) are automatically excluded, so agent notes will
 not be synced.  You can exclude additional tags by customizing
 @code{ekg-apple-notes-exclude-tags}.
 
 @node Syncing
 @subsection Syncing
 
-The primary command is @samp{ekg-apple-notes-sync}@comma{} which performs a bidirectional
-sync: first importing from Apple Notes@comma{} then exporting to Apple Notes.  You
+The primary command is @samp{ekg-apple-notes-sync}, which performs a bidirectional
+sync: first importing from Apple Notes, then exporting to Apple Notes.  You
 can also run the two directions separately with @samp{ekg-apple-notes-import} and
 @samp{ekg-apple-notes-export}.
 
@@ -1900,8 +1908,8 @@ are unchanged from the last export.
 @subsection Tags
 
 ekg tags are stored as individual @samp{Tag: <tag>} lines at the bottom of each
-Apple Note.  Each tag gets its own line@comma{} preserving the full tag text including
-spaces@comma{} dots@comma{} colons@comma{} and other characters.  For example@comma{} a note with the tags
+Apple Note.  Each tag gets its own line, preserving the full tag text including
+spaces, dots, colons, and other characters.  For example, a note with the tags
 "my project" and "date/2024-01-01" would have:
 
 @example
@@ -1909,7 +1917,7 @@ Tag: my project
 Tag: date/2024-01-01
 @end example
 
-These tags don't function as native Apple Notes hashtags@comma{} but they are visible
+These tags don't function as native Apple Notes hashtags, but they are visible
 in the note body and can be found via Apple Notes search on any device.
 
 Hidden tags (such as "trash" and "draft") are not synced.
@@ -1921,10 +1929,10 @@ Note content is converted between org-mode or markdown and HTML using @samp{pand
 The path to pandoc can be customized with @code{ekg-apple-notes-pandoc-executable}.
 
 Links require special handling because Apple Notes strips @samp{<a>} tags when
-content is set via AppleScript.  On export@comma{} links are converted to markdown
-format @samp{[text](url)}@comma{} which appears as readable plain text in Apple Notes
+content is set via AppleScript.  On export, links are converted to markdown
+format @samp{[text](url)}, which appears as readable plain text in Apple Notes
 (and plain URLs are auto-linked by Apple Notes in its UI).  On import back
-to org-mode@comma{} these are reconstructed as @samp{[[url][text]]} org links.
+to org-mode, these are reconstructed as @samp{[[url][text]]} org links.
 
 @node Limitations
 @subsection Limitations
@@ -1932,11 +1940,11 @@ to org-mode@comma{} these are reconstructed as @samp{[[url][text]]} org links.
 @itemize
 @item
 @strong{Links}: Named hyperlinks degrade to @samp{[text](url)} plain text in Apple Notes.
-Plain URLs are auto-linked by Apple Notes.  On re-import@comma{} a heuristic
+Plain URLs are auto-linked by Apple Notes.  On re-import, a heuristic
 reconstructs the links.
 @item
-@strong{Formatting}: Apple Notes normalizes HTML aggressively (e.g.@comma{} @samp{<h1>} becomes
-bold text with a larger font size@comma{} @samp{<ol>} becomes @samp{<ul>}).  Repeated
+@strong{Formatting}: Apple Notes normalizes HTML aggressively (e.g., @samp{<h1>} becomes
+bold text with a larger font size, @samp{<ol>} becomes @samp{<ul>}).  Repeated
 round-trips may cause minor formatting drift.
 @item
 @strong{Attachments}: Images and other attachments in Apple Notes are not synced.
@@ -1948,27 +1956,27 @@ in ekg (and vice versa).  Deletion sync may be added in the future.
 @node Email
 @section Email
 
-The @samp{ekg-email} module adds schema for storing the @samp{to}@comma{} @samp{from}@comma{} and @samp{cc} email
-addresses associated with an email@comma{} and a way to import an email into notes from
+The @samp{ekg-email} module adds schema for storing the @samp{to}, @samp{from}, and @samp{cc} email
+addresses associated with an email, and a way to import an email into notes from
 Gnus.  Other importing methods may be available in the future.
 
-While in a Gnus article buffer@comma{} you can execute the command @samp{ekg-email-from-gnus}.
+While in a Gnus article buffer, you can execute the command @samp{ekg-email-from-gnus}.
 
-Once mails are imported@comma{} you can search for email addresses associated with them with @samp{ekg-email-show-notes-with-address}.
+Once mails are imported, you can search for email addresses associated with them with @samp{ekg-email-show-notes-with-address}.
 
 @node Org Tasks
 @section Org Tasks
 
-The @samp{ekg-org} module integrates ekg with @samp{org-mode}@comma{} allowing ekg notes to serve
+The @samp{ekg-org} module integrates ekg with @samp{org-mode}, allowing ekg notes to serve
 as a source of tasks for the org agenda and providing a dedicated task view.
-This is not a substitute for @samp{org-mode} --- it is a lightweight@comma{} experimental
+This is not a substitute for @samp{org-mode} --- it is a lightweight, experimental
 alternative designed for situations where a human and an AI agent need to
-collaborate on a set of tasks@comma{} with either party able to create@comma{} update@comma{} or
-reorganize tasks at any time.  The module includes full org-agenda integration@comma{}
+collaborate on a set of tasks, with either party able to create, update, or
+reorganize tasks at any time.  The module includes full org-agenda integration,
 so tasks managed in ekg appear alongside your regular org tasks.
 
 @samp{ekg-org} is part of the main @samp{ekg} package and does not need to be installed
-separately@comma{} but it does need to be required:
+separately, but it does need to be required:
 
 @lisp
 (require 'ekg-org)
@@ -1992,12 +2000,12 @@ Tasks in @samp{ekg-org} are ordinary ekg notes with special tags and properties:
 @itemize
 @item
 @strong{Tags}: Every task has the @samp{org/task} tag.  Its TODO state is stored as a tag
-with the prefix @samp{org/state/} (e.g.@comma{} @samp{org/state/todo}@comma{} @samp{org/state/done}).
+with the prefix @samp{org/state/} (e.g., @samp{org/state/todo}, @samp{org/state/done}).
 Archived tasks additionally carry the @samp{org/archive} tag.  Any other tags are
 preserved as regular ekg tags.
 
 @item
-@strong{Title}: Each task must have a title (stored in the @samp{:titled/title} property)@comma{}
+@strong{Title}: Each task must have a title (stored in the @samp{:titled/title} property),
 which becomes the org headline when rendered.
 
 @item
@@ -2007,7 +2015,7 @@ reversed property @samp{:org/children}.  There is no limit to nesting depth.
 
 @item
 @strong{Scheduling}: Tasks can have @samp{:org/deadline} and @samp{:org/scheduled} properties
-(stored as unix timestamps)@comma{} which appear as standard org timestamps.
+(stored as unix timestamps), which appear as standard org timestamps.
 
 @item
 @strong{Ordering}: Sibling tasks are ordered by the @samp{:org/sort-order} property
@@ -2016,14 +2024,14 @@ reversed property @samp{:org/children}.  There is no limit to nesting depth.
 @item
 @strong{Org properties}: Arbitrary org-style properties (uppercase key/value pairs
 following org property syntax) can be attached to tasks via the
-@samp{:org/property} property@comma{} and manipulated with @samp{ekg-org-get-property}@comma{}
-@samp{ekg-org-set-property}@comma{} and @samp{ekg-org-remove-property}.
+@samp{:org/property} property, and manipulated with @samp{ekg-org-get-property},
+@samp{ekg-org-set-property}, and @samp{ekg-org-remove-property}.
 @end itemize
 
 @node Org agenda integration
 @subsection Org agenda integration
 
-When @samp{ekg-org} is loaded@comma{} it registers a virtual file @samp{/ekg:tasks.org} with the
+When @samp{ekg-org} is loaded, it registers a virtual file @samp{/ekg:tasks.org} with the
 org agenda.  This file is generated on the fly from your ekg tasks and is
 automatically added to @samp{org-agenda-files}.  No actual file is written to disk;
 a file-name handler intercepts Emacs's file operations and returns the generated
@@ -2031,7 +2039,7 @@ content.
 
 This means that @samp{M-x org-agenda} will include your ekg tasks alongside any
 other org files you use.  The virtual file is re-generated whenever it is
-read@comma{} and its modification time tracks the ekg database file@comma{} so the agenda
+read, and its modification time tracks the ekg database file, so the agenda
 picks up changes automatically.
 
 Archived tasks are served from a separate virtual file @samp{/ekg:tasks.org_archive}.
@@ -2039,7 +2047,7 @@ Archived tasks are served from a separate virtual file @samp{/ekg:tasks.org_arch
 @node Capturing tasks
 @subsection Capturing tasks
 
-You can capture a new org task interactively with @samp{ekg-org-capture}@comma{} which
+You can capture a new org task interactively with @samp{ekg-org-capture}, which
 prompts for a title and creates a new note pre-tagged with @samp{org/task} and
 @samp{org/state/todo}.  You can also create tasks programmatically:
 
@@ -2062,21 +2070,21 @@ The command @samp{ekg-org-change-state} (available in note editing buffers and
 @node The ekg-org-view
 @subsection The ekg-org-view
 
-@samp{ekg-org-view-mode} is a read-only@comma{} interactive view of your task hierarchy@comma{}
+@samp{ekg-org-view-mode} is a read-only, interactive view of your task hierarchy,
 built with the @samp{vui} library.  It presents tasks as an indented outline that
-looks like an org buffer (with fontified headings@comma{} TODO keywords@comma{} and tags) but
+looks like an org buffer (with fontified headings, TODO keywords, and tags) but
 is backed entirely by the ekg database.
 
-To open the view@comma{} call @samp{ekg-org-view}.  For archived tasks@comma{} call
-@samp{ekg-org-archive-view}.  To focus on a single task and its subtree@comma{} call
+To open the view, call @samp{ekg-org-view}.  For archived tasks, call
+@samp{ekg-org-archive-view}.  To focus on a single task and its subtree, call
 @samp{ekg-org-view-task}.
 
-The view refreshes automatically whenever any ekg note is saved@comma{} so changes
-made by you@comma{} by an agent@comma{} or by the command-line tools are reflected
+The view refreshes automatically whenever any ekg note is saved, so changes
+made by you, by an agent, or by the command-line tools are reflected
 immediately.
 
 The keybindings are modeled after org-mode's speed keys (the single-letter
-shortcuts available when point is at the beginning of a headline)@comma{} so they
+shortcuts available when point is at the beginning of a headline), so they
 should feel familiar to org-mode users.
 
 @enumerate
@@ -2155,18 +2163,18 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 
 @itemize
 @item
-Tasks are stored in the ekg database@comma{} not in files.  This makes them
-accessible to agents@comma{} command-line tools@comma{} and programmatic APIs without
+Tasks are stored in the ekg database, not in files.  This makes them
+accessible to agents, command-line tools, and programmatic APIs without
 needing to parse org syntax.
 @item
-The view is read-only.  To edit a task's body text@comma{} press @samp{RET} to open it in
+The view is read-only.  To edit a task's body text, press @samp{RET} to open it in
 ekg's normal note-editing buffer.
 @item
-There is no in-buffer text editing@comma{} column view@comma{} clocking@comma{} or other advanced
-org features.  The focus is on task organization (creating@comma{} reordering@comma{}
-re-parenting@comma{} and state changes).
+There is no in-buffer text editing, column view, clocking, or other advanced
+org features.  The focus is on task organization (creating, reordering,
+re-parenting, and state changes).
 @item
-Because tasks live in the database@comma{} both a human in Emacs and an external
+Because tasks live in the database, both a human in Emacs and an external
 agent can modify tasks concurrently.  The view auto-refreshes to reflect all
 changes.
 @end itemize
@@ -2175,22 +2183,22 @@ changes.
 @node Agent integration
 @subsection Agent integration
 
-When @samp{ekg-agent} is loaded alongside @samp{ekg-org}@comma{} the agent gains tools for
+When @samp{ekg-agent} is loaded alongside @samp{ekg-org}, the agent gains tools for
 working with org tasks:
 
 @itemize
 @item
-@strong{add@math{_org}@math{_task}}: Create a new task with a title@comma{} description@comma{} tags@comma{} optional
-parent@comma{} state@comma{} deadline@comma{} and scheduled date.
+@strong{add@math{_org}@math{_task}}: Create a new task with a title, description, tags, optional
+parent, state, deadline, and scheduled date.
 @item
 @strong{set@math{_org}@math{_task}@math{_status}}: Change the TODO state of an existing task.
 @item
-@strong{list@math{_org}@math{_items}}: List all active tasks@comma{} optionally filtered by state.
+@strong{list@math{_org}@math{_items}}: List all active tasks, optionally filtered by state.
 @end itemize
 
 These tools are registered automatically by @samp{ekg-org-initialize} when
-@samp{ekg-agent} is available.  This allows the agent to create sub-tasks@comma{} mark
-items done@comma{} and review your task list as part of its autonomous operation.
+@samp{ekg-agent} is available.  This allows the agent to create sub-tasks, mark
+items done, and review your task list as part of its autonomous operation.
 
 @node Command-line tools
 @subsection Command-line tools
@@ -2201,11 +2209,11 @@ agents:
 @itemize
 @item
 @samp{ekg-org-add-child}: Create a child task under an existing parent.  Supports
-@samp{--title}@comma{} @samp{--note}@comma{} @samp{--tag}@comma{} @samp{--status}@comma{} and @samp{--property KEY=VALUE} options.
+@samp{--title}, @samp{--note}, @samp{--tag}, @samp{--status}, and @samp{--property KEY=VALUE} options.
 @item
-@samp{ekg-org-edit}: Edit an existing task's title@comma{} content@comma{} status@comma{} or org
-properties.  Supports @samp{--title}@comma{} @samp{--note}@comma{} @samp{--append}@comma{} @samp{--status}@comma{}
-@samp{--set-property KEY=VALUE}@comma{} and @samp{--remove-property KEY} options.
+@samp{ekg-org-edit}: Edit an existing task's title, content, status, or org
+properties.  Supports @samp{--title}, @samp{--note}, @samp{--append}, @samp{--status},
+@samp{--set-property KEY=VALUE}, and @samp{--remove-property KEY} options.
 @end itemize
 
 These complement the general @samp{ekg-add-note} and @samp{ekg-read} scripts.  See the
@@ -2215,9 +2223,9 @@ These complement the general @samp{ekg-add-note} and @samp{ekg-read} scripts.  S
 @section Agent
 
 The @samp{ekg-agent} module provides an autonomous agent that can help you with your
-notes.  This agent can review your notes and org-mode agenda@comma{} searching across
-notes by embeddings or tags as appropriate@comma{} and proactively create new notes to
-help you@comma{} such as offering advice@comma{} pointing out connections@comma{} or suggesting
+notes.  This agent can review your notes and org-mode agenda, searching across
+notes by embeddings or tags as appropriate, and proactively create new notes to
+help you, such as offering advice, pointing out connections, or suggesting
 resources.
 
 @samp{ekg-agent} is a separate package from @samp{ekg} and must be installed separately.
@@ -2230,63 +2238,63 @@ resources.
                                             ekg-agent-tool-code)))
 @end lisp
 
-To use this module@comma{} you must have an LLM provider configured as described in the
-@ref{LLM, , LLM} section.  You can then load the agent:
+To use this module, you must have an LLM provider configured as described in the
+@ref{LLM} section.  You can then load the agent:
 
 @lisp
 (require 'ekg-agent)
 @end lisp
 
-The primary command is @samp{ekg-agent-evaluate-status}@comma{} which runs a single session
+The primary command is @samp{ekg-agent-evaluate-status}, which runs a single session
 where the agent reviews your recent activity and decides if it can be of
-assistance.  It can create notes to you@comma{} or to itself@comma{} to help it work.
+assistance.  It can create notes to you, or to itself, to help it work.
 
 You can also ask the agent to help you with a specific note you are writing or
-editing. The command @samp{ekg-agent-note-response} (bound to @samp{C-c .} by default@comma{}
+editing. The command @samp{ekg-agent-note-response} (bound to @samp{C-c .} by default,
 overriding the @samp{ekg-llm} binding) will start an agent loop focused on your
 current note. This is an agentic version of @samp{ekg-llm-send-and-append-note}. The
 agent can use tools to research your other notes and decide whether to append
-information to your note or replace it entirely. As with other LLM commands@comma{} a
+information to your note or replace it entirely. As with other LLM commands, a
 prefix argument allows you to edit the instructions sent to the agent.
 
 You can also ask the agent a direct question at any time with the command
-@samp{ekg-agent-ask}. This will prompt you for a question@comma{} which is then sent to the
-agent.  To provide context@comma{} ekg will automatically include your last 10 notes in
+@samp{ekg-agent-ask}. This will prompt you for a question, which is then sent to the
+agent.  To provide context, ekg will automatically include your last 10 notes in
 the information sent to the agent. The agent will be able to search your notes and
 use any other tools available. It will then provide its response either by
-displaying it in a popup buffer or by creating a new note@comma{} choosing the method
-it deems most appropriate. Once the agent has provided a response@comma{} its task for
+displaying it in a popup buffer or by creating a new note, choosing the method
+it deems most appropriate. Once the agent has provided a response, its task for
 that question is complete.  For example:
 
 @lisp
 (ekg-agent-ask "What are the main themes in my recent notes on 'systems thinking'?")
 @end lisp
 
-This allows for quick@comma{} ad-hoc interactions with the agent without needing to be
+This allows for quick, ad-hoc interactions with the agent without needing to be
 in a specific note buffer.
 
-If you want to ask a question about the current buffer you are in@comma{} you can use
+If you want to ask a question about the current buffer you are in, you can use
 the command @samp{ekg-agent-ask-with-buffer}. This will send the entire buffer's
-content as context to the agent@comma{} along with your question.  For example:
+content as context to the agent, along with your question.  For example:
 
 @lisp
 (ekg-agent-ask-with-buffer "Summarize this for me.")
 @end lisp
 
-This allows for quick@comma{} ad-hoc interactions with the agent without needing to be
+This allows for quick, ad-hoc interactions with the agent without needing to be
 in a specific note buffer.  There's a similar @samp{ekg-agent-ask-with-region}.
 
 You can also ask a question about a specific note with @samp{ekg-agent-ask-with-note}.
-When called from an @samp{ekg-notes-mode} buffer@comma{} it uses the note at point; when
-called from a note editing buffer@comma{} it uses that note.  You can also pass a note
+When called from an @samp{ekg-notes-mode} buffer, it uses the note at point; when
+called from a note editing buffer, it uses that note.  You can also pass a note
 ID programmatically.
 
 Internal agent notes (using the @samp{agent/self-info} and @samp{agent/instruct}
 tags) are hidden from normal view by being added to @samp{ekg-hidden-tags}. You can
 view these notes specifically with @samp{ekg-agent-show-internal-notes}.
 
-You can also have the agent run automatically every day.  To do this@comma{} customize
-@code{ekg-agent-daily-time} to your preferred time (default is "09:00")@comma{} and then run:
+You can also have the agent run automatically every day.  To do this, customize
+@code{ekg-agent-daily-time} to your preferred time (default is "09:00"), and then run:
 
 @lisp
 (ekg-agent-schedule-daily)
@@ -2308,9 +2316,9 @@ You can customize these tags if you prefer different names.
 You can also customize the tools available to the agent by modifying
 @code{ekg-agent-extra-tools}. This allows you to add your own tools to the standard set
 of tools provided by the agent. We provide two tools that are dangerous but
-greatly improve the power of the agent: @samp{ekg-agent-tool-run-elisp}@comma{} which enables
-the agent to run arbitrary elisp commands@comma{} and @samp{ekg-agent-tool-code}@comma{} which
-enables the agent to integrate with coding tools (Claude Code@comma{} Codex@comma{} Goose@comma{}
+greatly improve the power of the agent: @samp{ekg-agent-tool-run-elisp}, which enables
+the agent to run arbitrary elisp commands, and @samp{ekg-agent-tool-code}, which
+enables the agent to integrate with coding tools (Claude Code, Codex, Goose,
 etc). To use these tools effectively it's important to run without permissions.
 Here's an example:
 
@@ -2328,8 +2336,8 @@ Here's an example:
 @node Agent log mode continuing and cancelling
 @subsection Agent log mode: continuing and cancelling
 
-When the agent starts a session@comma{} it creates a log buffer (named according to
-@code{ekg-agent-log-buffer-name-format}) and enables @samp{ekg-agent-log-mode}@comma{} a minor
+When the agent starts a session, it creates a log buffer (named according to
+@code{ekg-agent-log-buffer-name-format}) and enables @samp{ekg-agent-log-mode}, a minor
 mode that provides commands for controlling the agent.  The mode-line lighter
 shows @samp{Agent:run} while the agent is active and @samp{Agent:idle} when it has stopped.
 
@@ -2338,21 +2346,21 @@ The following commands are available in the log buffer:
 @itemize
 @item
 @samp{C-c C-c} (@samp{ekg-agent-continue}): Continue the agent from where it left off.
-The agent's full conversation history is preserved@comma{} so continuing resumes
-exactly where the previous session stopped---whether it completed normally@comma{}
-timed out@comma{} or was cancelled.  With a prefix argument (@samp{C-u C-c C-c})@comma{} you are
-prompted for a message to send to the agent@comma{} which lets you give it new
+The agent's full conversation history is preserved, so continuing resumes
+exactly where the previous session stopped---whether it completed normally,
+timed out, or was cancelled.  With a prefix argument (@samp{C-u C-c C-c}), you are
+prompted for a message to send to the agent, which lets you give it new
 instructions or redirect its work.
 
 @item
 @samp{C-c C-k} (@samp{ekg-agent-cancel}): Cancel the current agent run.  The agent will
 stop after the current in-flight LLM call completes (it does not interrupt a
-call in progress).  The conversation prompt is preserved in the buffer@comma{} so you
+call in progress).  The conversation prompt is preserved in the buffer, so you
 can resume later with @samp{C-c C-c}.
 @end itemize
 
 This makes it easy to supervise long-running agent sessions: you can cancel if
-the agent is going in the wrong direction@comma{} give it new guidance@comma{} and continue.
+the agent is going in the wrong direction, give it new guidance, and continue.
 
 @node AGENTSmd support
 @subsection AGENTS.md support
@@ -2363,20 +2371,20 @@ context is built:
 
 @enumerate
 @item
-@samp{~/AGENTS.md} --- your home directory@comma{} for global preferences that apply to
+@samp{~/AGENTS.md} --- your home directory, for global preferences that apply to
 all projects.
 @item
 @samp{<default-directory>/AGENTS.md} --- the current directory when the agent is
-started@comma{} for project-specific instructions.
+started, for project-specific instructions.
 @end enumerate
 
-If either file exists@comma{} its contents are appended to the agent's system prompt.
-If both exist (and are in different directories)@comma{} both are included.
+If either file exists, its contents are appended to the agent's system prompt.
+If both exist (and are in different directories), both are included.
 
-In addition@comma{} the agent has access to the @samp{read_agents_md} tool@comma{} which lets it
+In addition, the agent has access to the @samp{read_agents_md} tool, which lets it
 read the @samp{AGENTS.md} file from any directory.  This is part of the standard tool
 set and requires no configuration.  It allows the agent to discover instructions
-for a project directory it encounters during its work@comma{} even if that directory
+for a project directory it encounters during its work, even if that directory
 was not the starting directory.
 
 @node Command-line tools for agent integration
@@ -2387,7 +2395,7 @@ that enable external AI agents to use ekg as persistent memory storage.  These
 tools communicate with the running Emacs daemon via @samp{emacsclient} and are
 designed for programmatic use by agents.
 
-If you use @samp{ekg} with an agent@comma{} you need to @samp{(require 'ekg-agent)}.
+If you use @samp{ekg} with an agent, you need to @samp{(require 'ekg-agent)}.
 
 @enumerate
 @item
@@ -2401,7 +2409,7 @@ ekg installation:
 @item
 @samp{agent_tools/ekg-add-note} - Create notes
 @item
-@samp{agent_tools/ekg-read} - Read notes by tag@comma{} ID@comma{} or search
+@samp{agent_tools/ekg-read} - Read notes by tag, ID, or search
 @item
 @samp{agent_tools/ekg-tags} - Search and list tags
 @item
@@ -2410,8 +2418,8 @@ ekg installation:
 @samp{agent_tools/ekg-trash} - Soft-delete notes
 @end itemize
 
-To use these tools@comma{} agents should locate the ekg installation directory and
-reference the scripts with their full path@comma{} for example:
+To use these tools, agents should locate the ekg installation directory and
+reference the scripts with their full path, for example:
 @samp{$EKG_DIR/agent_tools/ekg-add-note}
 
 @item
@@ -2419,26 +2427,26 @@ reference the scripts with their full path@comma{} for example:
 
 
 The file @samp{agent_tools/skill.md} is a complete reference document describing all
-available tools@comma{} tag conventions@comma{} and recommended workflows.  It is designed to
+available tools, tag conventions, and recommended workflows.  It is designed to
 be used as an agent skill --- a file that an agent reads to learn how to use ekg.
 
-To make this skill available to your agent@comma{} symlink @samp{skill.md} into wherever
+To make this skill available to your agent, symlink @samp{skill.md} into wherever
 your agent stores its skill files.  For example:
 
 @example
 ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
 @end example
 
-This way@comma{} the agent always has up-to-date documentation for the ekg tools
+This way, the agent always has up-to-date documentation for the ekg tools
 without needing to duplicate it.
 
 @item
 @anchor{Instructions for configuring agents}Instructions for configuring agents
 
 
-When setting up an AI agent to use ekg for memory@comma{} the recommended approach is
+When setting up an AI agent to use ekg for memory, the recommended approach is
 to provide the agent with the @samp{skill.md} file as described above.  For agents
-that do not support skill files@comma{} you can provide these instructions directly:
+that do not support skill files, you can provide these instructions directly:
 
 @enumerate
 @item
@@ -2447,11 +2455,11 @@ that do not support skill files@comma{} you can provide these instructions direc
 
 @example
 You have access to an emacs-based external memory system called ekg.  It may contain
-both notes the user has written@comma{} but is also accessible for you to read and write to.
-To store information for later retrieval@comma{} use the ekg-add-note tool located at:
+both notes the user has written, but is also accessible for you to read and write to.
+To store information for later retrieval, use the ekg-add-note tool located at:
 <ekg-installation-path>/agent_tools/ekg-add-note.  It requires a running emacs
-with the daemon running (via the emacs `server-start` command)@comma{} if there is an issue
-connecting@comma{} alert the user and ask them to run `server-start`.
+with the daemon running (via the emacs `server-start` command), if there is an issue
+connecting, alert the user and ask them to run `server-start`.
 
 Usage:
   ekg-add-note --tag <tag1> --tag <tag2> --note "<note text>" --mode org-mode
@@ -2459,15 +2467,15 @@ Usage:
 Parameters:
   --tag TAG    : Categorize the note (can be used multiple times)
   --note TEXT  : The content to store (required)
-  --mode MODE  : Format (org-mode@comma{} markdown-mode@comma{} or text-mode; default: org-mode)
+  --mode MODE  : Format (org-mode, markdown-mode, or text-mode; default: org-mode)
 
 The system will automatically:
 - Mark the note as agent-created (adds "agent" tag)
-- Apply automatic tagging functions (e.g.@comma{} adds current date as "date/YYYY-MM-DD")
+- Apply automatic tagging functions (e.g., adds current date as "date/YYYY-MM-DD")
 - Format the content with appropriate markers
 - Store timestamps for creation and modification
 
-Tags may contain spaces or other special characters.  Tags can be hiearchical@comma{} some are standard@comma{} such as "project/revise event processing/design"
+Tags may contain spaces or other special characters.  Tags can be hiearchical, some are standard, such as "project/revise event processing/design"
 
 Example usage:
   ekg-add-note --tag "project/revise event processing" --tag "progress" \\
@@ -2479,7 +2487,7 @@ Use tags strategically:
 - Multiple tags and nested tags help organize related information.
 - Use `agent/instruct` to tag and retrieve information to change the agent behavior.
 
-To retrieve information from your ekg memory@comma{} use the ekg-read tool located at:
+To retrieve information from your ekg memory, use the ekg-read tool located at:
 <ekg-installation-path>/agent_tools/ekg-read
 
 The tool returns JSON-formatted results for easy parsing.
@@ -2500,19 +2508,19 @@ Usage modes:
 
 Parameters:
   --tag TAG            : Filter by tag (can be used multiple times for AND logic)
-  -n@comma{} --num NUM        : Max notes to return (default: 10)
-  -w@comma{} --words NUM      : Max words per note (default: 100)
+  -n, --num NUM        : Max notes to return (default: 10)
+  -w, --words NUM      : Max words per note (default: 100)
   --semantic-search Q  : Find conceptually related notes
   --search QUERY       : Find notes containing keywords
 
 Output format (JSON):
 [
   @{
-    "id": 12345678@comma{}
-    "text": "Note content..."@comma{}
-    "mode": "org-mode"@comma{}
-    "tags": ["tag1"@comma{} "tag2"]@comma{}
-    "creation_time": 1768889121@comma{}
+    "id": 12345678,
+    "text": "Note content...",
+    "mode": "org-mode",
+    "tags": ["tag1", "tag2"],
+    "creation_time": 1768889121,
     "modified_time": 1768889121
   @}
 ]
@@ -2528,23 +2536,23 @@ Example workflow:
   ekg-read 12345678
 
 You should use ekg memory to:
-1. Record important findings@comma{} decisions@comma{} and progress
+1. Record important findings, decisions, and progress
 2. Build up context across multiple interactions
 3. Remember user preferences and past discussions
 4. Track long-running projects and goals
 
 Workflow:
-- At the end of significant interactions@comma{} store key information
-- Before starting new tasks@comma{} retrieve relevant context
+- At the end of significant interactions, store key information
+- Before starting new tasks, retrieve relevant context
 - Use tags to organize information hierarchically
-- Prefer specific@comma{} actionable notes over vague summaries
+- Prefer specific, actionable notes over vague summaries
 
 Example:
   # Store a finding
   ekg-add-note --tag "user-preferences" --tag "coding-style" \\
     --note "User prefers descriptive variable names over short abbreviations"
 
-  # Later@comma{} retrieve preferences
+  # Later, retrieve preferences
   ekg-read --tag "user-preferences" -n 10
 
 Additional tools:
@@ -2568,11 +2576,11 @@ Additional tools:
 
 
 @example
-You have access to an emacs-based external memory system called ekg@comma{} which stores notes from users and agents with tags.  Use it as a memory when working.  It requires a running emacs
-with the daemon running (via the emacs `server-start` command)@comma{} if there is an issue
-connecting@comma{} alert the user and ask them to run `server-start`.
+You have access to an emacs-based external memory system called ekg, which stores notes from users and agents with tags.  Use it as a memory when working.  It requires a running emacs
+with the daemon running (via the emacs `server-start` command), if there is an issue
+connecting, alert the user and ask them to run `server-start`.
 
-To store information for later retrieval@comma{} use the ekg-add-note tool located at:
+To store information for later retrieval, use the ekg-add-note tool located at:
 <ekg-installation-path>/agent_tools/ekg-add-note
 
 Usage:
@@ -2580,7 +2588,7 @@ Usage:
 
 Tags may contain spaces or other special characters.  Use tags with the "project/" prefix to store information about projects.  Use the `agent/instruct` tag to change future behavior of the agent.
 
-To retrieve information from your ekg memory@comma{} use the ekg-read tool located at:
+To retrieve information from your ekg memory, use the ekg-read tool located at:
 <ekg-installation-path>/agent_tools/ekg-read
 
 The tool returns JSON-formatted results.
@@ -2599,7 +2607,7 @@ Usage modes:
 4. Text search (keyword matching):
    ekg-read --search "deadline"
 
-To search and list tags@comma{} use ekg-tags:
+To search and list tags, use ekg-tags:
   ekg-tags                              # All tags
   ekg-tags --co-tagged prompt           # Tags co-occurring with "prompt"
   ekg-tags --regex "pattern"            # Tags matching regex
@@ -2608,16 +2616,16 @@ To update tags on a note: ekg-update-tags <note-id> --add tag1 --remove tag2
 To soft-delete a note: ekg-trash <note-id>
 
 You should use ekg memory to:
-1. Record important findings@comma{} decisions@comma{} and progress
+1. Record important findings, decisions, and progress
 2. Build up context across multiple interactions
 3. Remember user preferences and past discussions
 4. Track long-running projects and goals
 
 Workflow:
-- At the end of significant interactions@comma{} store key information
-- Before starting new tasks@comma{} retrieve relevant context
+- At the end of significant interactions, store key information
+- Before starting new tasks, retrieve relevant context
 - Use tags to organize information hierarchically
-- Prefer specific@comma{} actionable notes over vague summaries
+- Prefer specific, actionable notes over vague summaries
 @end example
 @end enumerate
 
@@ -2707,23 +2715,23 @@ For direct elisp integration:
 @section The triple database
 
 The ekg package uses the triples package to interface with a sqlite database.
-The reason a database is useful@comma{} even for text@comma{} is because databases are
-extremely fast@comma{} very flexible@comma{} and extremely easy to change.  In general@comma{} the
-less your data looks like just files with text in them@comma{} the more a database
-makes sense.  In ekg@comma{} we can separate the notion of tags from the text@comma{} which
-makes writing functions such as @samp{ekg-global-rename-tag} trivial@comma{} and the
+The reason a database is useful, even for text, is because databases are
+extremely fast, very flexible, and extremely easy to change.  In general, the
+less your data looks like just files with text in them, the more a database
+makes sense.  In ekg, we can separate the notion of tags from the text, which
+makes writing functions such as @samp{ekg-global-rename-tag} trivial, and the
 execution extremely fast.
 
-The decision to use the triples package@comma{} though@comma{} is related to a different
-design choice.  In a triple-based system@comma{} there's only one database table with
-four columns@comma{} a @samp{subject}@comma{} @samp{predicate}@comma{} @samp{object}@comma{} and @samp{properties}.  One way to
+The decision to use the triples package, though, is related to a different
+design choice.  In a triple-based system, there's only one database table with
+four columns, a @samp{subject}, @samp{predicate}, @samp{object}, and @samp{properties}.  One way to
 think of this schema is that it defines links of different types from a subject
-to an object.  This is combined with a schema@comma{} itself defined in triples.  The
-triples define that subjects can have types@comma{} and those types can have
-properties.  Those properties are expressed in this triple format.  In ekg@comma{} the
-subjects correspond to the IDs of the notes@comma{} or tags.  Subjects can have
-multiple types@comma{} and data is factored into types that belong together@comma{} with a
-specific meaning.  To give an example@comma{} listing out the data for a note might
+to an object.  This is combined with a schema, itself defined in triples.  The
+triples define that subjects can have types, and those types can have
+properties.  Those properties are expressed in this triple format.  In ekg, the
+subjects correspond to the IDs of the notes, or tags.  Subjects can have
+multiple types, and data is factored into types that belong together, with a
+specific meaning.  To give an example, listing out the data for a note might
 look something like:
 
 @example
@@ -2738,54 +2746,54 @@ look something like:
 33204698034|time-tracked/modified-time|1667787986|()
 @end example
 
-In this example@comma{} @samp{33204698034} is the ID for this note.  It has a type
-(@samp{base/type})@comma{} of @samp{tagged}@comma{} which means this is something that has tags.  The
-tags are a list@comma{} so the properties contain their index in the list.  Because
-each one is stored individually@comma{} we can easily find all entities with each tag@comma{}
+In this example, @samp{33204698034} is the ID for this note.  It has a type
+(@samp{base/type}), of @samp{tagged}, which means this is something that has tags.  The
+tags are a list, so the properties contain their index in the list.  Because
+each one is stored individually, we can easily find all entities with each tag,
 by querying on all subjects with a particular object value.  This is how reverse
-links work in the triples package.  In this case@comma{} there are two tags@comma{}
-"date/2022-11-06"@comma{} and "lentil stew".  The note comes from another type@comma{} @samp{text}.
-And yet another important property@comma{} the modification time@comma{} is on yet another
-type@comma{} @samp{time-tracked}.  These are all independent.  It is possible to have
-subjects that have tags but not text@comma{} although this doesn't happen currently in
+links work in the triples package.  In this case, there are two tags,
+"date/2022-11-06", and "lentil stew".  The note comes from another type, @samp{text}.
+And yet another important property, the modification time, is on yet another
+type, @samp{time-tracked}.  These are all independent.  It is possible to have
+subjects that have tags but not text, although this doesn't happen currently in
 ekg.  It's also possible to have any object have a creation and modified time.
 
 Using a triples scheme has the advantage that it is very easy to integrate with.
-All data is very "flat"@comma{} without having to worry about tables and their schemas.
-The uniformity means that it lends itself well to integrations@comma{} which typically
+All data is very "flat", without having to worry about tables and their schemas.
+The uniformity means that it lends itself well to integrations, which typically
 would provide a new type and new data.  The disadvantage is that it is typically
-less efficient to query@comma{} at least for more complicated queries.  On databases
-that typically will be used with ekg@comma{} this should be not noticeable.
+less efficient to query, at least for more complicated queries.  On databases
+that typically will be used with ekg, this should be not noticeable.
 
-IDs@comma{} stored as subjects@comma{} can be resources.  This is useful when we want to store
-data about some unique thing@comma{} such as an URL@.  Because triples define a graph@comma{}
-every object can be a subject.  For an example@comma{} if some data in the graph has a
-value of "@uref{http://emacs.org}"@comma{} then we can attach more data to that value@comma{} such as
-tags@comma{} notes or anything else.  This is how we store notes about web pages
+IDs, stored as subjects, can be resources.  This is useful when we want to store
+data about some unique thing, such as an URL@.  Because triples define a graph,
+every object can be a subject.  For an example, if some data in the graph has a
+value of "@uref{http://emacs.org}", then we can attach more data to that value, such as
+tags, notes or anything else.  This is how we store notes about web pages
 (@samp{ekg-capture-url}).  Having IDs that are meaningful is also useful to enforce
-unique data@comma{} and force that data isn't duplicated.  For example@comma{} with this
-design@comma{} you couldn't have both a "tag" entity and a "page" entity that are
-separate: if they are the same object value@comma{} they will be the same subject@comma{} with
-the same ID@.  This leads@comma{} in our opinion@comma{} to a better design.  Also it's useful
-to note that IDs can be anything@comma{} even different types of objects.  Integers@comma{}
-strings@comma{} symbols.  This is useful@comma{} because objects can be anything.  Because of
-the design of the triple database@comma{} all data can be expanded on with their own
-data@comma{} and that data itself expanded on.  This seems like a useful property to
+unique data, and force that data isn't duplicated.  For example, with this
+design, you couldn't have both a "tag" entity and a "page" entity that are
+separate: if they are the same object value, they will be the same subject, with
+the same ID@.  This leads, in our opinion, to a better design.  Also it's useful
+to note that IDs can be anything, even different types of objects.  Integers,
+strings, symbols.  This is useful, because objects can be anything.  Because of
+the design of the triple database, all data can be expanded on with their own
+data, and that data itself expanded on.  This seems like a useful property to
 have for a personal knowledge system.
 
 @node The metadata section
 @section The metadata section
 
 Because the user may want to modify or create both the text and other database
-properties at the same time@comma{} we use a single buffer that lets the user do both.
-Because of this design choice@comma{} we have to divide the buffer up into two
+properties at the same time, we use a single buffer that lets the user do both.
+Because of this design choice, we have to divide the buffer up into two
 sections: a metadata section and the text section.  The metadata section is on
-top@comma{} and has a specific format.  Because of this@comma{} some @samp{org-mode} functions may
-not work correctly@comma{} because they assume the whole buffer is an org-mode file.
-Without this design@comma{} however@comma{} it isn't clear how the user could easily see and
-modify everything they need.  Theoretically@comma{} having another window might work@comma{}
-but this would add other complications: the user might not want several windows@comma{}
-the user might select or bury one of them@comma{} and more.  There isn't an obvious
+top, and has a specific format.  Because of this, some @samp{org-mode} functions may
+not work correctly, because they assume the whole buffer is an org-mode file.
+Without this design, however, it isn't clear how the user could easily see and
+modify everything they need.  Theoretically, having another window might work,
+but this would add other complications: the user might not want several windows,
+the user might select or bury one of them, and more.  There isn't an obvious
 ideal solution.  It's possible that the design of the capture/edit buffer may
 change in the future to fix some of the issues we see with the current
 implementation.

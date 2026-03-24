@@ -257,6 +257,14 @@ IDs). These can be hidden by adding the property keyword to
 ~ekg-header-hidden-properties~. Packages such as =ekg-embedding= and =ekg-org=
 automatically add their internal properties to this list.
 
+Some properties need formatting before display. For example, in the =ekg-org=
+module, scheduled dates and deadlines are stored as epoch seconds but should
+appear as human-readable dates. The variable ~ekg-property-format-functions~ is an
+alist mapping property keywords (e.g. ~:org/scheduled~) to functions that take a
+single value and return a display string. Packages can register their own
+formatters by adding entries to this alist; =ekg-org= does this automatically for
+~:org/scheduled~ and ~:org/deadline~.
+
 For the common cases, there are special commands, available under the =C-c /= prefix keymap:
 
 - =a=: =ekg-note-add-tag=, to add a tag.

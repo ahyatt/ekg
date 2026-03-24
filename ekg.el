@@ -196,6 +196,13 @@ large vectors or internal IDs) should add entries via `add-to-list'."
   :type '(repeat symbol)
   :group 'ekg)
 
+(defvar ekg-property-format-functions nil
+  "Alist mapping property keywords to formatting functions.
+Each entry is (PROPERTY . FUNCTION), where PROPERTY is a keyword
+like `:org/scheduled' and FUNCTION takes a single value and
+returns a string representation.  Used in the header line to
+format property values for display.")
+
 (defcustom ekg-save-no-message nil
   "Non-nil means do not print any message when saving."
   :type 'boolean
@@ -1179,13 +1186,18 @@ This is needed to identify references to refresh when the subject is changed.")
       ;; Add all other properties that are either text or lists of text.
       (map-do (lambda (prop value)
                 (unless (memq prop ekg-header-hidden-properties)
-                  (push (ekg-truncate-at
-                         (concat (propertize (ekg-property-name-for prop) 'face 'bold)
-                                 ": "
-                                 (if (listp value)
-                                     (mapconcat (lambda (v) (format "%s" v)) value ", ")
-                                   (format "%s" value)))
-                         remaining-width) parts)))
+                  (let ((formatter (alist-get prop ekg-property-format-functions)))
+                    (push (ekg-truncate-at
+                           (concat (propertize (ekg-property-name-for prop) 'face 'bold)
+                                   ": "
+                                   (if formatter
+                                       (if (listp value)
+                                           (mapconcat formatter value ", ")
+                                         (funcall formatter value))
+                                     (if (listp value)
+                                         (mapconcat (lambda (v) (format "%s" v)) value ", ")
+                                       (format "%s" value))))
+                           remaining-width) parts))))
               (ekg-note-properties ekg-note))
 
       ;; Add resource if meaningful

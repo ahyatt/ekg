@@ -1341,6 +1341,42 @@ A placeholder shows where the new task will be inserted.  Use
       (ekg-org-view--insert-show)
       (message "Insert mode: n/p move, R/L demote/promote, RET confirm, C-g cancel"))))
 
+(defun ekg-org-view-set-schedule ()
+  "Set the scheduled date of the task at point.
+Prompts with `org-read-date' and stores the result as a Unix
+timestamp in the note's `:org/scheduled' property."
+  (interactive)
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (let* ((current (plist-get (ekg-note-properties note) :org/scheduled))
+           (current-time (when current (seconds-to-time current)))
+           (new-ts (org-read-date nil t nil "Schedule: " current-time))
+           (ekg-org--inhibit-view-refresh t))
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note)
+                       :org/scheduled
+                       (time-convert new-ts 'integer)))
+      (ekg-save-note note))
+    (ekg-org-view--refresh id)))
+
+(defun ekg-org-view-set-deadline ()
+  "Set the deadline of the task at point.
+Prompts with `org-read-date' and stores the result as a Unix
+timestamp in the note's `:org/deadline' property."
+  (interactive)
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (let* ((current (plist-get (ekg-note-properties note) :org/deadline))
+           (current-time (when current (seconds-to-time current)))
+           (new-ts (org-read-date nil t nil "Deadline: " current-time))
+           (ekg-org--inhibit-view-refresh t))
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note)
+                       :org/deadline
+                       (time-convert new-ts 'integer)))
+      (ekg-save-note note))
+    (ekg-org-view--refresh id)))
+
 ;; Major mode
 
 (defvar ekg-org-view-mode-map
@@ -1360,6 +1396,8 @@ A placeholder shows where the new task will be inserted.  Use
     (define-key map (kbd "R") #'ekg-org-view-demote)
     (define-key map (kbd "w") #'ekg-org-view-refile)
     (define-key map (kbd "g") #'ekg-org-view-refresh)
+    (define-key map (kbd "C-c C-s") #'ekg-org-view-set-schedule)
+    (define-key map (kbd "C-c C-d") #'ekg-org-view-set-deadline)
     map)
   "Keymap for `ekg-org-view-mode'.")
 
@@ -1486,12 +1524,20 @@ If ARCHIVE is non-nil, show archived tasks."
     (switch-to-buffer buf)
     instance))
 
+(defun ekg-org--format-epoch-as-date (epoch)
+  "Format EPOCH seconds as a readable date string."
+  (format-time-string "%Y-%m-%d %a" (seconds-to-time epoch)))
+
 (defun ekg-org-initialize ()
   "Initialize the ekg-org integration.
 
 This adds the necessary schema and, if `ekg-agent' is available,
 registers tools for interacting with org tasks."
   (ekg-org-add-schema)
+  (setf (alist-get :org/scheduled ekg-property-format-functions)
+        #'ekg-org--format-epoch-as-date)
+  (setf (alist-get :org/deadline ekg-property-format-functions)
+        #'ekg-org--format-epoch-as-date)
   (when (featurep 'ekg-agent)
     (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-add-task)
     (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-set-status)
