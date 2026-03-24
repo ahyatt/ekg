@@ -701,31 +701,31 @@ as the starting heading are skipped."
 
 (defun ekg-org-view-next-heading ()
   "Move to the next heading."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (ekg-org-view--goto-heading :forward)
   (ekg-org-view--highlight))
 
 (defun ekg-org-view-previous-heading ()
   "Move to the previous heading."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (ekg-org-view--goto-heading :backward)
   (ekg-org-view--highlight))
 
 (defun ekg-org-view-next-sibling ()
   "Move to the next heading at the same level."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (ekg-org-view--goto-heading :forward t)
   (ekg-org-view--highlight))
 
 (defun ekg-org-view-previous-sibling ()
   "Move to the previous heading at the same level."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (ekg-org-view--goto-heading :backward t)
   (ekg-org-view--highlight))
 
 (defun ekg-org-view-up-heading ()
   "Move to the parent heading."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (let ((current-level (ekg-org-view--level-at-point))
         (current-id (ekg-org-view--note-at-point))
         (found nil))
@@ -785,7 +785,7 @@ re-rendering and ensure it is visible."
 
 (defun ekg-org-view-toggle-collapse ()
   "Toggle collapse/expand of the task at point."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (instance ekg-org-view--instance))
     (let* ((state (vui-instance-state instance))
@@ -799,7 +799,7 @@ re-rendering and ensure it is visible."
 
 (defun ekg-org-view-cycle-state ()
   "Change the TODO state of the task at point."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (let* ((states (or (ekg-org--todo-keywords) '("TODO" "DONE")))
@@ -824,7 +824,7 @@ re-rendering and ensure it is visible."
 
 (defun ekg-org-view-archive ()
   "Archive the task at point and all its descendants."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (when (y-or-n-p (format "Archive \"%s\" and all children? "
@@ -843,7 +843,7 @@ re-rendering and ensure it is visible."
   "Trash the task at point and all its descendants.
 Notes are moved to trash, which hides them from view.  If already
 trashed, they are permanently deleted."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (when (y-or-n-p (format "Delete \"%s\" and all children? "
@@ -854,7 +854,7 @@ trashed, they are permanently deleted."
 
 (defun ekg-org-view-open-note ()
   "Open the ekg note at point for editing."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (ekg-edit note)))
@@ -872,7 +872,7 @@ trashed, they are permanently deleted."
   "Promote the task at point, making it a sibling of its current parent.
 The promoted task is placed immediately after its former parent
 among the new siblings."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id))
               (props (ekg-note-properties note))
@@ -942,7 +942,7 @@ completion framework reorders candidates."
   "Refile the task at point to a new location in the hierarchy.
 Prompts for a target task; the refiled task becomes the last child
 of the target.  Selecting \"Top level\" makes it a top-level task."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
     (let* ((choices (ekg-org-view--all-tasks-for-refile id))
@@ -982,7 +982,7 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
 
 (defun ekg-org-view-demote ()
   "Demote the task at point, making it a child of the previous sibling."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id))
               (props (ekg-note-properties note)))
@@ -1186,7 +1186,7 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 
 (defun ekg-org-view-insert-next ()
   "Move to the next insertion slot."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when (< ekg-org-view--insert-index
            (1- (length ekg-org-view--insert-slots)))
     (cl-incf ekg-org-view--insert-index)
@@ -1194,14 +1194,14 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 
 (defun ekg-org-view-insert-prev ()
   "Move to the previous insertion slot."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (when (> ekg-org-view--insert-index 0)
     (cl-decf ekg-org-view--insert-index)
     (ekg-org-view--insert-show)))
 
 (defun ekg-org-view-insert-demote ()
   "Make the insertion slot one level deeper (child of current parent)."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
          (parent-id (plist-get slot :parent-id))
          (after-id (plist-get slot :after-id))
@@ -1221,7 +1221,7 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 
 (defun ekg-org-view-insert-promote ()
   "Make the insertion slot one level shallower (sibling of current parent)."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
          (parent-id (plist-get slot :parent-id))
          (level (plist-get slot :level)))
@@ -1283,7 +1283,7 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 (defun ekg-org-view-insert-confirm ()
   "Confirm the insertion position and prompt for the task title.
 The placeholder remains visible and updates live as you type."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
          (level (plist-get slot :level))
          (pos (plist-get slot :buffer-pos))
@@ -1314,7 +1314,7 @@ The placeholder remains visible and updates live as you type."
 
 (defun ekg-org-view-insert-cancel ()
   "Cancel task insertion mode."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (ekg-org-view--insert-cleanup)
   (message "Cancelled."))
 
@@ -1323,7 +1323,7 @@ The placeholder remains visible and updates live as you type."
 A placeholder shows where the new task will be inserted.  Use
 \\`n'/\\`p' to move between positions, \\`R'/\\`L' to demote/promote,
 \\`RET' to confirm, and \\`C-g' to cancel."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (let ((slots (ekg-org-view--build-insert-slots)))
     (if (null slots)
         ;; Empty view — just create a top-level task directly.
@@ -1341,41 +1341,39 @@ A placeholder shows where the new task will be inserted.  Use
       (ekg-org-view--insert-show)
       (message "Insert mode: n/p move, R/L demote/promote, RET confirm, C-g cancel"))))
 
-(defun ekg-org-view-set-schedule ()
-  "Set the scheduled date of the task at point.
+(defun ekg-org--set-date-property (property prompt)
+  "Set PROPERTY to a date chosen by the user with PROMPT.
+Works in `ekg-org-view-mode' (operates on note at point),
+`ekg-capture-mode', and `ekg-edit-mode' (operates on `ekg-note')."
+  (let* ((in-view (derived-mode-p 'ekg-org-view-mode))
+         (id (if in-view (ekg-org-view--note-at-point) (ekg-note-id ekg-note)))
+         (note (if in-view (ekg-get-note-with-id id) ekg-note)))
+    (when note
+      (let* ((current (plist-get (ekg-note-properties note) property))
+             (current-time (when current (seconds-to-time current)))
+             (new-ts (org-read-date nil t nil prompt current-time))
+             (ekg-org--inhibit-view-refresh t))
+        (setf (ekg-note-properties note)
+              (plist-put (ekg-note-properties note)
+                         property
+                         (time-convert new-ts 'integer)))
+        (ekg-save-note note))
+      (when in-view
+        (ekg-org-view--refresh id)))))
+
+(defun ekg-org-set-schedule ()
+  "Set the scheduled date of the current task.
 Prompts with `org-read-date' and stores the result as a Unix
 timestamp in the note's `:org/scheduled' property."
-  (interactive)
-  (when-let* ((id (ekg-org-view--note-at-point))
-              (note (ekg-get-note-with-id id)))
-    (let* ((current (plist-get (ekg-note-properties note) :org/scheduled))
-           (current-time (when current (seconds-to-time current)))
-           (new-ts (org-read-date nil t nil "Schedule: " current-time))
-           (ekg-org--inhibit-view-refresh t))
-      (setf (ekg-note-properties note)
-            (plist-put (ekg-note-properties note)
-                       :org/scheduled
-                       (time-convert new-ts 'integer)))
-      (ekg-save-note note))
-    (ekg-org-view--refresh id)))
+  (interactive nil ekg-org-view-mode ekg-capture-mode ekg-edit-mode)
+  (ekg-org--set-date-property :org/scheduled "Schedule: "))
 
-(defun ekg-org-view-set-deadline ()
-  "Set the deadline of the task at point.
+(defun ekg-org-set-deadline ()
+  "Set the deadline of the current task.
 Prompts with `org-read-date' and stores the result as a Unix
 timestamp in the note's `:org/deadline' property."
-  (interactive)
-  (when-let* ((id (ekg-org-view--note-at-point))
-              (note (ekg-get-note-with-id id)))
-    (let* ((current (plist-get (ekg-note-properties note) :org/deadline))
-           (current-time (when current (seconds-to-time current)))
-           (new-ts (org-read-date nil t nil "Deadline: " current-time))
-           (ekg-org--inhibit-view-refresh t))
-      (setf (ekg-note-properties note)
-            (plist-put (ekg-note-properties note)
-                       :org/deadline
-                       (time-convert new-ts 'integer)))
-      (ekg-save-note note))
-    (ekg-org-view--refresh id)))
+  (interactive nil ekg-org-view-mode ekg-capture-mode ekg-edit-mode)
+  (ekg-org--set-date-property :org/deadline "Deadline: "))
 
 ;; Major mode
 
@@ -1396,8 +1394,8 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "R") #'ekg-org-view-demote)
     (define-key map (kbd "w") #'ekg-org-view-refile)
     (define-key map (kbd "g") #'ekg-org-view-refresh)
-    (define-key map (kbd "C-c C-s") #'ekg-org-view-set-schedule)
-    (define-key map (kbd "C-c C-d") #'ekg-org-view-set-deadline)
+    (define-key map (kbd "C-c C-s") #'ekg-org-set-schedule)
+    (define-key map (kbd "C-c C-d") #'ekg-org-set-deadline)
     map)
   "Keymap for `ekg-org-view-mode'.")
 
@@ -1435,7 +1433,7 @@ Accepts and ignores arguments so it can be used directly on
 
 (defun ekg-org-view-refresh ()
   "Refresh the task view."
-  (interactive)
+  (interactive nil ekg-org-view-mode)
   (ekg-org-view--refresh))
 
 (defun ekg-org-view--mount (&optional archive)
@@ -1538,6 +1536,10 @@ registers tools for interacting with org tasks."
         #'ekg-org--format-epoch-as-date)
   (setf (alist-get :org/deadline ekg-property-format-functions)
         #'ekg-org--format-epoch-as-date)
+  (define-key ekg-capture-mode-map "\C-c\C-s" #'ekg-org-set-schedule)
+  (define-key ekg-capture-mode-map "\C-c\C-d" #'ekg-org-set-deadline)
+  (define-key ekg-edit-mode-map "\C-c\C-s" #'ekg-org-set-schedule)
+  (define-key ekg-edit-mode-map "\C-c\C-d" #'ekg-org-set-deadline)
   (when (featurep 'ekg-agent)
     (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-add-task)
     (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-set-status)
