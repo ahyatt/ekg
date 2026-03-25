@@ -485,6 +485,24 @@
         ;; The good note's embedding should still be retrievable.
         (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id good-note))))))))
 
+(ert-deftest ekg-test-embedding-get-vecdb-returns-vector ()
+  "When using vecdb, `ekg-embedding-get' returns the vector, not the struct."
+  (let* ((ekg-vecdb-provider (cons :provider :collection))
+         (expected-vector [0.1 0.2 0.3])
+         (fake-item :fake-item))
+    (cl-letf (((symbol-function 'vecdb-get-item)
+               (lambda (_provider _collection _embed-id) fake-item))
+              ((symbol-function 'vecdb-item-vector)
+               (lambda (_item) expected-vector)))
+      (should (equal (ekg-embedding-get 'note-id) expected-vector)))))
+
+(ert-deftest ekg-test-embedding-get-vecdb-returns-nil-when-missing ()
+  "When using vecdb and no item exists, `ekg-embedding-get' returns nil."
+  (let ((ekg-vecdb-provider (cons :provider :collection)))
+    (cl-letf (((symbol-function 'vecdb-get-item)
+               (lambda (_provider _collection _embed-id) nil)))
+      (should (eq (ekg-embedding-get 'note-id) nil)))))
+
 (ekg-deftest ekg-test-always-have-header-line ()
              (ekg-capture)
              (should header-line-format)
