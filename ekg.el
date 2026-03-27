@@ -2075,7 +2075,13 @@ Returns the position of the start of the note, or nil."
       (goto-char pos)
       (let ((current-id (get-text-property (point) :ekg-note-id)))
         ;; First, move past the current note (or gap).
-        (when-let* ((boundary (funcall search-fn (point) :ekg-note-id)))
+        ;; When going backward, previous-single-property-change can
+        ;; return nil if the preceding note extends to point-min (no
+        ;; further property change exists).  Fall back to point-min.
+        (when-let* ((boundary (or (funcall search-fn (point) :ekg-note-id)
+                                  (and (eq direction :backward)
+                                       (> (point) (point-min))
+                                       (point-min)))))
           (goto-char boundary)
           ;; If we landed in a gap, move past it.
           (unless (get-text-property (point) :ekg-note-id)

@@ -512,5 +512,41 @@
                     (note-buf (ekg-edit note)))
                (should header-line-format)))
 
+(ekg-deftest ekg-test-notes-navigation ()
+             (mapc #'ekg-save-note
+                   (list (ekg-note-create :text "first" :mode 'text-mode :tags '("nav"))
+                         (ekg-note-create :text "second" :mode 'text-mode :tags '("nav"))
+                         (ekg-note-create :text "third" :mode 'text-mode :tags '("nav"))))
+             (ekg-show-notes-with-tag "nav")
+             (let ((buf (get-buffer "*ekg tag: nav*")))
+               (unwind-protect
+                   (with-current-buffer buf
+                     (goto-char (point-min))
+                     (let ((note1-id (get-text-property (point) :ekg-note-id)))
+                       (should note1-id)
+                       ;; Move forward to note 2.
+                       (ekg-notes-next)
+                       (let ((note2-id (get-text-property (point) :ekg-note-id)))
+                         (should note2-id)
+                         (should-not (equal note1-id note2-id))
+                         ;; Move back to note 1 — this is the bug scenario.
+                         (ekg-notes-previous)
+                         (should (equal (get-text-property (point) :ekg-note-id)
+                                        note1-id))
+                         ;; Move forward twice to note 3.
+                         (ekg-notes-next)
+                         (ekg-notes-next)
+                         (let ((note3-id (get-text-property (point) :ekg-note-id)))
+                           (should-not (equal note2-id note3-id))
+                           ;; Move back to note 2.
+                           (ekg-notes-previous)
+                           (should (equal (get-text-property (point) :ekg-note-id)
+                                          note2-id))
+                           ;; Move back to note 1.
+                           (ekg-notes-previous)
+                           (should (equal (get-text-property (point) :ekg-note-id)
+                                          note1-id))))))
+                 (kill-buffer buf))))
+
 (provide 'ekg-test)
 ;;; ekg-test.el ends here
