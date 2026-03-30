@@ -415,6 +415,61 @@ Returns the note ID."
     (should (equal (car headings) '(1 "First")))
     (should (equal (cadr headings) '(2 "Second")))))
 
+(ekg-deftest ekg-org-test-view-move-up ()
+  "Test that moving a task up swaps it with its previous sibling."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (should (equal (ekg-org-test--view-titles) '("First" "Second" "Third")))
+  ;; Navigate to "Third" and move it up
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-next-heading)
+    (ekg-org-view-next-heading)
+    (ekg-org-view-move-up))
+  (should (equal (ekg-org-test--view-titles) '("First" "Third" "Second"))))
+
+(ekg-deftest ekg-org-test-view-move-down ()
+  "Test that moving a task down swaps it with its next sibling."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (should (equal (ekg-org-test--view-titles) '("First" "Second" "Third")))
+  ;; Navigate to "First" and move it down
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-move-down))
+  (should (equal (ekg-org-test--view-titles) '("Second" "First" "Third"))))
+
+(ekg-deftest ekg-org-test-view-move-up-at-top ()
+  "Test that moving up at the top position is a no-op."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-view)
+  ;; Point is on "First", moving up should do nothing
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-move-up))
+  (should (equal (ekg-org-test--view-titles) '("First" "Second"))))
+
+(ekg-deftest ekg-org-test-view-move-down-at-bottom ()
+  "Test that moving down at the bottom position is a no-op."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-view)
+  ;; Navigate to "Second" and try moving down
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-next-heading)
+    (ekg-org-view-move-down))
+  (should (equal (ekg-org-test--view-titles) '("First" "Second"))))
+
 (ekg-deftest ekg-org-test-view-state-change ()
   "Test that changing state updates the heading."
   (ekg-org-add-schema)

@@ -2119,7 +2119,7 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @anchor{Actions}Actions
 
 
-@multitable {aaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Key
 @tab Command
 @tab Description
@@ -2144,12 +2144,18 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @item @samp{d}
 @tab @samp{ekg-org-view-delete}
 @tab Trash (soft-delete) the task
-@item @samp{L}
+@item @samp{L} / @samp{l}
 @tab @samp{ekg-org-view-promote}
 @tab Promote: make task a sibling of its parent
-@item @samp{R}
+@item @samp{R} / @samp{r}
 @tab @samp{ekg-org-view-demote}
 @tab Demote: make task a child of its previous sibling
+@item @samp{U}
+@tab @samp{ekg-org-view-move-up}
+@tab Move task up (swap with previous sibling)
+@item @samp{D}
+@tab @samp{ekg-org-view-move-down}
+@tab Move task down (swap with next sibling)
 @item @samp{g}
 @tab @samp{ekg-org-view-refresh}
 @tab Manually refresh the view

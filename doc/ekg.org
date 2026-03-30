@@ -1502,8 +1502,10 @@ The following keybindings are available in =ekg-org-view-mode=:
 | =C=     | =ekg-org-view-create-sibling=    | Create a sibling task after point |
 | =a=     | =ekg-org-view-archive=           | Archive the task at point         |
 | =d=     | =ekg-org-view-delete=            | Trash (soft-delete) the task      |
-| =L=     | =ekg-org-view-promote=           | Promote: make task a sibling of its parent |
-| =R=     | =ekg-org-view-demote=            | Demote: make task a child of its previous sibling |
+| =L= / =l= | =ekg-org-view-promote=         | Promote: make task a sibling of its parent |
+| =R= / =r= | =ekg-org-view-demote=          | Demote: make task a child of its previous sibling |
+| =U=     | =ekg-org-view-move-up=           | Move task up (swap with previous sibling) |
+| =D=     | =ekg-org-view-move-down=         | Move task down (swap with next sibling) |
 | =g=     | =ekg-org-view-refresh=           | Manually refresh the view         |
 
 **** How it differs from org-mode

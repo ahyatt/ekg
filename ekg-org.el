@@ -980,6 +980,52 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                                 (ekg-save-note note)))
     (ekg-org-view--refresh id)))
 
+(defun ekg-org-view-move-up ()
+  "Move the task at point up, swapping it with its previous sibling."
+  (interactive nil ekg-org-view-mode)
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (let* ((parent-id (plist-get (ekg-note-properties note) :org/parent))
+           (siblings (if parent-id
+                         (ekg-org-view--sorted-children parent-id)
+                       (ekg-org-view--sorted-top-level)))
+           (pos (cl-position id siblings
+                             :test #'equal
+                             :key #'ekg-note-id)))
+      (when (and pos (> pos 0))
+        (let* ((prev (nth (1- pos) siblings))
+               (prev-id (ekg-note-id prev))
+               (order-cur (ekg-org-view--sort-order note))
+               (order-prev (ekg-org-view--sort-order prev))
+               (ekg-org--inhibit-view-refresh t))
+          (triples-with-transaction ekg-db
+            (ekg-org-view--set-sort-order id order-prev)
+            (ekg-org-view--set-sort-order prev-id order-cur))
+          (ekg-org-view--refresh id))))))
+
+(defun ekg-org-view-move-down ()
+  "Move the task at point down, swapping it with its next sibling."
+  (interactive nil ekg-org-view-mode)
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (let* ((parent-id (plist-get (ekg-note-properties note) :org/parent))
+           (siblings (if parent-id
+                         (ekg-org-view--sorted-children parent-id)
+                       (ekg-org-view--sorted-top-level)))
+           (pos (cl-position id siblings
+                             :test #'equal
+                             :key #'ekg-note-id)))
+      (when (and pos (< pos (1- (length siblings))))
+        (let* ((next (nth (1+ pos) siblings))
+               (next-id (ekg-note-id next))
+               (order-cur (ekg-org-view--sort-order note))
+               (order-next (ekg-org-view--sort-order next))
+               (ekg-org--inhibit-view-refresh t))
+          (triples-with-transaction ekg-db
+            (ekg-org-view--set-sort-order id order-next)
+            (ekg-org-view--set-sort-order next-id order-cur))
+          (ekg-org-view--refresh id))))))
+
 (defun ekg-org-view-demote ()
   "Demote the task at point, making it a child of the previous sibling."
   (interactive nil ekg-org-view-mode)
@@ -1391,7 +1437,11 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "TAB") #'ekg-org-view-toggle-collapse)
     (define-key map (kbd "RET") #'ekg-org-view-open-note)
     (define-key map (kbd "L") #'ekg-org-view-promote)
+    (define-key map (kbd "l") #'ekg-org-view-promote)
     (define-key map (kbd "R") #'ekg-org-view-demote)
+    (define-key map (kbd "r") #'ekg-org-view-demote)
+    (define-key map (kbd "U") #'ekg-org-view-move-up)
+    (define-key map (kbd "D") #'ekg-org-view-move-down)
     (define-key map (kbd "w") #'ekg-org-view-refile)
     (define-key map (kbd "g") #'ekg-org-view-refresh)
     (define-key map (kbd "C-c C-s") #'ekg-org-set-schedule)
