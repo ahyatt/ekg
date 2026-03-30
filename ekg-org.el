@@ -436,6 +436,9 @@ Org-mode buffers."
 (defvar-local ekg-org-view--hl nil
   "Overlay for highlighting the current heading in `ekg-org-view-mode'.")
 
+(defvar-local ekg-org-view--refresh-pending nil
+  "When non-nil, a refresh was deferred because insert mode was active.")
+
 (defvar-local ekg-org-view--instance nil
   "The vui root instance for the current ekg-org-view buffer.")
 
@@ -444,6 +447,15 @@ Org-mode buffers."
 
 (defvar-local ekg-org-view--archive nil
   "When non-nil, show archived tasks instead of active ones.")
+
+(defvar-local ekg-org-view--insert-slots nil
+  "List of available insertion slots during insert mode.")
+
+(defvar-local ekg-org-view--insert-index nil
+  "Current slot index during insert mode.")
+
+(defvar-local ekg-org-view--insert-overlay nil
+  "Overlay showing the insertion placeholder.")
 
 (defun ekg-org-view--save-tags (note)
   "Persist the tags of NOTE without triggering full save hooks.
@@ -762,8 +774,11 @@ Returns non-nil if found."
 (defun ekg-org-view--refresh (&optional target-id)
   "Re-render the view in place without switching windows.
 If TARGET-ID is non-nil, move point to that note's heading after
-re-rendering and ensure it is visible."
-  (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
+re-rendering and ensure it is visible.  When insert mode is active,
+the refresh is deferred until insert mode ends."
+  (if ekg-org-view--insert-overlay
+      (setq ekg-org-view--refresh-pending t)
+    (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
     (vui-rerender ekg-org-view--instance)
     (if (and restore-id (ekg-org-view--goto-note-id restore-id))
         (let ((windows (get-buffer-window-list (current-buffer) nil t)))
@@ -781,7 +796,7 @@ re-rendering and ensure it is visible."
                 (setcar (cddr entry) (point))))))
       (goto-char (point-min))
       (ekg-org-view--ensure-on-heading))
-    (ekg-org-view--highlight)))
+    (ekg-org-view--highlight))))
 
 (defun ekg-org-view-toggle-collapse ()
   "Toggle collapse/expand of the task at point."
@@ -1116,15 +1131,6 @@ If TITLE is non-nil and non-empty, show it; otherwise show hint text."
     map)
   "Keymap active during task insertion mode.")
 
-(defvar-local ekg-org-view--insert-slots nil
-  "List of available insertion slots during insert mode.")
-
-(defvar-local ekg-org-view--insert-index nil
-  "Current slot index during insert mode.")
-
-(defvar-local ekg-org-view--insert-overlay nil
-  "Overlay showing the insertion placeholder.")
-
 (defun ekg-org-view--insert-update-overlay (ov pos level spacing &optional title)
   "Update overlay OV at POS to show insertion placeholder at LEVEL.
 SPACING is the number of blank lines between items at this level,
@@ -1245,7 +1251,10 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
     (setq ekg-org-view--insert-overlay nil))
   (setq ekg-org-view--insert-slots nil
         ekg-org-view--insert-index nil)
-  (setq overriding-local-map nil))
+  (setq overriding-local-map nil)
+  (when ekg-org-view--refresh-pending
+    (setq ekg-org-view--refresh-pending nil)
+    (ekg-org-view--refresh)))
 
 (defun ekg-org-view--insert-create-task (slot title)
   "Create a new task from SLOT data with TITLE."

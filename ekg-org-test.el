@@ -879,4 +879,38 @@ An agent saving a new note should cause the view to update automatically."
     (should (equal "other-branch" (ekg-org-get-property note "WORKTREE")))
     (should (= 1 (length (ekg-org-properties-alist note))))))
 
+(ekg-deftest ekg-org-test-view-insert-defers-refresh ()
+  "Test that refreshes during insert mode are deferred, not lost.
+When the user is positioning the insertion placeholder, an external
+note save must not re-render the buffer mid-interaction.  The
+deferred refresh should fire once insert mode ends."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Existing")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    ;; Enter insert mode — overlay and slots are now active.
+    (ekg-org-view-create)
+    (should ekg-org-view--insert-overlay)
+    (should (null ekg-org-view--refresh-pending))
+    ;; Simulate an external save while insert mode is active.
+    (let ((note (ekg-note-create
+                 :text ""
+                 :mode 'org-mode
+                 :tags (list ekg-org-task-tag
+                             (concat ekg-org-state-tag-prefix "todo"))
+                 :properties (list :titled/title '("Agent Task")))))
+      (ekg-save-note note))
+    ;; The refresh should have been deferred, not executed.
+    (should ekg-org-view--refresh-pending)
+    ;; The view should still show only the original task.
+    (should (= 1 (length (ekg-org-test--view-titles))))
+    ;; End insert mode — the deferred refresh should fire.
+    (ekg-org-view--insert-cleanup)
+    ;; Now both tasks should appear.
+    (let ((titles (ekg-org-test--view-titles)))
+      (should (= 2 (length titles)))
+      (should (member "Existing" titles))
+      (should (member "Agent Task" titles)))))
+
 (provide 'ekg-org-test)
