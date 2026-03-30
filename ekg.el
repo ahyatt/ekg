@@ -1086,6 +1086,7 @@ ARG is the prefix argument, if used it opens in another window."
     (define-key map "r" #'ekg-note-remove-tag)
     (define-key map "t" #'ekg-note-add-title)
     (define-key map "T" #'ekg-note-remove-title)
+    (define-key map "c" #'ekg-note-change-title)
     (define-key map "p" #'ekg-note-edit-property)
     (define-key map "i" #'ekg-edit-add-inline)
     map)
@@ -1605,6 +1606,41 @@ TAG can be nil and the user will be prompted for the tag."
                          (seq-difference titles (list title-to-remove))))
         (setq header-line-format (ekg--header-line-format))
         (message "Title '%s' removed" title-to-remove)))))
+
+(defun ekg-note-change-title ()
+  "Change a title on the current note.
+If there are no titles, add one.  If there is one title, change
+it.  If there are multiple titles, select which one to change."
+  (interactive nil ekg-capture-mode ekg-edit-mode)
+  (unless ekg-note
+    (error "No note to edit"))
+  (let ((titles (plist-get (ekg-note-properties ekg-note) :titled/title)))
+    (cond
+     ((null titles)
+      (ekg-note-add-title))
+     ((= 1 (length titles))
+      (let ((new-title (read-string "New title: " (car titles))))
+        (when (and new-title (not (string-empty-p new-title)))
+          (setf (ekg-note-properties ekg-note)
+                (plist-put (ekg-note-properties ekg-note)
+                           :titled/title
+                           (list new-title)))
+          (setq header-line-format (ekg--header-line-format))
+          (message "Title changed to '%s'" new-title))))
+     (t
+      (let* ((old-title (completing-read "Title to change: " titles nil t))
+             (new-title (read-string "New title: " old-title)))
+        (when (and new-title (not (string-empty-p new-title)))
+          (setf (ekg-note-properties ekg-note)
+                (plist-put (ekg-note-properties ekg-note)
+                           :titled/title
+                           (mapcar (lambda (title)
+                                     (if (string= title old-title)
+                                         new-title
+                                       title))
+                                   titles)))
+          (setq header-line-format (ekg--header-line-format))
+          (message "Title changed to '%s'" new-title)))))))
 
 (defun ekg-edit (note)
   "Edit an existing NOTE."
