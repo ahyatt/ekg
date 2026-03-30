@@ -2093,30 +2093,33 @@ ARG, if non-nil, allows editing the instructions."
   (unless ekg-note
     (error "No note in current buffer"))
   (save-excursion
-    (let* ((ekg-agent-tool-append-response
+    (let* ((note-buffer (current-buffer))
+           (ekg-agent-tool-append-response
             (make-llm-tool
              :function (lambda (content)
-                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                (new-text (concat
-                                           (car enclosure) "\n"
-                                           content "\n"
-                                           (cdr enclosure))))
-                           (save-excursion
-                             (goto-char (point-max))
-                             (insert new-text))))
+                         (with-current-buffer note-buffer
+                           (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                                  (new-text (concat
+                                             (car enclosure) "\n"
+                                             content "\n"
+                                             (cdr enclosure))))
+                             (save-excursion
+                               (goto-char (point-max))
+                               (insert new-text)))))
              :name "append_to_current_note"
              :description "Append content to the current note."
              :args '((:name "content" :type string :description "The content to append to the current note."))))
            (ekg-agent-tool-replace-response
             (make-llm-tool
              :function (lambda (content)
-                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                (new-text (concat
-                                           (car enclosure) "\n"
-                                           content "\n"
-                                           (cdr enclosure))))
-                           (erase-buffer)
-                           (insert new-text)))
+                         (with-current-buffer note-buffer
+                           (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
+                                  (new-text (concat
+                                             (car enclosure) "\n"
+                                             content "\n"
+                                             (cdr enclosure))))
+                             (erase-buffer)
+                             (insert new-text))))
              :name "replace_current_note"
              :description "Replace the content of the current note."
              :args '((:name "content" :type string :description "The new content for the current note."))))
