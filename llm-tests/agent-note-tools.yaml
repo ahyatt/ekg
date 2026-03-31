@@ -1,0 +1,50 @@
+group: agent note tools
+setup: |
+  Initialize ekg with a temporary database by evaluating:
+    (progn
+      (require 'ekg)
+      (require 'ekg-agent)
+      (require 'ekg-llm)
+      (setq ekg-db-file (make-temp-file "ekg-llm-test-db"))
+      (ekg-connect))
+
+tests:
+  - description: |
+      Test that append_to_note adds content and that no agent log
+      artifacts leak into the note text.
+
+      Step 1 — Create a note:
+        (ekg-agent-add-note "The quick brown fox." '("append-test") "org-mode")
+      Retrieve its ID by evaluating:
+        (let ((notes (ekg-get-notes-with-tags '("append-test"))))
+          (format "%s" (ekg-note-id (car notes))))
+
+      Step 2 — Append to the note by calling the tool function directly:
+        (let* ((notes (ekg-get-notes-with-tags '("append-test")))
+               (id (format "%s" (ekg-note-id (car notes))))
+               (tool-fn (llm-tool-function ekg-agent-tool-append-to-note)))
+          (funcall tool-fn id "Jumps over the lazy dog."))
+      Verify the result string starts with "Appended content to note".
+
+      Step 3 — Append a second time:
+        (let* ((notes (ekg-get-notes-with-tags '("append-test")))
+               (id (format "%s" (ekg-note-id (car notes))))
+               (tool-fn (llm-tool-function ekg-agent-tool-append-to-note)))
+          (funcall tool-fn id "And then rested."))
+
+      Step 4 — Read the final note content:
+        (let* ((notes (ekg-get-notes-with-tags '("append-test")))
+               (note (car notes)))
+          (ekg-note-text note))
+
+      Verify ALL of the following about the note text:
+        - It contains "The quick brown fox."
+        - It contains "Jumps over the lazy dog."
+        - It contains "And then rested."
+        - It does NOT contain "STARTED"
+        - It does NOT contain "DONE"
+        - It does NOT contain "Waiting for LLM"
+        - It does NOT contain timestamps in YYYY-MM-DD format
+
+      If all verifications pass, call pass-test.
+      If any verification fails, call fail-test with details.
