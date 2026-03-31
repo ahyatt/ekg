@@ -365,5 +365,439 @@ result when the agent finishes."
     (while (not result) (accept-process-output nil 0.1))
     (should (string-match-p "Exit code: 42" result))))
 
+;; Buffer line ID generation
+
+(ert-deftest ekg-agent-test-buffer-line-ids-unique ()
+  "Buffer line IDs for different lines of the same buffer are unique."
+  (let ((ids (mapcar (lambda (n) (ekg-agent--buffer-line-id "*test-buf*" n))
+                     (number-sequence 1 100))))
+    (should (= (length ids)
+               (length (delete-dups (copy-sequence ids)))))))
+
+(ert-deftest ekg-agent-test-buffer-line-ids-three-chars ()
+  "Every buffer line ID is exactly 3 characters."
+  (let ((ids (mapcar (lambda (n) (ekg-agent--buffer-line-id "*test-buf*" n))
+                     (number-sequence 1 50))))
+    (should (cl-every (lambda (id) (= 3 (length id))) ids))))
+
+(ert-deftest ekg-agent-test-buffer-line-ids-deterministic ()
+  "The same buffer name and line number always produce the same ID."
+  (should (equal (ekg-agent--buffer-line-id "*test*" 42)
+                 (ekg-agent--buffer-line-id "*test*" 42))))
+
+(ert-deftest ekg-agent-test-buffer-line-ids-differ-from-file ()
+  "Buffer line IDs differ from file line IDs for the same line number."
+  (should-not (equal (ekg-agent--buffer-line-id "/tmp/test.txt" 1)
+                     (ekg-agent--line-id "/tmp/test.txt" 1))))
+
+;; List buffers
+
+(ert-deftest ekg-agent-test-list-buffers ()
+  "Listing buffers returns visible buffers with metadata."
+  (let ((buf (get-buffer-create "*ekg-agent-test-list*")))
+    (unwind-protect
+        (let ((result (ekg-agent--list-buffers)))
+          (should (stringp result))
+          (should (string-match-p "\\*ekg-agent-test-list\\*" result)))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-list-buffers-with-filter ()
+  "Listing buffers with a regex filter returns only matching buffers."
+  (let ((buf1 (get-buffer-create "*ekg-agent-test-alpha*"))
+        (buf2 (get-buffer-create "*ekg-agent-test-beta*")))
+    (unwind-protect
+        (let ((result (ekg-agent--list-buffers "alpha")))
+          (should (string-match-p "alpha" result))
+          (should-not (string-match-p "beta" result)))
+      (kill-buffer buf1)
+      (kill-buffer buf2))))
+
+(ert-deftest ekg-agent-test-list-buffers-excludes-internal ()
+  "Internal buffers (names starting with space) are excluded."
+  (let ((buf (get-buffer-create " *ekg-agent-internal*")))
+    (unwind-protect
+        (let ((result (ekg-agent--list-buffers "ekg-agent-internal")))
+          (should (equal "No buffers found." result)))
+      (kill-buffer buf))))
+
+;; Read buffer
+
+(ert-deftest ekg-agent-test-read-buffer-with-line-ids ()
+  "Reading a buffer returns content prefixed with 3-char identifiers and positions."
+  (let ((buf (get-buffer-create "*ekg-agent-test-read*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "alpha\nbeta\ngamma\n"))
+          (let ((result (ekg-agent--read-buffer "*ekg-agent-test-read*")))
+            (should (stringp result))
+            (should (string-match-p "^begin_pos:" result))
+            (should (string-match-p "end_pos:" result))
+            (dolist (line (cdr (split-string result "\n")))
+              (when (not (string-empty-p line))
+                (should (string-match "\\`...: " line))))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-read-buffer-range-by-line-number ()
+  "Reading a buffer with line number range returns only that range."
+  (let ((buf (get-buffer-create "*ekg-agent-test-range*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "line1\nline2\nline3\nline4\n"))
+          (let ((result (ekg-agent--read-buffer "*ekg-agent-test-range*"
+                                                "2" "3" "line_number")))
+            (should (string-match-p "line2" result))
+            (should (string-match-p "line3" result))
+            (should-not (string-match-p "line1" result))
+            (should-not (string-match-p "line4" result))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-read-buffer-range-by-identifier ()
+  "Reading a buffer with identifier range returns the correct range."
+  (let ((buf (get-buffer-create "*ekg-agent-test-id-range*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "aaa\nbbb\nccc\nddd\n"))
+          (let* ((full (ekg-agent--read-buffer "*ekg-agent-test-id-range*"))
+                 (content-lines (cdr (split-string full "\n")))
+                 (id2 (substring (nth 1 content-lines) 0 3))
+                 (id3 (substring (nth 2 content-lines) 0 3))
+                 (result (ekg-agent--read-buffer "*ekg-agent-test-id-range*"
+                                                 id2 id3 "identifier")))
+            (should (string-match-p "bbb" result))
+            (should (string-match-p "ccc" result))
+            (should-not (string-match-p "aaa" result))
+            (should-not (string-match-p "ddd" result))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-read-buffer-returns-positions ()
+  "The begin_pos and end_pos in read_buffer output match actual buffer positions."
+  (let ((buf (get-buffer-create "*ekg-agent-test-pos*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "hello\nworld\n"))
+          (let ((result (ekg-agent--read-buffer "*ekg-agent-test-pos*"
+                                                "2" "2" "line_number")))
+            (should (string-match "begin_pos: \\([0-9]+\\)" result))
+            (let ((begin-pos (string-to-number (match-string 1 result))))
+              ;; "hello\n" is 6 chars, so line 2 starts at position 7.
+              (should (= 7 begin-pos)))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-read-buffer-nonexistent ()
+  "Reading a nonexistent buffer returns an error string."
+  (let ((result (ekg-agent--read-buffer "*no-such-buffer-exists*")))
+    (should (string-match-p "Error:" result))))
+
+;; Edit buffer
+
+(ert-deftest ekg-agent-test-edit-buffer-round-trip ()
+  "Editing a buffer replaces the identified region and returns context."
+  (let ((buf (get-buffer-create "*ekg-agent-test-edit*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "line one\nline two\nline three\n"))
+          (let* ((output (ekg-agent--read-buffer "*ekg-agent-test-edit*"))
+                 (content-lines (cdr (split-string output "\n")))
+                 (id1 (substring (nth 0 content-lines) 0 3))
+                 (id2 (substring (nth 1 content-lines) 0 3)))
+            (ekg-agent--edit-buffer "*ekg-agent-test-edit*"
+                                   id1 "line one" id2 "line two" "replaced")
+            (with-current-buffer buf
+              (should (string-match-p "replaced" (buffer-string)))
+              (should-not (string-match-p "line one" (buffer-string)))
+              (should-not (string-match-p "line two" (buffer-string)))
+              (should (string-match-p "line three" (buffer-string))))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-edit-buffer-adjusts-indentation ()
+  "Editing a buffer corrects over-indented replacement text."
+  (let ((buf (get-buffer-create "*ekg-agent-test-edit-indent*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "  hello world\n  goodbye world\n"))
+          (let* ((output (ekg-agent--read-buffer "*ekg-agent-test-edit-indent*"))
+                 (content-lines (cdr (split-string output "\n")))
+                 (id1 (substring (nth 0 content-lines) 0 3)))
+            (ekg-agent--edit-buffer "*ekg-agent-test-edit-indent*"
+                                   id1 "hello world" id1 "hello world"
+                                   "        new content")
+            (with-current-buffer buf
+              (should (string-match-p "^  new content" (buffer-string))))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-edit-buffer-nonexistent ()
+  "Editing a nonexistent buffer returns an error string."
+  (let ((result (ekg-agent--edit-buffer "*no-such-buffer*"
+                                       "abc" "text" "abc" "text" "new")))
+    (should (string-match-p "Error:" result))))
+
+;; Run interactive command
+
+(ert-deftest ekg-agent-test-run-interactive-command-with-point ()
+  "Running an interactive command at a point position works."
+  (let ((buf (get-buffer-create "*ekg-agent-test-cmd*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "hello world"))
+          (let ((result (ekg-agent--run-interactive-command
+                         "*ekg-agent-test-cmd*" "upcase-word"
+                         "1" nil nil)))
+            (should (stringp result))
+            (with-current-buffer buf
+              (should (string-match-p "HELLO" (buffer-string))))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-run-interactive-command-with-line-id ()
+  "Running an interactive command via line identifier works."
+  (let ((buf (get-buffer-create "*ekg-agent-test-cmd-id*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "first line\nsecond line\n"))
+          (let* ((output (ekg-agent--read-buffer "*ekg-agent-test-cmd-id*"))
+                 (content-lines (cdr (split-string output "\n")))
+                 (id2 (substring (nth 1 content-lines) 0 3)))
+            (ekg-agent--run-interactive-command
+             "*ekg-agent-test-cmd-id*" "upcase-word"
+             nil id2 "second")
+            (with-current-buffer buf
+              (should (string-match-p "SECOND" (buffer-string)))
+              (should (string-match-p "first" (buffer-string))))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-run-interactive-command-returns-context ()
+  "The interactive command tool returns buffer content around the point."
+  (let ((buf (get-buffer-create "*ekg-agent-test-cmd-ctx*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "line1\nline2\nline3\n"))
+          (let ((result (ekg-agent--run-interactive-command
+                         "*ekg-agent-test-cmd-ctx*" "forward-char"
+                         "1" nil nil)))
+            (should (string-match-p "begin_pos:" result))
+            (should (string-match-p "end_pos:" result))
+            (should (string-match-p "line1" result))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-run-interactive-command-post-move-context ()
+  "Context is centered on the post-command point, not the original position."
+  (let ((buf (get-buffer-create "*ekg-agent-test-cmd-move*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            ;; 20 lines so we can distinguish which lines are returned.
+            (dotimes (i 20)
+              (insert (format "line-%02d\n" (1+ i)))))
+          ;; Start at line 1 (point 1), run forward-line which moves to line 2.
+          ;; With 20 lines, if context is centered on post-command point
+          ;; (line 2), we should NOT see line-15 through line-20.
+          (let ((result (ekg-agent--run-interactive-command
+                         "*ekg-agent-test-cmd-move*" "end-of-buffer"
+                         "1" nil nil)))
+            ;; end-of-buffer moves to the end; context should include
+            ;; the last lines, not the first ones.
+            (should (string-match-p "line-20" result))
+            ;; Line 1 should NOT be in a 10-line window around line 20.
+            (should-not (string-match-p "line-01" result))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-run-interactive-command-nonexistent-buffer ()
+  "Running a command in a nonexistent buffer returns an error string."
+  (let ((result (ekg-agent--run-interactive-command
+                 "*no-such-buffer*" "forward-char" "1" nil nil)))
+    (should (string-match-p "Error:" result))))
+
+(ert-deftest ekg-agent-test-run-interactive-command-bad-command ()
+  "Running a non-interactive function returns an error string."
+  (let ((buf (get-buffer-create "*ekg-agent-test-bad-cmd*")))
+    (unwind-protect
+        (let ((result (ekg-agent--run-interactive-command
+                       "*ekg-agent-test-bad-cmd*" "not-a-real-command"
+                       "1" nil nil)))
+          (should (string-match-p "Error:" result)))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-resolve-buffer-point-precedence ()
+  "When both point and line_id are given, point takes precedence."
+  (let ((buf (get-buffer-create "*ekg-agent-test-precedence*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "abcdef\nghijkl\n"))
+          (let* ((output (ekg-agent--read-buffer "*ekg-agent-test-precedence*"))
+                 (content-lines (cdr (split-string output "\n")))
+                 (id2 (substring (nth 1 content-lines) 0 3))
+                 ;; Point 3 is in "abcdef" (line 1), id2 is line 2.
+                 ;; Point should win.
+                 (resolved (ekg-agent--resolve-buffer-point
+                            "*ekg-agent-test-precedence*" "3" id2 nil)))
+            (should (= 3 resolved))))
+      (kill-buffer buf))))
+
+;; Agent integration: buffer read + edit
+
+(ert-deftest ekg-agent-test-agent-reads-and-edits-buffer ()
+  "The agent loop reads a buffer, edits it, and ends."
+  (let ((buf (get-buffer-create "*ekg-agent-test-buf-int*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "def greet():\n    print(\"hello\")\n    return True\n"))
+          (let* ((read-output (ekg-agent--read-buffer "*ekg-agent-test-buf-int*"))
+                 (content-lines (cdr (split-string read-output "\n")))
+                 (id2 (substring (nth 1 content-lines) 0 3)))
+            (ekg-agent-test--with-mock-agent
+                (list
+                 (list (cons "read_buffer" (list "*ekg-agent-test-buf-int*")))
+                 (list (cons "edit_buffer"
+                             (list "*ekg-agent-test-buf-int*"
+                                   id2 "print(\"hello\")"
+                                   id2 "print(\"hello\")"
+                                   "    print(\"goodbye\")")))
+                 (list (cons "end" nil)))
+              (ekg-agent--iterate
+               (llm-make-chat-prompt
+                "Test: read and edit a buffer."
+                :tools (append ekg-agent-base-tools
+                               (list ekg-agent-tool-end))
+                :tool-options (make-llm-tool-options :tool-choice 'any))
+               0
+               (lambda (status) (setq done-flag status))
+               '("end")))
+            (with-current-buffer buf
+              (should (string-match-p "goodbye" (buffer-string)))
+              (should-not (string-match-p "\"hello\"" (buffer-string)))
+              (should (string-match-p "def greet" (buffer-string))))))
+      (kill-buffer buf))))
+
+;; Web rendering / browsing / search
+
+(ert-deftest ekg-agent-test-web-render-html-basic ()
+  "Rendering simple HTML produces readable text."
+  (let ((result (ekg-agent--web-render-html
+                 "<html><body><p>Hello world</p></body></html>"
+                 "https://example.com")))
+    (should (stringp result))
+    (should (string-match-p "Hello world" result))))
+
+(ert-deftest ekg-agent-test-web-render-html-truncation ()
+  "Content exceeding `ekg-agent-web-max-chars' is truncated."
+  (let* ((ekg-agent-web-max-chars 50)
+         (long-text (make-string 200 ?x))
+         (html (format "<html><body><p>%s</p></body></html>" long-text))
+         (result (ekg-agent--web-render-html html "https://example.com")))
+    (should (<= (length result) (+ 50 100)))  ; truncated text + notice
+    (should (string-match-p "\\[Content truncated" result))))
+
+(ert-deftest ekg-agent-test-web-render-html-empty ()
+  "Rendering empty HTML returns a non-erroring result."
+  (let ((result (ekg-agent--web-render-html
+                 "<html><body></body></html>"
+                 "https://example.com")))
+    (should (stringp result))))
+
+(ert-deftest ekg-agent-test-web-browse-rejects-non-http ()
+  "Non-http(s) URLs are rejected with an error message."
+  (let (result)
+    (ekg-agent--web-browse (lambda (r) (setq result r)) "ftp://example.com/file")
+    (should (string-match-p "Error:.*Only http" result))))
+
+(ert-deftest ekg-agent-test-web-browse-rejects-file-url ()
+  "file:// URLs are rejected."
+  (let (result)
+    (ekg-agent--web-browse (lambda (r) (setq result r)) "file:///etc/passwd")
+    (should (string-match-p "Error:.*Only http" result))))
+
+(ert-deftest ekg-agent-test-web-browse-success ()
+  "A successful fetch renders and returns page content."
+  (let (result)
+    (cl-letf (((symbol-function 'url-retrieve)
+               (lambda (url callback &optional _cbargs _silent)
+                 ;; Simulate a successful HTTP response in a temp buffer.
+                 (let ((buf (generate-new-buffer " *test-url-retrieve*")))
+                   (with-current-buffer buf
+                     (insert "HTTP/1.1 200 OK\nContent-Type: text/html\n\n"
+                             "<html><body><p>Search result</p></body></html>"))
+                   (with-current-buffer buf
+                     (funcall callback nil))
+                   buf))))
+      (ekg-agent--web-browse (lambda (r) (setq result r))
+                             "https://example.com/test"))
+    (should (stringp result))
+    (should (string-match-p "Search result" result))
+    (should (string-match-p "Content from https://example.com/test" result))))
+
+(ert-deftest ekg-agent-test-web-browse-http-error ()
+  "HTTP errors from url-retrieve are reported."
+  (let (result)
+    (cl-letf (((symbol-function 'url-retrieve)
+               (lambda (_url callback &optional _cbargs _silent)
+                 (let ((buf (generate-new-buffer " *test-url-error*")))
+                   (with-current-buffer buf
+                     (funcall callback (list :error '(error http 404))))
+                   buf))))
+      (ekg-agent--web-browse (lambda (r) (setq result r))
+                             "https://example.com/missing"))
+    (should (string-match-p "Error fetching URL" result))))
+
+(ert-deftest ekg-agent-test-web-search-constructs-url ()
+  "Web search passes the correctly constructed search URL to web-browse."
+  (let (captured-url result)
+    (cl-letf (((symbol-function 'ekg-agent--web-browse)
+               (lambda (callback url)
+                 (setq captured-url url)
+                 (funcall callback (format "Content from %s:\n\nresults" url)))))
+      (ekg-agent--web-search (lambda (r) (setq result r)) "emacs lisp"))
+    (should (string-match-p "duckduckgo" captured-url))
+    (should (string-match-p "emacs" captured-url))
+    (should (string-match-p "lisp" captured-url))
+    (should (stringp result))))
+
+(ert-deftest ekg-agent-test-web-search-hexifies-query ()
+  "Web search properly hex-encodes special characters in the query."
+  (let (captured-url)
+    (cl-letf (((symbol-function 'ekg-agent--web-browse)
+               (lambda (callback url)
+                 (setq captured-url url)
+                 (funcall callback "ok"))))
+      (ekg-agent--web-search #'ignore "hello world & more"))
+    ;; Space should be %20, & should be %26
+    (should (string-match-p "%20" captured-url))
+    (should (string-match-p "%26" captured-url))
+    (should-not (string-match-p " " (replace-regexp-in-string
+                                     "https?://[^?]*\\?" ""
+                                     captured-url)))))
+
+(ert-deftest ekg-agent-test-web-search-custom-prefix ()
+  "Web search respects a custom `eww-search-prefix'."
+  (let ((eww-search-prefix "https://google.com/search?q=")
+        captured-url)
+    (cl-letf (((symbol-function 'ekg-agent--web-browse)
+               (lambda (callback url)
+                 (setq captured-url url)
+                 (funcall callback "ok"))))
+      (ekg-agent--web-search #'ignore "test"))
+    (should (string-match-p "^https://google.com/search\\?q=" captured-url))))
+
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here

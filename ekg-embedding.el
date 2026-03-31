@@ -39,6 +39,7 @@
 (declare-function vecdb-get-item "vecdb")
 (declare-function vecdb-search-by-vector "vecdb")
 (declare-function vecdb-item-payload "vecdb")
+(declare-function vecdb-item-vector "vecdb")
 (declare-function make-vecdb-item "vecdb")
 
 ;;; Code:
@@ -89,8 +90,9 @@ If nil, then we fallback to the default `ekg-db'.")
 (defun ekg-embedding-add-schema ()
   "Add the triples schema for storing embeddings, if we are using the sqlite db."
   (unless ekg-vecdb-provider
-    (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector)))
-  (add-to-list 'ekg-header-hidden-properties :embedding/embedding))
+    (triples-add-schema ekg-db 'embedding '(embedding :base/unique t :base/type vector))))
+
+(add-to-list 'ekg-header-hidden-properties :embedding/embedding)
 
 (defun ekg-remove-sqlite-embeddings ()
   "Remove all embeddings from the SQLite database.
@@ -171,9 +173,12 @@ wait for the embedding to return and be set."
                              (substring-no-properties
                               (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))))
     (if (ekg-embedding-valid-p embedding)
-        (triples-set-type ekg-db (ekg-note-id note) 'embedding
-                          :embedding embedding)
-      (lwarn 'ekg :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
+        (if ekg-vecdb-provider
+            (ekg-embedding-batch-store
+             (list (ekg-embedding--note-to-embed-item note embedding)))
+          (triples-set-type ekg-db (ekg-note-id note) 'embedding
+                            :embedding embedding))
+      (lwarn '(ekg embedding-generation) :error "Invalid and unusable embedding generated from llm-embedding of note %s: %S"
              (ekg-note-id note) embedding))))
 
 (defun ekg-embedding-batch-store (items)
@@ -248,23 +253,32 @@ embeddings of notes with the given tag."
       (let ((embeddings
              (cl-loop for tagged in
                       (plist-get (triples-get-type ekg-db tag 'tag) :tagged)
+                      for note = (ekg-get-note-with-id tagged)
+                      ;; Skip deleted notes that are still in the tag list.
+                      when note
                       collect
                       (let ((embedding (ekg-embedding-get tagged)))
                         (unless (ekg-embedding-valid-p embedding)
                           (message "ekg-embedding: invalid embedding for note %s, attempting to fix" tagged)
-                          (let ((note (ekg-get-note-with-id tagged)))
-                            (ekg-embedding-generate-for-note-sync note)
-                            (if (ekg-embedding-valid-p note)
-                                (progn
-                                  (ekg-save-note note)
-                                  (setf embedding (ekg-embedding-note-get note)))
-                              (error "In ekg-embedding: could not fix invalid embedding for note %s, can't refresh tag %s" tagged tag))))
+                          (condition-case nil
+                              (progn
+                                (ekg-embedding-generate-for-note-sync note)
+                                (let ((new-embedding (ekg-embedding-note-get note)))
+                                  (when (ekg-embedding-valid-p new-embedding)
+                                    (ekg-save-note note)
+                                    (setf embedding new-embedding))))
+                            (error nil))
+                          (unless (ekg-embedding-valid-p embedding)
+                            (warn "ekg-embedding: could not fix invalid embedding for note %s, skipping" tagged)))
                         embedding))))
         (let ((avg (ekg-embedding-average
                     (seq-filter #'ekg-embedding-valid-p embeddings))))
           (if (ekg-embedding-valid-p avg)
-              (ekg-embedding-batch-store (ekg-embedding--note-to-embed-item
-                                          (ekg-get-note-with-id tag) avg))
+              (if ekg-vecdb-provider
+                  (ekg-embedding-batch-store
+                   (list (ekg-embedding--note-to-embed-item
+                          (ekg-get-note-with-id tag) avg)))
+                (triples-set-type ekg-db tag 'embedding :embedding avg))
             (message "ekg-embedding: could not compute average embedding for tag %s" tag))))
     (error (message "ekg-embedding: error when trying to refresh tag %s: %S" tag err))))
 
@@ -289,7 +303,7 @@ printed when everything is finished."
                                                  (ekg-embedding-get id)))))
                       (ekg-active-note-ids)))
          (notes-to-generate
-          (seq-filter (lambda (note) (> (length (ekg-note-text note)) 0))
+          (seq-filter (lambda (note) (and note (> (length (ekg-note-text note)) 0)))
                       (mapcar #'ekg-get-note-with-id to-generate))))
     (cl-labels ((complete-id (num)
                   (cl-incf count num)
@@ -317,7 +331,8 @@ printed when everything is finished."
 
         ;; Process empty notes
         (cl-loop for id in to-generate
-                 when (= (length (ekg-note-text (ekg-get-note-with-id id))) 0)
+                 for note = (ekg-get-note-with-id id)
+                 when (or (null note) (= (length (ekg-note-text note)) 0))
                  collect id into ids
                  finally
                  do (complete-id (length ids)))
@@ -406,8 +421,10 @@ defined in `ekg.el`."
   "Return the embedding of entity with ID.
 If there is no embedding, return nil."
   (if ekg-vecdb-provider
-      (vecdb-get-item (car ekg-vecdb-provider)
-                      (cdr ekg-vecdb-provider) (ekg-embedding-id-to-embed-id id))
+      (let ((item (vecdb-get-item (car ekg-vecdb-provider)
+                                  (cdr ekg-vecdb-provider)
+                                  (ekg-embedding-id-to-embed-id id))))
+        (when item (vecdb-item-vector item)))
     (plist-get (triples-get-type ekg-db id 'embedding) :embedding)))
 
 (defun ekg-embedding-get-all-notes ()
@@ -451,10 +468,11 @@ The results are in order of most similar to least similar."
   (let ((note (ekg-current-note-or-error)))
     (ekg-setup-notes-buffer
      (format "similar to note \"%s\"" (ekg-note-snippet note))
-     (lambda () (mapcar #'ekg-get-note-with-id
-                        ;; remove the first match, since the current note will
-                        ;; always be the most similar.
-                        (cdr (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size))))
+     (lambda () (delq nil
+                      (mapcar #'ekg-get-note-with-id
+                              ;; remove the first match, since the current note will
+                              ;; always be the most similar.
+                              (cdr (ekg-embedding-n-most-similar-to-id (ekg-note-id note) ekg-notes-size)))))
      (ekg-note-tags note))))
 
 (defun ekg-embedding-search (&optional text)
@@ -463,9 +481,10 @@ The results are in order of most similar to least similar."
   (ekg-embedding-connect)
   (ekg-setup-notes-buffer
    (format "similar to \"%s\"" text)
-   (lambda () (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
-                                              (llm-embedding ekg-embedding-provider text)
-                                              ekg-notes-size)))
+   (lambda () (delq nil
+                    (mapcar #'ekg-get-note-with-id (ekg-embedding-n-most-similar-notes
+                                                    (llm-embedding ekg-embedding-provider text)
+                                                    ekg-notes-size))))
    nil))
 
 (defun ekg-embedding-show-similar-to-current-buffer ()
@@ -474,12 +493,13 @@ The results are in order of most similar to least similar."
   (ekg-embedding-connect)
   (ekg-setup-notes-buffer
    (format "similar to buffer \"%s\"" (buffer-name (current-buffer)))
-   (lambda () (mapcar #'ekg-get-note-with-id
-                      (ekg-embedding-n-most-similar-notes
-                       (llm-embedding ekg-embedding-provider
-                                      (funcall ekg-embedding-text-selector
-                                               (substring-no-properties (buffer-string))))
-                       ekg-notes-size)))
+   (lambda () (delq nil
+                    (mapcar #'ekg-get-note-with-id
+                            (ekg-embedding-n-most-similar-notes
+                             (llm-embedding ekg-embedding-provider
+                                            (funcall ekg-embedding-text-selector
+                                                     (substring-no-properties (buffer-string))))
+                             ekg-notes-size))))
    nil))
 
 (defun ekg-embedding-generate-on-save ()

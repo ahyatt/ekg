@@ -461,6 +461,48 @@
         ;; The primary check is that fewer words are returned than originally present.
         (should (= (ekg-test-count-words-in-string selected-text) 5460))))))
 
+(ekg-deftest ekg-test-embedding-refresh-skips-unfixable ()
+  "Refreshing a tag embedding skips notes whose embeddings can't be fixed."
+  (let* ((good-embedding [0.1 0.2 0.3])
+         (bad-embedding [0 0 0])
+         (ekg-embedding-provider 'fake)
+         (ekg-vecdb-provider nil))
+    ;; Create two notes under the same tag.
+    (let ((good-note (ekg-note-create :text "good note" :mode 'text-mode :tags '("test-tag")))
+          (bad-note (ekg-note-create :text "" :mode 'text-mode :tags '("test-tag"))))
+      (ekg-save-note good-note)
+      (ekg-save-note bad-note)
+      ;; Store a valid embedding for the good note and an invalid one for the bad note.
+      (ekg-embedding-add-schema)
+      (triples-set-type ekg-db (ekg-note-id good-note) 'embedding :embedding good-embedding)
+      (triples-set-type ekg-db (ekg-note-id bad-note) 'embedding :embedding bad-embedding)
+      ;; Mock llm-embedding to always return an invalid embedding, so the
+      ;; fix attempt for the bad note will fail.
+      (cl-letf (((symbol-function 'llm-embedding)
+                 (lambda (_provider _text) bad-embedding)))
+        ;; This should NOT error -- it should skip the unfixable note.
+        (ekg-embedding-refresh-tag-embedding "test-tag")
+        ;; The good note's embedding should still be retrievable.
+        (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id good-note))))))))
+
+(ert-deftest ekg-test-embedding-get-vecdb-returns-vector ()
+  "When using vecdb, `ekg-embedding-get' returns the vector, not the struct."
+  (let* ((ekg-vecdb-provider (cons :provider :collection))
+         (expected-vector [0.1 0.2 0.3])
+         (fake-item :fake-item))
+    (cl-letf (((symbol-function 'vecdb-get-item)
+               (lambda (_provider _collection _embed-id) fake-item))
+              ((symbol-function 'vecdb-item-vector)
+               (lambda (_item) expected-vector)))
+      (should (equal (ekg-embedding-get 'note-id) expected-vector)))))
+
+(ert-deftest ekg-test-embedding-get-vecdb-returns-nil-when-missing ()
+  "When using vecdb and no item exists, `ekg-embedding-get' returns nil."
+  (let ((ekg-vecdb-provider (cons :provider :collection)))
+    (cl-letf (((symbol-function 'vecdb-get-item)
+               (lambda (_provider _collection _embed-id) nil)))
+      (should (eq (ekg-embedding-get 'note-id) nil)))))
+
 (ekg-deftest ekg-test-always-have-header-line ()
              (ekg-capture)
              (should header-line-format)
@@ -469,6 +511,42 @@
              (let* ((note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
                     (note-buf (ekg-edit note)))
                (should header-line-format)))
+
+(ekg-deftest ekg-test-notes-navigation ()
+             (mapc #'ekg-save-note
+                   (list (ekg-note-create :text "first" :mode 'text-mode :tags '("nav"))
+                         (ekg-note-create :text "second" :mode 'text-mode :tags '("nav"))
+                         (ekg-note-create :text "third" :mode 'text-mode :tags '("nav"))))
+             (ekg-show-notes-with-tag "nav")
+             (let ((buf (get-buffer "*ekg tag: nav*")))
+               (unwind-protect
+                   (with-current-buffer buf
+                     (goto-char (point-min))
+                     (let ((note1-id (get-text-property (point) :ekg-note-id)))
+                       (should note1-id)
+                       ;; Move forward to note 2.
+                       (ekg-notes-next)
+                       (let ((note2-id (get-text-property (point) :ekg-note-id)))
+                         (should note2-id)
+                         (should-not (equal note1-id note2-id))
+                         ;; Move back to note 1 — this is the bug scenario.
+                         (ekg-notes-previous)
+                         (should (equal (get-text-property (point) :ekg-note-id)
+                                        note1-id))
+                         ;; Move forward twice to note 3.
+                         (ekg-notes-next)
+                         (ekg-notes-next)
+                         (let ((note3-id (get-text-property (point) :ekg-note-id)))
+                           (should-not (equal note2-id note3-id))
+                           ;; Move back to note 2.
+                           (ekg-notes-previous)
+                           (should (equal (get-text-property (point) :ekg-note-id)
+                                          note2-id))
+                           ;; Move back to note 1.
+                           (ekg-notes-previous)
+                           (should (equal (get-text-property (point) :ekg-note-id)
+                                          note1-id))))))
+                 (kill-buffer buf))))
 
 (provide 'ekg-test)
 ;;; ekg-test.el ends here

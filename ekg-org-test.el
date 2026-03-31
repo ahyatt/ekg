@@ -415,6 +415,61 @@ Returns the note ID."
     (should (equal (car headings) '(1 "First")))
     (should (equal (cadr headings) '(2 "Second")))))
 
+(ekg-deftest ekg-org-test-view-move-up ()
+  "Test that moving a task up swaps it with its previous sibling."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (should (equal (ekg-org-test--view-titles) '("First" "Second" "Third")))
+  ;; Navigate to "Third" and move it up
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-next-heading)
+    (ekg-org-view-next-heading)
+    (ekg-org-view-move-up))
+  (should (equal (ekg-org-test--view-titles) '("First" "Third" "Second"))))
+
+(ekg-deftest ekg-org-test-view-move-down ()
+  "Test that moving a task down swaps it with its next sibling."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (should (equal (ekg-org-test--view-titles) '("First" "Second" "Third")))
+  ;; Navigate to "First" and move it down
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-move-down))
+  (should (equal (ekg-org-test--view-titles) '("Second" "First" "Third"))))
+
+(ekg-deftest ekg-org-test-view-move-up-at-top ()
+  "Test that moving up at the top position is a no-op."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-view)
+  ;; Point is on "First", moving up should do nothing
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-move-up))
+  (should (equal (ekg-org-test--view-titles) '("First" "Second"))))
+
+(ekg-deftest ekg-org-test-view-move-down-at-bottom ()
+  "Test that moving down at the bottom position is a no-op."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Second")
+  (ekg-org-view)
+  ;; Navigate to "Second" and try moving down
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-next-heading)
+    (ekg-org-view-move-down))
+  (should (equal (ekg-org-test--view-titles) '("First" "Second"))))
+
 (ekg-deftest ekg-org-test-view-state-change ()
   "Test that changing state updates the heading."
   (ekg-org-add-schema)
@@ -440,35 +495,6 @@ Returns the note ID."
       (should (string-match-p "DONE" (buffer-substring
                                       (line-beginning-position)
                                       (line-end-position)))))))
-
-(ekg-deftest ekg-org-test-view-create-sibling-after-current ()
-  "Test that creating a sibling inserts it after the current item."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "First")
-  (ekg-org-test--add-task "Third")
-  (ekg-org-view)
-  ;; Point on "First", create sibling "Second"
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    (cl-letf (((symbol-function 'read-string)
-               (lambda (_prompt &rest _) "Second")))
-      (ekg-org-view-create-sibling)))
-  (let ((titles (ekg-org-test--view-titles)))
-    (should (equal titles '("First" "Second" "Third")))))
-
-(ekg-deftest ekg-org-test-view-create-child ()
-  "Test that creating a child adds it under the parent."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "Parent")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    (cl-letf (((symbol-function 'read-string)
-               (lambda (_prompt &rest _) "New Child")))
-      (ekg-org-view-create-child)))
-  (let ((headings (ekg-org-test--view-headings)))
-    (should (equal headings
-                   '((1 "Parent") (2 "New Child"))))))
 
 (ekg-deftest ekg-org-test-view-insert-mode-sibling ()
   "Test that insert mode creates a sibling after the current task."
@@ -573,6 +599,63 @@ Returns the note ID."
     (let ((text (buffer-substring-no-properties (point-min) (point-max))))
       (should (string-match-p "\n\n\\*" text)
               ))))
+
+(ekg-deftest ekg-org-test-view-insert-point-on-new-item ()
+  "Test that point lands on the newly created item after insertion."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "First")
+  (ekg-org-test--add-task "Third")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    (ekg-org-view-create)
+    (let ((first-id (ekg-org-test--task-id-by-title "First"))
+          (target-slot nil))
+      (cl-loop for slot in ekg-org-view--insert-slots
+               when (and (= (plist-get slot :level) 1)
+                         (equal (plist-get slot :after-id) first-id))
+               do (setq target-slot slot))
+      (ekg-org-view--insert-cleanup)
+      (ekg-org-view--insert-create-task target-slot "Second"))
+    (should (ekg-org-view--on-heading-p))
+    (let* ((id (ekg-org-view--note-at-point))
+           (note (ekg-get-note-with-id id))
+           (title (car (plist-get (ekg-note-properties note)
+                                  :titled/title))))
+      (should (equal title "Second")))))
+
+(ekg-deftest ekg-org-test-view-insert-slot-after-subtree ()
+  "Test that the sibling-after slot is placed after the full subtree."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (_child-id (ekg-org-test--add-task "Child" parent-id)))
+    (ekg-org-test--add-task "Next")
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (ekg-org-view-create)
+      ;; Find the sibling-after slot for "Parent" at level 1.
+      (let ((parent-note-id (ekg-org-test--task-id-by-title "Parent"))
+            (next-note-id (ekg-org-test--task-id-by-title "Next"))
+            (target-slot nil)
+            (next-heading-pos nil))
+        ;; Find the heading position for "Next".
+        (save-excursion
+          (goto-char (point-min))
+          (while (not (eobp))
+            (when (and (ekg-org-view--on-heading-p)
+                       (equal (ekg-org-view--note-at-point) next-note-id))
+              (setq next-heading-pos (point)))
+            (forward-line 1)))
+        (cl-loop for slot in ekg-org-view--insert-slots
+                 when (and (= (plist-get slot :level) 1)
+                           (equal (plist-get slot :after-id) parent-note-id))
+                 do (setq target-slot slot))
+        (ekg-org-view--insert-cleanup)
+        ;; The slot's buffer-pos should be at "Next", not at "Child".
+        (should target-slot)
+        (should (equal (plist-get target-slot :buffer-pos)
+                       next-heading-pos))))))
 
 (ekg-deftest ekg-org-test-view-trash ()
   "Test that trashing a task removes it from the view."
@@ -755,6 +838,66 @@ An agent saving a new note should cause the view to update automatically."
                                       (line-beginning-position)
                                       (line-end-position)))))))
 
+(ekg-deftest ekg-org-test-view-refile-to-new-parent ()
+  "Test that refiling moves a task under a new parent."
+  (ekg-org-add-schema)
+  (let* ((p1 (ekg-org-test--add-task "Parent A"))
+         (p2 (ekg-org-test--add-task "Parent B"))
+         (child (ekg-org-test--add-task "Child" p1)))
+    (ekg-org-view)
+    ;; Navigate to "Child" and refile it under "Parent B".
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (while (not (equal (ekg-org-view--note-at-point) child))
+        (forward-line 1))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (car (cl-find-if
+                         (lambda (c) (string-match-p "Parent B" (car c)))
+                         choices)))))
+        (ekg-org-view-refile)))
+    ;; Child should now be under Parent B.
+    (let ((headings (ekg-org-test--view-headings)))
+      (should (equal headings
+                     '((1 "Parent A") (1 "Parent B") (2 "Child")))))))
+
+(ekg-deftest ekg-org-test-view-refile-to-top-level ()
+  "Test that refiling to top level removes the parent."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent)))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (while (not (equal (ekg-org-view--note-at-point) child))
+        (forward-line 1))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (car (cl-find-if
+                         (lambda (c) (string= "Top level" (car c)))
+                         choices)))))
+        (ekg-org-view-refile)))
+    ;; Both tasks should now be top-level.
+    (let ((headings (ekg-org-test--view-headings)))
+      (should (= (length headings) 2))
+      (should (member '(1 "Parent") headings))
+      (should (member '(1 "Child") headings)))))
+
+(ekg-deftest ekg-org-test-view-refile-excludes-descendants ()
+  "Test that refile targets exclude the task itself and its descendants."
+  (ekg-org-add-schema)
+  (let* ((p (ekg-org-test--add-task "Parent"))
+         (c (ekg-org-test--add-task "Child" p))
+         (gc (ekg-org-test--add-task "Grandchild" c)))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      ;; Get refile choices for "Parent" — should not include itself,
+      ;; Child, or Grandchild.
+      (let ((choices (ekg-org-view--all-tasks-for-refile p)))
+        (should (= (length choices) 1))
+        (should (string= "Top level" (caar choices)))))))
+
 (ekg-deftest ekg-org-test-properties ()
   "Test generic org property get/set/remove."
   (ekg-org-add-schema)
@@ -790,5 +933,39 @@ An agent saving a new note should cause the view to update automatically."
     (should (null (ekg-org-get-property note "CATEGORY")))
     (should (equal "other-branch" (ekg-org-get-property note "WORKTREE")))
     (should (= 1 (length (ekg-org-properties-alist note))))))
+
+(ekg-deftest ekg-org-test-view-insert-defers-refresh ()
+  "Test that refreshes during insert mode are deferred, not lost.
+When the user is positioning the insertion placeholder, an external
+note save must not re-render the buffer mid-interaction.  The
+deferred refresh should fire once insert mode ends."
+  (ekg-org-add-schema)
+  (ekg-org-test--add-task "Existing")
+  (ekg-org-view)
+  (with-current-buffer "*ekg-org-tasks*"
+    (goto-char (point-min))
+    ;; Enter insert mode — overlay and slots are now active.
+    (ekg-org-view-create)
+    (should ekg-org-view--insert-overlay)
+    (should (null ekg-org-view--refresh-pending))
+    ;; Simulate an external save while insert mode is active.
+    (let ((note (ekg-note-create
+                 :text ""
+                 :mode 'org-mode
+                 :tags (list ekg-org-task-tag
+                             (concat ekg-org-state-tag-prefix "todo"))
+                 :properties (list :titled/title '("Agent Task")))))
+      (ekg-save-note note))
+    ;; The refresh should have been deferred, not executed.
+    (should ekg-org-view--refresh-pending)
+    ;; The view should still show only the original task.
+    (should (= 1 (length (ekg-org-test--view-titles))))
+    ;; End insert mode — the deferred refresh should fire.
+    (ekg-org-view--insert-cleanup)
+    ;; Now both tasks should appear.
+    (let ((titles (ekg-org-test--view-titles)))
+      (should (= 2 (length titles)))
+      (should (member "Existing" titles))
+      (should (member "Agent Task" titles)))))
 
 (provide 'ekg-org-test)

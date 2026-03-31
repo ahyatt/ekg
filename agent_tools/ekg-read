@@ -140,7 +140,7 @@ case $MODE in
         ;;
 
     id)
-        READ_EXPR="(ekg-agent-read-notes :note-id $NOTE_ID)"
+        READ_EXPR="(ekg-agent-read-notes :note-id $NOTE_ID :max-words $MAX_WORDS)"
         ;;
 
     semantic)

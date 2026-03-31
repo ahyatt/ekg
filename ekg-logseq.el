@@ -444,7 +444,9 @@ which will import and re-export back to logseq."
                 (seq-uniq
                  (cl-loop for triples in
                           (triples-db-select-pred-op ekg-db :time-tracked/modified-time '> time)
-                          nconc (ekg-note-tags (ekg-get-note-with-id (car triples))))))))
+                          for note = (ekg-get-note-with-id (car triples))
+                          when note
+                          nconc (ekg-note-tags note))))))
 
 (defun ekg-logseq-export ()
   "Export the current ekg database to logseq.

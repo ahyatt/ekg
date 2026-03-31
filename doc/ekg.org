@@ -257,12 +257,21 @@ IDs). These can be hidden by adding the property keyword to
 ~ekg-header-hidden-properties~. Packages such as =ekg-embedding= and =ekg-org=
 automatically add their internal properties to this list.
 
+Some properties need formatting before display. For example, in the =ekg-org=
+module, scheduled dates and deadlines are stored as epoch seconds but should
+appear as human-readable dates. The variable ~ekg-property-format-functions~ is an
+alist mapping property keywords (e.g. ~:org/scheduled~) to functions that take a
+single value and return a display string. Packages can register their own
+formatters by adding entries to this alist; =ekg-org= does this automatically for
+~:org/scheduled~ and ~:org/deadline~.
+
 For the common cases, there are special commands, available under the =C-c /= prefix keymap:
 
 - =a=: =ekg-note-add-tag=, to add a tag.
 - =r=: =ekg-note-remove-tag=, to remove a tag.
 - =t=: =ekg-note-add-title=, to add a title.
 - =T=: =ekg-note-remove-title=, to remove a title.
+- =c=: =ekg-note-change-title=, to change an existing title, or add one if none exist.
 - =p=: =ekg-note-edit-property=, to edit any property, including the "resource" of the note, which is its ID.  For editing, multi-values properties are editable as a list with values separated by =", "=.  Maintain the space after the comma when editing.
 - =i=: =ekg-edit-add-inline=, to add an inline command.
 
@@ -1494,8 +1503,10 @@ The following keybindings are available in =ekg-org-view-mode=:
 | =C=     | =ekg-org-view-create-sibling=    | Create a sibling task after point |
 | =a=     | =ekg-org-view-archive=           | Archive the task at point         |
 | =d=     | =ekg-org-view-delete=            | Trash (soft-delete) the task      |
-| =L=     | =ekg-org-view-promote=           | Promote: make task a sibling of its parent |
-| =R=     | =ekg-org-view-demote=            | Demote: make task a child of its previous sibling |
+| =L= / =l= | =ekg-org-view-promote=         | Promote: make task a sibling of its parent |
+| =R= / =r= | =ekg-org-view-demote=          | Demote: make task a child of its previous sibling |
+| =U=     | =ekg-org-view-move-up=           | Move task up (swap with previous sibling) |
+| =D=     | =ekg-org-view-move-down=         | Move task down (swap with next sibling) |
 | =g=     | =ekg-org-view-refresh=           | Manually refresh the view         |
 
 **** How it differs from org-mode

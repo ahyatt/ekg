@@ -78,6 +78,53 @@
                   (ekg-apple-notes--remove-tags-html
                    "<div>content</div>\n<div><br></div>\n<div>Tag: my tag</div>")))))
 
+;;; ---- Resource Parsing Tests ----
+
+(ert-deftest ekg-apple-notes-test-parse-resource-from-body ()
+  "Parse Resource: line from HTML body."
+  (should (equal "https://example.com/page"
+                 (ekg-apple-notes--parse-resource-from-body
+                  "<div>Resource: https://example.com/page</div>\n<div><br></div>\n<div>content</div>"))))
+
+(ert-deftest ekg-apple-notes-test-parse-resource-from-body-none ()
+  "Return nil when there is no Resource: line."
+  (should-not (ekg-apple-notes--parse-resource-from-body
+               "<div>just content</div>")))
+
+(ert-deftest ekg-apple-notes-test-remove-resource-html ()
+  "Resource div and spacer are removed from HTML."
+  (should (equal "<div>content</div>"
+                 (string-trim
+                  (ekg-apple-notes--remove-resource-html
+                   "<div>Resource: https://example.com</div>\n<div><br></div>\n<div>content</div>")))))
+
+(ert-deftest ekg-apple-notes-test-remove-resource-html-no-spacer ()
+  "Resource div without spacer is removed."
+  (should (equal "<div>content</div>"
+                 (string-trim
+                  (ekg-apple-notes--remove-resource-html
+                   "<div>Resource: https://example.com</div>\n<div>content</div>")))))
+
+(ert-deftest ekg-apple-notes-test-to-html-includes-resource ()
+  "Notes with URI IDs include a Resource: line at the top of exported HTML."
+  (skip-unless (executable-find "pandoc"))
+  (let* ((ekg-hidden-tags nil)
+         (note (ekg-note-create :text "hello" :mode 'org-mode
+                                :tags '("test")
+                                :id "https://example.com/page"))
+         (html (ekg-apple-notes--to-html note)))
+    (should (string-prefix-p "<div>Resource: https://example.com/page</div>" html))))
+
+(ert-deftest ekg-apple-notes-test-to-html-no-resource-for-numeric-id ()
+  "Notes with numeric IDs do not include a Resource: line."
+  (skip-unless (executable-find "pandoc"))
+  (let* ((ekg-hidden-tags nil)
+         (note (ekg-note-create :text "hello" :mode 'org-mode
+                                :tags '("test")
+                                :id 12345))
+         (html (ekg-apple-notes--to-html note)))
+    (should-not (string-match-p "Resource:" html))))
+
 ;;; ---- HTML Processing Tests ----
 
 (ert-deftest ekg-apple-notes-test-html-delink ()

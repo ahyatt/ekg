@@ -288,7 +288,8 @@ structs."
                           1000)))
       (dolist (id similar-notes)
         (let ((note (ekg-get-note-with-id id)))
-          (when (and (ekg-note-is-content-p note)
+          (when (and note
+                     (ekg-note-is-content-p note)
                      (not (member ekg-llm-prompt-tag (ekg-note-tags note))))
             (iter-yield (ekg-llm-note-to-text note))))))))
 

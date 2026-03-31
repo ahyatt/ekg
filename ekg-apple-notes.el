@@ -314,6 +314,20 @@ the format \"Tag: <tag>\", possibly wrapped in HTML div elements."
   "Remove \"Tag: <tag>\" lines from TEXT."
   (replace-regexp-in-string "\\(?:\n\\)?Tag: [^\n]+" "" text))
 
+(defun ekg-apple-notes--parse-resource-from-body (body)
+  "Parse a \"Resource: <url>\" line from BODY.
+Returns the resource string, or nil if not found."
+  (when (string-match
+         "\\(?:<div>\\)?Resource: \\([^<\n]+?\\)\\(?:</div>\\|$\\)" body)
+    (string-trim (match-string 1 body))))
+
+(defun ekg-apple-notes--remove-resource-html (html)
+  "Remove the \"Resource:\" div and its trailing spacer from HTML."
+  (let ((html (replace-regexp-in-string
+               "<div>Resource: [^<]*</div>\n?\\(?:<div><br></div>\n?\\)?"
+               "" html)))
+    html))
+
 (defun ekg-apple-notes--remove-tags-html (html)
   "Remove \"Tag: <tag>\" divs and their preceding spacer from HTML.
 This should be called before pandoc conversion to avoid artifacts."
@@ -373,7 +387,10 @@ markdown format [text](url)."
          (html (ekg-apple-notes--pandoc text from "html"))
          (html (ekg-apple-notes--html-delink html))
          (tags-meta (ekg-apple-notes--tags-to-metadata (ekg-note-tags note))))
-    (concat html
+    (concat (when (ekg-should-show-id-p (ekg-note-id note))
+              (format "<div>Resource: %s</div>\n<div><br></div>\n"
+                      (ekg-note-id note)))
+            html
             (when tags-meta
               (concat "\n<div><br></div>\n"
                       (mapconcat (lambda (line) (concat "<div>" line "</div>"))
@@ -404,7 +421,8 @@ backslash line breaks."
 (defun ekg-apple-notes--from-html (body mode)
   "Convert Apple Notes BODY (HTML) to text in MODE.
 MODE should be the symbol `org-mode' or `markdown-mode'."
-  (let* ((body (ekg-apple-notes--remove-tags-html body))
+  (let* ((body (ekg-apple-notes--remove-resource-html body))
+         (body (ekg-apple-notes--remove-tags-html body))
          (body (ekg-apple-notes--normalize-divs body))
          (to (pcase mode
                ('org-mode "org")
@@ -491,6 +509,7 @@ Returns non-nil if a note was created or updated."
   (let* ((apple-id (ekg-apple-notes--note-id apple-note))
          (body (ekg-apple-notes--note-body apple-note))
          (ekg-id (ekg-apple-notes--get-ekg-id apple-id))
+         (resource (ekg-apple-notes--parse-resource-from-body body))
          (tags (ekg-apple-notes--parse-tags-from-body body))
          (mode ekg-capture-default-mode)
          (text (ekg-apple-notes--from-html body mode)))
@@ -516,7 +535,8 @@ Returns non-nil if a note was created or updated."
         (let ((note (ekg-note-create
                      :text text
                      :mode mode
-                     :tags (or tags '("imported")))))
+                     :tags (or tags '("imported"))
+                     :id resource)))
           (ekg-save-note note)
           (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
           (message "ekg-apple-notes: imported new note from Apple Notes %s"
