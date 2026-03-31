@@ -111,6 +111,19 @@ If non-positive, no timeout is applied."
   :type 'integer
   :group 'ekg-agent)
 
+(defcustom ekg-agent-llm-max-retries 3
+  "Maximum number of retries for transient LLM errors.
+Transient errors include overloaded servers, rate limiting, and
+temporary network failures.  Set to 0 to disable retries."
+  :type 'integer
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-llm-retry-base-delay 2
+  "Base delay in seconds between LLM retry attempts.
+The actual delay uses exponential backoff: base * 2^attempt."
+  :type 'number
+  :group 'ekg-agent)
+
 (defcustom ekg-agent-code-command nil
   "Command to run for the coding tool.
 
@@ -226,6 +239,62 @@ calling, or if none have tool calling, just return the first provider."
                            ekg-llm-provider))
           (car ekg-llm-provider))
     ekg-llm-provider))
+
+(defun ekg-agent--transient-error-p (err-string)
+  "Return non-nil if ERR-STRING indicates a transient LLM error.
+Transient errors are those likely to succeed on retry, such as
+overloaded servers, rate limits, and temporary network failures."
+  (and (stringp err-string)
+       (let ((lower (downcase err-string)))
+         (or (string-match-p "overloaded" lower)
+             (string-match-p "rate.limit" lower)
+             (string-match-p "too many requests" lower)
+             (string-match-p "429" lower)
+             (string-match-p "529" lower)
+             (string-match-p "503" lower)
+             (string-match-p "server.*error" lower)
+             (string-match-p "temporarily unavailable" lower)))))
+
+(defun ekg-agent--llm-chat-async-with-retry (provider prompt on-success on-error
+                                                      multi-output log-buf)
+  "Call `llm-chat-async' with automatic retry on transient errors.
+PROVIDER, PROMPT, ON-SUCCESS, ON-ERROR, and MULTI-OUTPUT are as
+for `llm-chat-async'.  LOG-BUF is the agent log buffer, used for
+logging retries and checking cancellation.  Returns the request
+handle from the current attempt."
+  (let ((attempt 0)
+        (max-retries ekg-agent-llm-max-retries)
+        (base-delay ekg-agent-llm-retry-base-delay))
+    (cl-labels
+        ((try ()
+           (llm-chat-async
+            provider prompt on-success
+            (lambda (type err)
+              (if (and (< attempt max-retries)
+                       (ekg-agent--transient-error-p (format "%s" err))
+                       (buffer-live-p log-buf)
+                       (not (buffer-local-value
+                             'ekg-agent--cancelled-p log-buf)))
+                  (let* ((delay (* base-delay (expt 2 attempt)))
+                         (ekg-agent--current-log-buffer log-buf))
+                    (cl-incf attempt)
+                    (ekg-agent--log
+                     "Transient error (attempt %d/%d): %s — retrying in %ds…"
+                     attempt (1+ max-retries) err delay)
+                    (run-at-time delay nil
+                                 (lambda ()
+                                   (when (and (buffer-live-p log-buf)
+                                              (not (buffer-local-value
+                                                    'ekg-agent--cancelled-p
+                                                    log-buf)))
+                                     (let ((req (try)))
+                                       (when (buffer-live-p log-buf)
+                                         (with-current-buffer log-buf
+                                           (setq ekg-agent--current-request
+                                                 req))))))))
+                (funcall on-error type err)))
+            multi-output)))
+      (try))))
 
 (defmacro ekg-agent--with-error-as-text (&rest body)
   "Execute BODY, returning any error as a descriptive string.
@@ -1949,7 +2018,7 @@ session.  At iteration 0 the log buffer is created and
           (ekg-agent--log "⟳ Waiting for LLM response…")))
       (condition-case err
           (let ((request
-                  (llm-chat-async
+                  (ekg-agent--llm-chat-async-with-retry
                    (ekg-agent--provider)
                    prompt
                    (lambda (result)
@@ -1974,7 +2043,7 @@ session.  At iteration 0 the log buffer is created and
                                  ;; Everything must be a tool call, by default if it just gets
                                  ;; non-tool output we'll log it, and then instruct it to use
                                  ;; tools to end if needed.
-                                 (ekg-agent--log "%s" (plist-get :text result))
+                                 (ekg-agent--log "%s" (plist-get result :text))
                                  (llm-chat-prompt-append-response
                                   prompt
                                   (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
@@ -2012,9 +2081,10 @@ session.  At iteration 0 the log buffer is created and
                    (lambda (_ err)
                      (let ((ekg-agent--current-log-buffer log-buf))
                        (when (ekg-agent--set-stopped log-buf)
-                         (when status-callback (funcall status-callback 'error))
-                         (error "%s" err))))
-                   t)))
+                         (ekg-agent--log "LLM error: %s" err)
+                         (when status-callback (funcall status-callback 'error)))))
+                   t
+                   log-buf)))
             (when (buffer-live-p log-buf)
               (with-current-buffer log-buf
                 (setq ekg-agent--current-request request))))

@@ -13,7 +13,7 @@ tasks:
         "The Turing machine was proposed in 1936 by Alan Turing."
         '("history" "computer-science") "org-mode")
     trigger: |
-      (let* ((notes (ekg-get-notes-with-all-tags '("history" "computer-science")))
+      (let* ((notes (ekg-get-notes-with-tags '("history" "computer-science")))
              (note (car notes)))
         (ekg-edit note)
         ;; Wait for the buffer to be ready.
