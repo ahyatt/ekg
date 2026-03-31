@@ -350,6 +350,43 @@ result when the agent finishes."
     (should (= 1 (length notes)))
     (should (string-match-p "Test note content" (ekg-note-text (car notes))))))
 
+(ekg-deftest ekg-agent-test-append-to-note ()
+  "Appending to a note adds content without log contamination."
+  (let* ((note (ekg-note-create :text "Original content."
+                                :mode 'org-mode
+                                :tags '("append-test")))
+         (_ (ekg-save-note note))
+         (note-id (format "%s" (ekg-note-id note))))
+    (ekg-agent-test--with-mock-agent
+        (list
+         ;; Iteration 1: append to the note
+         (list (cons "append_to_note"
+                     (list note-id "Appended paragraph.")))
+         ;; Iteration 2: append more
+         (list (cons "append_to_note"
+                     (list note-id "Second appended paragraph.")))
+         ;; Iteration 3: done
+         (list (cons "end" nil)))
+      (ekg-agent--iterate
+       (llm-make-chat-prompt
+        "Test: append to a note."
+        :tools (append ekg-agent-base-tools
+                       (list ekg-agent-tool-end))
+        :tool-options (make-llm-tool-options :tool-choice 'any))
+       0
+       (lambda (status) (setq done-flag status))
+       '("end")))
+    (let* ((updated (ekg-get-note-with-id (ekg-note-id note)))
+           (text (ekg-note-text updated)))
+      (should (string-match-p "Original content" text))
+      (should (string-match-p "Appended paragraph" text))
+      (should (string-match-p "Second appended paragraph" text))
+      ;; Agent log artifacts must not leak into the note.
+      (should-not (string-match-p "STARTED" text))
+      (should-not (string-match-p " DONE " text))
+      (should-not (string-match-p "Waiting for LLM" text))
+      (should-not (string-match-p "^[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}" text)))))
+
 (ert-deftest ekg-agent-test-agent-run-command ()
   "The run_command tool executes a shell command and returns output."
   (let (result)
