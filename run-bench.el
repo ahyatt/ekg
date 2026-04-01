@@ -7,6 +7,9 @@
 ;; Configure the provider by setting environment variables or editing
 ;; the provider form below.
 
+;; EKG_BENCH_PROVIDER_FORM: A sexp that will be evalled in the subprocess to
+;; create the LLM provider to run the agent.  It must support tool calling.
+
 ;;; Code:
 
 ;; Add load paths.
