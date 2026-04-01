@@ -6,11 +6,5 @@
 (eldev-add-extra-dependencies 'test '(:package markdown-mode :archive melpa))
 (eldev-add-extra-dependencies 'test 'denote)
 (eldev-add-extra-dependencies 'test 'futur)
+(eldev-add-extra-dependencies 'test '(:package llm-test :archive melpa-unstable))
 (eldev-add-extra-dependencies 'test '(:package vui :archive melpa-unstable))
-
-;; llm-test: local dependency for agent benchmarks.
-;; Not yet on a package archive, so we add it directly to load-path.
-(let ((llm-test-dir (expand-file-name "~/src/llm-test")))
-  (when (file-directory-p llm-test-dir)
-    (eldev-add-extra-dependencies 'test '(:package yaml :archive melpa))
-    (add-to-list 'load-path llm-test-dir)))
