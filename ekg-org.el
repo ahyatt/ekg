@@ -354,10 +354,14 @@ ARGS are additional arguments to the operation."
       (let ((content (ekg-org-generate-org-content
                       (string-match ".*archive" filename)))
             (replace (nth 4 args)))
-        (when replace
-          (erase-buffer))
+        (if replace
+            (let ((temp-buf (generate-new-buffer " *ekg-temp*")))
+              (with-current-buffer temp-buf
+                (insert content))
+              (replace-buffer-contents temp-buf)
+              (kill-buffer temp-buf))
+          (insert content))
         (setq-local buffer-file-name filename)
-        (insert content)
         ;; Return value must be (filename size)
         (list filename (length content))))
 
@@ -388,7 +392,7 @@ Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
         (with-current-buffer buf
           (when (and buffer-file-name
                      (string-match "\\`/ekg:" buffer-file-name)
-                     (buffer-modified-p buf))
+                     (not (buffer-modified-p buf)))
             (revert-buffer t t t)))))))
 
 ;; When we save an org note, any org buffers showing our fake files should
@@ -637,7 +641,13 @@ Reuses a hidden buffer to avoid repeated `org-mode' initialization."
 
 (defun ekg-org-view--note-at-point ()
   "Return the note ID at point, or nil."
-  (get-text-property (line-beginning-position) :ekg-org-note-id))
+  (or (get-text-property (line-beginning-position) :ekg-org-note-id)
+      (save-excursion
+        (let ((found nil))
+          (while (and (not found) (not (bobp)))
+            (forward-line -1)
+            (setq found (get-text-property (line-beginning-position) :ekg-org-note-id)))
+          found))))
 
 (defun ekg-org-view--level-at-point ()
   "Return the heading level at point, or nil."
@@ -778,25 +788,22 @@ re-rendering and ensure it is visible.  When insert mode is active,
 the refresh is deferred until insert mode ends."
   (if ekg-org-view--insert-overlay
       (setq ekg-org-view--refresh-pending t)
-    (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
     (vui-rerender ekg-org-view--instance)
-    (if (and restore-id (ekg-org-view--goto-note-id restore-id))
-        (let ((windows (get-buffer-window-list (current-buffer) nil t)))
-          (dolist (win windows)
-            (set-window-point win (point))
-            (unless (pos-visible-in-window-p (point) win)
-              (with-selected-window win (recenter))))
-          ;; When the buffer is not visible, update the saved point in
-          ;; each window's prev-buffer history so that `quit-window'
-          ;; restores point to the right heading.
-          (unless windows
-            (dolist (win (window-list nil 'no-mini))
-              (when-let* ((entry (assq (current-buffer)
-                                       (window-prev-buffers win))))
-                (setcar (cddr entry) (point-marker))))))
-      (goto-char (point-min))
-      (ekg-org-view--ensure-on-heading))
-    (ekg-org-view--highlight))))
+    (when (and target-id (ekg-org-view--goto-note-id target-id))
+      (let ((windows (get-buffer-window-list (current-buffer) nil t)))
+        (dolist (win windows)
+          (set-window-point win (point))
+          (unless (pos-visible-in-window-p (point) win)
+            (with-selected-window win (recenter))))
+        ;; When the buffer is not visible, update the saved point in
+        ;; each window's prev-buffer history so that `quit-window'
+        ;; restores point to the right heading.
+        (unless windows
+          (dolist (win (window-list nil 'no-mini))
+            (when-let* ((entry (assq (current-buffer)
+                                     (window-prev-buffers win))))
+              (setcar (cddr entry) (point-marker)))))))
+    (ekg-org-view--highlight)))
 
 (defun ekg-org-view-toggle-collapse ()
   "Toggle collapse/expand of the task at point."
@@ -1013,7 +1020,8 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-cur (ekg-org-view--sort-order note))
                (order-prev (ekg-org-view--sort-order prev))
                (ekg-org--inhibit-view-refresh t))
-          (triples-with-transaction ekg-db
+          (triples-with-transaction
+            ekg-db
             (ekg-org-view--set-sort-order id order-prev)
             (ekg-org-view--set-sort-order prev-id order-cur))
           (ekg-org-view--refresh id))))))
@@ -1036,7 +1044,8 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-cur (ekg-org-view--sort-order note))
                (order-next (ekg-org-view--sort-order next))
                (ekg-org--inhibit-view-refresh t))
-          (triples-with-transaction ekg-db
+          (triples-with-transaction
+            ekg-db
             (ekg-org-view--set-sort-order id order-next)
             (ekg-org-view--set-sort-order next-id order-cur))
           (ekg-org-view--refresh id))))))
