@@ -53,13 +53,18 @@
       (progn
         (message "Running single task: %s" task-name)
         (let ((result (ekg-agent-bench-run-one task-name)))
-          (message "\nResult: %s — task:%s skill:%s memory:%s iters:%d time:%.0fs"
+          (message "\nResult: %s — task:%s skill:%s memory:%s iters:%d time:%.0fs status-updates:%d max-gap:%s"
                    (ekg-agent-bench-result-name result)
                    (ekg-agent-bench--format-pass (ekg-agent-bench-result-task-passed result))
                    (ekg-agent-bench--format-pass (ekg-agent-bench-result-skill-passed result))
                    (ekg-agent-bench--format-pass (ekg-agent-bench-result-memory-passed result))
                    (ekg-agent-bench-result-iterations result)
-                   (ekg-agent-bench-result-wall-time result))
+                   (ekg-agent-bench-result-wall-time result)
+                   (or (ekg-agent-bench-result-status-update-count result) 0)
+                   (let ((gap (ekg-agent-bench-result-max-status-update-gap result)))
+                     (if gap
+                         (format "%.1fs" gap)
+                       "n/a")))
           (unless (ekg-agent-bench-result-task-passed result)
             (kill-emacs 1))))
     (progn

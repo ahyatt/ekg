@@ -190,13 +190,13 @@ ekg-org-edit <note-id> [--title "new title"] [--note "new content"] \
 With an `org/task` tag, notes will appear in the org-mode agenda (`/ekg:tasks.org`) once the
 user sets it up by adding the file `/ekg:tasks.org` to the agenda.
 
-| Tag | Purpose |
-|---|---|
-| `org/task` | Marks the note as an org task (required) |
-| `org/state/todo` | Task is pending |
-| `org/state/done` | Task is complete |
-| `org/state/waiting` | Task is blocked |
-| `org/archive` | Archived task (hidden from active agenda) |
+| Tag                 | Purpose                                   |
+|---------------------|-------------------------------------------|
+| `org/task`          | Marks the note as an org task (required)  |
+| `org/state/todo`    | Task is pending                           |
+| `org/state/done`    | Task is complete                          |
+| `org/state/waiting` | Task is blocked                           |
+| `org/archive`       | Archived task (hidden from active agenda) |
 
 **Org tasks require a `--title`** — this becomes the headline in the org agenda.
 

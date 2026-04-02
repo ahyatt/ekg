@@ -75,6 +75,70 @@
                  (ekg-agent--with-error-as-text
                    (+ 40 2)))))
 
+(ert-deftest ekg-agent-test-status-reminder-adds-prompt-when-overdue ()
+  "An overdue session gets a prompt reminder to summarize state."
+  (let ((buf (get-buffer-create "*ekg-agent-test-reminder*"))
+        (prompt (llm-make-chat-prompt "Work on the task."))
+        (ekg-agent-status-reminder-seconds 60)
+        (ekg-agent--current-log-buffer nil))
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer buf))
+          (with-current-buffer buf
+            (setq ekg-agent--running-p t)
+            (setq ekg-agent--last-status-update-time 100.0)
+            (setq ekg-agent--last-status-reminder-time nil))
+          (cl-letf (((symbol-function 'float-time)
+                     (lambda (&optional _time) 161.0)))
+            (should (ekg-agent--maybe-remind-status-update prompt)))
+          (with-current-buffer buf
+            (should (= 161.0 ekg-agent--last-status-reminder-time)))
+          (let* ((interactions (llm-chat-prompt-interactions prompt))
+                 (last-message
+                  (llm-chat-prompt-interaction-content (car (last interactions)))))
+            (should (string-match-p "summarize_state" last-message))
+            (should (string-match-p "what you finished" last-message))))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-status-reminder-skips-recent-status ()
+  "A recent status update does not add another reminder."
+  (let ((buf (get-buffer-create "*ekg-agent-test-no-reminder*"))
+        (prompt (llm-make-chat-prompt "Work on the task."))
+        (ekg-agent-status-reminder-seconds 60)
+        (ekg-agent--current-log-buffer nil))
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer buf))
+          (with-current-buffer buf
+            (setq ekg-agent--running-p t)
+            (setq ekg-agent--last-status-update-time 100.0)
+            (setq ekg-agent--last-status-reminder-time nil))
+          (cl-letf (((symbol-function 'float-time)
+                     (lambda (&optional _time) 150.0)))
+            (should-not (ekg-agent--maybe-remind-status-update prompt)))
+          (should (= 1 (length (llm-chat-prompt-interactions prompt))))
+          (with-current-buffer buf
+            (should-not ekg-agent--last-status-reminder-time)))
+      (kill-buffer buf))))
+
+(ert-deftest ekg-agent-test-status-reminder-repeats-if-ignored ()
+  "If the model ignores a reminder, another one is sent later."
+  (let ((buf (get-buffer-create "*ekg-agent-test-repeat-reminder*"))
+        (prompt (llm-make-chat-prompt "Work on the task."))
+        (ekg-agent-status-reminder-seconds 60)
+        (ekg-agent--current-log-buffer nil))
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer buf))
+          (with-current-buffer buf
+            (setq ekg-agent--running-p t)
+            (setq ekg-agent--last-status-update-time 100.0)
+            (setq ekg-agent--last-status-reminder-time 161.0))
+          (cl-letf (((symbol-function 'float-time)
+                     (lambda (&optional _time) 221.0)))
+            (should (ekg-agent--maybe-remind-status-update prompt)))
+          (should (= 2 (length (llm-chat-prompt-interactions prompt))))
+          (with-current-buffer buf
+            (should (= 221.0 ekg-agent--last-status-reminder-time))))
+      (kill-buffer buf))))
+
 ;; Line ID generation
 
 (ert-deftest ekg-agent-test-line-ids-unique ()

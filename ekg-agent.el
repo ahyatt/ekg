@@ -111,6 +111,16 @@ If non-positive, no timeout is applied."
   :type 'integer
   :group 'ekg-agent)
 
+(defcustom ekg-agent-status-reminder-seconds 50
+  "Maximum quiet time before the agent is reminded to summarize state.
+
+When positive, each new LLM turn checks how long it has been since the
+last explicit `summarize_state' call.  If this threshold has been
+exceeded, the prompt is augmented with a reminder to summarize progress
+before doing more work."
+  :type 'number
+  :group 'ekg-agent)
+
 (defcustom ekg-agent-llm-max-retries 3
   "Maximum number of retries for transient LLM errors.
 Transient errors include overloaded servers, rate limiting, and
@@ -158,6 +168,12 @@ Stored so that `ekg-agent-force-cancel' can invoke it.")
 (defvar-local ekg-agent--current-activity nil
   "Short description of what the agent is currently doing.
 Shown in the header line; updated by tool wrappers and the iterate loop.")
+
+(defvar-local ekg-agent--last-status-update-time nil
+  "Float time when the last explicit `summarize_state' call was logged.")
+
+(defvar-local ekg-agent--last-status-reminder-time nil
+  "Float time when the agent was last reminded to summarize state.")
 
 (defvar-local ekg-agent--origin-buffer nil
   "The buffer from which the agent was originally invoked.
@@ -865,18 +881,58 @@ non-string content in the assistant role."
   (format "Time limit reached. Before this session ends, immediately create a note with your current state using `create_note` (tag it with `%s`). Also call `summarize_state` with a brief update. Then finish by calling `end` or the appropriate completion tool."
           ekg-agent-self-info-tag))
 
+(defun ekg-agent--record-status-update (&optional timestamp)
+  "Record TIMESTAMP as the latest status update time for the log buffer."
+  (when-let ((buf ekg-agent--current-log-buffer))
+    (when (buffer-live-p buf)
+      (with-current-buffer buf
+        (setq ekg-agent--last-status-update-time
+              (or timestamp (float-time)))
+        (setq ekg-agent--last-status-reminder-time nil)))))
+
+(defun ekg-agent--status-reminder-message ()
+  "Return a prompt reminder asking for a meaningful status update."
+  (concat
+   "Before doing more work, call `summarize_state` with a brief but "
+   "meaningful progress update. Include: (1) what you finished, (2) what "
+   "you are doing now, and (3) what you will do next or what is blocked."))
+
+(defun ekg-agent--maybe-remind-status-update (prompt)
+  "Add a reminder to PROMPT when the agent owes the user a status update."
+  (when-let ((buf ekg-agent--current-log-buffer))
+    (when (buffer-live-p buf)
+      (with-current-buffer buf
+        (let ((threshold ekg-agent-status-reminder-seconds)
+              (last ekg-agent--last-status-update-time)
+              (now (float-time)))
+          (when (and ekg-agent--running-p
+                     (numberp threshold)
+                     (> threshold 0)
+                     (numberp last)
+                     (>= (- now last) threshold)
+                     (or (null ekg-agent--last-status-reminder-time)
+                         (< ekg-agent--last-status-reminder-time last)
+                         (>= (- now ekg-agent--last-status-reminder-time)
+                             threshold)))
+            (setq ekg-agent--last-status-reminder-time now)
+            (ekg-agent--prompt-append-user-message
+             prompt
+             (ekg-agent--status-reminder-message))
+            t))))))
+
 (defun ekg-agent--summarize-state (state)
   "Write STATE to the agent log window."
   (ekg-agent--with-error-as-text
     (ekg-agent--ensure-log-window)
+    (ekg-agent--record-status-update)
     (ekg-agent--log "State: %s" state)
     "ok"))
 
 (defconst ekg-agent-tool-summarize-state
   (make-llm-tool :function #'ekg-agent--summarize-state
                  :name "summarize_state"
-                 :description "Summarize the current state in the agent log window.  This should be called often to keep the user up to date on what is happening, around every few tool calls."
-                 :args '((:name "state" :type string :description "Short summary of current progress, plan, or blockers."))))
+                 :description "Summarize the current state in the agent log window.  During long tasks, call this at least once a minute.  Include what you just finished, what you are doing now, and what is next or blocked."
+                 :args '((:name "state" :type string :description "Brief but meaningful summary of completed work, current step, and next step or blocker."))))
 
 (defconst ekg-agent-tool-read-agents-md
   (make-llm-tool :function (lambda (dir)
@@ -1810,9 +1866,19 @@ When the task is complete:
    - Link to any new notes you created
    - Mark the task as done in the org file
 
-Use the `summarize_state` tool regularly to write brief status updates
-to the user-visible agent log window (at least every couple of tool
-calls or whenever your plan changes).
+Use the `summarize_state` tool regularly to write brief but meaningful
+status updates to the user-visible agent log window.  During long
+tasks, do this at least once a minute, and also whenever your plan
+changes or a step may take a while.  Each update should say what you
+finished, what you are doing now, and what comes next or what is
+blocked.
+
+Do not batch so much work between status updates that the user waits
+more than a minute for the next one.  If a set of edits or tool calls
+may take a while, break it into smaller chunks and call
+`summarize_state` between chunks.  For repetitive file edits, prefer
+working one file at a time unless you are confident the batch will stay
+well under a minute.
 
 The session may end if a total task timeout (%s) has been configured. Or,
 some error may interrupt the processing. Because your processing can end
@@ -1990,6 +2056,8 @@ session.  At iteration 0 the log buffer is created and
           (setq ekg-agent--tool-processes nil)
           (setq ekg-agent--status-callback status-callback)
           (setq ekg-agent--origin-buffer origin-buf)
+          (setq ekg-agent--last-status-update-time (float-time))
+          (setq ekg-agent--last-status-reminder-time nil)
           (ekg-agent-log-mode 1)
           (setq header-line-format
                 '(:eval (ekg-agent--format-header-line)))
@@ -2011,6 +2079,7 @@ session.  At iteration 0 the log buffer is created and
         (ekg-agent--log "Timeout reached; requesting final state note.")
         (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
         (setq timeout-final t))
+      (ekg-agent--maybe-remind-status-update prompt)
       (when (and log-buf (buffer-live-p log-buf))
         (with-current-buffer log-buf
           (setq ekg-agent--current-activity "Waiting for LLM response…")
@@ -2111,6 +2180,8 @@ Prompts for a MESSAGE with additional instructions for the agent."
   (let ((cb (ekg-agent--make-status-callback))
         (ekg-agent--current-log-buffer (current-buffer)))
     (setq ekg-agent--status-callback cb)
+    (setq ekg-agent--last-status-update-time (float-time))
+    (setq ekg-agent--last-status-reminder-time nil)
     (ekg-agent--log-session-start "Continuing agent")
     (when (and message (not (string-empty-p message)))
       (ekg-agent--prompt-append-user-message ekg-agent--prompt message)
@@ -2158,12 +2229,12 @@ subprocesses.  Use \\[ekg-agent-continue] to resume."
   (when ekg-agent--prompt
     (ekg-agent--clean-orphaned-tool-interactions ekg-agent--prompt))
   ;; Mark as stopped and fire the status callback exactly once.
-  (setq ekg-agent--running-p nil)
-  (force-mode-line-update)
-  (let ((ekg-agent--current-log-buffer (current-buffer)))
-    (ekg-agent--log "Agent force-cancelled")
-    (when ekg-agent--status-callback
-      (funcall ekg-agent--status-callback "force cancelled"))))
+  (let ((log-buf (current-buffer))
+        (ekg-agent--current-log-buffer (current-buffer)))
+    (when (ekg-agent--set-stopped log-buf)
+      (ekg-agent--log "Agent force-cancelled")
+      (when ekg-agent--status-callback
+        (funcall ekg-agent--status-callback "force cancelled")))))
 
 (defun ekg-agent-evaluate-status-daily ()
   "Run the ekg agent to evaluate status as a daily routine."

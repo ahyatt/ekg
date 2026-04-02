@@ -1681,6 +1681,11 @@ The following commands are available in the log buffer:
 This makes it easy to supervise long-running agent sessions: you can cancel if
 the agent is going in the wrong direction, give it new guidance, and continue.
 
+For long-running work, the agent is also reminded to call
+=summarize_state= if it has gone too long without an explicit progress
+update.  You can control this with
+~ekg-agent-status-reminder-seconds~.
+
 *** AGENTS.md support
 
 The agent automatically reads =AGENTS.md= files to pick up user-specific

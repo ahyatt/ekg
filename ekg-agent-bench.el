@@ -44,6 +44,7 @@
 (require 'llm-test)
 (require 'yaml)
 (require 'ert)
+(require 'subr-x)
 ;; Disable futur's background thread before loading: on macOS NS port,
 ;; `message' (or any redisplay) from a non-main thread causes an
 ;; NSException → GIL deadlock.  With this nil, futur dispatches all
@@ -93,7 +94,7 @@ mismatches between the host and the daemon."
   "A single benchmark task."
   name description setup trigger
   verify-task verify-skill verify-memory
-  max-iterations timeout)
+  max-iterations timeout max-status-update-gap)
 
 (cl-defstruct ekg-agent-bench-group
   "A group of benchmark tasks with shared setup."
@@ -103,7 +104,9 @@ mismatches between the host and the daemon."
   "Result of running a single benchmark task."
   name
   task-passed skill-passed memory-passed
-  iterations tools-used wall-time status error-message
+  iterations tools-used wall-time
+  status-update-count max-status-update-gap status-update-gap-target
+  status error-message
   agent-log)
 
 ;;; YAML Parsing
@@ -135,7 +138,9 @@ mismatches between the host and the daemon."
                 :verify-skill (gethash 'verify-skill task-hash)
                 :verify-memory (gethash 'verify-memory task-hash)
                 :max-iterations (gethash 'max-iterations task-hash)
-                :timeout (gethash 'timeout task-hash)))
+                :timeout (gethash 'timeout task-hash)
+                :max-status-update-gap
+                (gethash 'max-status-update-gap task-hash)))
              (append tasks-array nil)))))
 
 (defun ekg-agent-bench--load-directory (directory)
@@ -437,9 +442,62 @@ Returns `done' if the agent finished, `timeout' if it timed out."
         (sit-for ekg-agent-bench-poll-interval))
       (if (< (float-time) deadline) 'done 'timeout))))
 
+(defun ekg-agent-bench--parse-log-timestamp (timestamp)
+  "Parse TIMESTAMP from the agent log into a float time."
+  (unless (string-match
+           "\\`\\([0-9]\\{4\\}\\)-\\([0-9]\\{2\\}\\)-\\([0-9]\\{2\\}\\) \\([0-9]\\{2\\}\\):\\([0-9]\\{2\\}\\):\\([0-9]\\{2\\}\\)\\'"
+           timestamp)
+    (error "Unrecognized benchmark log timestamp: %s" timestamp))
+  (float-time
+   (encode-time (string-to-number (match-string 6 timestamp))
+                (string-to-number (match-string 5 timestamp))
+                (string-to-number (match-string 4 timestamp))
+                (string-to-number (match-string 3 timestamp))
+                (string-to-number (match-string 2 timestamp))
+                (string-to-number (match-string 1 timestamp)))))
+
+(defun ekg-agent-bench--parse-tool-log-line (line)
+  "Parse a tool log LINE.
+Return a cons of (TIMESTAMP . TOOL-NAME), or nil if LINE is not a tool line."
+  (when (string-match
+         "^\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\} [0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\)[[:space:]]+\\(?:STARTED\\|DONE\\)[[:space:]]+\\([^[:space:]]+\\)[[:space:]]*$"
+         line)
+    (let ((timestamp-text (match-string 1 line))
+          (tool-name (match-string 2 line)))
+      (cons (ekg-agent-bench--parse-log-timestamp timestamp-text)
+            tool-name))))
+
+(defun ekg-agent-bench--status-update-metrics (content)
+  "Extract explicit visible status-update metrics from benchmark log CONTENT."
+  (let (all-times status-times)
+    (dolist (line (split-string content "\n" t))
+      (when (string-match
+             "^\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\} [0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\) \\(.*\\)$"
+             line)
+        (let* ((timestamp-text (match-string 1 line))
+               (message-text (match-string 2 line))
+               (timestamp
+                (ekg-agent-bench--parse-log-timestamp timestamp-text)))
+          (push timestamp all-times)
+          (when (string-prefix-p "State: " message-text)
+            (push timestamp status-times)))))
+    (setq all-times (nreverse all-times)
+          status-times (nreverse status-times))
+    (let ((max-gap
+           (when all-times
+             (let ((points (append (list (car all-times))
+                                   status-times
+                                   (list (car (last all-times))))))
+               (cl-loop for prev = nil then current
+                        for current in points
+                        when prev maximize (- current prev) into gap
+                        finally return (or gap 0.0))))))
+      (list :status-update-count (length status-times)
+            :max-status-update-gap max-gap))))
+
 (defun ekg-agent-bench--extract-metrics (emacs-info)
-  "Extract iteration count, tools used, and log from the agent log buffer.
-Returns a plist (:iterations N :tools-used (TOOL ...) :log STRING)."
+  "Extract benchmark metrics from the agent log buffer.
+Returns a plist including iterations, tools, status-update data, and log text."
   (let* ((log-content
           (llm-test--eval-in-emacs
            emacs-info
@@ -457,16 +515,17 @@ Returns a plist (:iterations N :tools-used (TOOL ...) :log STRING)."
                     log-content))
          (lines (split-string content "\n"))
          (iterations 0)
-         (tools nil))
+         (tools nil)
+         (status-metrics (ekg-agent-bench--status-update-metrics content)))
     (dolist (line lines)
-      (when (string-match "Tools: \\(.*\\)" line)
+      (when-let ((tool-line (ekg-agent-bench--parse-tool-log-line line)))
         (cl-incf iterations)
-        (let ((tools-str (match-string 1 line)))
-          (dolist (segment (split-string tools-str ", "))
-            (when (string-match "Tool: \\([^ ]+\\)" segment)
-              (push (match-string 1 segment) tools))))))
+        (push (cdr tool-line) tools)))
     (list :iterations iterations
           :tools-used (delete-dups (nreverse tools))
+          :status-update-count (plist-get status-metrics :status-update-count)
+          :max-status-update-gap
+          (plist-get status-metrics :max-status-update-gap)
           :log content)))
 
 (defun ekg-agent-bench--eval-verify (emacs-info verify-expr)
@@ -479,6 +538,23 @@ nil if the expression evaluated to false."
                    emacs-info
                    (format "(if (progn %s) \"pass\" \"fail\")" verify-expr))))
       (equal result "\"pass\""))))
+
+(defun ekg-agent-bench--combine-check-results (&rest results)
+  "Combine pass/fail/skip RESULTS, treating `skip' as neutral."
+  (let ((saw-pass nil))
+    (catch 'result
+      (dolist (result results)
+        (cond
+         ((eq result 'skip))
+         ((null result) (throw 'result nil))
+         (t (setq saw-pass t))))
+      (if saw-pass t 'skip))))
+
+(defun ekg-agent-bench--append-error-message (existing new-message)
+  "Append NEW-MESSAGE to EXISTING, separating messages cleanly."
+  (if (and existing (not (string-empty-p existing)))
+      (concat existing "; " new-message)
+    new-message))
 
 ;;; Task Runner
 
@@ -529,16 +605,28 @@ Returns an `ekg-agent-bench-result'."
     (let* ((wall-time (- (float-time) start-time))
            (metrics (unless (eq status 'error)
                       (ekg-agent-bench--extract-metrics emacs-info)))
-           (task-passed (unless (eq status 'error)
-                          (condition-case err
-                              (ekg-agent-bench--eval-verify
-                               emacs-info
-                               (ekg-agent-bench-task-verify-task task))
-                            (error
-                             (setq error-msg
-                                   (format "verify-task error: %s"
-                                           (error-message-string err)))
-                             nil))))
+           (task-check (unless (eq status 'error)
+                         (condition-case err
+                             (ekg-agent-bench--eval-verify
+                              emacs-info
+                              (ekg-agent-bench-task-verify-task task))
+                           (error
+                            (setq error-msg
+                                  (format "verify-task error: %s"
+                                          (error-message-string err)))
+                            nil))))
+           (status-gap-target (ekg-agent-bench-task-max-status-update-gap task))
+           (status-gap-passed (if (or (eq status 'error)
+                                      (null status-gap-target)
+                                      (null metrics))
+                                  'skip
+                                (let ((gap (plist-get metrics :max-status-update-gap)))
+                                  (and (numberp gap)
+                                       (<= gap status-gap-target)))))
+           (task-passed (if (eq status 'timeout)
+                            nil
+                          (ekg-agent-bench--combine-check-results
+                           task-check status-gap-passed)))
            (skill-passed (unless (eq status 'error)
                            (condition-case err
                                (ekg-agent-bench--eval-verify
@@ -557,6 +645,18 @@ Returns an `ekg-agent-bench-result'."
                                (message "bench: verify-memory error for %s: %s"
                                         task-name (error-message-string err))
                                nil)))))
+      (when (eq status 'timeout)
+        (setq error-msg
+              (ekg-agent-bench--append-error-message
+               error-msg
+               "task timed out")))
+      (when (null status-gap-passed)
+        (setq error-msg
+              (ekg-agent-bench--append-error-message
+               error-msg
+               (format "status update gap %.1fs exceeded target %.1fs"
+                       (or (plist-get metrics :max-status-update-gap) 0.0)
+                       status-gap-target))))
       (make-ekg-agent-bench-result
        :name task-name
        :task-passed task-passed
@@ -565,6 +665,9 @@ Returns an `ekg-agent-bench-result'."
        :iterations (or (plist-get metrics :iterations) 0)
        :tools-used (or (plist-get metrics :tools-used) nil)
        :wall-time wall-time
+       :status-update-count (or (plist-get metrics :status-update-count) 0)
+       :max-status-update-gap (plist-get metrics :max-status-update-gap)
+       :status-update-gap-target status-gap-target
        :status status
        :error-message error-msg
        :agent-log (plist-get metrics :log)))))
@@ -615,6 +718,19 @@ Returns an `ekg-agent-bench-result'."
                             (ekg-agent-bench-result-iterations r)
                             (ekg-agent-bench-result-wall-time r)
                             (ekg-agent-bench-result-status r)))
+            (when (or (ekg-agent-bench-result-status-update-gap-target r)
+                      (ekg-agent-bench-result-status-update-count r))
+              (insert (format "  Status updates: %d"
+                              (or (ekg-agent-bench-result-status-update-count r)
+                                  0)))
+              (let ((gap (ekg-agent-bench-result-max-status-update-gap r)))
+                (when gap
+                  (insert (format "  Max gap: %.1fs" gap))))
+              (let ((target
+                     (ekg-agent-bench-result-status-update-gap-target r)))
+                (when target
+                  (insert (format "  Target: %.1fs" target))))
+              (insert "\n"))
             (when (ekg-agent-bench-result-error-message r)
               (insert (format "  ERROR: %s\n"
                               (ekg-agent-bench-result-error-message r))))
@@ -840,17 +956,20 @@ Returns a futur resolving to a plist."
                       log-content))
            (lines (split-string content "\n"))
            (iterations 0)
-           (tools nil))
+           (tools nil)
+           (status-metrics (ekg-agent-bench--status-update-metrics content)))
       (dolist (line lines)
-        (when (string-match "Tools: \\(.*\\)" line)
+        (when-let ((tool-line (ekg-agent-bench--parse-tool-log-line line)))
           (cl-incf iterations)
-          (let ((tools-str (match-string 1 line)))
-            (dolist (segment (split-string tools-str ", "))
-              (when (string-match "Tool: \\([^ ]+\\)" segment)
-                (push (match-string 1 segment) tools))))))
-      (ekg-agent-bench--resolved (list :iterations iterations
-                                       :tools-used (delete-dups (nreverse tools))
-                                       :log content)))))
+          (push (cdr tool-line) tools)))
+      (ekg-agent-bench--resolved
+       (list :iterations iterations
+             :tools-used (delete-dups (nreverse tools))
+             :status-update-count
+             (plist-get status-metrics :status-update-count)
+             :max-status-update-gap
+             (plist-get status-metrics :max-status-update-gap)
+             :log content)))))
 
 (defun ekg-agent-bench--eval-verify-async (emacs-info verify-expr)
   "Async version of `ekg-agent-bench--eval-verify'.
@@ -897,7 +1016,7 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
          ;; Collect metrics.
          (metrics <- (ekg-agent-bench--extract-metrics-async emacs-info))
          ;; Verify.
-         (task-passed
+         (task-check
           <- (ekg-agent-bench--eval-verify-async
               emacs-info (ekg-agent-bench-task-verify-task task)))
          (skill-passed
@@ -908,7 +1027,29 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
               emacs-info (ekg-agent-bench-task-verify-memory task))))
       ;; Suppress byte-compiler warnings for unused variables.
       (ignore setup-result task-setup-result trigger-result)
-      (let ((wall-time (- (float-time) start-time)))
+      (let* ((wall-time (- (float-time) start-time))
+             (status-gap-target
+              (ekg-agent-bench-task-max-status-update-gap task))
+             (status-gap-passed
+              (if (or (eq status 'error)
+                      (null status-gap-target)
+                      (null metrics))
+                  'skip
+                (let ((gap (plist-get metrics :max-status-update-gap)))
+                  (and (numberp gap)
+                       (<= gap status-gap-target)))))
+             (task-passed (if (eq status 'timeout)
+                              nil
+                            (ekg-agent-bench--combine-check-results
+                             task-check status-gap-passed)))
+             (error-message
+              (cond
+               ((eq status 'timeout)
+                "task timed out")
+               ((null status-gap-passed)
+                (format "status update gap %.1fs exceeded target %.1fs"
+                        (or (plist-get metrics :max-status-update-gap) 0.0)
+                        status-gap-target)))))
         (ekg-agent-bench--safe-message "bench: %s completed (%s, %.0fs)"
                                        task-name status wall-time)
         (ekg-agent-bench--resolved
@@ -920,15 +1061,18 @@ Returns a futur resolving to an `ekg-agent-bench-result'."
           :iterations (or (plist-get metrics :iterations) 0)
           :tools-used (or (plist-get metrics :tools-used) nil)
           :wall-time wall-time
+          :status-update-count (or (plist-get metrics :status-update-count) 0)
+          :max-status-update-gap (plist-get metrics :max-status-update-gap)
+          :status-update-gap-target status-gap-target
           :status status
-          :error-message nil
+          :error-message error-message
           :agent-log (plist-get metrics :log)))))))
 
 (defun ekg-agent-bench--make-error-result (task-name error-msg)
   "Create an error result for TASK-NAME with ERROR-MSG."
   (make-ekg-agent-bench-result
    :name task-name :status 'error :error-message error-msg
-   :wall-time 0 :iterations 0))
+   :wall-time 0 :iterations 0 :status-update-count 0))
 
 (defun ekg-agent-bench--run-tasks-sequentially (task-specs results-so-far callback)
   "Run TASK-SPECS sequentially, each in a fresh subprocess.
