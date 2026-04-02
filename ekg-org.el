@@ -356,10 +356,12 @@ ARGS are additional arguments to the operation."
             (replace (nth 4 args)))
         (if replace
             (let ((temp-buf (generate-new-buffer " *ekg-temp*")))
-              (with-current-buffer temp-buf
-                (insert content))
-              (replace-buffer-contents temp-buf)
-              (kill-buffer temp-buf))
+              (unwind-protect
+                  (progn
+                    (with-current-buffer temp-buf
+                      (insert content))
+                    (replace-buffer-contents temp-buf))
+                (kill-buffer temp-buf)))
           (insert content))
         (setq-local buffer-file-name filename)
         ;; Return value must be (filename size)
