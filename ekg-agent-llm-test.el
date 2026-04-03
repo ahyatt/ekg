@@ -80,7 +80,7 @@
                             (ert-skip "EKG_BENCH_PROVIDER_FORM not set"))
                           (let* ((provider (eval ekg-agent-llm-test--provider-form t))
                                  (emacs-info (llm-test--start-emacs
-                                              :load-path the-load-paths
+                                              :extra-load-path the-load-paths
                                               :init-forms the-init-forms)))
                             (unwind-protect
                                 (let ((result (llm-test--run-test

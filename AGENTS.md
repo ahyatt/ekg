@@ -91,4 +91,5 @@ Uses `triples` library for RDF-like storage in SQLite:
 - Package requires Emacs 28.1+ and depends on `triples` and `llm` packages
 - Uses Eldev for development workflow (testing, linting, dependency management)
 - All code follows standard Emacs Lisp conventions with `lexical-binding: t`
-
+- All code in this package is designed for distribution to other users, so
+  nothing can depend on a specific emacs setup.

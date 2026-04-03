@@ -4,24 +4,49 @@
 ;; Run with: emacs --batch -l run-bench.el
 ;; Or run a single task: EKG_BENCH_TASK=fix-elisp-bug emacs --batch -l run-bench.el
 ;;
-;; Configure the provider by setting environment variables or editing
-;; the provider form below.
-
+;; Configure the environment by setting the following variables:
+;;
 ;; EKG_BENCH_PROVIDER_FORM: A sexp that will be evalled in the subprocess to
-;; create the LLM provider to run the agent.  It must support tool calling.
+;;   create the LLM provider to run the agent.  It must support tool calling.
+;;   Example: "(make-llm-openai :key \"sk-...\")"
+;;
+;; LLM_TEST_PATH: Path to the llm-test source directory. Defaults to
+;;   ../llm-test relative to this script.
+;;
+;; ELPA_PATH: Path to the ELPA directory containing installed packages.
+;;   Defaults to `package-user-dir` (usually ~/.emacs.d/elpa).
+;;
+;; EKG_BENCH_TASK: Optional. The name of a single benchmark task to run.
+;;   If unset, all benchmarks are run.
 
 ;;; Code:
 
-;; Add load paths.
-(add-to-list 'load-path (expand-file-name "~/src/ekg"))
-(add-to-list 'load-path (expand-file-name "~/src/llm-test"))
+(defvar ekg-bench-ekg-path
+  (file-name-directory (or load-file-name buffer-file-name default-directory))
+  "Path to the ekg source directory, determined from this script's location.")
 
-;; Add all elpa dirs.
-(let ((elpa-dir (expand-file-name "~/.emacs.d/elpa")))
-  (when (file-directory-p elpa-dir)
-    (dolist (dir (directory-files elpa-dir t "\\`[^.]"))
-      (when (file-directory-p dir)
-        (add-to-list 'load-path dir)))))
+(defvar ekg-bench-llm-test-path
+  (or (getenv "LLM_TEST_PATH")
+      (expand-file-name "../llm-test" ekg-bench-ekg-path))
+  "Path to the llm-test source directory.  Override with LLM_TEST_PATH env var.")
+
+(require 'package)
+
+(defvar ekg-bench-elpa-path
+  (or (getenv "ELPA_PATH")
+      (expand-file-name package-user-dir))
+  "Path to the ELPA directory.  Override with ELPA_PATH env var.")
+
+;; Add all elpa dirs to the end of load-path.
+(when (file-directory-p ekg-bench-elpa-path)
+  (dolist (dir (directory-files ekg-bench-elpa-path t "\\`[^.]"))
+    (when (file-directory-p dir)
+      (add-to-list 'load-path dir t))))
+
+;; Add source load paths to the front.
+(add-to-list 'load-path ekg-bench-ekg-path)
+(when (file-directory-p ekg-bench-llm-test-path)
+  (add-to-list 'load-path ekg-bench-llm-test-path))
 
 (require 'ekg-agent-bench)
 

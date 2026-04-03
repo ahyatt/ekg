@@ -153,9 +153,9 @@ Returns a list of `ekg-agent-bench-group' structs."
 ;;; Subprocess Management
 
 (defconst ekg-agent-bench--required-libraries
-  '("ekg" "ekg-agent" "ekg-llm" "ekg-embedding" "ekg-org"
+  '("ekg" "ekg-agent" "ekg-llm" "ekg-embedding" "ekg-org" "llm-test"
     "llm" "llm-openai" "llm-claude" "llm-vertex" "llm-gemini" "llm-ollama"
-    "llm-prompt"
+    "llm-prompt" "yaml"
     "plz" "plz-media-type" "plz-event-source"
     "triples" "triples-backups"
     "websocket" "async" "compat" "futur" "vui")
@@ -198,6 +198,7 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
           (require 'ekg-agent)
           (require 'ekg-llm)
           (require 'ekg-org)
+          (require 'llm-test)
           ,@(when ekg-agent-bench-provider-form
               `((setq ekg-llm-provider ,ekg-agent-bench-provider-form)))
           ;; Connect to the temp database.
