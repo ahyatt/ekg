@@ -354,10 +354,16 @@ ARGS are additional arguments to the operation."
       (let ((content (ekg-org-generate-org-content
                       (string-match ".*archive" filename)))
             (replace (nth 4 args)))
-        (when replace
-          (erase-buffer))
+        (if replace
+            (let ((temp-file (make-temp-file "ekg-org-")))
+              (write-region content nil temp-file nil 'silent)
+              (let ((inhibit-file-name-handlers
+                     (cons 'ekg-org-fs-handler inhibit-file-name-handlers))
+                    (inhibit-file-name-operation 'insert-file-contents))
+                (insert-file-contents temp-file nil nil nil t))
+              (delete-file temp-file))
+          (insert content))
         (setq-local buffer-file-name filename)
-        (insert content)
         ;; Return value must be (filename size)
         (list filename (length content))))
 
@@ -388,7 +394,7 @@ Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
         (with-current-buffer buf
           (when (and buffer-file-name
                      (string-match "\\`/ekg:" buffer-file-name)
-                     (buffer-modified-p buf))
+                     (not (buffer-modified-p buf)))
             (revert-buffer t t t)))))))
 
 ;; When we save an org note, any org buffers showing our fake files should
@@ -637,7 +643,13 @@ Reuses a hidden buffer to avoid repeated `org-mode' initialization."
 
 (defun ekg-org-view--note-at-point ()
   "Return the note ID at point, or nil."
-  (get-text-property (line-beginning-position) :ekg-org-note-id))
+  (or (get-text-property (line-beginning-position) :ekg-org-note-id)
+      (save-excursion
+        (let ((found nil))
+          (while (and (not found) (not (bobp)))
+            (forward-line -1)
+            (setq found (get-text-property (line-beginning-position) :ekg-org-note-id)))
+          found))))
 
 (defun ekg-org-view--level-at-point ()
   "Return the heading level at point, or nil."
@@ -1013,9 +1025,10 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-cur (ekg-org-view--sort-order note))
                (order-prev (ekg-org-view--sort-order prev))
                (ekg-org--inhibit-view-refresh t))
-          (triples-with-transaction ekg-db
-                                    (ekg-org-view--set-sort-order id order-prev)
-                                    (ekg-org-view--set-sort-order prev-id order-cur))
+          (triples-with-transaction
+            ekg-db
+            (ekg-org-view--set-sort-order id order-prev)
+            (ekg-org-view--set-sort-order prev-id order-cur))
           (ekg-org-view--refresh id))))))
 
 (defun ekg-org-view-move-down ()
@@ -1036,9 +1049,10 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-cur (ekg-org-view--sort-order note))
                (order-next (ekg-org-view--sort-order next))
                (ekg-org--inhibit-view-refresh t))
-          (triples-with-transaction ekg-db
-                                    (ekg-org-view--set-sort-order id order-next)
-                                    (ekg-org-view--set-sort-order next-id order-cur))
+          (triples-with-transaction
+            ekg-db
+            (ekg-org-view--set-sort-order id order-next)
+            (ekg-org-view--set-sort-order next-id order-cur))
           (ekg-org-view--refresh id))))))
 
 (defun ekg-org-view-demote ()
