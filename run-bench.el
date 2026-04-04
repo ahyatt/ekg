@@ -50,59 +50,61 @@
 
 (require 'ekg-agent-bench)
 
-;; Configure the LLM provider for the subprocess.
-;; Edit this form to match your provider.  It will be evaluated inside
-;; the test Emacs subprocess.
-;;
-;; Examples:
-;;   (make-llm-claude :key "sk-..." :chat-model "claude-sonnet-4-20250514")
-;;   (make-llm-openai :key "sk-..." :chat-model "gpt-4o")
-;;   (progn (require 'llm-vertex) (make-llm-vertex :project "my-project" :chat-model "gemini-2.0-flash"))
-(setq ekg-agent-bench-provider-form
-      (or (when (getenv "EKG_BENCH_PROVIDER_FORM")
-            (read (getenv "EKG_BENCH_PROVIDER_FORM")))
-          (error "Set EKG_BENCH_PROVIDER_FORM env var or edit run-bench.el")))
+(unless (or (bound-and-true-p byte-compile-current-file)
+            (boundp 'eldev-project-dir))
+  ;; Configure the LLM provider for the subprocess.
+  ;; Edit this form to match your provider.  It will be evaluated inside
+  ;; the test Emacs subprocess.
+  ;;
+  ;; Examples:
+  ;;   (make-llm-claude :key "sk-..." :chat-model "claude-sonnet-4-20250514")
+  ;;   (make-llm-openai :key "sk-..." :chat-model "gpt-4o")
+  ;;   (progn (require 'llm-vertex) (make-llm-vertex :project "my-project" :chat-model "gemini-2.0-flash"))
+  (setq ekg-agent-bench-provider-form
+        (or (when (getenv "EKG_BENCH_PROVIDER_FORM")
+              (read (getenv "EKG_BENCH_PROVIDER_FORM")))
+            (error "Set EKG_BENCH_PROVIDER_FORM env var or edit run-bench.el")))
 
-;; Sanity check: verify the subprocess can start and load ekg.
-(message "=== Sanity check: starting test Emacs ===")
-(let ((info (ekg-agent-bench--start-emacs)))
-  (unwind-protect
-      (progn
-        (message "ekg: %s" (llm-test--eval-in-emacs info "(featurep 'ekg)"))
-        (message "ekg-agent: %s" (llm-test--eval-in-emacs info "(featurep 'ekg-agent)"))
-        (message "ekg-db: %s" (llm-test--eval-in-emacs info "ekg-db-file"))
-        (message "provider: %s" (llm-test--eval-in-emacs info "(type-of ekg-llm-provider)")))
-    (llm-test--stop-emacs info)))
-(message "=== Sanity OK ===\n")
+  ;; Sanity check: verify the subprocess can start and load ekg.
+  (message "=== Sanity check: starting test Emacs ===")
+  (let ((info (ekg-agent-bench--start-emacs)))
+    (unwind-protect
+        (progn
+          (message "ekg: %s" (llm-test--eval-in-emacs info "(featurep 'ekg)"))
+          (message "ekg-agent: %s" (llm-test--eval-in-emacs info "(featurep 'ekg-agent)"))
+          (message "ekg-db: %s" (llm-test--eval-in-emacs info "ekg-db-file"))
+          (message "provider: %s" (llm-test--eval-in-emacs info "(type-of ekg-llm-provider)")))
+      (llm-test--stop-emacs info)))
+  (message "=== Sanity OK ===\n")
 
-;; Run benchmarks.
-(let ((task-name (getenv "EKG_BENCH_TASK")))
-  (if task-name
+  ;; Run benchmarks.
+  (let ((task-name (getenv "EKG_BENCH_TASK")))
+    (if task-name
+        (progn
+          (message "Running single task: %s" task-name)
+          (let ((result (ekg-agent-bench-run-one task-name)))
+            (message "\nResult: %s — task:%s skill:%s memory:%s iters:%d time:%.0fs status-updates:%d max-gap:%s"
+                     (ekg-agent-bench-result-name result)
+                     (ekg-agent-bench--format-pass (ekg-agent-bench-result-task-passed result))
+                     (ekg-agent-bench--format-pass (ekg-agent-bench-result-skill-passed result))
+                     (ekg-agent-bench--format-pass (ekg-agent-bench-result-memory-passed result))
+                     (ekg-agent-bench-result-iterations result)
+                     (ekg-agent-bench-result-wall-time result)
+                     (or (ekg-agent-bench-result-status-update-count result) 0)
+                     (let ((gap (ekg-agent-bench-result-max-status-update-gap result)))
+                       (if gap
+                           (format "%.1fs" gap)
+                         "n/a")))
+            (unless (ekg-agent-bench-result-task-passed result)
+              (kill-emacs 1))))
       (progn
-        (message "Running single task: %s" task-name)
-        (let ((result (ekg-agent-bench-run-one task-name)))
-          (message "\nResult: %s — task:%s skill:%s memory:%s iters:%d time:%.0fs status-updates:%d max-gap:%s"
-                   (ekg-agent-bench-result-name result)
-                   (ekg-agent-bench--format-pass (ekg-agent-bench-result-task-passed result))
-                   (ekg-agent-bench--format-pass (ekg-agent-bench-result-skill-passed result))
-                   (ekg-agent-bench--format-pass (ekg-agent-bench-result-memory-passed result))
-                   (ekg-agent-bench-result-iterations result)
-                   (ekg-agent-bench-result-wall-time result)
-                   (or (ekg-agent-bench-result-status-update-count result) 0)
-                   (let ((gap (ekg-agent-bench-result-max-status-update-gap result)))
-                     (if gap
-                         (format "%.1fs" gap)
-                       "n/a")))
-          (unless (ekg-agent-bench-result-task-passed result)
-            (kill-emacs 1))))
-    (progn
-      (message "Running all benchmarks...")
-      (let ((results (ekg-agent-bench-run)))
-        (let ((failures (seq-filter
-                         (lambda (r) (not (ekg-agent-bench-result-task-passed r)))
-                         results)))
-          (when failures
-            (message "\n%d task(s) FAILED" (length failures))
-            (kill-emacs 1)))))))
+        (message "Running all benchmarks...")
+        (let ((results (ekg-agent-bench-run)))
+          (let ((failures (seq-filter
+                           (lambda (r) (not (ekg-agent-bench-result-task-passed r)))
+                           results)))
+            (when failures
+              (message "\n%d task(s) FAILED" (length failures))
+              (kill-emacs 1))))))))
 
 ;;; run-bench.el ends here

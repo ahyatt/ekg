@@ -1090,36 +1090,37 @@ all use futur-based non-blocking IO."
            (task (cdr spec))
            (task-name (ekg-agent-bench-task-name task))
            (rest (cdr task-specs)))
-      (futur--register-callback
+      (futur-bind
        (ekg-agent-bench--start-emacs-async)
-       (lambda (start-err emacs-info)
-         (if start-err
-             ;; Daemon failed to start — record error and continue.
-             (progn
-               (ekg-agent-bench--safe-message
-                "bench: daemon start failed for %s: %S"
-                task-name start-err)
-               (push (ekg-agent-bench--make-error-result
-                      task-name
-                      (format "Daemon start failed: %S" start-err))
-                     results-so-far)
-               (ekg-agent-bench--run-tasks-sequentially
-                rest results-so-far callback))
-           ;; Daemon running — run the task async.
-           (futur--register-callback
-            (ekg-agent-bench--run-task-async emacs-info group-setup task)
-            (lambda (err val)
-              (llm-test--stop-emacs emacs-info)
-              (if err
-                  (progn
-                    (ekg-agent-bench--safe-message
-                     "bench: error running %s: %S" task-name err)
-                    (push (ekg-agent-bench--make-error-result
-                           task-name (format "%S" err))
-                          results-so-far))
-                (push val results-so-far))
-              (ekg-agent-bench--run-tasks-sequentially
-               rest results-so-far callback)))))))))
+       (lambda (emacs-info)
+         ;; Daemon running — run the task async.
+         (futur-bind
+          (ekg-agent-bench--run-task-async emacs-info group-setup task)
+          (lambda (val)
+            (llm-test--stop-emacs emacs-info)
+            (push val results-so-far)
+            (ekg-agent-bench--run-tasks-sequentially
+             rest results-so-far callback))
+          (lambda (err)
+            (llm-test--stop-emacs emacs-info)
+            (ekg-agent-bench--safe-message
+             "bench: error running %s: %S" task-name err)
+            (push (ekg-agent-bench--make-error-result
+                   task-name (format "%S" err))
+                  results-so-far)
+            (ekg-agent-bench--run-tasks-sequentially
+             rest results-so-far callback))))
+       (lambda (start-err)
+         ;; Daemon failed to start — record error and continue.
+         (ekg-agent-bench--safe-message
+          "bench: daemon start failed for %s: %S"
+          task-name start-err)
+         (push (ekg-agent-bench--make-error-result
+                task-name
+                (format "Daemon start failed: %S" start-err))
+               results-so-far)
+         (ekg-agent-bench--run-tasks-sequentially
+          rest results-so-far callback))))))
 
 ;;; Entry Points (synchronous, for ERT and batch use)
 
