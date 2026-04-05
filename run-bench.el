@@ -6,7 +6,7 @@
 ;;
 ;; Configure the environment by setting the following variables:
 ;;
-;; EKG_BENCH_PROVIDER_FORM: A sexp that will be evalled in the subprocess to
+;; LLM_TEST_PROVIDER_ELISP: A sexp that will be evalled in the subprocess to
 ;;   create the LLM provider to run the agent.  It must support tool calling.
 ;;   Example: "(make-llm-openai :key \"sk-...\")"
 ;;
@@ -25,11 +25,6 @@
   (file-name-directory (or load-file-name buffer-file-name default-directory))
   "Path to the ekg source directory, determined from this script's location.")
 
-(defvar ekg-bench-llm-test-path
-  (or (getenv "LLM_TEST_PATH")
-      (expand-file-name "../llm-test" ekg-bench-ekg-path))
-  "Path to the llm-test source directory.  Override with LLM_TEST_PATH env var.")
-
 (require 'package)
 
 (defvar ekg-bench-elpa-path
@@ -45,36 +40,21 @@
 
 ;; Add source load paths to the front.
 (add-to-list 'load-path ekg-bench-ekg-path)
-(when (file-directory-p ekg-bench-llm-test-path)
-  (add-to-list 'load-path ekg-bench-llm-test-path))
 
 (require 'ekg-agent-bench)
 
 (unless (or (bound-and-true-p byte-compile-current-file)
             (boundp 'eldev-project-dir))
-  ;; Configure the LLM provider for the subprocess.
-  ;; Edit this form to match your provider.  It will be evaluated inside
-  ;; the test Emacs subprocess.
-  ;;
-  ;; Examples:
-  ;;   (make-llm-claude :key "sk-..." :chat-model "claude-sonnet-4-20250514")
-  ;;   (make-llm-openai :key "sk-..." :chat-model "gpt-4o")
-  ;;   (progn (require 'llm-vertex) (make-llm-vertex :project "my-project" :chat-model "gemini-2.0-flash"))
-  (setq ekg-agent-bench-provider-form
-        (or (when (getenv "EKG_BENCH_PROVIDER_FORM")
-              (read (getenv "EKG_BENCH_PROVIDER_FORM")))
-            (error "Set EKG_BENCH_PROVIDER_FORM env var or edit run-bench.el")))
-
   ;; Sanity check: verify the subprocess can start and load ekg.
   (message "=== Sanity check: starting test Emacs ===")
   (let ((info (ekg-agent-bench--start-emacs)))
     (unwind-protect
         (progn
-          (message "ekg: %s" (llm-test--eval-in-emacs info "(featurep 'ekg)"))
-          (message "ekg-agent: %s" (llm-test--eval-in-emacs info "(featurep 'ekg-agent)"))
-          (message "ekg-db: %s" (llm-test--eval-in-emacs info "ekg-db-file"))
-          (message "provider: %s" (llm-test--eval-in-emacs info "(type-of ekg-llm-provider)")))
-      (llm-test--stop-emacs info)))
+          (message "ekg: %s" (ekg-agent-bench--eval-in-emacs info "(featurep 'ekg)"))
+          (message "ekg-agent: %s" (ekg-agent-bench--eval-in-emacs info "(featurep 'ekg-agent)"))
+          (message "ekg-db: %s" (ekg-agent-bench--eval-in-emacs info "ekg-db-file"))
+          (message "provider: %s" (ekg-agent-bench--eval-in-emacs info "(type-of ekg-llm-provider)")))
+      (ekg-agent-bench--stop-emacs info)))
   (message "=== Sanity OK ===\n")
 
   ;; Run benchmarks.

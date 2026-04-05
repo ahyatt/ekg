@@ -23,7 +23,7 @@
 ;; llm-tests/ directory.
 ;;
 ;; Tests are skipped unless an LLM provider is configured via the
-;; EKG_BENCH_PROVIDER_FORM environment variable.
+;; LLM_TEST_PROVIDER_ELISP environment variable.
 
 ;;; Code:
 
@@ -40,54 +40,18 @@
 (when (featurep 'llm-test)
   (require 'ekg-agent-bench)
 
-  (defvar ekg-agent-llm-test--provider-form
-    (when (getenv "EKG_BENCH_PROVIDER_FORM")
-      (read (getenv "EKG_BENCH_PROVIDER_FORM")))
-    "Provider form read from the environment, or nil.")
-
   (defun ekg-agent-llm-test--register ()
     "Register llm-test YAML specs from llm-tests/ as ERT tests."
-    (let* ((dir (expand-file-name
-                 "llm-tests"
-                 (file-name-directory
-                  (or load-file-name
-                      (locate-library "ekg-agent-llm-test")))))
-           (groups (llm-test-load-directory dir))
-           (load-paths (ekg-agent-bench--compute-load-paths))
-           (init-forms '((setq load-prefer-newer t))))
-      (dolist (group groups)
-        (let ((group-slug (llm-test--slugify (llm-test-group-name group)))
-              (setup (llm-test-group-setup group)))
-          (cl-loop
-           for spec in (llm-test-group-tests group)
-           for idx from 1
-           for test-name = (intern (format "ekg-agent-llm-test/%s/%d"
-                                           group-slug idx))
-           do (let ((the-spec spec)
-                    (the-setup setup)
-                    (the-load-paths load-paths)
-                    (the-init-forms init-forms))
-                (ert-set-test
-                 test-name
-                 (make-ert-test
-                  :name test-name
-                  :documentation (format "LLM test: %s (test %d)\n%s"
-                                         (llm-test-group-name group)
-                                         idx
-                                         (llm-test-spec-description the-spec))
-                  :body (lambda ()
-                          (unless ekg-agent-llm-test--provider-form
-                            (ert-skip "EKG_BENCH_PROVIDER_FORM not set"))
-                          (let* ((provider (eval ekg-agent-llm-test--provider-form t))
-                                 (emacs-info (llm-test--start-emacs
-                                              :extra-load-path the-load-paths
-                                              :init-forms the-init-forms)))
-                            (unwind-protect
-                                (let ((result (llm-test--run-test
-                                               provider emacs-info
-                                               the-setup the-spec)))
-                                  (llm-test--report-result result))
-                              (llm-test--stop-emacs emacs-info))))))))))))
+    (let ((dir (expand-file-name
+                "llm-tests"
+                (file-name-directory
+                 (or load-file-name
+                     (locate-library "ekg-agent-llm-test")))))
+          (load-paths (ekg-agent-bench--compute-load-paths))
+          (init-forms '((setq load-prefer-newer t))))
+      (llm-test-register-tests dir
+                               :extra-load-path load-paths
+                               :init-forms init-forms)))
 
   (ekg-agent-llm-test--register))
 

@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((emacs "28.1") (llm-test "0.1.0") (yaml "0.5.0"))
+;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: testing, tools
 ;; Version: 0.1.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -34,15 +34,11 @@
 ;;
 ;; Usage:
 ;;   (require 'ekg-agent-bench)
-;;   (setq ekg-agent-bench-provider-form
-;;         '(make-llm-claude :key "sk-..." :chat-model "..."))
 ;;   (ekg-agent-bench-run)
 
 ;;; Code:
 
 (require 'cl-lib)
-(require 'llm-test)
-(require 'yaml)
 (require 'ert)
 (require 'subr-x)
 ;; Disable futur's background thread before loading: on macOS NS port,
@@ -57,18 +53,19 @@
   "Benchmark suite for ekg-agent."
   :group 'ekg)
 
-(defcustom ekg-agent-bench-provider-form nil
-  "A form that constructs the LLM provider in the test subprocess.
-This is evaluated inside the fresh Emacs to create `ekg-llm-provider'.
-
-Example:
-  (make-llm-claude :key \"sk-...\" :chat-model \"claude-sonnet-4-20250514\")"
-  :type 'sexp
-  :group 'ekg-agent-bench)
-
 (defcustom ekg-agent-bench-poll-interval 2
   "Seconds between polls when waiting for agent completion."
   :type 'number
+  :group 'ekg-agent-bench)
+
+(defcustom ekg-agent-bench-frame-width 80
+  "Default frame width for the benchmark Emacs subprocess."
+  :type 'integer
+  :group 'ekg-agent-bench)
+
+(defcustom ekg-agent-bench-frame-height 40
+  "Default frame height for the benchmark Emacs subprocess."
+  :type 'integer
   :group 'ekg-agent-bench)
 
 (defcustom ekg-agent-bench-default-timeout 180
@@ -109,53 +106,57 @@ mismatches between the host and the daemon."
   status error-message
   agent-log)
 
-;;; YAML Parsing
+;;; ELD Parsing
 
-(defun ekg-agent-bench--parse-yaml-file (file)
-  "Parse a benchmark YAML FILE into an `ekg-agent-bench-group'."
-  (let* ((text (with-temp-buffer
-                 (insert-file-contents file)
-                 (buffer-string)))
-         (parsed (yaml-parse-string text))
-         (group-name (gethash 'group parsed))
-         (setup (or (gethash 'setup parsed) ""))
-         (tasks-array (gethash 'tasks parsed)))
+(defun ekg-agent-bench--parse-eld-file (file)
+  "Parse a benchmark ELD FILE into an `ekg-agent-bench-group'."
+  (let* ((parsed (with-temp-buffer
+                   (insert-file-contents file)
+                   (goto-char (point-min))
+                   (read (current-buffer))))
+         (group-name (plist-get parsed :group))
+         (setup (plist-get parsed :setup))
+         (tasks (plist-get parsed :tasks)))
     (unless group-name
-      (error "Benchmark YAML missing required 'group' key in %s" file))
-    (unless tasks-array
-      (error "Benchmark YAML missing required 'tasks' key in %s" file))
+      (error "Benchmark ELD missing required ':group' key in %s" file))
+    (unless tasks
+      (error "Benchmark ELD missing required ':tasks' key in %s" file))
     (make-ekg-agent-bench-group
      :name group-name
-     :setup setup
+     :setup (if setup (prin1-to-string setup) "")
      :tasks (mapcar
-             (lambda (task-hash)
+             (lambda (task-plist)
                (make-ekg-agent-bench-task
-                :name (gethash 'name task-hash)
-                :description (or (gethash 'description task-hash) "")
-                :setup (gethash 'setup task-hash)
-                :trigger (gethash 'trigger task-hash)
-                :verify-task (gethash 'verify-task task-hash)
-                :verify-skill (gethash 'verify-skill task-hash)
-                :verify-memory (gethash 'verify-memory task-hash)
-                :max-iterations (gethash 'max-iterations task-hash)
-                :timeout (gethash 'timeout task-hash)
+                :name (plist-get task-plist :name)
+                :description (or (plist-get task-plist :description) "")
+                :setup (when-let ((val (plist-get task-plist :setup)))
+                         (prin1-to-string val))
+                :trigger (when-let ((val (plist-get task-plist :trigger)))
+                           (prin1-to-string val))
+                :verify-task (when-let ((val (plist-get task-plist :verify-task)))
+                               (prin1-to-string val))
+                :verify-skill (when-let ((val (plist-get task-plist :verify-skill)))
+                                (prin1-to-string val))
+                :verify-memory (when-let ((val (plist-get task-plist :verify-memory)))
+                                 (prin1-to-string val))
+                :max-iterations (plist-get task-plist :max-iterations)
+                :timeout (plist-get task-plist :timeout)
                 :max-status-update-gap
-                (gethash 'max-status-update-gap task-hash)))
-             (append tasks-array nil)))))
+                (plist-get task-plist :max-status-update-gap)))
+             tasks))))
 
 (defun ekg-agent-bench--load-directory (directory)
-  "Load all benchmark YAML files from DIRECTORY.
+  "Load all benchmark ELD files from DIRECTORY.
 Returns a list of `ekg-agent-bench-group' structs."
-  (let ((files (append (directory-files directory t "\\.yaml\\'")
-                       (directory-files directory t "\\.yml\\'"))))
-    (mapcar #'ekg-agent-bench--parse-yaml-file files)))
+  (let ((files (directory-files directory t "\\.eld\\'")))
+    (mapcar #'ekg-agent-bench--parse-eld-file files)))
 
 ;;; Subprocess Management
 
 (defconst ekg-agent-bench--required-libraries
-  '("ekg" "ekg-agent" "ekg-llm" "ekg-embedding" "ekg-org" "llm-test"
+  '("ekg" "ekg-agent" "ekg-llm" "ekg-embedding" "ekg-org"
     "llm" "llm-openai" "llm-claude" "llm-vertex" "llm-gemini" "llm-ollama"
-    "llm-prompt" "yaml"
+    "llm-prompt"
     "plz" "plz-media-type" "plz-event-source"
     "triples" "triples-backups"
     "websocket" "async" "compat" "futur" "vui")
@@ -198,9 +199,6 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
           (require 'ekg-agent)
           (require 'ekg-llm)
           (require 'ekg-org)
-          (require 'llm-test)
-          ,@(when ekg-agent-bench-provider-form
-              `((setq ekg-llm-provider ,ekg-agent-bench-provider-form)))
           ;; Connect to the temp database.
           (ekg-connect)
           ;; Isolate the subprocess so it won't find any AGENTS.md
@@ -227,6 +225,70 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
          (insert (format "Init error: %S\n" err))
          (insert (format "Load path:\n%s\n"
                          (mapconcat #'identity load-path "\n"))))))))
+
+(defun ekg-agent-bench--eval-in-emacs (emacs-info sexp)
+  "Evaluate SEXP in the Emacs subprocess EMACS-INFO.
+Returns the output string, or signals an error on failure."
+  (let* ((server-name (plist-get emacs-info :server-name))
+         (socket-dir (plist-get emacs-info :socket-dir))
+         (socket-file (expand-file-name server-name socket-dir))
+         (sexp-str (if (stringp sexp) sexp (format "%S" sexp)))
+         (out-buf (generate-new-buffer " *ekg-bench-eval*")))
+    (unwind-protect
+        (let ((exit-code
+               (call-process "emacsclient" nil out-buf nil
+                             "--socket-name" socket-file
+                             "--eval" sexp-str)))
+          (with-current-buffer out-buf
+            (let ((output (buffer-string)))
+              (if (= exit-code 0)
+                  (string-trim output)
+                (error "emacsclient failed with exit code %d: %s"
+                       exit-code output)))))
+      (kill-buffer out-buf))))
+
+(defun ekg-agent-bench--eval-in-emacs-async (emacs-info sexp)
+  "Evaluate SEXP in the Emacs subprocess EMACS-INFO asynchronously.
+Returns a futur that resolves to the output string."
+  (let* ((server-name (plist-get emacs-info :server-name))
+         (socket-dir (plist-get emacs-info :socket-dir))
+         (socket-file (expand-file-name server-name socket-dir))
+         (sexp-str (if (stringp sexp) sexp (format "%S" sexp)))
+         (out-buf (generate-new-buffer " *ekg-bench-eval-async*"))
+         (f (futur-process-call "emacsclient" nil out-buf nil
+                                "--socket-name" socket-file
+                                "--eval" sexp-str)))
+    (futur-bind
+     f
+     (lambda (exit-code)
+       (let ((output (with-current-buffer out-buf
+                       (string-trim (buffer-string)))))
+         (kill-buffer out-buf)
+         (if (= exit-code 0)
+             output
+           (error "emacsclient failed with exit code %d: %s"
+                  exit-code output)))))))
+
+(defun ekg-agent-bench--stop-emacs (emacs-info)
+  "Stop the Emacs subprocess EMACS-INFO and clean up."
+  (let* ((server-name (plist-get emacs-info :server-name))
+         (socket-dir (plist-get emacs-info :socket-dir))
+         (socket-file (expand-file-name server-name socket-dir))
+         (init-file (plist-get emacs-info :init-file))
+         (process (plist-get emacs-info :process)))
+    (ignore-errors
+      (call-process "emacsclient" nil nil nil
+                    "--socket-name" socket-file
+                    "--eval" "(kill-emacs)"))
+    ;; Give it a moment to exit.
+    (let ((deadline (+ (float-time) 5)))
+      (while (and (process-live-p process)
+                  (< (float-time) deadline))
+        (sit-for 0.1)))
+    (when (process-live-p process)
+      (kill-process process))
+    (ignore-errors (delete-directory socket-dir t))
+    (ignore-errors (delete-file init-file))))
 
 (defvar ekg-agent-bench--server-counter 0
   "Counter for generating unique server names.")
@@ -265,7 +327,7 @@ the daemon fails to start.  Blocks until the daemon is ready.  Use
                      "-l" init-file
                      (format "--daemon=%s" bench-server-name)))
            (socket-file (expand-file-name bench-server-name socket-dir))
-           (deadline (+ (float-time) llm-test-timeout)))
+           (deadline (+ (float-time) ekg-agent-bench-default-timeout)))
       ;; Wait for the daemon to be ready.
       (while (and (< (float-time) deadline)
                   (process-live-p process)
@@ -313,10 +375,10 @@ the daemon fails to start.  Blocks until the daemon is ready.  Use
                         :server-name bench-server-name
                         :socket-dir socket-dir
                         :init-file init-file)))
-        (llm-test--eval-in-emacs
+        (ekg-agent-bench--eval-in-emacs
          info
          (format "(set-frame-size (selected-frame) %d %d)"
-                 llm-test-frame-width llm-test-frame-height))
+                 ekg-agent-bench-frame-width ekg-agent-bench-frame-height))
         info))))
 
 (defun ekg-agent-bench--wait-for-socket-async (socket-file process deadline
@@ -369,7 +431,7 @@ Returns a futur that resolves to an emacs-info plist.  Unlike
                      buf-name emacs-bin "-Q" "-l" init-file
                      (format "--daemon=%s" bench-server-name)))
            (socket-file (expand-file-name bench-server-name socket-dir))
-           (deadline (+ (float-time) llm-test-timeout))
+           (deadline (+ (float-time) ekg-agent-bench-default-timeout))
            (cleanup (lambda ()
                       (ignore-errors (delete-directory socket-dir t))
                       (ignore-errors (delete-file init-file))
@@ -393,10 +455,10 @@ Returns a futur that resolves to an emacs-info plist.  Unlike
                           :init-file init-file)))
           ;; Set frame size asynchronously.
           (futur-let*
-              ((_ <- (llm-test--eval-in-emacs-async
+              ((_ <- (ekg-agent-bench--eval-in-emacs-async
                       info
                       (format "(set-frame-size (selected-frame) %d %d)"
-                              llm-test-frame-width llm-test-frame-height))))
+                              ekg-agent-bench-frame-width ekg-agent-bench-frame-height))))
             (ekg-agent-bench--resolved info)))))))
 
 ;;; Agent Polling and Metric Extraction
@@ -404,7 +466,7 @@ Returns a futur that resolves to an emacs-info plist.  Unlike
 (defun ekg-agent-bench--find-log-buffer (emacs-info)
   "Find the ekg agent log buffer name in the subprocess EMACS-INFO.
 Return the buffer name string, or nil if not found."
-  (let ((result (llm-test--eval-in-emacs
+  (let ((result (ekg-agent-bench--eval-in-emacs
                  emacs-info
                  "(car (seq-filter
                         (lambda (b) (string-match-p \"\\\\*ekg agent log:\" (buffer-name b)))
@@ -416,7 +478,7 @@ Return the buffer name string, or nil if not found."
 
 (defun ekg-agent-bench--agent-running-p (emacs-info log-buffer-name)
   "Check if the agent is still running in EMACS-INFO log buffer LOG-BUFFER-NAME."
-  (let ((result (llm-test--eval-in-emacs
+  (let ((result (ekg-agent-bench--eval-in-emacs
                  emacs-info
                  (format "(if (and (get-buffer %S)
                                    (buffer-local-value 'ekg-agent--running-p
@@ -500,7 +562,7 @@ Return a cons of (TIMESTAMP . TOOL-NAME), or nil if LINE is not a tool line."
   "Extract benchmark metrics from the agent log buffer in EMACS-INFO.
 Return a plist including iterations, tools, status-update data, and log text."
   (let* ((log-content
-          (llm-test--eval-in-emacs
+          (ekg-agent-bench--eval-in-emacs
            emacs-info
            "(let ((buf (car (seq-filter
                              (lambda (b) (string-match-p \"\\\\*ekg agent log:\" (buffer-name b)))
@@ -535,7 +597,7 @@ Return t if truthy, `skip' if VERIFY-EXPR is nil (not applicable),
 nil if the expression evaluated to false."
   (if (null verify-expr)
       'skip
-    (let ((result (llm-test--eval-in-emacs
+    (let ((result (ekg-agent-bench--eval-in-emacs
                    emacs-info
                    (format "(if (progn %s) \"pass\" \"fail\")" verify-expr))))
       (equal result "\"pass\""))))
@@ -571,7 +633,7 @@ Returns an `ekg-agent-bench-result'."
     ;; Run group setup.
     (when (and group-setup (not (string-empty-p group-setup)))
       (condition-case err
-          (llm-test--eval-in-emacs
+          (ekg-agent-bench--eval-in-emacs
            emacs-info
            (format "(progn %s nil)" group-setup))
         (error (setq error-msg (format "Group setup failed: %s"
@@ -581,7 +643,7 @@ Returns an `ekg-agent-bench-result'."
                (ekg-agent-bench-task-setup task)
                (not (string-empty-p (ekg-agent-bench-task-setup task))))
       (condition-case err
-          (llm-test--eval-in-emacs
+          (ekg-agent-bench--eval-in-emacs
            emacs-info
            (format "(progn %s nil)" (ekg-agent-bench-task-setup task)))
         (error (setq error-msg (format "Task setup failed: %s"
@@ -592,7 +654,7 @@ Returns an `ekg-agent-bench-result'."
     ;; block the emacsclient eval.
     (when (not error-msg)
       (condition-case err
-          (llm-test--eval-in-emacs
+          (ekg-agent-bench--eval-in-emacs
            emacs-info
            (format "(progn (run-at-time 0 nil (lambda () %s)) nil)"
                    (ekg-agent-bench-task-trigger task)))
@@ -774,34 +836,32 @@ Returns an `ekg-agent-bench-result'."
   "Run a diagnostic check to verify the benchmark subprocess can start.
 Reports which libraries load successfully and whether ekg connects."
   (interactive)
-  (unless ekg-agent-bench-provider-form
-    (user-error "Set `ekg-agent-bench-provider-form' first"))
   (message "ekg-agent-bench: computing load paths...")
   (let ((paths (ekg-agent-bench--compute-load-paths)))
     (message "  %d directories on load-path" (length paths))
     (dolist (p paths)
       (message "    %s" p)))
   (message "ekg-agent-bench: starting subprocess (timeout %ds)..."
-           llm-test-timeout)
+           ekg-agent-bench-default-timeout)
   (let ((info (ekg-agent-bench--start-emacs)))
     (unwind-protect
         (progn
           (message "  daemon started OK")
           (dolist (lib '("ekg" "ekg-agent" "ekg-llm" "ekg-org" "ekg-embedding"
                          "llm" "triples" "futur" "vui"))
-            (let ((result (llm-test--eval-in-emacs
+            (let ((result (ekg-agent-bench--eval-in-emacs
                            info
                            (format "(if (featurep '%s) \"loaded\" \"NOT loaded\")"
                                    lib))))
               (message "  %s: %s" lib result)))
           (message "  ekg-db: %s"
-                   (llm-test--eval-in-emacs info "(if ekg-db \"connected\" \"nil\")"))
+                   (ekg-agent-bench--eval-in-emacs info "(if ekg-db \"connected\" \"nil\")"))
           (message "  provider: %s"
-                   (llm-test--eval-in-emacs info "(type-of ekg-llm-provider)"))
+                   (ekg-agent-bench--eval-in-emacs info "(type-of ekg-llm-provider)"))
           (message "  ekg-db-file: %s"
-                   (llm-test--eval-in-emacs info "ekg-db-file"))
+                   (ekg-agent-bench--eval-in-emacs info "ekg-db-file"))
           (message "ekg-agent-bench: diagnosis PASSED"))
-      (llm-test--stop-emacs info))))
+      (ekg-agent-bench--stop-emacs info))))
 
 ;;; ERT Registration
 
@@ -823,8 +883,8 @@ Reports which libraries load successfully and whether ekg connects."
                                      (ekg-agent-bench-task-name task)
                                      (ekg-agent-bench-task-description task))
               :body (lambda ()
-                      (unless ekg-agent-bench-provider-form
-                        (ert-skip "ekg-agent-bench-provider-form not set"))
+                      (unless (getenv "LLM_TEST_PROVIDER_ELISP")
+                        (ert-skip "LLM_TEST_PROVIDER_ELISP not set"))
                       (let ((emacs-info (ekg-agent-bench--start-emacs)))
                         (unwind-protect
                             (let ((result (ekg-agent-bench--run-task
@@ -839,7 +899,7 @@ Reports which libraries load successfully and whether ekg connects."
                                              (format ", error: %s"
                                                      (ekg-agent-bench-result-error-message result))
                                            "")))))
-                          (llm-test--stop-emacs emacs-info))))))))))))
+                          (ekg-agent-bench--stop-emacs emacs-info))))))))))))
 
 ;;; Entry Points
 
@@ -894,7 +954,7 @@ via `run-at-time'.  Use for callbacks that do UI work (e.g.
 (defun ekg-agent-bench--eval-async (emacs-info expr)
   "Evaluate EXPR in the subprocess EMACS-INFO asynchronously.
 Return a futur that resolves to the result string."
-  (llm-test--eval-in-emacs-async emacs-info expr))
+  (ekg-agent-bench--eval-in-emacs-async emacs-info expr))
 
 (defun ekg-agent-bench--poll-step-async (emacs-info deadline log-buf)
   "One async poll step in EMACS-INFO until DEADLINE with LOG-BUF.
@@ -1098,12 +1158,12 @@ all use futur-based non-blocking IO."
          (futur-bind
           (ekg-agent-bench--run-task-async emacs-info group-setup task)
           (lambda (val)
-            (llm-test--stop-emacs emacs-info)
+            (ekg-agent-bench--stop-emacs emacs-info)
             (push val results-so-far)
             (ekg-agent-bench--run-tasks-sequentially
              rest results-so-far callback))
           (lambda (err)
-            (llm-test--stop-emacs emacs-info)
+            (ekg-agent-bench--stop-emacs emacs-info)
             (ekg-agent-bench--safe-message
              "bench: error running %s: %S" task-name err)
             (push (ekg-agent-bench--make-error-result
@@ -1130,8 +1190,6 @@ all use futur-based non-blocking IO."
   "Run all benchmark tasks from DIRECTORY and display results.
 DIRECTORY defaults to the benchmarks/ subdirectory next to this file."
   (interactive)
-  (unless ekg-agent-bench-provider-form
-    (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (let* ((dir (or directory
                   (expand-file-name "benchmarks"
                                     (file-name-directory
@@ -1146,11 +1204,11 @@ DIRECTORY defaults to the benchmarks/ subdirectory next to this file."
             (unwind-protect
                 (push (ekg-agent-bench--run-task emacs-info group-setup task)
                       all-results)
-              (llm-test--stop-emacs emacs-info))))))
+              (ekg-agent-bench--stop-emacs emacs-info))))))
     (setq all-results (nreverse all-results))
     (ekg-agent-bench--display-results
      all-results
-     (format "%S" ekg-agent-bench-provider-form))
+     (getenv "LLM_TEST_PROVIDER_ELISP"))
     all-results))
 
 ;;;###autoload
@@ -1158,8 +1216,6 @@ DIRECTORY defaults to the benchmarks/ subdirectory next to this file."
   "Run a single benchmark task by TASK-NAME and display results.
 DIRECTORY defaults to the benchmarks/ subdirectory."
   (interactive "sTask name: ")
-  (unless ekg-agent-bench-provider-form
-    (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (let* ((dir (or directory
                   (expand-file-name "benchmarks"
                                     (file-name-directory
@@ -1185,9 +1241,9 @@ DIRECTORY defaults to the benchmarks/ subdirectory."
                          task)))
             (ekg-agent-bench--display-results
              (list result)
-             (format "%S" ekg-agent-bench-provider-form))
+             (getenv "LLM_TEST_PROVIDER_ELISP"))
             result)
-        (llm-test--stop-emacs emacs-info)))))
+        (ekg-agent-bench--stop-emacs emacs-info)))))
 
 ;;; Entry Points (async, non-blocking)
 
@@ -1197,8 +1253,6 @@ DIRECTORY defaults to the benchmarks/ subdirectory."
 DIRECTORY defaults to the benchmarks/ subdirectory next to this file.
 Results are displayed in *ekg-agent-bench* when all tasks complete."
   (interactive)
-  (unless ekg-agent-bench-provider-form
-    (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (ekg-agent-bench--ensure-no-background-thread)
   (let* ((dir (or directory
                   (expand-file-name "benchmarks"
@@ -1221,7 +1275,7 @@ Results are displayed in *ekg-agent-bench* when all tasks complete."
                  task-specs nil
                  (lambda (results)
                    (ekg-agent-bench--display-results
-                    results (format "%S" ekg-agent-bench-provider-form))
+                    results (getenv "LLM_TEST_PROVIDER_ELISP"))
                    (ekg-agent-bench--safe-message
                     "ekg-agent-bench: complete (%d tasks)"
                     (length results))))))
@@ -1232,8 +1286,6 @@ Results are displayed in *ekg-agent-bench* when all tasks complete."
 DIRECTORY defaults to the benchmarks/ subdirectory.
 Results are displayed in *ekg-agent-bench* when the task completes."
   (interactive "sTask name: ")
-  (unless ekg-agent-bench-provider-form
-    (user-error "Set `ekg-agent-bench-provider-form' before running benchmarks"))
   (ekg-agent-bench--ensure-no-background-thread)
   (let* ((dir (or directory
                   (expand-file-name "benchmarks"
@@ -1260,7 +1312,7 @@ Results are displayed in *ekg-agent-bench* when the task completes."
                    nil
                    (lambda (results)
                      (ekg-agent-bench--display-results
-                      results (format "%S" ekg-agent-bench-provider-form))
+                      results (getenv "LLM_TEST_PROVIDER_ELISP"))
                      (ekg-agent-bench--safe-message
                       "ekg-agent-bench: %s complete" task-name))))))
 
