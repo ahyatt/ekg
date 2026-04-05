@@ -77,7 +77,7 @@ Example:
   :group 'ekg-agent-bench)
 
 (defcustom ekg-agent-bench-extra-load-paths nil
-  "Additional directories to add to the test subprocess load-path.
+  "Additional directories to add to the test subprocess `load-path'.
 Use this for provider-specific dependencies not auto-detected."
   :type '(repeat directory)
   :group 'ekg-agent-bench)
@@ -159,21 +159,21 @@ Returns a list of `ekg-agent-bench-group' structs."
     "plz" "plz-media-type" "plz-event-source"
     "triples" "triples-backups"
     "websocket" "async" "compat" "futur" "vui")
-  "Libraries whose directories are added to the subprocess load-path.
+  "Libraries whose directories are added to the subprocess `load-path'.
 Libraries not found are silently skipped.")
 
 (defun ekg-agent-bench--emacs-builtin-p (dir)
-  "Return non-nil if DIR is inside an Emacs installation lisp tree.
-The subprocess already has the same built-in lisp dirs on its
-default load-path, so adding them explicitly is redundant."
+  "Return non-nil if DIR is inside an Emacs installation Lisp tree.
+The subprocess already has the same built-in Lisp dirs on its
+default `load-path', so adding them explicitly is redundant."
   (let ((expanded (expand-file-name dir)))
     (or (string-match-p "/Emacs\\.app/.*/lisp" expanded)
         (string-match-p "/share/emacs/[0-9]" expanded))))
 
 (defun ekg-agent-bench--compute-load-paths ()
-  "Compute load-path entries needed by the test subprocess.
+  "Compute `load-path' entries needed by the test subprocess.
 Includes directories for required libraries found via `locate-library',
-but excludes Emacs built-in lisp directories to avoid version mismatches
+but excludes Emacs built-in Lisp directories to avoid version mismatches
 between the host Emacs and the subprocess daemon."
   (let ((paths (copy-sequence ekg-agent-bench-extra-load-paths)))
     (dolist (lib ekg-agent-bench--required-libraries)
@@ -402,8 +402,8 @@ Returns a futur that resolves to an emacs-info plist.  Unlike
 ;;; Agent Polling and Metric Extraction
 
 (defun ekg-agent-bench--find-log-buffer (emacs-info)
-  "Find the ekg agent log buffer name in the subprocess.
-Returns the buffer name string, or nil if not found."
+  "Find the ekg agent log buffer name in the subprocess EMACS-INFO.
+Return the buffer name string, or nil if not found."
   (let ((result (llm-test--eval-in-emacs
                  emacs-info
                  "(car (seq-filter
@@ -415,7 +415,7 @@ Returns the buffer name string, or nil if not found."
         (match-string 0 result)))))
 
 (defun ekg-agent-bench--agent-running-p (emacs-info log-buffer-name)
-  "Check if the agent is still running in LOG-BUFFER-NAME."
+  "Check if the agent is still running in EMACS-INFO log buffer LOG-BUFFER-NAME."
   (let ((result (llm-test--eval-in-emacs
                  emacs-info
                  (format "(if (and (get-buffer %S)
@@ -426,8 +426,8 @@ Returns the buffer name string, or nil if not found."
     (equal result "\"running\"")))
 
 (defun ekg-agent-bench--poll-until-done (emacs-info timeout)
-  "Poll the subprocess until the agent finishes or TIMEOUT seconds elapse.
-Returns `done' if the agent finished, `timeout' if it timed out."
+  "Poll the subprocess EMACS-INFO until the agent finishes.
+Return `done' if the agent finished, `timeout' if TIMEOUT seconds elapse."
   (let ((deadline (+ (float-time) timeout))
         (log-buf nil))
     ;; First, wait for the log buffer to appear.
@@ -497,8 +497,8 @@ Return a cons of (TIMESTAMP . TOOL-NAME), or nil if LINE is not a tool line."
             :max-status-update-gap max-gap))))
 
 (defun ekg-agent-bench--extract-metrics (emacs-info)
-  "Extract benchmark metrics from the agent log buffer.
-Returns a plist including iterations, tools, status-update data, and log text."
+  "Extract benchmark metrics from the agent log buffer in EMACS-INFO.
+Return a plist including iterations, tools, status-update data, and log text."
   (let* ((log-content
           (llm-test--eval-in-emacs
            emacs-info
@@ -530,8 +530,8 @@ Returns a plist including iterations, tools, status-update data, and log text."
           :log content)))
 
 (defun ekg-agent-bench--eval-verify (emacs-info verify-expr)
-  "Evaluate VERIFY-EXPR in the subprocess.
-Returns t if truthy, `skip' if VERIFY-EXPR is nil (not applicable),
+  "Evaluate VERIFY-EXPR in the subprocess EMACS-INFO.
+Return t if truthy, `skip' if VERIFY-EXPR is nil (not applicable),
 nil if the expression evaluated to false."
   (if (null verify-expr)
       'skip
@@ -806,7 +806,7 @@ Reports which libraries load successfully and whether ekg connects."
 ;;; ERT Registration
 
 (defun ekg-agent-bench-register-ert-tests (directory)
-  "Register benchmark tasks from DIRECTORY as ERT tests."
+  "Register benchmark tasks from DIRECTORY as ERT test cases."
   (let ((groups (ekg-agent-bench--load-directory directory)))
     (dolist (group groups)
       (let ((group-setup (ekg-agent-bench-group-setup group)))
@@ -874,8 +874,8 @@ Uses `error' signal instead of `quit' because the thread runs with
     (setq futur--background nil)))
 
 (defun ekg-agent-bench--safe-message (fmt &rest args)
-  "Like `message' but safe to call from any thread.
-On the main thread, calls `message' directly.  On a background thread,
+  "Like `message' with FMT and ARGS, but safe to call from any thread.
+On the main thread, call `message' directly.  On a background thread,
 bounces via `run-at-time' to avoid the macOS NS port deadlock where
 `message' triggers redisplay from a non-main thread."
   (if (eq (current-thread) main-thread)
@@ -883,7 +883,7 @@ bounces via `run-at-time' to avoid the macOS NS port deadlock where
     (apply #'run-at-time 0 nil #'message fmt args)))
 
 (defun ekg-agent-bench--safe-funcall (fn &rest args)
-  "Like `funcall' but guaranteed to run FN on the main thread.
+  "Like `funcall' but guaranteed to run FN with ARGS on the main thread.
 If already on the main thread, calls directly.  Otherwise bounces
 via `run-at-time'.  Use for callbacks that do UI work (e.g.
 `pop-to-buffer', `ekg-agent-bench--display-results')."
@@ -892,12 +892,13 @@ via `run-at-time'.  Use for callbacks that do UI work (e.g.
     (apply #'run-at-time 0 nil fn args)))
 
 (defun ekg-agent-bench--eval-async (emacs-info expr)
-  "Evaluate EXPR in the subprocess asynchronously.
-Returns a futur that resolves to the result string."
+  "Evaluate EXPR in the subprocess EMACS-INFO asynchronously.
+Return a futur that resolves to the result string."
   (llm-test--eval-in-emacs-async emacs-info expr))
 
 (defun ekg-agent-bench--poll-step-async (emacs-info deadline log-buf)
-  "One async poll step.  Returns a futur resolving to \\='done or \\='timeout."
+  "One async poll step in EMACS-INFO until DEADLINE with LOG-BUF.
+Return a futur resolving to `done' or `timeout'."
   (if (>= (float-time) deadline)
       (ekg-agent-bench--resolved 'timeout)
     (if (not log-buf)
@@ -933,14 +934,14 @@ Returns a futur that resolves to the result string."
           (ekg-agent-bench--resolved 'done))))))
 
 (defun ekg-agent-bench--poll-until-done-async (emacs-info timeout)
-  "Poll the subprocess asynchronously until the agent finishes.
-Returns a futur resolving to \\='done or \\='timeout."
+  "Poll EMACS-INFO asynchronously until the agent finishes or TIMEOUT is reached.
+Return a futur resolving to `done' or `timeout'."
   (let ((deadline (+ (float-time) timeout)))
     (ekg-agent-bench--poll-step-async emacs-info deadline nil)))
 
 (defun ekg-agent-bench--extract-metrics-async (emacs-info)
-  "Async version of `ekg-agent-bench--extract-metrics'.
-Returns a futur resolving to a plist."
+  "Async version of `ekg-agent-bench--extract-metrics' for EMACS-INFO.
+Return a futur resolving to a plist."
   (futur-let*
       ((log-content <- (ekg-agent-bench--eval-async
                         emacs-info
@@ -973,8 +974,8 @@ Returns a futur resolving to a plist."
              :log content)))))
 
 (defun ekg-agent-bench--eval-verify-async (emacs-info verify-expr)
-  "Async version of `ekg-agent-bench--eval-verify'.
-Returns a futur resolving to t, nil, or \\='skip."
+  "Evaluate VERIFY-EXPR asynchronously in EMACS-INFO.
+Return a futur resolving to t, nil, or `skip'."
   (if (null verify-expr)
       (ekg-agent-bench--resolved 'skip)
     (futur-let*
@@ -984,8 +985,8 @@ Returns a futur resolving to t, nil, or \\='skip."
       (ekg-agent-bench--resolved (equal result "\"pass\"")))))
 
 (defun ekg-agent-bench--run-task-async (emacs-info group-setup task)
-  "Run a single benchmark TASK asynchronously.
-Returns a futur resolving to an `ekg-agent-bench-result'."
+  "Run a single benchmark TASK asynchronously in EMACS-INFO with GROUP-SETUP.
+Return a futur resolving to an `ekg-agent-bench-result'."
   (let ((start-time (float-time))
         (timeout (or (ekg-agent-bench-task-timeout task)
                      ekg-agent-bench-default-timeout))

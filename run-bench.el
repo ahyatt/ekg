@@ -1,8 +1,8 @@
 ;;; run-bench.el --- Script to run ekg agent benchmarks in batch -*- lexical-binding: t -*-
 
 ;;; Commentary:
-;; Run with: emacs --batch -l run-bench.el
-;; Or run a single task: EKG_BENCH_TASK=fix-elisp-bug emacs --batch -l run-bench.el
+;; Run with: Emacs --batch -l run-bench.el
+;; Or run a single task: EKG_BENCH_TASK=fix-elisp-bug Emacs --batch -l run-bench.el
 ;;
 ;; Configure the environment by setting the following variables:
 ;;
