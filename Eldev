@@ -6,5 +6,5 @@
 (eldev-add-extra-dependencies 'test '(:package markdown-mode :archive melpa))
 (eldev-add-extra-dependencies 'test 'denote)
 (eldev-add-extra-dependencies 'test 'futur)
-(eldev-add-extra-dependencies 'test '(:package llm-test :archive melpa-unstable))
-(eldev-add-extra-dependencies 'test '(:package vui :archive melpa-unstable))
+(eldev-add-extra-dependencies 'test 'llm-test)
+(eldev-add-extra-dependencies 'test 'vui)
