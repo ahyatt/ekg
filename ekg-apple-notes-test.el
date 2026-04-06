@@ -1,5 +1,7 @@
 ;;; ekg-apple-notes-test.el --- Tests for ekg-apple-notes -*- lexical-binding: t -*-
 
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
 ;;; Commentary:
 ;; Tests for the pure functions in ekg-apple-notes: tag conversion,
 ;; HTML processing, and content round-trips.
