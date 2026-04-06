@@ -1519,7 +1519,7 @@ note at point if in a `ekg-notes-mode` buffer.
 
 EXTRA-TOOLS is a list of additional tools to make available to the
 agent."
-  (interactive "sQuestion: \n")
+  (interactive "sQuestion: \n" ekg-notes-mode ekg-edit-mode ekg-org-view-mode)
   (ekg-connect)
   (let* ((note (or (and id (ekg-agent--get-note-with-id id))
                    (ekg-current-note-or-error-expanded)))
@@ -2146,7 +2146,7 @@ The agent is given the context of the last 10 notes with similar
 tags.
 
 ARG, if non-nil, allows editing the instructions."
-  (interactive "P")
+  (interactive "P" ekg-edit-mode)
   (unless ekg-note
     (error "No note in current buffer"))
   (save-excursion
