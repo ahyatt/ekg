@@ -1335,11 +1335,15 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                                 (ekg-note-id sib) order)
                                (cl-incf order)))))
                        0))
+         (parent-tags (when parent-id
+                       (ekg-org-view--visible-tags
+                        (ekg-get-note-with-id parent-id))))
          (note (ekg-note-create
                 :text ""
                 :mode 'org-mode
-                :tags (list ekg-org-task-tag
-                            (concat ekg-org-state-tag-prefix "todo"))
+                :tags (append (list ekg-org-task-tag
+                                    (concat ekg-org-state-tag-prefix "todo"))
+                              parent-tags)
                 :properties (append
                              (list :titled/title (list title)
                                    :org/sort-order sort-order)
