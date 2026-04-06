@@ -786,25 +786,27 @@ Returns non-nil if found."
 (defun ekg-org-view--refresh (&optional target-id)
   "Re-render the view in place without switching windows.
 If TARGET-ID is non-nil, move point to that note's heading after
-re-rendering and ensure it is visible.  When insert mode is active,
-the refresh is deferred until insert mode ends."
+re-rendering and ensure it is visible.  When no TARGET-ID is given,
+the note at point is preserved across the rerender.  When insert
+mode is active, the refresh is deferred until insert mode ends."
   (if ekg-org-view--insert-overlay
       (setq ekg-org-view--refresh-pending t)
-    (vui-rerender ekg-org-view--instance)
-    (when (and target-id (ekg-org-view--goto-note-id target-id))
-      (let ((windows (get-buffer-window-list (current-buffer) nil t)))
-        (dolist (win windows)
-          (set-window-point win (point))
-          (unless (pos-visible-in-window-p (point) win)
-            (with-selected-window win (recenter))))
-        ;; When the buffer is not visible, update the saved point in
-        ;; each window's prev-buffer history so that `quit-window'
-        ;; restores point to the right heading.
-        (unless windows
-          (dolist (win (window-list nil 'no-mini))
-            (when-let* ((entry (assq (current-buffer)
-                                     (window-prev-buffers win))))
-              (setcar (cddr entry) (point-marker)))))))
+    (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
+      (vui-rerender ekg-org-view--instance)
+      (when (and restore-id (ekg-org-view--goto-note-id restore-id))
+        (let ((windows (get-buffer-window-list (current-buffer) nil t)))
+          (dolist (win windows)
+            (set-window-point win (point))
+            (unless (pos-visible-in-window-p (point) win)
+              (with-selected-window win (recenter))))
+          ;; When the buffer is not visible, update the saved point in
+          ;; each window's prev-buffer history so that `quit-window'
+          ;; restores point to the right heading.
+          (unless windows
+            (dolist (win (window-list nil 'no-mini))
+              (when-let* ((entry (assq (current-buffer)
+                                       (window-prev-buffers win))))
+                (setcar (cddr entry) (point-marker))))))))
     (ekg-org-view--highlight)))
 
 (defun ekg-org-view-toggle-collapse ()
