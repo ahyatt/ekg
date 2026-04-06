@@ -1,4 +1,4 @@
-group: agent note tools
+group: agent response
 setup: |
   Initialize ekg with a temporary database by evaluating:
     (progn

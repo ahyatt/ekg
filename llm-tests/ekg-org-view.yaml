@@ -1,0 +1,27 @@
+group: ekg-org-view
+setup: |
+  Initialize ekg by evaluating:
+    (progn
+      (require 'ekg-org)
+      (require 'ekg-agent)
+      (setq ekg-db-file (make-temp-file "ekg-org-view-db")
+          ekg-llm-provider (eval (getenv "LLM_TEST_PROVIDER_ELISP"))))
+
+  Also, initialize ekg-org by evaluating (ekg-org-initialize).
+tests:
+  - description: |
+      ekg-org-view is an org-like task system on top of ekg, a tag-based emacs
+      note-taking system.  Certain tags make the notes behave like org items.
+      
+      Call M-x ekg-org-view to see a list of ekg org items, which should be empty.
+
+      Your goal is to write org items in the ekg-org-view to do your taxes.
+
+      You can create a new org element with "c".  Create a task to do your taxes.
+
+      Then run M-x ekg-agent-org-plan-task to expand this task into subtasks
+      using an agent.
+
+      When this is done, return to the ekg-org-view buffer and add another task
+      at the end to celebrate taxes being done with a nice dinner out.
+      
