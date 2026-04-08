@@ -2237,9 +2237,26 @@ The user input will be the note they are currently editing.\n\n"
                             '("append_to_current_note" "replace_current_note")
                             (ekg-agent--timeout-deadline))))))
 
-;; Redefine the keys, take the binding over from ekg-llm.
-(define-key ekg-capture-mode-map (kbd "C-c .") #'ekg-agent-note-response)
-(define-key ekg-edit-mode-map (kbd "C-c .") #'ekg-agent-note-response)
+(defvar ekg-agent-minor-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map ekg-llm-capture-mode-map)
+    (define-key map (kbd "C-c .") #'ekg-agent-note-response)
+    map)
+  "Keymap for ekg-agent bindings in capture and edit modes.
+Inherits from `ekg-llm-capture-mode-map' but overrides
+\\[ekg-agent-note-response] to use the agent instead of the plain LLM.")
+
+(define-minor-mode ekg-agent-minor-mode
+  "Minor mode providing agent keybindings in ekg capture/edit buffers.
+This replaces `ekg-llm-minor-mode' when `ekg-agent' is loaded."
+  :lighter nil
+  :keymap ekg-agent-minor-mode-map)
+
+;; Replace ekg-llm-minor-mode with ekg-agent-minor-mode on the hooks.
+(remove-hook 'ekg-capture-mode-hook #'ekg-llm-minor-mode)
+(remove-hook 'ekg-edit-mode-hook #'ekg-llm-minor-mode)
+(add-hook 'ekg-capture-mode-hook #'ekg-agent-minor-mode)
+(add-hook 'ekg-edit-mode-hook #'ekg-agent-minor-mode)
 
 (defun ekg-agent-show-internal-notes ()
   "Show notes with agent internal tags."
