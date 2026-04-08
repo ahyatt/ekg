@@ -1668,16 +1668,22 @@ it.  If there are multiple titles, select which one to change."
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
-(defun ekg--save-note-in-buffer ()
-  "Save the current note.
-Return the latest `ekg-note' object."
-  (ekg-connect)
+(defun ekg-note-update-from-buffer ()
+  "Update `ekg-note' from the current buffer contents.
+This sets the text, inlines, mode, and tags fields of `ekg-note'
+to reflect the current state of the buffer."
   (let* ((text (buffer-substring-no-properties (point-min) (point-max)))
          (ticons (ekg-extract-inlines text)))
     (setf (ekg-note-text ekg-note) (car ticons)
           (ekg-note-inlines ekg-note) (cdr ticons)
           (ekg-note-mode ekg-note) major-mode
-          (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note))))
+          (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note)))))
+
+(defun ekg--save-note-in-buffer ()
+  "Save the current note.
+Return the latest `ekg-note' object."
+  (ekg-connect)
+  (ekg-note-update-from-buffer)
   ;; Even though we will do this later in `ekg--normalize-note', we have to do
   ;; this now in case we removed the resource.
   (when (or (equal (ekg-note-id ekg-note) "") (not (ekg-note-id ekg-note)))
