@@ -1,6 +1,6 @@
 ;;; ekg-llm.el --- Using LLMs within, or via, ekg -*- lexical-binding: t -*-
 
-;; Copyright (c) 2023-2024  Andrew Hyatt <ahyatt@gmail.com>
+;; Copyright (c) 2023-2026  Andrew Hyatt <ahyatt@gmail.com>
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
@@ -247,12 +247,21 @@ This is for debugging purposes."
       (text-mode))
     (pop-to-buffer buf)))
 
-(define-key ekg-capture-mode-map (kbd "C-c .") #'ekg-llm-send-and-append-note)
-(define-key ekg-edit-mode-map (kbd "C-c .") #'ekg-llm-send-and-append-note)
-(define-key ekg-capture-mode-map (kbd "C-c ,") #'ekg-llm-send-and-replace-note)
-(define-key ekg-edit-mode-map (kbd "C-c ,") #'ekg-llm-send-and-replace-note)
-(define-key ekg-capture-mode-map (kbd "C-c ?") #'ekg-llm-preview-prompt)
-(define-key ekg-edit-mode-map (kbd "C-c ?") #'ekg-llm-preview-prompt)
+(defvar ekg-llm-capture-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c .") #'ekg-llm-send-and-append-note)
+    (define-key map (kbd "C-c ,") #'ekg-llm-send-and-replace-note)
+    (define-key map (kbd "C-c ?") #'ekg-llm-preview-prompt)
+    map)
+  "Keymap for ekg-llm bindings in capture and edit modes.")
+
+(define-minor-mode ekg-llm-minor-mode
+  "Minor mode providing LLM keybindings in ekg capture/edit buffers."
+  :lighter nil
+  :keymap ekg-llm-capture-mode-map)
+
+(add-hook 'ekg-capture-mode-hook #'ekg-llm-minor-mode)
+(add-hook 'ekg-edit-mode-hook #'ekg-llm-minor-mode)
 
 (defun ekg-llm-create-output-holder (prefix suffix)
   "Create a marker pair for the output of the LLM.

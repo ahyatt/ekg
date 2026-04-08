@@ -1,5 +1,7 @@
 ;;; ekg-pkg.el --- Package definition for ekg -*- no-byte-compile: t -*-
 
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
 ;;; Commentary: This defines the package for ekg.
 ;;; Code:
 

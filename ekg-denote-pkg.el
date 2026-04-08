@@ -1,5 +1,7 @@
 ;;; ekg-denote-pkg.el --- Denote integration for ekg.  -*- no-byte-compile: t -*-
 
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
 ;;; Commentary:
 ;;; This defines the package for ekg-denote.
 
