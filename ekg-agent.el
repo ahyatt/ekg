@@ -2149,6 +2149,7 @@ ARG, if non-nil, allows editing the instructions."
   (interactive "P")
   (unless ekg-note
     (error "No note in current buffer"))
+  (ekg-note-update-from-buffer)
   (save-excursion
     (let* ((ekg-agent-tool-append-response
             (make-llm-tool
