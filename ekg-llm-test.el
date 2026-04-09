@@ -25,6 +25,7 @@
 ;;; Code:
 (require 'ekg)
 (require 'ekg-llm)
+(require 'ekg-test-utils)
 
 (defun ekg-llm-test-replace-text (markers text)
   "Replace text between MARKERS."
@@ -46,7 +47,7 @@
       (should (equal "BEGIN\nvery different text\nEND\n"
                      (substring-no-properties (buffer-string)))))))
 
-(ert-deftest ekg-llm-test-note-to-text ()
+(ekg-deftest ekg-llm-test-note-to-text ()
   (let* ((time (current-time))
          (time-str (format-time-string "%Y-%m-%dT%H:%M:%S" time))
          (json-encoding-pretty-print t))
