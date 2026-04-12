@@ -25,6 +25,11 @@
 ;;; Code:
 
 
+(require 'cl-lib)
+(require 'seq)
+(require 'ert)
+
+
 (defmacro ekg--with-default-configuration (&rest body)
   "Remove any user hooks or custom options for testing.
 
