@@ -1,27 +1,62 @@
 group: ekg-org-view
 setup: |
-  Initialize ekg by evaluating:
-    (progn
-      (require 'ekg-org)
-      (require 'ekg-agent)
-      (setq ekg-db-file (make-temp-file "ekg-org-view-db")
-          ekg-llm-provider (eval (getenv "LLM_TEST_PROVIDER_ELISP"))))
+  ekg is already initialized in this Emacs: a temp database is connected,
+  `ekg-org', `ekg-agent', and `ekg-llm' are loaded, and `ekg-llm-provider'
+  is configured.
 
-  Also, initialize ekg-org by evaluating (ekg-org-initialize).
+  Notes for the test agent:
+  - Always call `eval-elisp' with `t' after a `send-keys' call so queued
+    events drain before you read the next frame state.
+  - When a minibuffer prompt is active (visible in the frame state), every
+    key you send goes INTO that prompt.  Always check whether the
+    minibuffer is active before pressing letter keys.
+  - Use `type-text' for literal text input and `send-keys' for command keys.
+  - Use `run-command' to invoke Emacs commands by name instead of typing
+    them through M-x.
+
+  `ekg-org-view-mode' keybindings (only active when no minibuffer is open):
+    c   create a new task (prompts for title in minibuffer)
+    n / p   next / previous heading
+    g   refresh view
+    t   cycle TODO/DONE state
+    RET open note   TAB collapse/expand
+
 tests:
   - description: |
-      ekg-org-view is an org-like task system on top of ekg, a tag-based emacs
-      note-taking system.  Certain tags make the notes behave like org items.
-      
-      Call M-x ekg-org-view to see a list of ekg org items, which should be empty.
+      Goal: exercise the create / plan / append workflow on ekg-org-view.
 
-      Your goal is to write org items in the ekg-org-view to do your taxes.
+      Step 1 - open the view:
+        Use `run-command' to call `ekg-org-view'.  Confirm the selected
+        window now shows buffer `*ekg-org-tasks*' with the placeholder
+        "(No org tasks found)".
 
-      You can create a new org element with "c".  Create a task to do your taxes.
+      Step 2 - create the parent task:
+        Press `c' via `send-keys'.  A minibuffer prompt "Task title: "
+        should appear.  Use `type-text' to enter "Do my taxes", then
+        send `RET'.  Confirm the buffer now contains `* TODO Do my taxes'
+        and the minibuffer is no longer active.
 
-      Then run M-x ekg-agent-org-plan-task to expand this task into subtasks
-      using an agent.
+      Step 3 - plan it:
+        Make sure point is on the "Do my taxes" line, then use
+        `run-command' to call `ekg-agent-org-plan-task'.  This spawns an
+        inner planning agent that runs asynchronously.  It typically
+        takes about 30 seconds to finish.  Use the `sleep' tool to wait
+        (e.g. sleep 10 seconds, check, sleep again if needed).  Check
+        whether `*ekg-org-tasks*' contains at least one new `** TODO'
+        subtask line under "Do my taxes".  If after 60 seconds of
+        waiting there are still no subtasks, treat that as failure.
 
-      When this is done, return to the ekg-org-view buffer and add another task
-      at the end to celebrate taxes being done with a nice dinner out.
-      
+      Step 4 - add a celebration task:
+        Make sure the `*ekg-org-tasks*' buffer is selected (the
+        planning agent may have opened another buffer).  Move point
+        to the end of the buffer, then press `c', use `type-text'
+        to enter "Celebrate with a nice dinner out", and send `RET'.
+
+      Step 5 - verify and finish:
+        Read `*ekg-org-tasks*' and confirm:
+          - "Do my taxes" exists as a top-level task
+          - It has at least one `** TODO' subtask
+          - "Celebrate with a nice dinner out" exists as a top-level
+            task after the "Do my taxes" subtree
+        Call `pass-test' if all three hold; otherwise `fail-test'
+        with a description of what is missing or wrong.

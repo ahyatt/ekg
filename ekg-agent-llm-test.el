@@ -40,15 +40,41 @@
 (when (featurep 'llm-test)
   (require 'ekg-agent-bench)
 
+  (defun ekg-agent-llm-test--init-forms ()
+    "Return init forms for the llm-test subprocess.
+Sets up a temp ekg database, requires the relevant ekg modules,
+connects, and configures `ekg-llm-provider' from the
+LLM_TEST_PROVIDER_ELISP environment variable.  Wrapped in a
+`condition-case' so init failures don't hang the daemon."
+    `((condition-case err
+          (progn
+            (setq load-prefer-newer t)
+            (setq ekg-db-file (make-temp-file "ekg-llm-test-db"))
+            (require 'ekg)
+            (require 'ekg-agent)
+            (require 'ekg-llm)
+            (require 'ekg-org)
+            (ekg-connect)
+            (let ((provider-elisp (getenv "LLM_TEST_PROVIDER_ELISP")))
+              (when (and provider-elisp (not (string-empty-p provider-elisp)))
+                (setq ekg-llm-provider
+                      (eval (read provider-elisp))))))
+        (error
+         (message "ekg-agent-llm-test init error: %S" err)))))
+
   (defun ekg-agent-llm-test--register ()
     "Register llm-test YAML specs from llm-tests/ as ERT tests."
+    ;; Use the same Emacs binary as the host, to avoid version/build
+    ;; mismatches between host and daemon (e.g. Homebrew vs Emacs.app).
+    (setq llm-test-emacs-executable
+          (ekg-agent-bench--emacs-executable))
     (let ((dir (expand-file-name
                 "llm-tests"
                 (file-name-directory
                  (or load-file-name
                      (locate-library "ekg-agent-llm-test")))))
           (load-paths (ekg-agent-bench--compute-load-paths))
-          (init-forms '((setq load-prefer-newer t))))
+          (init-forms (ekg-agent-llm-test--init-forms)))
       (llm-test-register-tests dir
                                :extra-load-path load-paths
                                :init-forms init-forms)))

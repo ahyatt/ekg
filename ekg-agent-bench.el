@@ -243,7 +243,7 @@ Returns the output string, or signals an error on failure."
             (let ((output (buffer-string)))
               (if (= exit-code 0)
                   (string-trim output)
-                (error "emacsclient failed with exit code %d: %s"
+                (error "Emacsclient failed with exit code %d: %s"
                        exit-code output)))))
       (kill-buffer out-buf))))
 
@@ -266,7 +266,7 @@ Returns a futur that resolves to the output string."
          (kill-buffer out-buf)
          (if (= exit-code 0)
              output
-           (error "emacsclient failed with exit code %d: %s"
+           (error "Emacsclient failed with exit code %d: %s"
                   exit-code output)))))))
 
 (defun ekg-agent-bench--stop-emacs (emacs-info)

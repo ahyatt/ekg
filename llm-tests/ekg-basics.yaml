@@ -1,0 +1,31 @@
+group: ekg basics
+setup: |
+  ekg is already initialized with a temp database. `ekg', `ekg-agent',
+  `ekg-llm', and `ekg-org' are loaded and connected.
+tests:
+  - description: |
+      Create a note with the `ekg-capture` command. It should have a `date` tag
+      visible in the header. Write the text "Hello world" and save and finish
+      with `C-c C-c`.
+  - description: |
+      First, create a note: run `ekg-capture`, type "Hello world", and finish
+      with `C-c C-c`.
+
+      Then list all notes with `ekg-show-notes-latest-captured`. It should show
+      exactly one note, the one you just created.
+  - description: |
+      First, create a note: run `ekg-capture`, type "Hello world", and finish
+      with `C-c C-c`.
+
+      Then run `ekg-search`. You'll get a minibuffer prompt, and every new
+      character you add will refine search and show you notes with the prompt
+      text in it. Search for "Hello" and make sure you see your note.
+  - description: |
+      Create a note with `ekg-capture` and write "Temporary text", and save it
+      with `C-x C-s`. Kill the buffer with `C-x k`. Ensure you don't see the
+      note in `ekg-show-notes-latest-captured`. Then run
+      `ekg-show-notes-in-drafts` and make sure you can see the note you just
+      wrote. Open the note with `o`, change it to say "Permanent note", and
+      press `C-c C-c` to save the note and exit. You should now see it in
+      `ekg-show-notes-latest-captured` and not in `ekg-show-notes-in-drafts`.
+

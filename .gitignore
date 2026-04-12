@@ -4,3 +4,4 @@ doc/*info
 .eldev
 .claude/
 project.org
+*.log

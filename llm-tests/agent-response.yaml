@@ -1,12 +1,10 @@
 group: agent response
 setup: |
-  Initialize ekg with a temporary database by evaluating:
-    (progn
-      (require 'ekg)
-      (require 'ekg-agent)
-      (setq ekg-db-file (make-temp-file "ekg-llm-test-db")
-            ekg-llm-provider (eval (getenv "LLM_TEST_PROVIDER_ELISP")))))
-      
+  ekg is already initialized in this Emacs: a temp database is connected,
+  `ekg', `ekg-agent', and `ekg-llm' are loaded, and `ekg-llm-provider' is
+  configured.  You do not need to require any libraries or set up the
+  database; just call ekg commands directly.
+
 
 tests:
   - description: |
