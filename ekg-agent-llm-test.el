@@ -37,7 +37,9 @@
     "Placeholder — llm-test library not found."
     (ert-skip "llm-test library not available")))
 
-(when (featurep 'llm-test)
+(when (and (featurep 'llm-test)
+           (let ((p (getenv "LLM_TEST_PROVIDER_ELISP")))
+             (and p (not (string-empty-p p)))))
   (require 'ekg-agent-bench)
 
   (defun ekg-agent-llm-test--init-forms ()
