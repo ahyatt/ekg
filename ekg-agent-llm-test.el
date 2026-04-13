@@ -100,78 +100,8 @@ post-hoc."
                        (diag "[%s] provider-eval-error: %S\n"
                              (format-time-string "%F %T")
                              provider-err)))))
-                ;; Wrap several agent entry points in advice that
-                ;; logs any error to the diag file.  Errors in
-                ;; `run-at-time' timer callbacks are otherwise silent,
-                ;; leaving no trail when the agent fails to start.
-                (dolist (fn '(ekg-agent-org-plan-task
-                              ekg-agent-ask-with-note
-                              ekg-agent--ask
-                              ekg-agent--iterate
-                              ekg-current-note-or-error-expanded))
-                  (diag "  fboundp %s: %s\n" fn (fboundp fn))
-                  (when (fboundp fn)
-                    (advice-add
-                     fn :around
-                     (let ((fn-name fn))
-                       (lambda (orig &rest args)
-                         (with-temp-buffer
-                           (insert (format
-                                    "[%s] %s ENTER args-len:%d cur-buf:%s mode:%s\n"
-                                    (format-time-string "%F %T")
-                                    fn-name
-                                    (length args)
-                                    (buffer-name (current-buffer))
-                                    major-mode))
-                           (append-to-file (point-min) (point-max)
-                                           diag-file))
-                         (condition-case fn-err
-                             (prog1 (apply orig args)
-                               (with-temp-buffer
-                                 (insert (format
-                                          "[%s] %s EXIT OK\n"
-                                          (format-time-string "%F %T")
-                                          fn-name))
-                                 (append-to-file (point-min) (point-max)
-                                                 diag-file)))
-                           (error
-                            (with-temp-buffer
-                              (insert (format
-                                       "[%s] %s ERROR: %S\n"
-                                       (format-time-string "%F %T")
-                                       fn-name
-                                       fn-err))
-                              (append-to-file (point-min) (point-max)
-                                              diag-file))
-                            (signal (car fn-err) (cdr fn-err))))))
-                     '((name . ekg-llm-test-diag)))))
                 (diag "[%s] advices attached\n"
-                      (format-time-string "%F %T"))
-                ;; Also advise `ekg-agent--prompt-id' which does a
-                ;; synchronous `llm-chat' before the log buffer exists.
-                (advice-add
-                 'ekg-agent--prompt-id :around
-                 (lambda (orig &rest args)
-                   (condition-case pid-err
-                       (let ((result (apply orig args)))
-                         (with-temp-buffer
-                           (insert (format
-                                    "[%s] prompt-id result: %S\n"
-                                    (format-time-string "%F %T")
-                                    result))
-                           (append-to-file (point-min) (point-max)
-                                           diag-file))
-                         result)
-                     (error
-                      (with-temp-buffer
-                        (insert (format
-                                 "[%s] prompt-id error: %S\n"
-                                 (format-time-string "%F %T")
-                                 pid-err))
-                        (append-to-file (point-min) (point-max)
-                                        diag-file))
-                      (signal (car pid-err) (cdr pid-err)))))
-                 '((name . ekg-llm-test-diag))))
+                      (format-time-string "%F %T")))
             (error
              (message "ekg-agent-llm-test init error: %S" err)
              (diag "[%s] init-error: %S\n"
