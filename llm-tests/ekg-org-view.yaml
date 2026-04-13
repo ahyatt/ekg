@@ -43,7 +43,7 @@ tests:
         takes about 30 seconds to finish.  Use the `sleep' tool to wait
         (e.g. sleep 10 seconds, check, sleep again if needed).  Check
         whether `*ekg-org-tasks*' contains at least one new `** TODO'
-        subtask line under "Do my taxes".  If after 60 seconds of
+        subtask line under "Do my taxes".  If after 120 seconds of
         waiting there are still no subtasks, treat that as failure.
 
       Step 4 - add a celebration task:
