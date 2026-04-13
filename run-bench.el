@@ -53,7 +53,7 @@
           (message "ekg: %s" (ekg-agent-bench--eval-in-emacs info "(featurep 'ekg)"))
           (message "ekg-agent: %s" (ekg-agent-bench--eval-in-emacs info "(featurep 'ekg-agent)"))
           (message "ekg-db: %s" (ekg-agent-bench--eval-in-emacs info "ekg-db-file"))
-          (message "provider: %s" (ekg-agent-bench--eval-in-emacs info "(type-of ekg-llm-provider)")))
+          (message "provider: %s" (ekg-agent-bench--eval-in-emacs info "(if ekg-llm-provider (format \"%s\" (type-of ekg-llm-provider)) \"UNCONFIGURED\")")))
       (ekg-agent-bench--stop-emacs info)))
   (message "=== Sanity OK ===\n")
 
@@ -75,6 +75,11 @@
                        (if gap
                            (format "%.1fs" gap)
                          "n/a")))
+            (when-let ((err (ekg-agent-bench-result-error-message result)))
+              (message "Error: %s" err))
+            (when-let ((log (ekg-agent-bench-result-agent-log result)))
+              (unless (string-empty-p log)
+                (message "\n--- agent log ---\n%s\n--- end agent log ---" log)))
             (unless (ekg-agent-bench-result-task-passed result)
               (kill-emacs 1))))
       (progn

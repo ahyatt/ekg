@@ -219,7 +219,11 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
           (defun ekg-agent--ensure-log-window ()
             (let ((buf (current-buffer)))
               (unless (get-buffer-window buf t)
-                (set-window-buffer (selected-window) buf)))))
+                (set-window-buffer (selected-window) buf))))
+          ;; Configure the LLM provider from the environment.
+          (let ((provider-elisp (getenv "LLM_TEST_PROVIDER_ELISP")))
+            (when (and provider-elisp (not (string-empty-p provider-elisp)))
+              (setq ekg-llm-provider (eval (read provider-elisp))))))
       (error
        (with-temp-file ,error-file
          (insert (format "Init error: %S\n" err))
@@ -651,19 +655,52 @@ Returns an `ekg-agent-bench-result'."
     ;; Trigger the agent.  We schedule it via run-at-time so that
     ;; emacsclient returns immediately — the agent's iteration-0
     ;; does a synchronous LLM call (prompt-id) that would otherwise
-    ;; block the emacsclient eval.
+    ;; block the emacsclient eval.  Wrap the timer body in a
+    ;; `condition-case' that stores any async error in a subprocess
+    ;; global so we can retrieve it on timeout.
     (when (not error-msg)
       (condition-case err
           (ekg-agent-bench--eval-in-emacs
            emacs-info
-           (format "(progn (run-at-time 0 nil (lambda () %s)) nil)"
-                   (ekg-agent-bench-task-trigger task)))
+           (format
+            "(progn
+               (setq ekg-agent-bench--last-trigger-error nil)
+               (run-at-time 0 nil
+                            (lambda ()
+                              (condition-case err
+                                  (progn %s)
+                                (error
+                                 (setq ekg-agent-bench--last-trigger-error
+                                       (format \"%%S\" err))))))
+               nil)"
+            (ekg-agent-bench-task-trigger task)))
         (error (setq error-msg (format "Trigger failed: %s"
                                        (error-message-string err))))))
     ;; Poll for completion.
     (if error-msg
         (setq status 'error)
       (setq status (ekg-agent-bench--poll-until-done emacs-info timeout)))
+    ;; If the trigger's async lambda raised, surface it now.
+    (unless (eq status 'error)
+      (let ((async-err
+             (ignore-errors
+               (ekg-agent-bench--eval-in-emacs
+                emacs-info
+                "(if (boundp 'ekg-agent-bench--last-trigger-error)
+                     (or ekg-agent-bench--last-trigger-error \"nil\")
+                   \"nil\")"))))
+        (when (and async-err
+                   (stringp async-err)
+                   (not (equal async-err "\"nil\""))
+                   (not (equal async-err "nil")))
+          (setq error-msg
+                (ekg-agent-bench--append-error-message
+                 error-msg
+                 (format "Trigger async error: %s"
+                         (if (and (> (length async-err) 1)
+                                  (eq (aref async-err 0) ?\"))
+                             (read async-err)
+                           async-err)))))))
     ;; Collect metrics.
     (let* ((wall-time (- (float-time) start-time))
            (metrics (unless (eq status 'error)
