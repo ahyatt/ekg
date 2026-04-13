@@ -43,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     environment: llm-test
+    timeout-minutes: 10
     steps:
       - name: Set up Emacs
         uses: jcs090218/setup-emacs@master
