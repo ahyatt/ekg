@@ -107,17 +107,29 @@ post-hoc."
                 (dolist (fn '(ekg-agent-org-plan-task
                               ekg-agent-ask-with-note
                               ekg-agent--ask
-                              ekg-agent--iterate))
+                              ekg-agent--iterate
+                              ekg-current-note-or-error-expanded))
+                  (diag "  fboundp %s: %s\n" fn (fboundp fn))
                   (when (fboundp fn)
                     (advice-add
                      fn :around
                      (let ((fn-name fn))
                        (lambda (orig &rest args)
+                         (with-temp-buffer
+                           (insert (format
+                                    "[%s] %s ENTER args-len:%d cur-buf:%s mode:%s\n"
+                                    (format-time-string "%F %T")
+                                    fn-name
+                                    (length args)
+                                    (buffer-name (current-buffer))
+                                    major-mode))
+                           (append-to-file (point-min) (point-max)
+                                           diag-file))
                          (condition-case fn-err
                              (prog1 (apply orig args)
                                (with-temp-buffer
                                  (insert (format
-                                          "[%s] %s entered OK\n"
+                                          "[%s] %s EXIT OK\n"
                                           (format-time-string "%F %T")
                                           fn-name))
                                  (append-to-file (point-min) (point-max)
@@ -125,7 +137,7 @@ post-hoc."
                            (error
                             (with-temp-buffer
                               (insert (format
-                                       "[%s] %s error: %S\n"
+                                       "[%s] %s ERROR: %S\n"
                                        (format-time-string "%F %T")
                                        fn-name
                                        fn-err))
@@ -133,6 +145,8 @@ post-hoc."
                                               diag-file))
                             (signal (car fn-err) (cdr fn-err))))))
                      '((name . ekg-llm-test-diag)))))
+                (diag "[%s] advices attached\n"
+                      (format-time-string "%F %T"))
                 ;; Also advise `ekg-agent--prompt-id' which does a
                 ;; synchronous `llm-chat' before the log buffer exists.
                 (advice-add
