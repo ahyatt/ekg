@@ -68,6 +68,17 @@ provider-setup failures are visible post-hoc."
                            (if provider-elisp "yes" "no")
                            (length (or provider-elisp ""))
                            (length load-path)))
+                  (insert (format "  locate llm-openai: %s\n"
+                                  (locate-library "llm-openai")))
+                  (insert (format "  featurep llm-openai (before require): %s\n"
+                                  (featurep 'llm-openai)))
+                  (ignore-errors (require 'llm-openai))
+                  (insert (format "  featurep llm-openai (after require): %s\n"
+                                  (featurep 'llm-openai)))
+                  (insert (format "  fboundp make-llm-openrouter: %s\n"
+                                  (fboundp 'make-llm-openrouter)))
+                  (insert (format "  fboundp make-llm-openai: %s\n"
+                                  (fboundp 'make-llm-openai)))
                   (append-to-file (point-min) (point-max) diag-file))
                 (when (and provider-elisp (not (string-empty-p provider-elisp)))
                   (condition-case provider-err
