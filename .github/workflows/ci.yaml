@@ -63,11 +63,20 @@ jobs:
         run: |
           eldev -p -dtT test 'llm-test/'
 
+      - name: Collect init diagnostic log
+        if: failure()
+        run: |
+          if [ -f /tmp/ekg-llm-test-init-diag.log ]; then
+            cp /tmp/ekg-llm-test-init-diag.log ./ekg-llm-test-init-diag.log
+          fi
+
       - name: Upload debug logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: llm-test-debug-logs
-          path: llm-test-debug-*.log
+          path: |
+            llm-test-debug-*.log
+            ekg-llm-test-init-diag.log
           if-no-files-found: ignore
           retention-days: 14
