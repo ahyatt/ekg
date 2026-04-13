@@ -48,20 +48,16 @@ Sets up a temp ekg database, requires the relevant ekg modules,
 connects, and configures `ekg-llm-provider' from the
 LLM_TEST_PROVIDER_ELISP environment variable.  Wrapped in a
 `condition-case' so init failures don't hang the daemon.
-When the EKG_LLM_TEST_DIAG environment variable is set,
-diagnostics are written to /tmp/ekg-llm-test-init-diag.log so
-provider-setup failures are visible post-hoc."
-    `((let ((diag-file "/tmp/ekg-llm-test-init-diag.log")
-            (diag-enabled (and (getenv "EKG_LLM_TEST_DIAG")
-                               (not (string-empty-p
-                                     (getenv "EKG_LLM_TEST_DIAG"))))))
+Diagnostics are written to /tmp/ekg-llm-test-init-diag.log so
+provider-setup failures and silent agent errors are visible
+post-hoc."
+    `((let ((diag-file "/tmp/ekg-llm-test-init-diag.log"))
         (cl-flet ((diag (fmt &rest args)
-                    (when diag-enabled
-                      (ignore-errors
-                        (with-temp-buffer
-                          (insert (apply #'format fmt args))
-                          (append-to-file (point-min) (point-max)
-                                          diag-file))))))
+                    (ignore-errors
+                      (with-temp-buffer
+                        (insert (apply #'format fmt args))
+                        (append-to-file (point-min) (point-max)
+                                        diag-file)))))
           (condition-case err
               (progn
                 (setq load-prefer-newer t)
@@ -81,7 +77,10 @@ provider-setup failures are visible post-hoc."
                         (locate-library "llm-openai"))
                   (diag "  featurep llm-openai (before require): %s\n"
                         (featurep 'llm-openai))
-                  (when diag-enabled (ignore-errors (require 'llm-openai)))
+                  ;; Force-require llm-openai at init time so struct
+                  ;; constructors like `make-llm-openrouter' are
+                  ;; defined before the provider eval reaches them.
+                  (ignore-errors (require 'llm-openai))
                   (diag "  featurep llm-openai (after require): %s\n"
                         (featurep 'llm-openai))
                   (diag "  fboundp make-llm-openrouter: %s\n"
@@ -100,7 +99,52 @@ provider-setup failures are visible post-hoc."
                       (error
                        (diag "[%s] provider-eval-error: %S\n"
                              (format-time-string "%F %T")
-                             provider-err))))))
+                             provider-err)))))
+                ;; Wrap `ekg-agent--iterate' in an advice that logs
+                ;; any error to the diag file.  Errors in `run-at-time'
+                ;; timer callbacks are otherwise silent, leaving no
+                ;; trail when the agent fails to start.
+                (advice-add
+                 'ekg-agent--iterate :around
+                 (lambda (orig &rest args)
+                   (condition-case iter-err
+                       (apply orig args)
+                     (error
+                      (with-temp-buffer
+                        (insert (format
+                                 "[%s] ekg-agent--iterate error (iter=%s): %S\n"
+                                 (format-time-string "%F %T")
+                                 (nth 1 args)
+                                 iter-err))
+                        (append-to-file (point-min) (point-max)
+                                        diag-file))
+                      (signal (car iter-err) (cdr iter-err)))))
+                 '((name . ekg-llm-test-diag)))
+                ;; Also advise `ekg-agent--prompt-id' which does a
+                ;; synchronous `llm-chat' before the log buffer exists.
+                (advice-add
+                 'ekg-agent--prompt-id :around
+                 (lambda (orig &rest args)
+                   (condition-case pid-err
+                       (let ((result (apply orig args)))
+                         (with-temp-buffer
+                           (insert (format
+                                    "[%s] prompt-id result: %S\n"
+                                    (format-time-string "%F %T")
+                                    result))
+                           (append-to-file (point-min) (point-max)
+                                           diag-file))
+                         result)
+                     (error
+                      (with-temp-buffer
+                        (insert (format
+                                 "[%s] prompt-id error: %S\n"
+                                 (format-time-string "%F %T")
+                                 pid-err))
+                        (append-to-file (point-min) (point-max)
+                                        diag-file))
+                      (signal (car pid-err) (cdr pid-err)))))
+                 '((name . ekg-llm-test-diag))))
             (error
              (message "ekg-agent-llm-test init error: %S" err)
              (diag "[%s] init-error: %S\n"
