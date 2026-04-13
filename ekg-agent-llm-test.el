@@ -48,64 +48,63 @@ Sets up a temp ekg database, requires the relevant ekg modules,
 connects, and configures `ekg-llm-provider' from the
 LLM_TEST_PROVIDER_ELISP environment variable.  Wrapped in a
 `condition-case' so init failures don't hang the daemon.
-Writes a diagnostic line to /tmp/ekg-llm-test-init-diag.log so
+When the EKG_LLM_TEST_DIAG environment variable is set,
+diagnostics are written to /tmp/ekg-llm-test-init-diag.log so
 provider-setup failures are visible post-hoc."
-    `((let ((diag-file "/tmp/ekg-llm-test-init-diag.log"))
-        (condition-case err
-            (progn
-              (setq load-prefer-newer t)
-              (setq ekg-db-file (make-temp-file "ekg-llm-test-db"))
-              (require 'ekg)
-              (require 'ekg-agent)
-              (require 'ekg-llm)
-              (require 'ekg-org)
-              (ekg-connect)
-              (let ((provider-elisp (getenv "LLM_TEST_PROVIDER_ELISP")))
-                (with-temp-buffer
-                  (insert (format
-                           "[%s] env-set:%s env-len:%d load-path-len:%d\n"
-                           (format-time-string "%F %T")
-                           (if provider-elisp "yes" "no")
-                           (length (or provider-elisp ""))
-                           (length load-path)))
-                  (insert (format "  locate llm-openai: %s\n"
-                                  (locate-library "llm-openai")))
-                  (insert (format "  featurep llm-openai (before require): %s\n"
-                                  (featurep 'llm-openai)))
-                  (ignore-errors (require 'llm-openai))
-                  (insert (format "  featurep llm-openai (after require): %s\n"
-                                  (featurep 'llm-openai)))
-                  (insert (format "  fboundp make-llm-openrouter: %s\n"
-                                  (fboundp 'make-llm-openrouter)))
-                  (insert (format "  fboundp make-llm-openai: %s\n"
-                                  (fboundp 'make-llm-openai)))
-                  (append-to-file (point-min) (point-max) diag-file))
-                (when (and provider-elisp (not (string-empty-p provider-elisp)))
-                  (condition-case provider-err
-                      (progn
-                        (setq ekg-llm-provider
-                              (eval (read provider-elisp)))
+    `((let ((diag-file "/tmp/ekg-llm-test-init-diag.log")
+            (diag-enabled (and (getenv "EKG_LLM_TEST_DIAG")
+                               (not (string-empty-p
+                                     (getenv "EKG_LLM_TEST_DIAG"))))))
+        (cl-flet ((diag (fmt &rest args)
+                    (when diag-enabled
+                      (ignore-errors
                         (with-temp-buffer
-                          (insert (format
-                                   "[%s] provider-set:%s type:%s\n"
-                                   (format-time-string "%F %T")
-                                   (if ekg-llm-provider "yes" "no")
-                                   (type-of ekg-llm-provider)))
-                          (append-to-file (point-min) (point-max) diag-file)))
-                    (error
-                     (with-temp-buffer
-                       (insert (format "[%s] provider-eval-error: %S\n"
-                                       (format-time-string "%F %T")
-                                       provider-err))
-                       (append-to-file (point-min) (point-max)
-                                       diag-file)))))))
-          (error
-           (message "ekg-agent-llm-test init error: %S" err)
-           (ignore-errors
-             (with-temp-buffer
-               (insert (format "[%s] init-error: %S\n"
-                               (format-time-string "%F %T") err))
-               (append-to-file (point-min) (point-max) diag-file))))))))
+                          (insert (apply #'format fmt args))
+                          (append-to-file (point-min) (point-max)
+                                          diag-file))))))
+          (condition-case err
+              (progn
+                (setq load-prefer-newer t)
+                (setq ekg-db-file (make-temp-file "ekg-llm-test-db"))
+                (require 'ekg)
+                (require 'ekg-agent)
+                (require 'ekg-llm)
+                (require 'ekg-org)
+                (ekg-connect)
+                (let ((provider-elisp (getenv "LLM_TEST_PROVIDER_ELISP")))
+                  (diag "[%s] env-set:%s env-len:%d load-path-len:%d\n"
+                        (format-time-string "%F %T")
+                        (if provider-elisp "yes" "no")
+                        (length (or provider-elisp ""))
+                        (length load-path))
+                  (diag "  locate llm-openai: %s\n"
+                        (locate-library "llm-openai"))
+                  (diag "  featurep llm-openai (before require): %s\n"
+                        (featurep 'llm-openai))
+                  (when diag-enabled (ignore-errors (require 'llm-openai)))
+                  (diag "  featurep llm-openai (after require): %s\n"
+                        (featurep 'llm-openai))
+                  (diag "  fboundp make-llm-openrouter: %s\n"
+                        (fboundp 'make-llm-openrouter))
+                  (diag "  fboundp make-llm-openai: %s\n"
+                        (fboundp 'make-llm-openai))
+                  (when (and provider-elisp (not (string-empty-p provider-elisp)))
+                    (condition-case provider-err
+                        (progn
+                          (setq ekg-llm-provider
+                                (eval (read provider-elisp)))
+                          (diag "[%s] provider-set:%s type:%s\n"
+                                (format-time-string "%F %T")
+                                (if ekg-llm-provider "yes" "no")
+                                (type-of ekg-llm-provider)))
+                      (error
+                       (diag "[%s] provider-eval-error: %S\n"
+                             (format-time-string "%F %T")
+                             provider-err))))))
+            (error
+             (message "ekg-agent-llm-test init error: %S" err)
+             (diag "[%s] init-error: %S\n"
+                   (format-time-string "%F %T") err)))))))
 
   (defun ekg-agent-llm-test--register ()
     "Register llm-test YAML specs from llm-tests/ as ERT tests."
