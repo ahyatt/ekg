@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'subr-x)
 
 ;; Guard: llm-test may not be installed (it's a local dependency).
 (unless (require 'llm-test nil t)
@@ -51,7 +52,8 @@ LLM_TEST_PROVIDER_ELISP environment variable.  Wrapped in a
 Diagnostics are written to /tmp/ekg-llm-test-init-diag.log so
 provider-setup failures and silent agent errors are visible
 post-hoc."
-    `((let ((diag-file "/tmp/ekg-llm-test-init-diag.log"))
+    `((require 'cl-lib)
+      (let ((diag-file "/tmp/ekg-llm-test-init-diag.log"))
         (cl-flet ((diag (fmt &rest args)
                     (ignore-errors
                       (with-temp-buffer

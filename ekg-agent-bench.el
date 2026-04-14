@@ -40,6 +40,7 @@
 
 (require 'cl-lib)
 (require 'ert)
+(require 'seq)
 (require 'subr-x)
 ;; Disable futur's background thread before loading: on macOS NS port,
 ;; `message' (or any redisplay) from a non-main thread causes an

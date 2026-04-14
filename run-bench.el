@@ -10,9 +10,6 @@
 ;;   create the LLM provider to run the agent.  It must support tool calling.
 ;;   Example: "(make-llm-openai :key \"sk-...\")"
 ;;
-;; LLM_TEST_PATH: Path to the llm-test source directory. Defaults to
-;;   ../llm-test relative to this script.
-;;
 ;; ELPA_PATH: Path to the ELPA directory containing installed packages.
 ;;   Defaults to `package-user-dir` (usually ~/.emacs.d/elpa).
 ;;
