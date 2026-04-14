@@ -23,34 +23,111 @@
 ;; Helpers for testing out ekg, needed by multiple test files.
 
 ;;; Code:
+
+
+(defmacro ekg--with-default-configuration (&rest body)
+  "Remove any user hooks or custom options for testing.
+
+BODY are the expressions to run in this context."
+  (declare (debug t) (indent defun))
+  `(let ((ekg-add-schema-hook nil)
+         (ekg-note-pre-save-hook nil)
+         (ekg-note-save-hook nil)
+         (ekg-note-pre-delete-hook nil)
+         (ekg-note-delete-hook nil)
+         (ekg-note-add-tag-hook nil)
+         (ekg-confirm-on-buffer-kill nil))
+     (progn ,@body)))
+
+
+(defmacro ekg--with-buffer-cleanup (&rest body)
+  "Cleanup any buffers that are created.
+
+BODY are the expressions to run in this context."
+  (declare (debug t) (indent defun))
+  `(let ((orig-buffers (buffer-list)))
+     (unwind-protect
+         (progn ,@body)
+       (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers)))))
+
+
+(defmacro ekg--with-testing-env (&rest body)
+  "Run in an environment suitable for testing.
+
+BODY are the expressions to run in this context."
+  (declare (debug t) (indent defun))
+  `(ekg--with-default-configuration
+    (ekg--with-buffer-cleanup
+     (save-excursion ,@body))))
+
+
+(defmacro ekg--with-error-on-connect (&rest body)
+  "Mock `ekg-connect' to error when called.
+
+This allows us to ensure tests aren't trying to connect to a database
+when they shouldn't be.
+
+BODY are the expressions to run in this context."
+  (declare (debug t) (indent defun))
+  `(cl-letf (((symbol-function 'ekg-connect)
+              (lambda () (error "This test tried to use ekg-connect"))))
+     (progn ,@body)))
+
+
 (defmacro ekg-deftest (name _ &rest body)
-  "A test that will set up an empty `ekg-db' for use.
+  "A test that will setup a clean environment.
+
+This avoids tests interacting with preexisting resources, like the
+user's database.
+
 Argument NAME is the name of the testing function.
 BODY is the test body."
   (declare (debug t) (indent defun))
   `(ert-deftest ,name ()
-     (let ((ekg-db-file (make-temp-file "ekg-test"))
-           (ekg-db nil)
-           (orig-buffers (buffer-list))
-           ;; Remove hooks
-           (ekg-add-schema-hook nil)
-           (ekg-note-pre-save-hook nil)
-           (ekg-note-save-hook nil)
-           (ekg-note-pre-delete-hook nil)
-           (ekg-note-delete-hook nil)
-           (ekg-note-add-tag-hook nil)
-           (ekg-confirm-on-buffer-kill nil)
-           (id-count 0))
-       (cl-letf (((symbol-function 'ekg--generate-id)
-                  (lambda () (cl-incf id-count))))
-         (ekg-connect)
-         (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))
-         (save-excursion
-           (unwind-protect
-               (progn ,@body)
-             (delete-file ekg-db-file)
-             ;; Kill all opened bufferes
-             (mapc #'kill-buffer (seq-difference (buffer-list) orig-buffers))))))))
+     (ekg--with-testing-env
+      (ekg--with-error-on-connect
+       ,@body))))
+
+
+(defmacro ekg--with-sequential-id-generation (&rest body)
+  "Number ids sequentially.
+
+This allows us to see what order they were generated in.
+
+BODY are the expressions to run in this context."
+  (declare (debug t) (indent defun))
+  `(let ((id-count 0))
+     (cl-letf (((symbol-function 'ekg--generate-id)
+                (lambda () (cl-incf id-count))))
+       (progn ,@body))))
+
+
+(defmacro ekg--with-testing-db (&rest body)
+  "Run in an environment with a clean database connection setup.
+
+BODY are the expressions to run in this context."
+  (declare (debug t) (indent defun))
+  `(ekg--with-testing-env
+    (ekg--with-sequential-id-generation
+     (let* ((ekg-db-dir (make-temp-file "ekg-test-dir" t))
+            (ekg-db-file (expand-file-name "db" ekg-db-dir))
+            (ekg-db nil)
+            (triples-default-database-filename nil))
+       (ekg-connect)
+       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version))
+       ,@body))))
+
+
+(defmacro ekg-deftest-with-db (name _ &rest body)
+  "Run a test with a clean database connection already setup.
+
+Argument NAME is the name of the testing function.
+BODY is the test body."
+  (declare (debug t) (indent defun))
+  `(ert-deftest ,name ()
+     (ekg--with-testing-db
+      ,@body)))
+
 
 (provide 'ekg-test-utils)
 

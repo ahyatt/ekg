@@ -24,6 +24,7 @@
 
 ;;; Code:
 (require 'ekg)
+(require 'ekg-test-utils)
 (require 'ekg-llm)
 (require 'ekg-test-utils)
 
@@ -35,7 +36,7 @@
     (delete-region beg end)
     (insert text)))
 
-(ert-deftest ekg-llm-test-create-output-holder ()
+(ekg-deftest ekg-llm-test-create-output-holder ()
   (with-temp-buffer
     (let ((markers (ekg-llm-create-output-holder "BEGIN" "END")))
       (should (equal "BEGIN\n\nEND\n"
@@ -47,7 +48,7 @@
       (should (equal "BEGIN\nvery different text\nEND\n"
                      (substring-no-properties (buffer-string)))))))
 
-(ekg-deftest ekg-llm-test-note-to-text ()
+(ekg-deftest-with-db ekg-llm-test-note-to-text ()
   (let* ((time (current-time))
          (time-str (format-time-string "%Y-%m-%dT%H:%M:%S" time))
          (json-encoding-pretty-print t))

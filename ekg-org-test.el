@@ -32,7 +32,7 @@
   (when (string-match "\\([0-9]+\\)" result-string)
     (string-to-number (match-string 1 result-string))))
 
-(ekg-deftest ekg-org-test-basic-rendering ()
+(ekg-deftest-with-db ekg-org-test-basic-rendering ()
   "Test that a basic task is rendered correctly."
   (ekg-org-add-schema)
   (let* ((note-id (ekg-org-test-parse-out-id
@@ -56,7 +56,7 @@
     (should (seq-some (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
                       (ekg-note-tags note)))))
 
-(ekg-deftest ekg-org-test-timestamps ()
+(ekg-deftest-with-db ekg-org-test-timestamps ()
   "Test that deadlines and scheduled dates are stored correctly."
   (ekg-org-add-schema)
   (let* ((deadline "2026-02-01 10:00")
@@ -80,7 +80,7 @@
       (should (plist-get props :org/deadline))
       (should (plist-get props :org/scheduled)))))
 
-(ekg-deftest ekg-org-test-hierarchy ()
+(ekg-deftest-with-db ekg-org-test-hierarchy ()
   "Test that child tasks have correct parent relationship."
   (ekg-org-add-schema)
   (let* ((parent-result (ekg-agent-org--tool-add-item
@@ -108,7 +108,7 @@
       (should (string-match-p "\\* TODO Parent Task" rendered))
       (should (string-match-p "Parent content" rendered)))))
 
-(ekg-deftest ekg-org-test-save-with-virtual-reversed ()
+(ekg-deftest-with-db ekg-org-test-save-with-virtual-reversed ()
   "Test that saving a parent note with org/children doesn't error.
 When a note has children, reading it populates :org/children as a
 virtual-reversed property.  Saving it back must not attempt to
@@ -130,7 +130,7 @@ write that property."
       (should (= (plist-get (ekg-note-properties reloaded) :org/parent)
                  parent-id)))))
 
-(ekg-deftest ekg-org-test-generate-content ()
+(ekg-deftest-with-db ekg-org-test-generate-content ()
   "Test ekg-org-generate-org-content function."
   (ekg-org-add-schema)
   ;; Create multiple tasks
@@ -155,7 +155,7 @@ write that property."
     (should (string-match-p ":project1:" content))
     (should (string-match-p ":project2:" content))))
 
-(ekg-deftest ekg-org-test-archive ()
+(ekg-deftest-with-db ekg-org-test-archive ()
   "Test that archived tasks are handled correctly."
   (ekg-org-add-schema)
   ;; Create normal task
@@ -185,7 +185,7 @@ write that property."
     (let* ((archived-note (ekg-get-note-with-id archived-id)))
       (should (member ekg-org-archive-tag (ekg-note-tags archived-note))))))
 
-(ekg-deftest ekg-org-test-set-status ()
+(ekg-deftest-with-db ekg-org-test-set-status ()
   "Test changing status of a task."
   (ekg-org-add-schema)
   (let* ((note-result (ekg-agent-org--tool-add-item
@@ -213,7 +213,7 @@ write that property."
       (setq start (match-end 0)))
     count))
 
-(ekg-deftest ekg-org-test-list-items ()
+(ekg-deftest-with-db ekg-org-test-list-items ()
   "Test listing tasks."
   (ekg-org-add-schema)
   (ekg-agent-org--tool-add-item "Task 1" "C1" nil nil "TODO" nil nil)
@@ -227,7 +227,7 @@ write that property."
     (should (= (ekg-org-test-count-tasks todos) 1))
     (should (string-match-p "Task 1" todos))))
 
-(ekg-deftest ekg-org-test-tag-handling ()
+(ekg-deftest-with-db ekg-org-test-tag-handling ()
   "Test that org/task and org/state tags are handled correctly."
   (ekg-org-add-schema)
   (let* ((note-id
@@ -296,7 +296,7 @@ Returns the note ID."
                          title)
              return (ekg-note-id note))))
 
-(ekg-deftest ekg-org-test-view-basic-hierarchy ()
+(ekg-deftest-with-db ekg-org-test-view-basic-hierarchy ()
   "Test that the view renders a parent with children in order."
   (ekg-org-add-schema)
   (let* ((parent-id (ekg-org-test--add-task "Parent"))
@@ -307,7 +307,7 @@ Returns the note ID."
       (should (equal headings
                      '((1 "Parent") (2 "Child A") (2 "Child B")))))))
 
-(ekg-deftest ekg-org-test-view-body-fontified ()
+(ekg-deftest-with-db ekg-org-test-view-body-fontified ()
   "Test that org body text in the view is fontified, not raw text."
   (ekg-org-add-schema)
   (ekg-agent-org--tool-add-item
@@ -323,7 +323,7 @@ Returns the note ID."
       (should face)
       (should-not (eq face 'ekg-org-view-body)))))
 
-(ekg-deftest ekg-org-test-view-multiple-top-level ()
+(ekg-deftest-with-db ekg-org-test-view-multiple-top-level ()
   "Test that multiple top-level tasks all appear."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -336,7 +336,7 @@ Returns the note ID."
     (should (member "Second" titles))
     (should (member "Third" titles))))
 
-(ekg-deftest ekg-org-test-view-collapse ()
+(ekg-deftest-with-db ekg-org-test-view-collapse ()
   "Test that collapsing a parent hides its children."
   (ekg-org-add-schema)
   (let* ((parent-id (ekg-org-test--add-task "Parent"))
@@ -349,7 +349,7 @@ Returns the note ID."
     (should (equal (ekg-org-test--view-headings)
                    '((1 "Parent"))))))
 
-(ekg-deftest ekg-org-test-view-archive-removes-from-view ()
+(ekg-deftest-with-db ekg-org-test-view-archive-removes-from-view ()
   "Test that archiving a task removes it from the active view."
   (ekg-org-add-schema)
   (let ((id (ekg-org-test--add-task "To Archive")))
@@ -363,7 +363,7 @@ Returns the note ID."
     (ekg-org-view)
     (should-not (member "To Archive" (ekg-org-test--view-titles)))))
 
-(ekg-deftest ekg-org-test-view-archive-appears-in-archive-view ()
+(ekg-deftest-with-db ekg-org-test-view-archive-appears-in-archive-view ()
   "Test that archived tasks appear in the archive view."
   (ekg-org-add-schema)
   (let ((id (ekg-org-test--add-task "Archived Task")))
@@ -384,7 +384,7 @@ Returns the note ID."
           (forward-line 1))
         (should (member "Archived Task" titles))))))
 
-(ekg-deftest ekg-org-test-view-promote ()
+(ekg-deftest-with-db ekg-org-test-view-promote ()
   "Test that promoting a child makes it a sibling of its parent."
   (ekg-org-add-schema)
   (let* ((parent-id (ekg-org-test--add-task "Parent"))
@@ -401,7 +401,7 @@ Returns the note ID."
       (should (equal (assoc 1 headings) '(1 "Parent")))
       (should (member '(1 "Child") headings)))))
 
-(ekg-deftest ekg-org-test-view-demote ()
+(ekg-deftest-with-db ekg-org-test-view-demote ()
   "Test that demoting a task makes it a child of the previous sibling."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -417,7 +417,7 @@ Returns the note ID."
     (should (equal (car headings) '(1 "First")))
     (should (equal (cadr headings) '(2 "Second")))))
 
-(ekg-deftest ekg-org-test-view-move-up ()
+(ekg-deftest-with-db ekg-org-test-view-move-up ()
   "Test that moving a task up swaps it with its previous sibling."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -433,7 +433,7 @@ Returns the note ID."
     (ekg-org-view-move-up))
   (should (equal (ekg-org-test--view-titles) '("First" "Third" "Second"))))
 
-(ekg-deftest ekg-org-test-view-move-down ()
+(ekg-deftest-with-db ekg-org-test-view-move-down ()
   "Test that moving a task down swaps it with its next sibling."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -447,7 +447,7 @@ Returns the note ID."
     (ekg-org-view-move-down))
   (should (equal (ekg-org-test--view-titles) '("Second" "First" "Third"))))
 
-(ekg-deftest ekg-org-test-view-move-up-at-top ()
+(ekg-deftest-with-db ekg-org-test-view-move-up-at-top ()
   "Test that moving up at the top position is a no-op."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -459,7 +459,7 @@ Returns the note ID."
     (ekg-org-view-move-up))
   (should (equal (ekg-org-test--view-titles) '("First" "Second"))))
 
-(ekg-deftest ekg-org-test-view-move-down-at-bottom ()
+(ekg-deftest-with-db ekg-org-test-view-move-down-at-bottom ()
   "Test that moving down at the bottom position is a no-op."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -472,7 +472,7 @@ Returns the note ID."
     (ekg-org-view-move-down))
   (should (equal (ekg-org-test--view-titles) '("First" "Second"))))
 
-(ekg-deftest ekg-org-test-view-state-change ()
+(ekg-deftest-with-db ekg-org-test-view-state-change ()
   "Test that changing state updates the heading."
   (ekg-org-add-schema)
   (let ((id (ekg-org-test--add-task "My Task" nil "TODO")))
@@ -498,7 +498,7 @@ Returns the note ID."
                                       (line-beginning-position)
                                       (line-end-position)))))))
 
-(ekg-deftest ekg-org-test-view-insert-mode-sibling ()
+(ekg-deftest-with-db ekg-org-test-view-insert-mode-sibling ()
   "Test that insert mode creates a sibling after the current task."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -519,7 +519,7 @@ Returns the note ID."
   (let ((titles (ekg-org-test--view-titles)))
     (should (equal titles '("First" "Second" "Third")))))
 
-(ekg-deftest ekg-org-test-view-insert-mode-child ()
+(ekg-deftest-with-db ekg-org-test-view-insert-mode-child ()
   "Test that insert mode creates a child task."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "Parent")
@@ -538,7 +538,7 @@ Returns the note ID."
   (let ((headings (ekg-org-test--view-headings)))
     (should (equal headings '((1 "Parent") (2 "Child"))))))
 
-(ekg-deftest ekg-org-test-view-insert-mode-top-level ()
+(ekg-deftest-with-db ekg-org-test-view-insert-mode-top-level ()
   "Test that insert mode creates a top-level task at the beginning."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "Existing")
@@ -557,7 +557,7 @@ Returns the note ID."
     (should (equal (car titles) "New First"))
     (should (= (length titles) 2))))
 
-(ekg-deftest ekg-org-test-view-insert-initial-position ()
+(ekg-deftest-with-db ekg-org-test-view-insert-initial-position ()
   "Test that insert mode defaults to first-child of the heading at point."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "Alpha")
@@ -581,7 +581,7 @@ Returns the note ID."
     (should (equal headings '((1 "Alpha") (2 "Alpha Child")
                               (1 "Beta") (2 "Beta Child"))))))
 
-(ekg-deftest ekg-org-test-view-top-level-spacing ()
+(ekg-deftest-with-db ekg-org-test-view-top-level-spacing ()
   "Test that blank lines separate top-level task groups after creation."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "Alpha")
@@ -602,7 +602,7 @@ Returns the note ID."
       (should (string-match-p "\n\n\\*" text)
               ))))
 
-(ekg-deftest ekg-org-test-view-insert-point-on-new-item ()
+(ekg-deftest-with-db ekg-org-test-view-insert-point-on-new-item ()
   "Test that point lands on the newly created item after insertion."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "First")
@@ -626,7 +626,7 @@ Returns the note ID."
                                   :titled/title))))
       (should (equal title "Second")))))
 
-(ekg-deftest ekg-org-test-view-insert-slot-after-subtree ()
+(ekg-deftest-with-db ekg-org-test-view-insert-slot-after-subtree ()
   "Test that the sibling-after slot is placed after the full subtree."
   (ekg-org-add-schema)
   (let* ((parent-id (ekg-org-test--add-task "Parent"))
@@ -659,7 +659,7 @@ Returns the note ID."
         (should (equal (plist-get target-slot :buffer-pos)
                        next-heading-pos))))))
 
-(ekg-deftest ekg-org-test-view-trash ()
+(ekg-deftest-with-db ekg-org-test-view-trash ()
   "Test that trashing a task removes it from the view."
   (ekg-org-add-schema)
   (ekg-org-test--add-task "Keep")
@@ -675,7 +675,7 @@ Returns the note ID."
     (should (= (length titles) 1))
     (should (equal (car titles) "Keep"))))
 
-(ekg-deftest ekg-org-test-view-trash-with-children ()
+(ekg-deftest-with-db ekg-org-test-view-trash-with-children ()
   "Test that trashing a task also trashes its children."
   (ekg-org-add-schema)
   (let* ((parent-id (ekg-org-test--add-task "Parent"))
@@ -699,7 +699,7 @@ Returns the note ID."
     (should-not (ekg-note-active-p (ekg-get-note-with-id child-id)))
     (should-not (ekg-note-active-p (ekg-get-note-with-id grandchild-id)))))
 
-(ekg-deftest ekg-org-test-view-archive-with-children ()
+(ekg-deftest-with-db ekg-org-test-view-archive-with-children ()
   "Test that archiving a task also archives its children."
   (ekg-org-add-schema)
   (let* ((parent-id (ekg-org-test--add-task "Archive Parent"))
@@ -721,7 +721,7 @@ Returns the note ID."
     (should (member ekg-org-archive-tag
                     (ekg-note-tags (ekg-get-note-with-id child-id))))))
 
-(ekg-deftest ekg-org-test-view-navigation ()
+(ekg-deftest-with-db ekg-org-test-view-navigation ()
   "Test heading navigation commands."
   (ekg-org-add-schema)
   (let* ((p1 (ekg-org-test--add-task "Parent 1"))
@@ -751,7 +751,7 @@ Returns the note ID."
                                     :titled/title))))
         (should (equal title "Parent 2"))))))
 
-(ekg-deftest ekg-org-test-view-deep-hierarchy ()
+(ekg-deftest-with-db ekg-org-test-view-deep-hierarchy ()
   "Test a three-level deep hierarchy renders correctly."
   (ekg-org-add-schema)
   (let* ((gp (ekg-org-test--add-task "Grandparent"))
@@ -761,7 +761,7 @@ Returns the note ID."
     (should (equal (ekg-org-test--view-headings)
                    '((1 "Grandparent") (2 "Parent") (3 "Child"))))))
 
-(ekg-deftest ekg-org-test-view-promote-to-grandparent ()
+(ekg-deftest-with-db ekg-org-test-view-promote-to-grandparent ()
   "Test promoting a deeply nested child to its grandparent's level."
   (ekg-org-add-schema)
   (let* ((gp (ekg-org-test--add-task "Grandparent"))
@@ -780,7 +780,7 @@ Returns the note ID."
       (should (member '(2 "Child") headings))
       (should (member '(2 "Parent") headings)))))
 
-(ekg-deftest ekg-org-test-view-auto-refresh-on-external-save ()
+(ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-save ()
   "Test that the view refreshes when notes change outside of user actions.
 An agent saving a new note should cause the view to update automatically."
   (ekg-org-add-schema)
@@ -801,7 +801,7 @@ An agent saving a new note should cause the view to update automatically."
     (should (member "Agent Task" titles))
     (should (member "Initial Task" titles))))
 
-(ekg-deftest ekg-org-test-view-auto-refresh-on-external-delete ()
+(ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-delete ()
   "Test that the view refreshes when a note is deleted externally."
   (ekg-org-add-schema)
   (let ((id (ekg-org-test--add-task "Doomed Task")))
@@ -814,7 +814,7 @@ An agent saving a new note should cause the view to update automatically."
       (should (= (length titles) 1))
       (should (equal (car titles) "Survivor")))))
 
-(ekg-deftest ekg-org-test-view-auto-refresh-on-external-state-change ()
+(ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-state-change ()
   "Test that the view updates when a note's state changes externally."
   (ekg-org-add-schema)
   (let ((id (ekg-org-test--add-task "My Task" nil "TODO")))
@@ -840,7 +840,7 @@ An agent saving a new note should cause the view to update automatically."
                                       (line-beginning-position)
                                       (line-end-position)))))))
 
-(ekg-deftest ekg-org-test-view-refile-to-new-parent ()
+(ekg-deftest-with-db ekg-org-test-view-refile-to-new-parent ()
   "Test that refiling moves a task under a new parent."
   (ekg-org-add-schema)
   (let* ((p1 (ekg-org-test--add-task "Parent A"))
@@ -863,7 +863,7 @@ An agent saving a new note should cause the view to update automatically."
       (should (equal headings
                      '((1 "Parent A") (1 "Parent B") (2 "Child")))))))
 
-(ekg-deftest ekg-org-test-view-refile-to-top-level ()
+(ekg-deftest-with-db ekg-org-test-view-refile-to-top-level ()
   "Test that refiling to top level removes the parent."
   (ekg-org-add-schema)
   (let* ((parent (ekg-org-test--add-task "Parent"))
@@ -885,7 +885,7 @@ An agent saving a new note should cause the view to update automatically."
       (should (member '(1 "Parent") headings))
       (should (member '(1 "Child") headings)))))
 
-(ekg-deftest ekg-org-test-view-refile-excludes-descendants ()
+(ekg-deftest-with-db ekg-org-test-view-refile-excludes-descendants ()
   "Test that refile targets exclude the task itself and its descendants."
   (ekg-org-add-schema)
   (let* ((p (ekg-org-test--add-task "Parent"))
@@ -900,7 +900,7 @@ An agent saving a new note should cause the view to update automatically."
         (should (= (length choices) 1))
         (should (string= "Top level" (caar choices)))))))
 
-(ekg-deftest ekg-org-test-properties ()
+(ekg-deftest-with-db ekg-org-test-properties ()
   "Test generic org property get/set/remove."
   (ekg-org-add-schema)
   (let* ((id (ekg-org-test--add-task "Task with props"))
@@ -936,7 +936,7 @@ An agent saving a new note should cause the view to update automatically."
     (should (equal "other-branch" (ekg-org-get-property note "WORKTREE")))
     (should (= 1 (length (ekg-org-properties-alist note))))))
 
-(ekg-deftest ekg-org-test-view-insert-defers-refresh ()
+(ekg-deftest-with-db ekg-org-test-view-insert-defers-refresh ()
   "Test that refreshes during insert mode are deferred, not lost.
 When the user is positioning the insertion placeholder, an external
 note save must not re-render the buffer mid-interaction.  The

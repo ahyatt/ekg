@@ -28,13 +28,13 @@
 (require 'ekg-denote)
 (require 'cl-lib)
 
-(ert-deftest ekg-denote-test-sublist-keywords ()
+(ekg-deftest ekg-denote-test-sublist-keywords ()
   "Combined length of the sublist keywords is as per the allowed combined length argument."
   (should (equal '("kw1") (ekg-denote-sublist-keywords '("kw1" "kw2" "kw 3") 4)))
   (should (equal '("kw1" "kw2") (ekg-denote-sublist-keywords '("kw1" "kw2" "kw 3") 8)))
   (should (equal '("kw1" "kw2" "kw 3") (ekg-denote-sublist-keywords '("kw1" "kw2" "kw 3") 13))))
 
-(ert-deftest ekg-denote-test-notes-having-duplicate-creation-time ()
+(ekg-deftest ekg-denote-test-notes-having-duplicate-creation-time ()
   "Notes with duplicate creation time should error."
   (let* ((time (time-convert (current-time) 'integer))
 	     (note1 (make-ekg-note :id "ID1" :creation-time time))
@@ -42,7 +42,7 @@
 	     (notes (list note1 note2)))
     (should-error (ekg-denote-assert-notes-have-unique-creation-time notes))))
 
-(ert-deftest ekg-denote-test-notes-having-unique-creation-tiem ()
+(ekg-deftest ekg-denote-test-notes-having-unique-creation-tiem ()
   "Notes with unique creation time should not error."
   (let* ((time (time-convert (current-time) 'integer))
 	     (note1 (make-ekg-note :id "ID1" :creation-time time))
@@ -50,14 +50,14 @@
 	     (notes (list note1 note2)))
     (should-not (ekg-denote-assert-notes-have-unique-creation-time notes))))
 
-(ert-deftest ekg-denote-test-notes-missing-creation-time ()
+(ekg-deftest ekg-denote-test-notes-missing-creation-time ()
   "Notes missing creation time should error."
   (let* ((time (time-convert (current-time) 'integer))
 	     (note1 (make-ekg-note :id "ID1" :creation-time time))
 	     (note2 (make-ekg-note :id "ID2")))
     (should-error (ekg-denote-assert-notes-have-creation-time notes))))
 
-(ert-deftest ekg-denote-test-notes-not-missing-creation-time ()
+(ekg-deftest ekg-denote-test-notes-not-missing-creation-time ()
   "Notes having creation time should not error."
   (let* ((time (time-convert (current-time) 'integer))
 	     (note1 (make-ekg-note :id "ID1" :creation-time time))
@@ -65,7 +65,7 @@
 	     (notes (list note1 note2)))
     (should-not (ekg-denote-assert-notes-have-creation-time notes))))
 
-(ert-deftest ekg-denote-test-create ()
+(ekg-deftest ekg-denote-test-create ()
   "Verify creation of `ekg-denote' against given ekg note."
 
                                         ; date tag is removed.
@@ -156,7 +156,7 @@ Enforces single match."
     (should (length= triples 1))
     (ekg-get-note-with-id (car (car triples)))))
 
-(ekg-deftest ekg-denote-test-export ()
+(ekg-deftest-with-db ekg-denote-test-export ()
   "Verify export."
   (ekg-denote-add-schema)
   (let ((denote-directory (make-temp-file "denote" t)))
@@ -183,14 +183,14 @@ Enforces single match."
     (should (ekg-test--matching-denote "__updatedtag"))
     (should-not (ekg-test--matching-denote "__portfolio"))))
 
-(ekg-deftest ekg-denote-test-last-export ()
+(ekg-deftest-with-db ekg-denote-test-last-export ()
   "Verify last export time updates."
   (ekg-denote-add-schema)
   (should (= 0 (ekg-denote-get-last-export)))
   (ekg-denote-set-last-export 123)
   (should (= 123 (ekg-denote-get-last-export))))
 
-(ert-deftest ekg-denote-test-create-hidden-tags ()
+(ekg-deftest ekg-denote-test-create-hidden-tags ()
   "Verify that hidden tags are filtered out during denote creation."
   (let* ((time (time-convert (current-time) 'integer))
          (denote-directory "/tmp")
