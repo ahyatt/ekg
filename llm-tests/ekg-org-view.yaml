@@ -73,14 +73,22 @@ tests:
         use `switch-to-buffer' here: it is interactive and opens a
         minibuffer prompt, which only adds confusion.
 
-        Once you are back in `*ekg-org-tasks*', use `eval-elisp' to
-        move point to the end of the buffer:
-          (with-current-buffer "*ekg-org-tasks*" (goto-char (point-max)))
-        Then press `c'.  Because the view is now non-empty, this
-        enters insert mode (overlay placeholder).  Read the `message'
-        field — it tells you the keybindings.  Press `RET' to confirm
-        the slot, then `type-text' the title
-        "Celebrate with a nice dinner out", then send `RET'.
+        Once you are back in `*ekg-org-tasks*', press `c'.  Because
+        the view is now non-empty, this enters insert mode (overlay
+        placeholder showing `** TODO ← type task title`).  Read the
+        `message' field — it tells you the keybindings.  In insert
+        mode you press `n' to advance to the next slot (or `p' to
+        go back); each `n' moves the placeholder forward through
+        the available insertion points.  Use `n' repeatedly until
+        the placeholder is past the last subtask of "Do my taxes"
+        (i.e. it shows up as a NEW top-level slot at the bottom).
+        Use `L' (capital L) to promote one level if the placeholder
+        is shown as a child (`** TODO ...` or deeper) instead of a
+        top-level (`* TODO ...`) slot.  When the placeholder is in
+        the right place AND at the right level, press `RET' to
+        confirm.  A title prompt then opens in the minibuffer.
+        `type-text' the title "Celebrate with a nice dinner out",
+        then send `RET' to finish.
 
       Step 5 - verify and finish:
         Read `*ekg-org-tasks*' and confirm:
