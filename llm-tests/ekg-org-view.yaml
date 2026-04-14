@@ -66,10 +66,21 @@ tests:
         waiting there are still no subtasks, treat that as failure.
 
       Step 4 - add a celebration task:
-        Make sure the `*ekg-org-tasks*' buffer is selected (the
-        planning agent may have opened another buffer).  Move point
-        to the end of the buffer, then press `c', use `type-text'
-        to enter "Celebrate with a nice dinner out", and send `RET'.
+        The planning agent may have opened a result popup that took
+        focus.  To return to `*ekg-org-tasks*', call
+        `run-command' with `ekg-org-view' again — that command
+        unconditionally switches to the org-tasks buffer.  Do NOT
+        use `switch-to-buffer' here: it is interactive and opens a
+        minibuffer prompt, which only adds confusion.
+
+        Once you are back in `*ekg-org-tasks*', use `eval-elisp' to
+        move point to the end of the buffer:
+          (with-current-buffer "*ekg-org-tasks*" (goto-char (point-max)))
+        Then press `c'.  Because the view is now non-empty, this
+        enters insert mode (overlay placeholder).  Read the `message'
+        field — it tells you the keybindings.  Press `RET' to confirm
+        the slot, then `type-text' the title
+        "Celebrate with a nice dinner out", then send `RET'.
 
       Step 5 - verify and finish:
         Read `*ekg-org-tasks*' and confirm:
