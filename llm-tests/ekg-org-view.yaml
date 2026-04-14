@@ -13,13 +13,32 @@ setup: |
   - Use `type-text' for literal text input and `send-keys' for command keys.
   - Use `run-command' to invoke Emacs commands by name instead of typing
     them through M-x.
+  - Always read the `message' field of the frame state — it contains
+    the current echo-area message, which often tells you what keys to
+    press next (especially in modes that use insert/overlay prompts).
 
   `ekg-org-view-mode' keybindings (only active when no minibuffer is open):
-    c   create a new task (prompts for title in minibuffer)
+    c   create a new task
     n / p   next / previous heading
     g   refresh view
     t   cycle TODO/DONE state
     RET open note   TAB collapse/expand
+
+  Create-task flow.  Pressing `c' behaves differently depending on
+  whether the view already has tasks:
+  - Empty view: `c' opens a `Task title:' minibuffer prompt.  Type the
+    title with `type-text' and press RET.
+  - Non-empty view: `c' enters "insert mode" — it shows a placeholder
+    `** TODO <- type task title' at the chosen slot, and the echo-area
+    message (visible in the frame state's `message' field) tells you
+    the keybindings: `n'/`p' to move the insertion point between slots,
+    `R'/`L' to demote/promote (change level), `RET' to confirm and open
+    the title prompt, `C-g' to cancel.  So the workflow in insert mode
+    is: press `n'/`p' to pick the right slot and `R'/`L' to adjust
+    level if needed, then RET to open the title prompt, then type the
+    title and RET to finish.  Do NOT just type the title while the
+    placeholder is showing — the buffer is read-only until you press
+    RET to accept the slot.
 
 tests:
   - description: |

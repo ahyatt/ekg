@@ -100,6 +100,34 @@ post-hoc."
                        (diag "[%s] provider-eval-error: %S\n"
                              (format-time-string "%F %T")
                              provider-err)))))
+                ;; In daemon mode, (current-message) does not retain
+                ;; transient messages after the command that produced
+                ;; them returns, so the frame-state capture's
+                ;; `message' field is always nil.  Intercept `message'
+                ;; to store the most recent non-empty call and have
+                ;; `current-message' return it while it's "fresh".
+                (defvar ekg-agent-llm-test--last-message nil
+                  "Pair of (TIMESTAMP . MESSAGE) for the most recent `message' call.")
+                (advice-add
+                 'message :after
+                 (lambda (fmt &rest args)
+                   (ignore-errors
+                     (when (stringp fmt)
+                       (let ((text (apply #'format fmt args)))
+                         (unless (string-empty-p text)
+                           (setq ekg-agent-llm-test--last-message
+                                 (cons (float-time) text)))))))
+                 '((name . ekg-llm-test-last-message)))
+                (advice-add
+                 'current-message :around
+                 (lambda (orig &rest args)
+                   (or (apply orig args)
+                       (and ekg-agent-llm-test--last-message
+                            (< (- (float-time)
+                                  (car ekg-agent-llm-test--last-message))
+                               30)
+                            (cdr ekg-agent-llm-test--last-message))))
+                 '((name . ekg-llm-test-last-message)))
                 (diag "[%s] advices attached\n"
                       (format-time-string "%F %T")))
             (error
