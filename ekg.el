@@ -39,6 +39,7 @@
 (require 'hl-line)
 (require 'iso8601)
 (require 'url-parse)
+(require 'warnings)
 
 (declare-function org-open-at-point "org")
 (declare-function org-redisplay-inline-images "org")
@@ -1415,7 +1416,17 @@ True when the ID represents a meaningful resource to the user,
 rather than an auto-generated number."
   (not (numberp id)))
 
-
+(defun ekg--org-redisplay-inline-images ()
+  "Redisplay Org inline images, suppressing Org parser warnings.
+This avoids warnings when not in an `org-mode' buffer"
+  (if (derived-mode-p 'org-mode)
+      (org-redisplay-inline-images)
+    (let ((warning-suppress-types
+           (cons '(org-element org-element-parser) warning-suppress-types))
+          (warning-suppress-log-types
+           (cons '(org-element org-element-parser)
+                 warning-suppress-log-types)))
+      (org-redisplay-inline-images))))
 
 ;;;###autoload
 (cl-defun ekg-capture (&key text mode tags properties id)
@@ -1446,7 +1457,7 @@ If ID is given, force the triple subject to be that value."
     (if (and (eq mode 'org-mode)
              ekg-notes-display-images)
         (condition-case nil
-            (org-redisplay-inline-images)
+            (ekg--org-redisplay-inline-images)
           (wrong-type-argument (message "Problem showing image for note ID %s (content: \"%s\")"
                                         id (ekg-truncate-at text 10)))))
     (set-buffer-modified-p nil)
@@ -1669,7 +1680,7 @@ it.  If there are multiple titles, select which one to change."
       (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
       (if (and (eq (ekg-note-mode note) 'org-mode)
                ekg-notes-display-images)
-          (org-redisplay-inline-images)))
+          (ekg--org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -2075,7 +2086,7 @@ NAME is displayed at the top of the buffer."
   (ekg--note-highlight)
   (when (eq ekg-capture-default-mode 'org-mode)
     (ekg--notes-activate-links)
-    (if ekg-notes-display-images (org-redisplay-inline-images)))
+    (if ekg-notes-display-images (ekg--org-redisplay-inline-images)))
   (set-buffer-modified-p nil))
 
 (defun ekg--notes-activate-links()
