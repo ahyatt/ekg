@@ -30,6 +30,7 @@
 (require 'org)
 (require 'markdown-mode)
 (require 'ekg-test-utils)
+(require 'cl-lib)
 
 (defun ekg-test-count-words-in-string (text)
   "Counts words in the given TEXT string using forward-word in a temp buffer."
@@ -123,6 +124,19 @@
                          (ekg-note-create :text "b" :mode ekg-capture-default-mode :tags '("tag/b"))))
              (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
              (should (string= ekg-notes-name "tags (any): tag/a, tag/b")))
+
+(ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
+  (with-temp-buffer
+    (insert "[[attachment:foo.png]]\n")
+    (ekg-notes-mode)
+    (cl-letf (((symbol-function 'display-graphic-p)
+               (lambda (&optional _frame) t)))
+      (should-not
+       (string-match-p
+        "org-element-at-point"
+        (ert-with-message-capture messages
+          (ekg--org-redisplay-inline-images)
+          messages))))))
 
 (ekg-deftest-with-db ekg-test-note-roundtrip ()
              (let ((text "foo\n\tbar \"baz\" ☃"))
