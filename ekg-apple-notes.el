@@ -79,6 +79,13 @@ variables if `ekg-agent' is loaded."
            (when (boundp 'ekg-agent-self-info-tag)
              (list (symbol-value 'ekg-agent-self-info-tag))))))
 
+(setq ekg-header-hidden-properties
+      (append ekg-header-hidden-properties
+              (list :apple-notes/note-id
+                    :apple-notes/last-export
+                    :apple-notes/last-import
+                    :apple-notes/folder)))
+
 ;;; ---- Schema ----
 
 (defun ekg-apple-notes-add-schema ()
