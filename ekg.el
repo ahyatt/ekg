@@ -964,8 +964,8 @@ desired output properties as described in `ekg-display-note-template'."
 (defun ekg-display-note-titled (note &optional numwords &rest format)
   "Return text of the title of NOTE.
 NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
-  (ekg-display--format (if-let (titles (plist-get (ekg-note-properties note)
-                                                  :titled/title))
+  (ekg-display--format (if-let* (titles (plist-get (ekg-note-properties note)
+                                                   :titled/title))
                            (propertize (concat (mapconcat #'identity titles ", ") "\n")
                                        'face 'ekg-title)
                          "")
