@@ -590,7 +590,7 @@ CALLBACK is called with the result string when the process finishes."
                                (error
                                 (funcall callback (format "Error: %s" (error-message-string err))))))
                  :name "run_elisp"
-                 :description "Evaluate arbitrary Emacs Lisp and return the printed result of the final form."
+                 :description "Evaluate arbitrary Emacs Lisp and return the printed result of the final form.  Do not use this when another tool is more appropriate.  If that other tool is giving errors, report that to the user instead."
                  :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate." :required t)
                          (:name "return" :type string :enum ["result" "buffer"]
                                 :description "Whether to return the result of the evaluated elisp, or the buffer after the elisp has been evaluated. If there is an error, it will be returned regardless of this value."
