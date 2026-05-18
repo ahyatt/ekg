@@ -756,7 +756,7 @@ or, if unknown, `ekg-inline'."
                                      (literal ")"))))))
     ;; Keep removing commands left to right to make sure our positions are
     ;; without commands, since that's how they will need to be inserted.
-    (while (when-let (index (string-match inline-rx newtext))
+    (while (when-let* ((index (string-match inline-rx newtext)))
              (push (make-ekg-inline :pos index
                                     :command (read (format "(%s)" (match-string 3 newtext)))
                                     :type (pcase (match-string 2 newtext)
@@ -964,8 +964,8 @@ desired output properties as described in `ekg-display-note-template'."
 (defun ekg-display-note-titled (note &optional numwords &rest format)
   "Return text of the title of NOTE.
 NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
-  (ekg-display--format (if-let* (titles (plist-get (ekg-note-properties note)
-                                                   :titled/title))
+  (ekg-display--format (if-let* ((titles (plist-get (ekg-note-properties note)
+                                                    :titled/title)))
                            (propertize (concat (mapconcat #'identity titles ", ") "\n")
                                        'face 'ekg-title)
                          "")
