@@ -138,8 +138,8 @@ The actual delay uses exponential backoff: base * 2^attempt."
   "Command to run for the coding tool.
 
 This should be a shell-style command string (for example, \"claude -p
---dangerously_skip_permissions\"). The prompt will be provided on stdin;
-stdout will be returned."
+--dangerously_skip_permissions\"). The prompt will be appended to the
+command; stdout will be returned."
   :type '(choice (const :tag "Unset" nil) string)
   :group 'ekg-agent)
 
@@ -518,7 +518,7 @@ CALLBACK is called with the result string when the process finishes."
           (error "Ekg-agent-code-command is not configured"))
         (let* ((args (split-string-and-unquote ekg-agent-code-command))
                (program (car args))
-               (program-args (cdr args))
+               (program-args (append (cdr args) (list prompt)))
                (output-buf (generate-new-buffer " *ekg-agent-code*" t))
                (proc (make-process
                       :name "ekg-agent-code"
@@ -536,8 +536,6 @@ CALLBACK is called with the result string when the process finishes."
                                                  (format "Error: Command failed (%d): %s"
                                                          exit-code
                                                          (string-trim-right output))))))))))
-          (process-send-string proc prompt)
-          (process-send-eof proc)
           (push proc ekg-agent--tool-processes)))
     (error (funcall callback (format "Error: %s" (error-message-string err))))))
 
