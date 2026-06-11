@@ -1657,6 +1657,14 @@ Here's an example:
 (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
 (setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp ekg-agent-tool-code))
 #+end_src
+
+The standard tool set also includes read-only Emacs reference tools.  The agent
+can use =emacs_help_search= and =emacs_help_symbol= to search and display Emacs
+help for functions, macros, variables, faces, and other symbols.  It can use
+=emacs_info_search= and =emacs_info_node= to search and read the installed Info
+manuals, including the Emacs, Emacs Lisp, and Common Lisp extension manuals.
+These tools let the agent look up Emacs and Elisp behavior directly instead of
+guessing from memory.
 *** Agent log mode: continuing and cancelling
 
 When the agent starts a session, it creates a log buffer (named according to
