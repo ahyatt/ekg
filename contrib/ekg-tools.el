@@ -29,12 +29,14 @@
 (require 'cl-lib)
 (require 'ekg-agent)
 (require 'llm)
+(require 'mail-utils)
 (require 'seq)
 (require 'subr-x)
 
 (eval-when-compile
   (require 'gnus)
   (require 'gnus-group)
+  (require 'gnus-search)
   (require 'gnus-start))
 
 (defvar gnus-active-hashtb)
@@ -44,8 +46,14 @@
 (defvar gnus-level-subscribed)
 (defvar gnus-newsrc-alist)
 (defvar gnus-select-method)
+(defvar gnus-search-use-parsed-queries)
 (defvar gnus-verbose)
 (defvar gnus-verbose-backends)
+(defvar gnus-fetch-old-ephemeral-headers)
+(defvar gnus-fetch-old-headers)
+(defvar gnus-inhibit-demon)
+(defvar gnus-large-ephemeral-newsgroup)
+(defvar gnus-large-newsgroup)
 (defvar nntp-server-buffer)
 
 (defvar elfeed-db-entries)
@@ -57,10 +65,18 @@
                   (info active &optional update))
 (declare-function gnus-group-get-new-news "gnus-group" (&optional arg
                                                                   one-level))
+(declare-function gnus-group-native-p "gnus-group" (group))
 (declare-function gnus-group-setup-buffer "gnus-group" ())
+(declare-function gnus-group-server "gnus-group" (group))
+(declare-function gnus-find-method-for-group "gnus" (group))
 (declare-function gnus-request-head "gnus-int" (article group))
+(declare-function gnus-search-run-query "gnus-search" (specs))
+(declare-function gnus-search-server-to-engine "gnus-search" (server))
 (declare-function gnus-setup-news "gnus-start" (&optional rawfile level
                                                           dont-connect))
+(declare-function gnus-method-to-server "gnus" (method))
+(declare-function gnus-request-article "gnus-int" (article group
+                                                          &optional buffer))
 (declare-function elfeed-db-ensure "elfeed-db" ())
 (declare-function elfeed-db-get-feed "elfeed-db" (id))
 (declare-function elfeed-db-get-entry "elfeed-db" (id))
@@ -89,9 +105,34 @@
   :type 'integer
   :group 'ekg-tools)
 
-(defcustom ekg-tools-gnus-default-max-headers 10
+(defcustom ekg-tools-gnus-default-max-headers 200
   "Default maximum number of Gnus headers returned by the headers tool."
   :type 'integer
+  :group 'ekg-tools)
+
+(defcustom ekg-tools-gnus-max-headers 2000
+  "Maximum number of Gnus headers that can be returned by the headers tool."
+  :type 'integer
+  :group 'ekg-tools)
+
+(defcustom ekg-tools-gnus-default-max-search-results 10
+  "Default maximum number of Gnus search results returned by the search tool."
+  :type 'integer
+  :group 'ekg-tools)
+
+(defcustom ekg-tools-gnus-max-search-results 200
+  "Maximum number of Gnus search results returned by the search tool."
+  :type 'integer
+  :group 'ekg-tools)
+
+(defcustom ekg-tools-gnus-default-search-candidates 200
+  "Default maximum candidate results requested before local sorting."
+  :type 'integer
+  :group 'ekg-tools)
+
+(defcustom ekg-tools-gnus-ignore-missing-folders t
+  "Whether Gnus search should ignore missing folders when some are valid."
+  :type 'boolean
   :group 'ekg-tools)
 
 (defcustom ekg-tools-gnus-default-max-fetch-changes 20
@@ -148,6 +189,36 @@ headers may require trying more than N article numbers."
                 (number-to-string max-chars) " characters]")
       text)))
 
+(defmacro ekg-tools-gnus--without-interaction (&rest body)
+  "Run BODY with common Gnus and minibuffer prompts disabled."
+  (declare (indent 0) (debug t))
+  `(let ((gnus-fetch-old-ephemeral-headers nil)
+         (gnus-fetch-old-headers nil)
+         (gnus-inhibit-demon t)
+         (gnus-large-ephemeral-newsgroup nil)
+         (gnus-large-newsgroup nil)
+         (use-dialog-box nil))
+     (cl-letf (((symbol-function 'completing-read)
+                (lambda (&rest _args)
+                  (error "Interactive completing-read disabled")))
+               ((symbol-function 'read-from-minibuffer)
+                (lambda (&rest _args)
+                  (error "Interactive minibuffer read disabled")))
+               ((symbol-function 'read-string)
+                (lambda (&rest _args)
+                  (error "Interactive string read disabled")))
+               ((symbol-function 'yes-or-no-p)
+                (lambda (&rest _args) nil))
+               ((symbol-function 'y-or-n-p)
+                (lambda (&rest _args) nil))
+               ((symbol-function 'gnus-yes-or-no-p)
+                (lambda (&rest _args) nil))
+               ((symbol-function 'gnus-y-or-n-p)
+                (lambda (&rest _args) nil))
+               ((symbol-function 'map-y-or-n-p)
+                (lambda (&rest _args) nil)))
+       ,@body)))
+
 (defun ekg-tools--html-to-text (html)
   "Render HTML as readable text."
   (require 'shr)
@@ -184,7 +255,8 @@ connecting to servers just to list folders."
                gnus-active-hashtb)
     (let ((gnus-check-new-newsgroups nil)
           (gnus-check-bogus-newsgroups nil))
-      (gnus-setup-news nil nil t)))
+      (ekg-tools-gnus--without-interaction
+        (gnus-setup-news nil nil t))))
   (unless (and (boundp 'gnus-newsrc-alist)
                (consp gnus-newsrc-alist))
     (error "Gnus newsrc data is not available")))
@@ -320,9 +392,9 @@ connecting to servers just to list folders."
                    (b-before (nth 1 b))
                    (b-after (nth 2 b))
                    (a-delta (abs (- (or (plist-get a-after :unread) 0)
-                                      (or (plist-get a-before :unread) 0))))
+                                    (or (plist-get a-before :unread) 0))))
                    (b-delta (abs (- (or (plist-get b-after :unread) 0)
-                                      (or (plist-get b-before :unread) 0)))))
+                                    (or (plist-get b-before :unread) 0)))))
               (if (= a-delta b-delta)
                   (string< (car a) (car b))
                 (> a-delta b-delta)))))))
@@ -369,10 +441,11 @@ changed folder rows returned."
          (started (current-time))
          (gnus-verbose 0)
          (gnus-verbose-backends 0))
-    (save-current-buffer
-      (gnus-group-setup-buffer)
-      (with-current-buffer gnus-group-buffer
-        (gnus-group-get-new-news arg)))
+    (ekg-tools-gnus--without-interaction
+      (save-current-buffer
+        (gnus-group-setup-buffer)
+        (with-current-buffer gnus-group-buffer
+          (gnus-group-get-new-news arg))))
     (let* ((after (ekg-tools-gnus--folder-snapshot))
            (elapsed (float-time (time-subtract (current-time) started)))
            (changes (ekg-tools-gnus--snapshot-changes before after))
@@ -446,10 +519,26 @@ are omitted."
     (setq value (or (ignore-errors (rfc2047-decode-string value)) value))
     (string-trim (replace-regexp-in-string "[\t\n\r]+" " " value))))
 
-(defun ekg-tools-gnus--header-line (group article)
-  "Return a tab-separated header line for ARTICLE in GROUP, or nil."
-  (require 'mail-utils)
-  (when (ignore-errors (gnus-request-head article group))
+(defun ekg-tools-gnus--result-id (group article)
+  "Return a stable tool result ID for GROUP and ARTICLE."
+  (base64-encode-string (format "%s\t%s" group article) t))
+
+(defun ekg-tools-gnus--decode-result-id (result-id)
+  "Decode RESULT-ID into a list of group and article."
+  (when (and (stringp result-id) (not (string-empty-p result-id)))
+    (let ((parts (split-string (base64-decode-string result-id) "\t")))
+      (when (= (length parts) 2)
+        (list (car parts) (string-to-number (cadr parts)))))))
+
+(defun ekg-tools-gnus--parse-date-time (date)
+  "Return DATE as an Emacs time value, or nil if parsing fails."
+  (and (stringp date)
+       (ignore-errors (date-to-time date))))
+
+(defun ekg-tools-gnus--article-metadata (group article)
+  "Return metadata for ARTICLE in GROUP, or nil if no header is found."
+  (when (ekg-tools-gnus--without-interaction
+          (ignore-errors (gnus-request-head article group)))
     (with-current-buffer nntp-server-buffer
       (let ((subject (ekg-tools-gnus--clean-header-value
                       (mail-fetch-field "subject")))
@@ -460,8 +549,25 @@ are omitted."
             (message-id (ekg-tools-gnus--clean-header-value
                          (mail-fetch-field "message-id"))))
         (unless (string-empty-p subject)
-          (format "%s\t%s\t%s\t%s\t%s\t%s"
-                  group article date from subject message-id))))))
+          (list :result-id (ekg-tools-gnus--result-id group article)
+                :group group
+                :article article
+                :date date
+                :date-time (ekg-tools-gnus--parse-date-time date)
+                :from from
+                :subject subject
+                :message-id message-id))))))
+
+(defun ekg-tools-gnus--header-line (group article)
+  "Return a tab-separated header line for ARTICLE in GROUP, or nil."
+  (when-let* ((metadata (ekg-tools-gnus--article-metadata group article)))
+    (format "%s\t%s\t%s\t%s\t%s\t%s"
+            (plist-get metadata :group)
+            (plist-get metadata :article)
+            (plist-get metadata :date)
+            (plist-get metadata :from)
+            (plist-get metadata :subject)
+            (plist-get metadata :message-id))))
 
 ;;;###autoload
 (cl-defun ekg-tools-gnus-recent-headers (&key folder num-headers)
@@ -474,7 +580,9 @@ not message bodies."
     (error "No such Gnus folder: %s" folder))
   (let* ((info (gnus-get-info folder))
          (num-headers (ekg-tools--clip-number
-                       num-headers ekg-tools-gnus-default-max-headers 25))
+                       num-headers
+                       ekg-tools-gnus-default-max-headers
+                       ekg-tools-gnus-max-headers))
          (active (ekg-tools-gnus--active info))
          (article (and active (cdr active)))
          (low (and active (car active)))
@@ -497,6 +605,240 @@ not message bodies."
          "\n")
       (format "No recent headers found for Gnus folder: %s" folder))))
 
+(defun ekg-tools-gnus--split-folders (folders)
+  "Return FOLDERS string as a list of folder names."
+  (when (stringp folders)
+    (seq-filter
+     (lambda (folder) (not (string-empty-p folder)))
+     (mapcar #'string-trim (split-string folders "[,\n]" t)))))
+
+(defun ekg-tools-gnus--quote-query-value (value)
+  "Return VALUE formatted for a Gnus parsed search query."
+  (let ((value (string-trim (format "%s" value))))
+    (if (string-match-p "[[:space:]()\"]" value)
+        (format "%S" value)
+      value)))
+
+(defun ekg-tools-gnus--query-term (key value)
+  "Return a Gnus search query term for KEY and VALUE."
+  (when (and (stringp value)
+             (not (string-empty-p (string-trim value))))
+    (format "%s:%s" key (ekg-tools-gnus--quote-query-value value))))
+
+(defun ekg-tools-gnus--plain-query-p (query)
+  "Return non-nil when QUERY has no explicit Gnus search keys."
+  (and (stringp query)
+       (not (string-empty-p (string-trim query)))
+       (not (string-match-p "\\_<[-[:alnum:]]+:" query))))
+
+(defun ekg-tools-gnus--plain-query-terms (query)
+  "Return plain QUERY words as body search terms."
+  (mapcar
+   (lambda (term) (ekg-tools-gnus--query-term "body" term))
+   (split-string query "[[:space:]]+" t)))
+
+(defun ekg-tools-gnus--build-query (query from subject body)
+  "Return a Gnus search query from QUERY, FROM, SUBJECT, and BODY."
+  (let ((terms (append
+                (unless (string-empty-p (string-trim (or query "")))
+                  (if (ekg-tools-gnus--plain-query-p query)
+                      (ekg-tools-gnus--plain-query-terms query)
+                    (list (string-trim query))))
+                (list (ekg-tools-gnus--query-term "from" from)
+                      (ekg-tools-gnus--query-term "subject" subject)
+                      (ekg-tools-gnus--query-term "body" body)))))
+    (string-join (delq nil terms) " ")))
+
+(defun ekg-tools-gnus--folder-server (folder)
+  "Return the Gnus server name for FOLDER."
+  (if (gnus-group-native-p folder)
+      (gnus-group-server folder)
+    (gnus-method-to-server (gnus-find-method-for-group folder))))
+
+(defun ekg-tools-gnus--search-group-spec (folders)
+  "Return a `gnus-search-run-query' group spec for FOLDERS.
+When FOLDERS is nil, search all known Gnus folders grouped by
+server."
+  (let ((folders (or folders
+                     (mapcar (lambda (info) (gnus-info-group info))
+                             (ekg-tools-gnus--infos)))))
+    (mapcar
+     (lambda (group)
+       (cons (car group) (cdr group)))
+     (seq-group-by #'ekg-tools-gnus--folder-server folders))))
+
+(defun ekg-tools-gnus--searchable-group-spec (group-spec explicit-p)
+  "Return searchable groups from GROUP-SPEC.
+If EXPLICIT-P is non-nil, error when any requested server has no
+configured search engine."
+  (let (searchable skipped)
+    (dolist (group group-spec)
+      (condition-case err
+          (progn
+            (gnus-search-server-to-engine (car group))
+            (push group searchable))
+        (gnus-search-config-error
+         (if explicit-p
+             (signal (car err) (cdr err))
+           (push (car group) skipped)))))
+    (unless searchable
+      (if skipped
+          (error "No searchable Gnus servers found; skipped: %s"
+                 (string-join (nreverse skipped) ", "))
+        (error "No searchable Gnus servers found")))
+    (nreverse searchable)))
+
+(defun ekg-tools-gnus--search-result-metadata (result)
+  "Return metadata for Gnus search RESULT."
+  (let* ((group (aref result 0))
+         (article (aref result 1))
+         (score (aref result 2))
+         (metadata (ekg-tools-gnus--article-metadata group article)))
+    (if metadata
+        (plist-put metadata :score score)
+      (list :result-id (ekg-tools-gnus--result-id group article)
+            :group group
+            :article article
+            :date ""
+            :date-time nil
+            :from ""
+            :subject ""
+            :message-id ""
+            :score score))))
+
+(defun ekg-tools-gnus--latest-first-p (a b)
+  "Return non-nil when metadata A is newer than metadata B."
+  (let ((a-time (plist-get a :date-time))
+        (b-time (plist-get b :date-time)))
+    (cond
+     ((and a-time b-time) (time-less-p b-time a-time))
+     (a-time t)
+     (b-time nil)
+     (t (> (or (plist-get a :article) 0)
+           (or (plist-get b :article) 0))))))
+
+(defun ekg-tools-gnus--dedupe-search-results (metadata)
+  "Return METADATA with duplicate Message-IDs removed."
+  (let ((seen (make-hash-table :test #'equal))
+        deduped)
+    (dolist (item metadata (nreverse deduped))
+      (let ((key (or (and (not (string-empty-p
+                                (or (plist-get item :message-id) "")))
+                          (plist-get item :message-id))
+                     (format "%s\t%s"
+                             (plist-get item :group)
+                             (plist-get item :article)))))
+        (unless (gethash key seen)
+          (puthash key t seen)
+          (push item deduped))))))
+
+(defun ekg-tools-gnus--search-result-line (metadata)
+  "Return a tab-separated search result line for METADATA."
+  (format "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s"
+          (ekg-tools--clean-field (plist-get metadata :result-id))
+          (ekg-tools--clean-field (plist-get metadata :group))
+          (plist-get metadata :article)
+          (ekg-tools--clean-field (plist-get metadata :date))
+          (ekg-tools--clean-field (plist-get metadata :from))
+          (ekg-tools--clean-field (plist-get metadata :subject))
+          (ekg-tools--clean-field (plist-get metadata :message-id))
+          (or (plist-get metadata :score) "")))
+
+;;;###autoload
+(cl-defun ekg-tools-gnus-search-messages (&key query folders from subject body
+                                               num-results raw)
+  "Search Gnus messages using QUERY and return matching headers.
+QUERY is interpreted by Gnus' search facilities.  By default, the
+Gnus parsed search syntax is enabled for this request, so examples
+include from:\"Stefan Monnier\", body:uuid, subject:\"meeting\",
+or since:1w.  FROM, SUBJECT, and BODY add structured parsed
+query terms, which is preferred for agent use.  If QUERY contains
+no explicit search keys, its words are searched as body terms.
+If RAW is non-nil, pass QUERY directly to the configured search
+engine and ignore FROM, SUBJECT, and BODY.  FOLDERS is an
+optional comma-separated list of exact Gnus folder names.
+NUM-RESULTS limits returned rows."
+  (ekg-tools-gnus--ensure-ready)
+  (require 'gnus-search)
+  (let ((query (if (ekg-tools--bool raw)
+                   (or query "")
+                 (ekg-tools-gnus--build-query query from subject body))))
+    (unless (and (stringp query) (not (string-empty-p (string-trim query))))
+      (error "Gnus search query must be a non-empty string"))
+    (let* ((folders (ekg-tools-gnus--split-folders folders))
+           (missing (seq-filter
+                     (lambda (folder) (not (gnus-get-info folder)))
+                     folders))
+           (folders (seq-remove
+                     (lambda (folder) (member folder missing))
+                     folders))
+           (num-results (ekg-tools--clip-number
+                         num-results
+                         ekg-tools-gnus-default-max-search-results
+                         ekg-tools-gnus-max-search-results))
+           (candidate-results (max num-results
+                                   ekg-tools-gnus-default-search-candidates))
+           (group-spec (ekg-tools-gnus--search-group-spec folders))
+           (group-spec (ekg-tools-gnus--searchable-group-spec
+                        group-spec (not (null folders))))
+           (query-spec (append `((query . ,query)
+                                 (limit . ,candidate-results))
+                               (when (ekg-tools--bool raw)
+                                 '((raw . t)))))
+           (gnus-search-use-parsed-queries
+            (and (not (ekg-tools--bool raw)) t))
+           (gnus-verbose 0)
+           (gnus-verbose-backends 0)
+           results)
+      (when (and missing
+                 (or (not ekg-tools-gnus-ignore-missing-folders)
+                     (null folders)))
+        (error "No such Gnus folder: %s" (string-join missing ", ")))
+      (setq results
+            (ekg-tools-gnus--without-interaction
+              (gnus-search-run-query
+               `((search-query-spec . ,query-spec)
+                 (search-group-spec . ,group-spec)))))
+      (if (> (length results) 0)
+          (let ((metadata
+                 (ekg-tools-gnus--dedupe-search-results
+                  (sort (mapcar #'ekg-tools-gnus--search-result-metadata
+                                (append results nil))
+                        #'ekg-tools-gnus--latest-first-p))))
+            (string-join
+             (cons (concat "result_id\tgroup\tarticle\tdate\tfrom\tsubject"
+                           "\tmessage-id\tscore")
+                   (mapcar #'ekg-tools-gnus--search-result-line
+                           (seq-take metadata num-results)))
+             "\n"))
+        (format "No Gnus messages found for query: %s" query)))))
+
+;;;###autoload
+(cl-defun ekg-tools-gnus-read-message (&key result-id group article
+                                            max-content-chars)
+  "Read a Gnus message by RESULT-ID or GROUP and ARTICLE.
+RESULT-ID is emitted by `ekg-tools-gnus-search-messages'.
+MAX-CONTENT-CHARS limits the returned raw message content."
+  (ekg-tools-gnus--ensure-ready)
+  (let* ((decoded (ekg-tools-gnus--decode-result-id result-id))
+         (group (or group (car decoded)))
+         (article (or article (cadr decoded)))
+         (max-content-chars (ekg-tools--clip-number
+                             max-content-chars 20000 100000)))
+    (unless (and (stringp group) (not (string-empty-p group)))
+      (error "Gnus message group is required"))
+    (unless (and (numberp article) (> article 0))
+      (error "Gnus message article number is required"))
+    (unless (gnus-get-info group)
+      (error "No such Gnus folder: %s" group))
+    (with-temp-buffer
+      (unless (ekg-tools-gnus--without-interaction
+                (gnus-request-article article group (current-buffer)))
+        (error "Unable to fetch Gnus article %s from %s" article group))
+      (ekg-tools--clip-string
+       (buffer-substring-no-properties (point-min) (point-max))
+       max-content-chars))))
+
 (defconst ekg-tools-agent-tool-gnus-fetch-latest
   (make-llm-tool
    :function (lambda (level hard max-folders)
@@ -511,15 +853,15 @@ not message bodies."
    "Fetch latest Gnus data from configured servers and report changed folders."
    :args
    '((:name "level"
-      :type integer
-      :description
-      "Optional Gnus group level to scan, from 1 to 9. Omit for default.")
+            :type integer
+            :description
+            "Optional Gnus group level to scan, from 1 to 9. Omit for default.")
      (:name "hard"
-      :type boolean
-      :description "Whether to force hard re-reading of server active files.")
+            :type boolean
+            :description "Whether to force hard re-reading of server active files.")
      (:name "max_folders"
-      :type integer
-      :description "Maximum changed folders to return, capped at 100."))))
+            :type integer
+            :description "Maximum changed folders to return, capped at 100."))))
 
 (defconst ekg-tools-agent-tool-gnus-list-folders
   (make-llm-tool
@@ -535,14 +877,14 @@ not message bodies."
    "List Gnus folders with local counts. Does not fetch message bodies."
    :args
    '((:name "max_folders"
-      :type integer
-      :description "Maximum number of folders to return, capped at 200.")
+            :type integer
+            :description "Maximum number of folders to return, capped at 200.")
      (:name "include_empty"
-      :type boolean
-      :description "Whether to include folders with no active articles.")
+            :type boolean
+            :description "Whether to include folders with no active articles.")
      (:name "only_subscribed"
-      :type boolean
-      :description "Whether to include only subscribed Gnus folders."))))
+            :type boolean
+            :description "Whether to include only subscribed Gnus folders."))))
 
 (defconst ekg-tools-agent-tool-gnus-recent-headers
   (make-llm-tool
@@ -557,16 +899,90 @@ not message bodies."
    "Fetch recent Gnus message headers. Does not fetch message bodies."
    :args
    '((:name "folder"
-      :type string
-      :description "Exact Gnus folder name, such as INBOX or emacs-devel.")
+            :type string
+            :description "Exact Gnus folder name, such as INBOX or emacs-devel.")
      (:name "num_headers"
-      :type integer
-      :description "Maximum number of recent headers, capped at 25."))))
+            :type integer
+            :description "Maximum number of recent headers, capped at 2000."))))
+
+(defconst ekg-tools-agent-tool-gnus-search-messages
+  (make-llm-tool
+   :function (lambda (query folders from subject body num-results raw)
+               (condition-case err
+                   (ekg-tools-gnus-search-messages
+                    :query query
+                    :folders folders
+                    :from from
+                    :subject subject
+                    :body body
+                    :num-results num-results
+                    :raw raw)
+                 (error (format "Error: %s" (error-message-string err)))))
+   :name "gnus_search_messages"
+   :description
+   (concat
+    "Search Gnus messages and return latest matching headers with result_id. "
+    "For sender/content searches, prefer from/body args; e.g. "
+    "from=Stefan Monnier and body=uuid.")
+   :args
+   '((:name "query"
+            :type string
+            :description
+            "Optional Gnus parsed query. Plain unkeyed words are treated as body terms.")
+     (:name "folders"
+            :type string
+            :description
+            "Optional comma-separated exact Gnus folder names. Missing folders are skipped if others are valid.")
+     (:name "from"
+            :type string
+            :description "Optional sender match, such as Stefan Monnier.")
+     (:name "subject"
+            :type string
+            :description "Optional subject match, such as uuid.el.")
+     (:name "body"
+            :type string
+            :description "Optional message body/content match, such as uuid.")
+     (:name "num_results"
+            :type integer
+            :description "Maximum latest results to return, default 10 and capped at 200.")
+     (:name "raw"
+            :type boolean
+            :description
+            "Whether to pass query directly to the search engine, ignoring from/subject/body."))))
+
+(defconst ekg-tools-agent-tool-gnus-read-message
+  (make-llm-tool
+   :function (lambda (result-id group article max-content-chars)
+               (condition-case err
+                   (ekg-tools-gnus-read-message
+                    :result-id result-id
+                    :group group
+                    :article article
+                    :max-content-chars max-content-chars)
+                 (error (format "Error: %s" (error-message-string err)))))
+   :name "gnus_read_message"
+   :description
+   "Read one Gnus message from a result_id returned by gnus_search_messages."
+   :args
+   '((:name "result_id"
+            :type string
+            :description "Opaque result_id from gnus_search_messages.")
+     (:name "group"
+            :type string
+            :description "Optional exact Gnus folder name when result_id is absent.")
+     (:name "article"
+            :type integer
+            :description "Optional article number when result_id is absent.")
+     (:name "max_content_chars"
+            :type integer
+            :description "Maximum raw message characters to return, capped at 100000."))))
 
 (defconst ekg-tools-agent-gnus-tools
   (list ekg-tools-agent-tool-gnus-fetch-latest
         ekg-tools-agent-tool-gnus-list-folders
-        ekg-tools-agent-tool-gnus-recent-headers)
+        ekg-tools-agent-tool-gnus-recent-headers
+        ekg-tools-agent-tool-gnus-search-messages
+        ekg-tools-agent-tool-gnus-read-message)
   "Optional Gnus tools suitable for `ekg-agent-extra-tools'.")
 
 (defun ekg-tools-elfeed--ensure-ready ()
@@ -859,11 +1275,11 @@ MAX-CONTENT-CHARS limits the returned content."
    "List Elfeed feeds with entry counts, unread counts, and latest entries."
    :args
    '((:name "max_feeds"
-      :type integer
-      :description "Maximum number of feeds to return, capped at 200.")
+            :type integer
+            :description "Maximum number of feeds to return, capped at 200.")
      (:name "include_empty"
-      :type boolean
-      :description "Whether to include configured feeds with no entries."))))
+            :type boolean
+            :description "Whether to include configured feeds with no entries."))))
 
 (defconst ekg-tools-agent-tool-elfeed-search-entries
   (make-llm-tool
@@ -880,17 +1296,17 @@ MAX-CONTENT-CHARS limits the returned content."
    "Search Elfeed entries with Elfeed filter syntax, newest first."
    :args
    '((:name "filter"
-      :type string
-      :description "Elfeed filter, such as +unread, +tech, =Hacker, or @1-week-ago.")
+            :type string
+            :description "Elfeed filter, such as +unread, +tech, =Hacker, or @1-week-ago.")
      (:name "num_entries"
-      :type integer
-      :description "Maximum number of entries to return, capped at 100.")
+            :type integer
+            :description "Maximum number of entries to return, capped at 100.")
      (:name "include_content"
-      :type boolean
-      :description "Whether to include clipped entry content in each row.")
+            :type boolean
+            :description "Whether to include clipped entry content in each row.")
      (:name "max_content_chars"
-      :type integer
-      :description "Maximum content characters per entry, capped at 20000."))))
+            :type integer
+            :description "Maximum content characters per entry, capped at 20000."))))
 
 (defconst ekg-tools-agent-tool-elfeed-get-entry
   (make-llm-tool
@@ -905,11 +1321,11 @@ MAX-CONTENT-CHARS limits the returned content."
    "Read one Elfeed entry by exact ID or link, including clipped content."
    :args
    '((:name "id_or_link"
-      :type string
-      :description "Exact entry ID or link from elfeed_search_entries.")
+            :type string
+            :description "Exact entry ID or link from elfeed_search_entries.")
      (:name "max_content_chars"
-      :type integer
-      :description "Maximum content characters to return, capped at 50000."))))
+            :type integer
+            :description "Maximum content characters to return, capped at 50000."))))
 
 (defconst ekg-tools-agent-elfeed-tools
   (list ekg-tools-agent-tool-elfeed-list-feeds
