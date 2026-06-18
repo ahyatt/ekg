@@ -155,6 +155,7 @@ Org Tasks
 
 Agent
 
+* Optional connected-data tool libraries::
 * Agent log mode continuing and cancelling::
 * AGENTS.md support: AGENTSmd support. 
 * Command-line tools for agent integration::
@@ -2335,6 +2336,45 @@ Here's an example:
 (setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp ekg-agent-tool-code))
 @end lisp
 
+@menu
+* Optional connected-data tool libraries::
+* Agent log mode continuing and cancelling::
+* AGENTS.md support: AGENTSmd support. 
+* Command-line tools for agent integration::
+@end menu
+
+@node Optional connected-data tool libraries
+@subsection Optional connected-data tool libraries
+
+Some agent tools are packaged as optional libraries because they expose data
+from local connected services.  These tools are not enabled by default.  Require
+the library you want and add its tool list to @samp{ekg-agent-extra-tools}.
+
+The Gnus tool library provides tools for listing folders@comma{} fetching latest
+counts@comma{} searching messages@comma{} reading message headers@comma{} and reading full messages
+by a @samp{result_id} returned from search.  Search prompts are disabled while the
+tools run so a backend prompt fails instead of blocking the agent.
+
+@lisp
+(require 'ekg-agent-tools-gnus)
+(setq ekg-agent-extra-tools
+      (append ekg-agent-tools-gnus-tools ekg-agent-extra-tools))
+@end lisp
+
+For example@comma{} an agent can search for recent messages from a sender whose content
+matches a term by calling @samp{gnus_search_messages} with structured arguments such
+as @samp{from} set to "Stefan Monnier" and @samp{body} set to "uuid".  It can then pass
+the returned @samp{result_id} to @samp{gnus_read_message} to read the message.
+
+The Elfeed tool library provides tools for listing feeds@comma{} searching entries
+using Elfeed filter syntax@comma{} and reading one entry by ID or link.
+
+@lisp
+(require 'ekg-agent-tools-elfeed)
+(setq ekg-agent-extra-tools
+      (append ekg-agent-tools-elfeed-tools ekg-agent-extra-tools))
+@end lisp
+
 The standard tool set also includes read-only Emacs reference tools.  The agent
 can use @samp{emacs_help_search} and @samp{emacs_help_symbol} to search and display Emacs
 help for functions@comma{} macros@comma{} variables@comma{} faces@comma{} and other symbols.  It can use
@@ -2342,12 +2382,6 @@ help for functions@comma{} macros@comma{} variables@comma{} faces@comma{} and ot
 manuals@comma{} including the Emacs@comma{} Emacs Lisp@comma{} and Common Lisp extension manuals.
 These tools let the agent look up Emacs and Elisp behavior directly instead of
 guessing from memory.
-
-@menu
-* Agent log mode continuing and cancelling::
-* AGENTS.md support: AGENTSmd support. 
-* Command-line tools for agent integration::
-@end menu
 
 @node Agent log mode continuing and cancelling
 @subsection Agent log mode: continuing and cancelling
