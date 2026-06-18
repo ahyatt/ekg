@@ -39,6 +39,9 @@
 (require 'subr-x)
 (require 'shr)
 (require 'url)
+(require 'info)
+(require 'help-fns)
+(require 'apropos)
 
 (when (featurep 'ns)
   ;; Disable futur's background thread before loading: on macOS NS port,
@@ -138,9 +141,20 @@ The actual delay uses exponential backoff: base * 2^attempt."
   "Command to run for the coding tool.
 
 This should be a shell-style command string (for example, \"claude -p
---dangerously_skip_permissions\"). The prompt will be provided on stdin;
-stdout will be returned."
+--dangerously-skip-permissions\").  The prompt is passed according to
+`ekg-agent-code-command-prompt-method'; stdout will be returned."
   :type '(choice (const :tag "Unset" nil) string)
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-code-command-prompt-method 'stdin
+  "How `ekg-agent-code-command' receives the prompt.
+
+When set to `stdin', send the prompt on standard input.  This is
+the default because it avoids exposing prompt contents in process
+listings.  When set to `argument', append the prompt as the final
+command-line argument for tools that require that interface."
+  :type '(choice (const :tag "Send prompt on standard input" stdin)
+                 (const :tag "Append prompt as command argument" argument))
   :group 'ekg-agent)
 
 (defvar-local ekg-agent--prompt nil
@@ -509,7 +523,7 @@ types, but we'll only get strings from the LLM."
                  :args '((:name "result" :type string :description "The result to display."))))
 
 (defun ekg-agent--run-code (callback prompt)
-  "Run the configured `ekg-agent-code-command` asynchronously with PROMPT on stdin.
+  "Run the configured `ekg-agent-code-command' asynchronously with PROMPT.
 CALLBACK is called with the result string when the process finishes."
   (condition-case err
       (progn
@@ -518,11 +532,15 @@ CALLBACK is called with the result string when the process finishes."
           (error "Ekg-agent-code-command is not configured"))
         (let* ((args (split-string-and-unquote ekg-agent-code-command))
                (program (car args))
-               (program-args (cdr args))
+               (program-args (if (eq ekg-agent-code-command-prompt-method
+                                     'argument)
+                                 (append (cdr args) (list prompt))
+                               (cdr args)))
                (output-buf (generate-new-buffer " *ekg-agent-code*" t))
                (proc (make-process
                       :name "ekg-agent-code"
                       :buffer output-buf
+                      :connection-type 'pipe
                       :command (cons program program-args)
                       :sentinel (lambda (process _event)
                                   (when (memq (process-status process) '(exit signal))
@@ -536,9 +554,10 @@ CALLBACK is called with the result string when the process finishes."
                                                  (format "Error: Command failed (%d): %s"
                                                          exit-code
                                                          (string-trim-right output))))))))))
-          (process-send-string proc prompt)
-          (process-send-eof proc)
-          (push proc ekg-agent--tool-processes)))
+          (push proc ekg-agent--tool-processes)
+          (when (eq ekg-agent-code-command-prompt-method 'stdin)
+            (process-send-string proc prompt))
+          (process-send-eof proc)))
     (error (funcall callback (format "Error: %s" (error-message-string err))))))
 
 (defconst ekg-agent-tool-run-elisp
@@ -1546,6 +1565,258 @@ Uses `eww-search-prefix' to construct the search URL."
    :args '((:name "query" :type string :description "The search query." :required t))
    :async t))
 
+(defcustom ekg-agent-emacs-info-default-manuals
+  '("emacs" "elisp" "cl")
+  "Info manuals searched when `emacs_info_search' has no manual.
+The default set covers the Emacs user manual, the Emacs Lisp
+reference, and the Common Lisp extensions manual."
+  :type '(repeat string)
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-emacs-reference-max-chars 20000
+  "Maximum characters returned by Emacs help and Info tools."
+  :type 'integer
+  :group 'ekg-agent)
+
+(defun ekg-agent--limit-reference-text (text)
+  "Return TEXT truncated for use as an Emacs reference tool result."
+  (if (> (length text) ekg-agent-emacs-reference-max-chars)
+      (concat (substring text 0 ekg-agent-emacs-reference-max-chars)
+              "\n\n[Content truncated at "
+              (number-to-string ekg-agent-emacs-reference-max-chars)
+              " characters]")
+    text))
+
+(defun ekg-agent--reference-count (value default)
+  "Return VALUE as a positive integer, falling back to DEFAULT."
+  (let ((n (cond
+            ((integerp value) value)
+            ((and (stringp value) (not (string-empty-p value)))
+             (string-to-number value))
+            (t default))))
+    (max 1 (min 20 (or n default)))))
+
+(defun ekg-agent--capture-help-buffer (thunk)
+  "Run THUNK and return the resulting Help buffer text."
+  (let ((help-window-select nil))
+    (save-window-excursion
+      (let ((buf (get-buffer (help-buffer))))
+        (when buf
+          (with-current-buffer buf
+            (let ((inhibit-read-only t))
+              (erase-buffer)))))
+      (funcall thunk)
+      (if-let* ((buf (get-buffer (help-buffer))))
+          (with-current-buffer buf
+            (ekg-agent--limit-reference-text
+             (string-trim
+              (buffer-substring-no-properties (point-min) (point-max)))))
+        "No help buffer was produced."))))
+
+(defun ekg-agent--emacs-help-symbol (symbol &optional kind)
+  "Return Emacs help for SYMBOL.
+KIND may be \"auto\", \"function\", \"variable\", or \"face\"."
+  (ekg-agent--with-error-as-text
+    (let* ((sym (intern-soft symbol))
+           (kind (downcase
+                  (or (and (ekg-agent--nonempty-string-p kind) kind)
+                      "auto"))))
+      (unless sym
+        (error "No symbol named %s is known in this Emacs session" symbol))
+      (ekg-agent--capture-help-buffer
+       (lambda ()
+         (pcase kind
+           ((or "auto" "symbol")
+            (if (fboundp 'describe-symbol)
+                (describe-symbol sym)
+              (if (fboundp sym)
+                  (describe-function sym)
+                (describe-variable sym))))
+           ("function" (describe-function sym))
+           ("variable" (describe-variable sym))
+           ("face" (describe-face sym))
+           (_ (error "Unknown help kind: %s" kind))))))))
+
+(defconst ekg-agent-tool-emacs-help-symbol
+  (make-llm-tool
+   :function #'ekg-agent--emacs-help-symbol
+   :name "emacs_help_symbol"
+   :description "Show Emacs help for a symbol using the same help facilities as describe-symbol, describe-function, describe-variable, and describe-face.  Use this for elisp functions, macros, variables, faces, and symbols before guessing from memory."
+   :args '((:name "symbol" :type string :description "The Emacs Lisp symbol to describe, such as \"cl-defstruct\"." :required t)
+           (:name "kind" :type string :enum ["auto" "function" "variable" "face"]
+                  :description "Which help facility to use.  Defaults to auto."))))
+
+(defun ekg-agent--symbol-summary-line (symbol)
+  "Return a compact apropos summary line for SYMBOL."
+  (let* ((kinds (delq nil
+                      (list (and (fboundp symbol) "function")
+                            (and (boundp symbol) "variable")
+                            (and (facep symbol) "face"))))
+         (doc (cond
+               ((fboundp symbol) (documentation symbol t))
+               ((boundp symbol)
+                (documentation-property symbol 'variable-documentation t))
+               ((facep symbol) (face-documentation symbol))))
+         (first-line (and doc (car (split-string doc "\n")))))
+    (format "%s%s%s"
+            symbol
+            (if kinds (format " (%s)" (string-join kinds ", ")) "")
+            (if first-line (format " -- %s" first-line) ""))))
+
+(defun ekg-agent--emacs-help-search (query &optional search-docs max-results)
+  "Search Emacs help/apropos for QUERY.
+When SEARCH-DOCS is \"yes\", search documentation text with
+`apropos-documentation'.  Otherwise search symbol names with
+`apropos-internal'.  MAX-RESULTS limits symbol-name results."
+  (ekg-agent--with-error-as-text
+    (unless (ekg-agent--nonempty-string-p query)
+      (error "Query must be a non-empty string"))
+    (let ((search-docs (and (ekg-agent--nonempty-string-p search-docs)
+                            search-docs))
+          (max-results (ekg-agent--reference-count max-results 20)))
+      (if (string= search-docs "yes")
+          (let ((text (ekg-agent--capture-help-buffer
+                       (lambda () (apropos-documentation query)))))
+            (if (string-empty-p text)
+                "No apropos documentation matches found."
+              text))
+        (let* ((symbols (apropos-internal query))
+               (limited (seq-take symbols (min max-results
+                                                (length symbols)))))
+          (if limited
+              (mapconcat #'ekg-agent--symbol-summary-line limited "\n")
+            "No apropos symbol matches found."))))))
+
+(defconst ekg-agent-tool-emacs-help-search
+  (make-llm-tool
+   :function #'ekg-agent--emacs-help-search
+   :name "emacs_help_search"
+   :description "Search Emacs help/apropos for symbols or documentation.  Use this to discover relevant Emacs Lisp functions, macros, variables, or concepts when you do not know the exact symbol name."
+   :args '((:name "query" :type string :description "Emacs regexp to search for, such as \"defstruct\" or \"window\"." :required t)
+           (:name "search_docs" :type string :enum ["no" "yes"]
+                  :description "Use \"yes\" to search documentation text with apropos-documentation; defaults to symbol-name search.")
+           (:name "max_results" :type integer
+                  :description "Maximum symbol-name results to return.  Defaults to 20; capped at 20."))))
+
+(defun ekg-agent--info-manual-name ()
+  "Return a compact name for the current Info manual."
+  (if (and (boundp 'Info-current-file) Info-current-file)
+      (file-name-base Info-current-file)
+    "unknown"))
+
+(defun ekg-agent--info-node-text ()
+  "Return the current Info node as plain text."
+  (format "Manual: %s\nNode: %s\n\n%s"
+          (ekg-agent--info-manual-name)
+          (or Info-current-node "unknown")
+          (ekg-agent--limit-reference-text
+           (buffer-substring-no-properties (point-min) (point-max)))))
+
+(defun ekg-agent--emacs-info-node-target (node manual)
+  "Return an Info node target from NODE and optional MANUAL."
+  (let ((node (and (ekg-agent--nonempty-string-p node) node))
+        (manual (and (ekg-agent--nonempty-string-p manual) manual)))
+    (cond
+     ((and node (string-prefix-p "(" node)) node)
+     (manual (format "(%s)%s" manual (or node "Top")))
+     (node node)
+     (t (error "Must provide either node or manual")))))
+
+(defun ekg-agent--emacs-info-node (node &optional manual)
+  "Return Info NODE text, optionally resolving NODE in MANUAL."
+  (ekg-agent--with-error-as-text
+    (info-initialize)
+    (save-window-excursion
+      (Info-goto-node (ekg-agent--emacs-info-node-target node manual))
+      (ekg-agent--info-node-text))))
+
+(defconst ekg-agent-tool-emacs-info-node
+  (make-llm-tool
+   :function #'ekg-agent--emacs-info-node
+   :name "emacs_info_node"
+   :description "Read an Emacs Info node and return its text.  Pass either a full node like \"(cl)Structures\" or a manual plus node, such as manual \"elisp\" and node \"Processes\"."
+   :args '((:name "node" :type string :description "Info node name, such as \"Top\", \"Structures\", or \"(cl)Structures\".")
+           (:name "manual" :type string :description "Optional Info manual name, such as \"emacs\", \"elisp\", or \"cl\"."))))
+
+(defun ekg-agent--info-snippet (&optional matched-regexp)
+  "Return an Info search result snippet around point.
+MATCHED-REGEXP is the regexp that produced the match."
+  (let ((start (save-excursion
+                 (forward-line -3)
+                 (point)))
+        (end (save-excursion
+               (forward-line 8)
+               (point))))
+    (format "Manual: %s\nNode: %s%s\nSnippet:\n%s"
+            (ekg-agent--info-manual-name)
+            (or Info-current-node "unknown")
+            (if matched-regexp
+                (format "\nMatched regexp: %s" matched-regexp)
+              "")
+            (string-trim
+             (buffer-substring-no-properties start end)))))
+
+(defun ekg-agent--emacs-info-search-one (regexp manual max-results)
+  "Search MANUAL for REGEXP and return up to MAX-RESULTS snippets."
+  (let (results seen done)
+    (condition-case nil
+        (save-window-excursion
+          (Info-goto-node (format "(%s)Top" manual))
+          (goto-char (point-min))
+          (while (and (not done) (< (length results) max-results))
+            (if (Info-search regexp nil t)
+                (let ((key (format "%s:%s:%d"
+                                   (ekg-agent--info-manual-name)
+                                   Info-current-node
+                                   (point))))
+                  (unless (member key seen)
+                    (push key seen)
+                    (push (ekg-agent--info-snippet regexp) results))
+                  (if (< (point) (point-max))
+                      (forward-char 1)
+                    (setq done t)))
+              (setq done t))))
+      (error nil))
+    (nreverse results)))
+
+(defun ekg-agent--emacs-info-search (query &optional manual max-results)
+  "Search Emacs Info manuals for QUERY.
+QUERY is an Emacs regexp.  MANUAL restricts the search to one Info
+manual; otherwise `ekg-agent-emacs-info-default-manuals' is used.
+MAX-RESULTS is capped at 20."
+  (ekg-agent--with-error-as-text
+    (unless (ekg-agent--nonempty-string-p query)
+      (error "Query must be a non-empty string"))
+    (info-initialize)
+    (let* ((manuals (if (ekg-agent--nonempty-string-p manual)
+                        (list manual)
+                      ekg-agent-emacs-info-default-manuals))
+           (max-results (ekg-agent--reference-count max-results 8))
+           (remaining max-results)
+           results)
+      (dolist (manual manuals)
+        (when (> remaining 0)
+          (let ((manual-results
+                 (ekg-agent--emacs-info-search-one query manual remaining)))
+            (setq results (append results manual-results))
+            (setq remaining (- max-results (length results))))))
+      (if results
+          (ekg-agent--limit-reference-text
+           (mapconcat #'identity results "\n\n---\n\n"))
+        (format "No Info matches found for %S in manuals: %s"
+                query
+                (string-join manuals ", "))))))
+
+(defconst ekg-agent-tool-emacs-info-search
+  (make-llm-tool
+   :function #'ekg-agent--emacs-info-search
+   :name "emacs_info_search"
+   :description "Search Emacs Info manuals and return matching manual/node snippets.  Use this for Emacs behavior, built-in facilities, and Emacs Lisp reference material.  The query is an Emacs regexp; omit manual to search the default Emacs, Elisp, and CL manuals."
+   :args '((:name "query" :type string :description "Emacs regexp to search for in Info manuals, such as \":include\" or \"cl-defmethod\"." :required t)
+           (:name "manual" :type string :description "Optional Info manual name, such as \"emacs\", \"elisp\", or \"cl\".")
+           (:name "max_results" :type integer
+                  :description "Maximum search results to return.  Defaults to 8; capped at 20."))))
+
 (defconst ekg-agent-base-tools
   (list
    ekg-agent-tool-all-tags
@@ -1568,7 +1839,11 @@ Uses `eww-search-prefix' to construct the search URL."
    ekg-agent-tool-edit-buffer
    ekg-agent-tool-run-interactive-command
    ekg-agent-tool-web-browse
-   ekg-agent-tool-web-search)
+   ekg-agent-tool-web-search
+   ekg-agent-tool-emacs-help-symbol
+   ekg-agent-tool-emacs-help-search
+   ekg-agent-tool-emacs-info-node
+   ekg-agent-tool-emacs-info-search)
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 

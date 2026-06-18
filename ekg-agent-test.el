@@ -902,5 +902,52 @@ result when the agent finishes."
       (ekg-agent--web-search #'ignore "test"))
     (should (string-match-p "^https://google.com/search\\?q=" captured-url))))
 
+;; Emacs help / Info tools
+
+(ekg-deftest ekg-agent-test-emacs-help-symbol-cl-defstruct ()
+  "The Emacs help symbol tool returns useful help for `cl-defstruct'."
+  (let ((result (ekg-agent--emacs-help-symbol "cl-defstruct")))
+    (should (stringp result))
+    (should (string-match-p "cl-defstruct" result))
+    (should (string-match-p "Define a struct type" result))
+    (should (string-match-p ":include" result))))
+
+(ekg-deftest ekg-agent-test-emacs-help-symbol-bad-kind ()
+  "The Emacs help symbol tool reports bad help kinds as text."
+  (let ((result (ekg-agent--emacs-help-symbol "cl-defstruct" "bogus")))
+    (should (string-match-p "Error:" result))
+    (should (string-match-p "Unknown help kind" result))))
+
+(ekg-deftest ekg-agent-test-emacs-help-search-finds-defstruct ()
+  "The Emacs help search tool can discover `cl-defstruct'."
+  (let ((result (ekg-agent--emacs-help-search "cl-defstruct" "no" 5)))
+    (should (stringp result))
+    (should (string-match-p "cl-defstruct" result))))
+
+(ekg-deftest ekg-agent-test-emacs-info-node-structures ()
+  "The Emacs Info node tool can read the CL Structures node."
+  (let ((result (ekg-agent--emacs-info-node "(cl)Structures")))
+    (should (stringp result))
+    (should (string-match-p "Manual: cl" result))
+    (should (string-match-p "Node: Structures" result))
+    (should (string-match-p ":include" result))))
+
+(ekg-deftest ekg-agent-test-emacs-info-search-finds-include ()
+  "The Emacs Info search tool can find struct include information."
+  (let ((result (ekg-agent--emacs-info-search ":include" "cl" 3)))
+    (should (stringp result))
+    (should (string-match-p "Manual: cl" result))
+    (should (string-match-p "Node: Structures" result))
+    (should (string-match-p ":include" result))))
+
+(ekg-deftest ekg-agent-test-emacs-reference-tools-in-base-tools ()
+  "Emacs help and Info tools are part of the base agent tool set."
+  (let ((names (mapcar #'llm-tool-name ekg-agent-base-tools)))
+    (dolist (name '("emacs_help_symbol"
+                    "emacs_help_search"
+                    "emacs_info_node"
+                    "emacs_info_search"))
+      (should (member name names)))))
+
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here

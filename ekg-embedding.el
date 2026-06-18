@@ -195,7 +195,7 @@ wait for the embedding to return and be set."
   "Generate embeddings for NOTES in a batch.
 SUCCESS-CALLBACK is called with the size of the batch after the batch is
 finished.
-ERROR-CALLBACK is called with error-type and message on errors."
+ERROR-CALLBACK is called with ERROR-TYPE and message on errors."
   (let ((texts (mapcar (lambda (note)
                          (funcall ekg-embedding-text-selector
                                   (substring-no-properties
@@ -269,7 +269,7 @@ embeddings of notes with the given tag."
                                     (setf embedding new-embedding))))
                             (error nil))
                           (unless (ekg-embedding-valid-p embedding)
-                            (warn "ekg-embedding: could not fix invalid embedding for note %s, skipping" tagged)))
+                            (warn "Ekg-embedding: could not fix invalid embedding for note %s, skipping" tagged)))
                         embedding))))
         (let ((avg (ekg-embedding-average
                     (seq-filter #'ekg-embedding-valid-p embeddings))))

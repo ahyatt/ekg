@@ -821,7 +821,7 @@ want to create a note automatically in one of your functions, you can write:
 #+begin_src emacs-lisp
   (defun my/log-to-ekg (text)
     "Log TEXT as a note to EKG's date"
-    (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(,(ekg-tag-for-date) "log"))))
+    (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags (list (ekg-tag-for-date) "log"))))
 #+end_src
 
 #+texinfo: @noindent
@@ -829,13 +829,13 @@ If you wanted to re-use an existing note and append to it, you can do that as we
 
 #+begin_src emacs-lisp
 (defun my/log-to-ekg (text)
-  "Log TEXT as a note to EKG's date, appending if possible."
+  "Log TEXT as a note to EKG's date and append if possible."
   (let ((notes (ekg-get-notes-with-tags (list (ekg-tag-for-date) "log"))))
     (if notes
         (progn
           (setf (ekg-note-text (car notes)) (concat (ekg-note-text (car notes)) "\n" text))
           (ekg-save-note (car notes)))
-      (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(,(ekg-tag-for-date) "log"))))))
+      (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags (list (ekg-tag-for-date) "log"))))))
 #+end_src
 
 There isn't a special API, but the basic defuns such as ~ekg-save-note~,
@@ -1657,6 +1657,50 @@ Here's an example:
 (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
 (setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp ekg-agent-tool-code))
 #+end_src
+
+By default, the coding tool prompt is sent on standard input so prompt contents
+do not appear in process listings.  If your command requires the prompt as its
+final command-line argument, set =ekg-agent-code-command-prompt-method= to
+=argument=.
+
+*** Optional connected-data tool libraries
+
+Some agent tools are packaged as optional libraries because they expose data
+from local connected services.  These tools are not enabled by default.  Require
+the library you want and add its tool list to =ekg-agent-extra-tools=.
+
+The Gnus tool library provides tools for listing folders, fetching latest
+counts, searching messages, reading message headers, and reading full messages
+by a =result_id= returned from search.  Search prompts are disabled while the
+tools run so a backend prompt fails instead of blocking the agent.
+
+#+begin_src emacs-lisp
+(require 'ekg-agent-tools-gnus)
+(setq ekg-agent-extra-tools
+      (append ekg-agent-tools-gnus-tools ekg-agent-extra-tools))
+#+end_src
+
+For example, an agent can search for recent messages from a sender whose content
+matches a term by calling =gnus_search_messages= with structured arguments such
+as =from= set to "Stefan Monnier" and =body= set to "uuid".  It can then pass
+the returned =result_id= to =gnus_read_message= to read the message.
+
+The Elfeed tool library provides tools for listing feeds, searching entries
+using Elfeed filter syntax, and reading one entry by ID or link.
+
+#+begin_src emacs-lisp
+(require 'ekg-agent-tools-elfeed)
+(setq ekg-agent-extra-tools
+      (append ekg-agent-tools-elfeed-tools ekg-agent-extra-tools))
+#+end_src
+
+The standard tool set also includes read-only Emacs reference tools.  The agent
+can use =emacs_help_search= and =emacs_help_symbol= to search and display Emacs
+help for functions, macros, variables, faces, and other symbols.  It can use
+=emacs_info_search= and =emacs_info_node= to search and read the installed Info
+manuals, including the Emacs, Emacs Lisp, and Common Lisp extension manuals.
+These tools let the agent look up Emacs and Elisp behavior directly instead of
+guessing from memory.
 *** Agent log mode: continuing and cancelling
 
 When the agent starts a session, it creates a log buffer (named according to
