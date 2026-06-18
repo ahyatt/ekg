@@ -241,13 +241,20 @@ with no database entries are omitted."
          "\n")
       "No Elfeed feeds found.")))
 
-(defun ekg-agent-tools-elfeed--entry-list ()
-  "Return all Elfeed entries sorted newest first."
-  (let (entries)
-    (maphash (lambda (_id entry) (push entry entries)) elfeed-db-entries)
-    (sort entries (lambda (a b)
-                    (> (elfeed-entry-date a)
-                       (elfeed-entry-date b))))))
+(defun ekg-agent-tools-elfeed--insert-newest-entry (entry entries limit)
+  "Insert ENTRY into newest-first ENTRIES, keeping at most LIMIT entries."
+  (let ((entry-date (elfeed-entry-date entry))
+        inserted
+        result)
+    (dolist (current entries)
+      (unless (or inserted
+                  (<= entry-date (elfeed-entry-date current)))
+        (push entry result)
+        (setq inserted t))
+      (push current result))
+    (unless inserted
+      (push entry result))
+    (seq-take (nreverse result) limit)))
 
 (defun ekg-agent-tools-elfeed--entry-matches-filter-p (entry feed filter)
   "Return non-nil when ENTRY from FEED matches parsed FILTER."
@@ -342,23 +349,28 @@ row, limited by MAX-CONTENT-CHARS."
                              max-content-chars
                              ekg-agent-tools-elfeed-default-content-chars
                              20000))
-         rows)
-    (catch 'done
-      (dolist (entry (ekg-agent-tools-elfeed--entry-list))
-        (let ((feed (elfeed-entry-feed entry)))
-          (when (or (null parsed-filter)
-                    (ekg-agent-tools-elfeed--entry-matches-filter-p
-                     entry feed parsed-filter))
-            (push (ekg-agent-tools-elfeed--entry-line
-                   entry include-content max-content-chars)
-                  rows)
-            (when (>= (length rows) num-entries)
-              (throw 'done nil))))))
+        entries
+        rows)
+    (maphash
+     (lambda (_id entry)
+       (let ((feed (elfeed-entry-feed entry)))
+         (when (or (null parsed-filter)
+                   (ekg-agent-tools-elfeed--entry-matches-filter-p
+                    entry feed parsed-filter))
+           (setq entries
+                 (ekg-agent-tools-elfeed--insert-newest-entry
+                  entry entries num-entries)))))
+     elfeed-db-entries)
+    (setq rows
+          (mapcar (lambda (entry)
+                    (ekg-agent-tools-elfeed--entry-line
+                     entry include-content max-content-chars))
+                  entries))
     (if rows
         (string-join
          (cons (concat "id\tdate\tfeed\ttitle\tlink\ttags"
                        (if include-content "\tcontent" ""))
-               (nreverse rows))
+               rows)
          "\n")
       "No Elfeed entries found.")))
 

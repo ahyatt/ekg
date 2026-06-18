@@ -141,9 +141,20 @@ The actual delay uses exponential backoff: base * 2^attempt."
   "Command to run for the coding tool.
 
 This should be a shell-style command string (for example, \"claude -p
---dangerously_skip_permissions\"). The prompt will be appended to the
-command; stdout will be returned."
+--dangerously-skip-permissions\").  The prompt is passed according to
+`ekg-agent-code-command-prompt-method'; stdout will be returned."
   :type '(choice (const :tag "Unset" nil) string)
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-code-command-prompt-method 'stdin
+  "How `ekg-agent-code-command' receives the prompt.
+
+When set to `stdin', send the prompt on standard input.  This is
+the default because it avoids exposing prompt contents in process
+listings.  When set to `argument', append the prompt as the final
+command-line argument for tools that require that interface."
+  :type '(choice (const :tag "Send prompt on standard input" stdin)
+                 (const :tag "Append prompt as command argument" argument))
   :group 'ekg-agent)
 
 (defvar-local ekg-agent--prompt nil
@@ -512,7 +523,7 @@ types, but we'll only get strings from the LLM."
                  :args '((:name "result" :type string :description "The result to display."))))
 
 (defun ekg-agent--run-code (callback prompt)
-  "Run the configured `ekg-agent-code-command` asynchronously with PROMPT on stdin.
+  "Run the configured `ekg-agent-code-command' asynchronously with PROMPT.
 CALLBACK is called with the result string when the process finishes."
   (condition-case err
       (progn
@@ -521,11 +532,15 @@ CALLBACK is called with the result string when the process finishes."
           (error "Ekg-agent-code-command is not configured"))
         (let* ((args (split-string-and-unquote ekg-agent-code-command))
                (program (car args))
-               (program-args (append (cdr args) (list prompt)))
+               (program-args (if (eq ekg-agent-code-command-prompt-method
+                                     'argument)
+                                 (append (cdr args) (list prompt))
+                               (cdr args)))
                (output-buf (generate-new-buffer " *ekg-agent-code*" t))
                (proc (make-process
                       :name "ekg-agent-code"
                       :buffer output-buf
+                      :connection-type 'pipe
                       :command (cons program program-args)
                       :sentinel (lambda (process _event)
                                   (when (memq (process-status process) '(exit signal))
@@ -539,7 +554,10 @@ CALLBACK is called with the result string when the process finishes."
                                                  (format "Error: Command failed (%d): %s"
                                                          exit-code
                                                          (string-trim-right output))))))))))
-          (push proc ekg-agent--tool-processes)))
+          (push proc ekg-agent--tool-processes)
+          (when (eq ekg-agent-code-command-prompt-method 'stdin)
+            (process-send-string proc prompt))
+          (process-send-eof proc)))
     (error (funcall callback (format "Error: %s" (error-message-string err))))))
 
 (defconst ekg-agent-tool-run-elisp

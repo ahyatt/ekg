@@ -1337,7 +1337,7 @@ want to create a note automatically in one of your functions@comma{} you can wri
 @lisp
 (defun my/log-to-ekg (text)
   "Log TEXT as a note to EKG's date"
-  (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(@comma{}(ekg-tag-for-date) "log"))))
+  (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags (list (ekg-tag-for-date) "log"))))
 @end lisp
 
 @noindent
@@ -1345,13 +1345,13 @@ If you wanted to re-use an existing note and append to it@comma{} you can do tha
 
 @lisp
 (defun my/log-to-ekg (text)
-  "Log TEXT as a note to EKG's date@comma{} appending if possible."
+  "Log TEXT as a note to EKG's date and append if possible."
   (let ((notes (ekg-get-notes-with-tags (list (ekg-tag-for-date) "log"))))
     (if notes
         (progn
           (setf (ekg-note-text (car notes)) (concat (ekg-note-text (car notes)) "\n" text))
           (ekg-save-note (car notes)))
-      (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags `(@comma{}(ekg-tag-for-date) "log"))))))
+      (ekg-save-note (ekg-note-create :text text :mode 'text-mode :tags (list (ekg-tag-for-date) "log"))))))
 @end lisp
 
 There isn't a special API@comma{} but the basic defuns such as @code{ekg-save-note}@comma{}
@@ -2335,6 +2335,11 @@ Here's an example:
 (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
 (setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp ekg-agent-tool-code))
 @end lisp
+
+By default@comma{} the coding tool prompt is sent on standard input so prompt contents
+do not appear in process listings.  If your command requires the prompt as its
+final command-line argument@comma{} set @samp{ekg-agent-code-command-prompt-method} to
+@samp{argument}.
 
 @menu
 * Optional connected-data tool libraries::
