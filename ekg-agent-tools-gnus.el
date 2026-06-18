@@ -153,7 +153,7 @@ headers may require trying more than N article numbers."
       text)))
 
 (defmacro ekg-agent-tools-gnus--without-interaction (&rest body)
-  "Run BODY with common Gnus and minibuffer prompts disabled."
+  "Run BODY without common Gnus and minibuffer questions."
   (declare (indent 0) (debug t))
   `(let ((gnus-fetch-old-ephemeral-headers nil)
          (gnus-fetch-old-headers nil)
@@ -299,7 +299,7 @@ connecting to servers just to list folders."
      (t (format "%S" method)))))
 
 (defun ekg-agent-tools-gnus--marks-summary (info)
-  "Return a compact marks summary for Gnus INFO."
+  "Return a compact summary of article states in Gnus INFO."
   (mapconcat
    (lambda (mark)
      (format "%s:%s" (car mark)
