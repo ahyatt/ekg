@@ -1658,6 +1658,37 @@ Here's an example:
 (setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp ekg-agent-tool-code))
 #+end_src
 
+*** Optional connected-data tool libraries
+
+Some agent tools are packaged as optional libraries because they expose data
+from local connected services.  These tools are not enabled by default.  Require
+the library you want and add its tool list to =ekg-agent-extra-tools=.
+
+The Gnus tool library provides tools for listing folders, fetching latest
+counts, searching messages, reading message headers, and reading full messages
+by a =result_id= returned from search.  Search prompts are disabled while the
+tools run so a backend prompt fails instead of blocking the agent.
+
+#+begin_src emacs-lisp
+(require 'ekg-agent-tools-gnus)
+(setq ekg-agent-extra-tools
+      (append ekg-agent-tools-gnus-tools ekg-agent-extra-tools))
+#+end_src
+
+For example, an agent can search for recent messages from a sender whose content
+matches a term by calling =gnus_search_messages= with structured arguments such
+as =from= set to "Stefan Monnier" and =body= set to "uuid".  It can then pass
+the returned =result_id= to =gnus_read_message= to read the message.
+
+The Elfeed tool library provides tools for listing feeds, searching entries
+using Elfeed filter syntax, and reading one entry by ID or link.
+
+#+begin_src emacs-lisp
+(require 'ekg-agent-tools-elfeed)
+(setq ekg-agent-extra-tools
+      (append ekg-agent-tools-elfeed-tools ekg-agent-extra-tools))
+#+end_src
+
 The standard tool set also includes read-only Emacs reference tools.  The agent
 can use =emacs_help_search= and =emacs_help_symbol= to search and display Emacs
 help for functions, macros, variables, faces, and other symbols.  It can use
