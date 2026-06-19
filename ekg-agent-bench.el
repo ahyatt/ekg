@@ -224,6 +224,10 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
           ;; Configure the LLM provider from the environment.
           (let ((provider-elisp (getenv "LLM_TEST_PROVIDER_ELISP")))
             (when (and provider-elisp (not (string-empty-p provider-elisp)))
+              ;; Provider forms may use constructors from provider-specific
+              ;; modules.  `make-llm-openrouter', for example, is defined by
+              ;; `llm-openai' and is not autoloaded in a fresh daemon.
+              (ignore-errors (require 'llm-openai))
               (setq ekg-llm-provider (eval (read provider-elisp))))))
       (error
        (with-temp-file ,error-file
@@ -782,6 +786,22 @@ Returns an `ekg-agent-bench-result'."
    (val "PASS")
    (t "FAIL")))
 
+(defun ekg-agent-bench--redact-provider-desc (provider-desc)
+  "Return PROVIDER-DESC with obvious provider secrets redacted."
+  (when provider-desc
+    (let ((desc provider-desc))
+      (setq desc
+            (replace-regexp-in-string
+             ":key[[:space:]\n]+\"[^\"]+\""
+             ":key \"REDACTED\""
+             desc))
+      (setq desc
+            (replace-regexp-in-string
+             "\\_<sk-[[:alnum:]_-]+"
+             "sk-REDACTED"
+             desc))
+      desc)))
+
 (defun ekg-agent-bench--display-results (results provider-desc)
   "Display benchmark RESULTS in a buffer with PROVIDER-DESC."
   (let ((buf (get-buffer-create "*ekg-agent-bench*")))
@@ -790,7 +810,9 @@ Returns an `ekg-agent-bench-result'."
         (erase-buffer)
         (insert (format "EKG Agent Benchmark — %s  Provider: %s\n"
                         (format-time-string "%F %T")
-                        (or provider-desc "unknown")))
+                        (or (ekg-agent-bench--redact-provider-desc
+                             provider-desc)
+                            "unknown")))
         (insert (make-string 72 ?═) "\n")
         (insert (format "%-30s %5s %5s %6s %5s %6s  %s\n"
                         "Task" "Task" "Skill" "Memory" "Iters" "Time" "Status"))
