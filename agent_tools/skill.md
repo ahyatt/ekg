@@ -21,10 +21,18 @@ package. Since Emacs packages aren't normally on `$PATH`, resolve the directory
 at the start of any session by asking Emacs where ekg is installed:
 
 ```sh
-EKG_DIR=$(emacsclient --eval '(file-name-directory (locate-library "ekg"))' | tr -d '"')
+EKG_DIR=$("${EMACSCLIENT:-emacsclient}" --eval \
+  '(file-name-directory (locate-library "ekg"))' | tr -d '"')
 ```
 
 Then invoke scripts with their full path, e.g. `"$EKG_DIR/agent_tools/ekg-read"`.
+
+If the `emacsclient` on `PATH` is not from the same Emacs installation as the
+running server, set `EMACSCLIENT` before using these scripts:
+
+```sh
+EMACSCLIENT="/path/to/matching/emacsclient"
+```
 
 Alternatively, if you prefer, you can add the directory to your `$PATH`:
 
