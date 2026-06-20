@@ -128,6 +128,13 @@ temporary network failures.  Set to 0 to disable retries."
   :type 'integer
   :group 'ekg-agent)
 
+(defcustom ekg-agent-llm-max-tokens nil
+  "Maximum output tokens for agent LLM requests.
+When nil, leave the provider default unchanged."
+  :type '(choice (const :tag "Provider default" nil)
+                 (integer :tag "Maximum output tokens"))
+  :group 'ekg-agent)
+
 (defcustom ekg-agent-llm-retry-base-delay 2
   "Base delay in seconds between LLM retry attempts.
 The actual delay uses exponential backoff: base * 2^attempt."
@@ -160,6 +167,13 @@ stdout will be returned."
 
 (defvar-local ekg-agent--tool-processes nil
   "List of active tool subprocesses, for force cancellation.")
+
+(defvar-local ekg-agent--tool-call-history nil
+  "Successful tool calls in the current agent run, newest first.
+Each entry is a plist with :name, :args, :result, and :time.")
+
+(defvar-local ekg-agent--completion-requirements nil
+  "Completion requirements inferred for the current agent run.")
 
 (defvar-local ekg-agent--status-callback nil
   "The status callback for the current agent run.
@@ -265,6 +279,8 @@ overloaded servers, rate limits, and temporary network failures."
          (or (string-match-p "overloaded" lower)
              (string-match-p "rate.limit" lower)
              (string-match-p "too many requests" lower)
+             (string-match-p "timed? out" lower)
+             (string-match-p "timeout" lower)
              (string-match-p "429" lower)
              (string-match-p "529" lower)
              (string-match-p "503" lower)
@@ -365,7 +381,7 @@ tool call."
                                      (ekg-llm-note-to-text (car notes))
                                    (error "Note with ID %s not found" id)))))
                  :name "get_note_by_id"
-                 :description "Retrieve a note by its unique identifier."
+                 :description "Retrieve a note by its unique identifier, such as a concrete note ID or file:<absolute-path>. This lookup is for identifiers, not tags."
                  :args '((:name "id" :type string :description "The unique identifier of the note."))))
 
 (defconst ekg-agent-tool-search-notes
@@ -453,13 +469,74 @@ types, but we'll only get strings from the LLM."
                  :args '((:name "id" :type string :description "The unique identifier of the note.")
                          (:name "content" :type string :description "The new content for the note."))))
 
+(defun ekg-agent--org-task-workflow-p ()
+  "Return non-nil when the current agent run requires org task tools."
+  (and (buffer-live-p ekg-agent--current-log-buffer)
+       (with-current-buffer ekg-agent--current-log-buffer
+         (memq 'org-task ekg-agent--completion-requirements))))
+
+(defun ekg-agent--org-todo-keyword-name (keyword)
+  "Return the bare Org TODO keyword name from KEYWORD.
+This strips fast-selection and logging specs such as \"TODO(t)\"
+or \"WAIT(w@/!)\"."
+  (when (and (stringp keyword)
+             (not (string= keyword "|"))
+             (string-match "\\`\\([^[:space:]()]+\\)" keyword))
+    (match-string 1 keyword)))
+
+(defun ekg-agent--org-todo-keywords ()
+  "Return bare TODO keyword names from `org-todo-keywords'."
+  (let (keywords)
+    (dolist (entry org-todo-keywords)
+      (cond
+       ((stringp entry)
+        (when-let* ((keyword (ekg-agent--org-todo-keyword-name entry)))
+          (push keyword keywords)))
+       ((consp entry)
+        (dolist (item (cdr entry))
+          (when-let* ((keyword (ekg-agent--org-todo-keyword-name item)))
+            (push keyword keywords))))))
+    (delete-dups (nreverse keywords))))
+
+(defun ekg-agent--org-default-todo-keyword ()
+  "Return the default TODO keyword for new org task items."
+  (or (car (ekg-agent--org-todo-keywords))
+      "TODO"))
+
+(defun ekg-agent--org-todo-keyword-regexp ()
+  "Return a regexp matching any configured Org TODO keyword."
+  (when-let* ((keywords (ekg-agent--org-todo-keywords)))
+    (regexp-opt keywords)))
+
+(defun ekg-agent--org-todo-note-content-p (content mode)
+  "Return non-nil if CONTENT/MODE look like org task headings."
+  (and (string= mode "org-mode")
+       (stringp content)
+       (let ((todo-regexp (or (ekg-agent--org-todo-keyword-regexp)
+                              (regexp-quote
+                               (ekg-agent--org-default-todo-keyword)))))
+         (string-match-p
+          (format "^\\*+[\t ]+\\(?:%s\\)\\(?:[[:space:]]\\|$\\)"
+                  todo-regexp)
+          content))))
+
+(defun ekg-agent--org-todo-note-args-p (args)
+  "Return non-nil if create_note ARGS look like org task headings."
+  (ekg-agent--org-todo-note-content-p (nth 1 args) (nth 2 args)))
+
 (defconst ekg-agent-tool-create-note
   (make-llm-tool :function (lambda (tags content mode)
                              (ekg-agent--with-error-as-text
                                (unless (member mode '("org-mode" "markdown-mode" "text-mode"))
                                  (error "Unsupported mode: %s" mode))
-                               ;; Use ekg-agent-add-note for consistency (includes auto-tags)
-                               (format "Created note with ID %s" (ekg-agent-add-note content (append tags nil) mode))))
+                               (if (and (ekg-agent--org-task-workflow-p)
+                                        (ekg-agent--org-todo-note-content-p content mode))
+                                   (ekg-agent-org--create-items-from-note-content
+                                    tags content)
+                                 ;; Use ekg-agent-add-note for consistency (includes auto-tags)
+                                 (format "Created note with ID %s"
+                                         (ekg-agent-add-note
+                                          content (append tags nil) mode)))))
                  :name "create_note"
                  :description "Create a new note with specified tags and content."
                  :args `((:name "tags" :type array :items (:type string)
@@ -476,7 +553,7 @@ types, but we'll only get strings from the LLM."
 (defconst ekg-agent-tool-end
   (make-llm-tool :function (lambda () 'done)
                  :name "end"
-                 :description "Indicate that no further actions need to be taken."
+                 :description "End the session."
                  :args '()))
 
 (defconst ekg-agent-tool-subagent-end
@@ -505,7 +582,7 @@ types, but we'll only get strings from the LLM."
 (defconst ekg-agent-tool-popup-result
   (make-llm-tool :function #'ekg-agent--popup-result-in-buffer
                  :name "display_result_in_popup"
-                 :description "Display the result of a query in a popup buffer.  Use markdown mode for formatting."
+                 :description "Display a user-visible result in a popup buffer."
                  :args '((:name "result" :type string :description "The result to display."))))
 
 (defun ekg-agent--run-code (callback prompt)
@@ -600,7 +677,7 @@ CALLBACK is called with the result string when the process finishes."
 (defconst ekg-agent-tool-code
   (make-llm-tool :function #'ekg-agent--run-code
                  :name "run_code_tool"
-                 :description "Run the configured coding tool (such as 'claude code') command with the prompt and return the result.  If you want to accomplish a significant task that may not be possible with the tools you have access, ask this tool, which has more functionality."
+                 :description "Run the configured external coding command with a prompt and return its result."
                  :args '((:name "prompt" :type string :description "The prompt to pass to the tool."))
                  :async t))
 
@@ -609,9 +686,13 @@ CALLBACK is called with the result string when the process finishes."
 EXTRA-TOOLS is a list of additional tools beyond
 `ekg-agent-base-tools' and `ekg-agent-extra-tools' to include."
   (seq-uniq
-   (append ekg-agent-base-tools
-           ekg-agent-extra-tools
-           extra-tools)
+   (seq-remove
+    (lambda (tool)
+      (and (string= (llm-tool-name tool) "search_notes")
+           (not ekg-embedding-provider)))
+    (append ekg-agent-base-tools
+            ekg-agent-extra-tools
+            extra-tools))
    (lambda (a b) (string-equal (llm-tool-name a) (llm-tool-name b)))))
 
 (defconst ekg-agent-tool-subagent
@@ -631,14 +712,14 @@ EXTRA-TOOLS is a list of additional tools beyond
                               :tools (ekg-agent--tools (list ekg-agent-tool-subagent-end))
                               :tool-options (make-llm-tool-options :tool-choice 'any))))
                  (ekg-agent--iterate prompt
-                                     1
+                                     0
                                      (lambda (status)
                                        (funcall callback
                                                 (format "Subagent result: %s" status)))
                                      '("subagent_end")
                                      (ekg-agent--timeout-deadline))))
    :name "run_subagent"
-   :description "Run a sub-agent with the given instructions. The sub-agent has its own conversation with access to all the standard ekg tools, and runs until it calls end. Use this for tasks that require multiple steps or complex tool use."
+   :description "Run a sub-agent with the given instructions and return its result."
    :args '((:name "instructions" :type string :description "Detailed instructions for the sub-agent to follow."))
    :async t))
 
@@ -742,6 +823,201 @@ strings."
              (format "%s" result))))
     (replace-regexp-in-string "[\x3fff80-\x3fffff]" "" s)))
 
+(defun ekg-agent--log-tool-error-result (tool-name result &optional args)
+  "Log RESULT and ARGS for TOOL-NAME when it is a tool-level error."
+  (when (and (stringp result)
+             (string-prefix-p "Error:" result))
+    (ekg-agent--log "Tool %s returned %s" tool-name result)
+    (when args
+      (ekg-agent--log "Tool %s args: %S" tool-name args))))
+
+(defun ekg-agent--last-tool-name ()
+  "Return the most recently completed successful tool name."
+  (plist-get (car ekg-agent--tool-call-history) :name))
+
+(defun ekg-agent--tool-called-p (tool-name)
+  "Return non-nil if TOOL-NAME completed successfully in this run."
+  (cl-some (lambda (call)
+             (string= (plist-get call :name) tool-name))
+           ekg-agent--tool-call-history))
+
+(defun ekg-agent--any-tool-called-p (tool-names)
+  "Return non-nil if any tool in TOOL-NAMES completed successfully."
+  (cl-some #'ekg-agent--tool-called-p tool-names))
+
+(defun ekg-agent--tool-available-p (tool-name)
+  "Return non-nil if TOOL-NAME is available in the current prompt."
+  (and ekg-agent--prompt
+       (cl-some (lambda (tool)
+                  (string= (llm-tool-name tool) tool-name))
+                (llm-chat-prompt-tools ekg-agent--prompt))))
+
+(defun ekg-agent--any-tool-available-p (tool-names)
+  "Return non-nil if any tool in TOOL-NAMES is available."
+  (cl-some #'ekg-agent--tool-available-p tool-names))
+
+(defconst ekg-agent--repeatable-read-only-tools
+  '("get_notes_with_all_tags"
+    "get_notes_with_any_tags"
+    "get_note_by_id"
+    "search_notes"
+    "list_all_tags"
+    "read_agents_md"
+    "read_file"
+    "list_buffers"
+    "read_buffer"
+    "list_org_items")
+  "Tool names whose identical repeated calls can reuse prior context.")
+
+(defconst ekg-agent--state-changing-tools
+  '("append_to_note"
+    "replace_note"
+    "create_note"
+    "run_elisp"
+    "run_code_tool"
+    "run_subagent"
+    "edit_file"
+    "write_file"
+    "edit_buffer"
+    "run_interactive_command"
+    "run_command"
+    "append_to_current_note"
+    "replace_current_note"
+    "add_org_item"
+    "set_org_item_status")
+  "Tool names that may change file, buffer, note, or task state.")
+
+(defun ekg-agent--repeat-read-only-result (log-buf tool-name args)
+  "Return a concise repeat result for identical read-only TOOL-NAME ARGS.
+Only repeats before any intervening state-changing tool are
+short-circuited; after a write or note mutation, the read is run
+normally."
+  (when (and (member tool-name ekg-agent--repeatable-read-only-tools)
+             (buffer-live-p log-buf))
+    (with-current-buffer log-buf
+      (cl-loop for call in ekg-agent--tool-call-history
+               for call-name = (plist-get call :name)
+               if (member call-name ekg-agent--state-changing-tools)
+               return nil
+               if (and (string= call-name tool-name)
+                       (equal (plist-get call :args) args))
+               return
+               (format
+                "This exact %s call already completed earlier in this run. Use the earlier result, or call a lookup with different arguments if you need different information."
+                tool-name)))))
+
+(defun ekg-agent--record-tool-completion (log-buf tool-name result &optional args)
+  "Record TOOL-NAME with ARGS as complete in LOG-BUF unless RESULT is an error."
+  (when (and (buffer-live-p log-buf)
+             (stringp result)
+             (not (string-prefix-p "Error:" result)))
+    (with-current-buffer log-buf
+      (push (list :name tool-name
+                  :args args
+                  :result result
+                  :time (float-time))
+            ekg-agent--tool-call-history))
+    (ekg-agent--maybe-auto-create-required-note log-buf tool-name result)))
+
+(defun ekg-agent--repeated-status-tool-p (log-buf tool-name)
+  "Return non-nil if TOOL-NAME is a repeated status update in LOG-BUF."
+  (and (string= tool-name "summarize_state")
+       (buffer-live-p log-buf)
+       (with-current-buffer log-buf
+         (equal (ekg-agent--last-tool-name) "summarize_state"))))
+
+(defun ekg-agent--pending-required-note-p (log-buf)
+  "Return non-nil when LOG-BUF needs a required note before more status."
+  (and (buffer-live-p log-buf)
+       (with-current-buffer log-buf
+         (and (memq 'create-note ekg-agent--completion-requirements)
+              (not (ekg-agent--tool-called-p "create_note"))
+              (ekg-agent--any-tool-called-p
+               '("write_file"
+                 "edit_file"
+                 "edit_buffer"
+                 "append_to_current_note"
+                 "replace_current_note"))))))
+
+(defun ekg-agent--maybe-auto-create-required-note (log-buf tool-name result)
+  "Auto-create an ordinary required note in LOG-BUF after TOOL-NAME RESULT."
+  (when (and (buffer-live-p log-buf)
+             (member tool-name '("write_file" "edit_file" "edit_buffer"
+                                 "run_elisp"))
+             (ekg-agent--pending-required-note-p log-buf))
+    (with-current-buffer log-buf
+      (unless (memq 'skill-note ekg-agent--completion-requirements)
+        (unless (memq 'org-task ekg-agent--completion-requirements)
+          (let* ((task (and ekg-agent--prompt
+                            (ekg-agent--prompt-user-text ekg-agent--prompt)))
+                 (content (format
+                           "Agent task documentation\n\nTask:\n%s\n\nLatest completed tool: %s\n\nResult excerpt:\n%s"
+                           (or task "Unknown task")
+                           tool-name
+                           (truncate-string-to-width
+                            (or result "") 1200 nil nil t)))
+                 (id (ekg-agent-add-note content '("agent-task") "org-mode")))
+            (ekg-agent--log "Auto-created required note: %s" id)
+            (ekg-agent--record-tool-completion
+             log-buf
+             "create_note"
+             (format "Created note with ID %s" id))))))))
+
+(defun ekg-agent--pending-file-change-p (log-buf)
+  "Return non-nil if LOG-BUF still owes a required file change."
+  (and (buffer-live-p log-buf)
+       (with-current-buffer log-buf
+         (and (memq 'file-change ekg-agent--completion-requirements)
+              (not (ekg-agent--any-tool-called-p
+                    '("write_file"
+                      "edit_file"
+                      "edit_buffer"
+                      "append_to_current_note"
+                      "replace_current_note")))))))
+
+(defun ekg-agent--diagnosis-before-edit-loop-p (log-buf tool-name)
+  "Return non-nil if TOOL-NAME would continue diagnosis before editing."
+  (and (member tool-name '("run_elisp" "summarize_state"))
+       (buffer-live-p log-buf)
+       (with-current-buffer log-buf
+         (and (memq 'file-change ekg-agent--completion-requirements)
+              (ekg-agent--any-tool-available-p
+               '("write_file" "edit_file" "edit_buffer"))
+              (ekg-agent--tool-called-p "run_elisp")
+              (not (ekg-agent--any-tool-called-p
+                    '("write_file"
+                      "edit_file"
+                      "edit_buffer")))))))
+
+(defun ekg-agent--blocked-tool-error (log-buf tool-name &optional args)
+  "Return an error string if TOOL-NAME should be blocked in LOG-BUF."
+  (cond
+   ((and (string= tool-name "create_note")
+         (buffer-live-p log-buf)
+         (with-current-buffer log-buf
+           (and (memq 'org-task ekg-agent--completion-requirements)
+                (ekg-agent--tool-available-p "add_org_item")
+                (not (ekg-agent--tool-called-p "add_org_item"))))
+         (not (ekg-agent--org-todo-note-args-p args)))
+    "This task requires org task management; use add_org_item to create org tasks/subtasks instead of create_note")
+   ((and (string= tool-name "list_org_items")
+         (buffer-live-p log-buf)
+         (with-current-buffer log-buf
+           (and (memq 'org-task ekg-agent--completion-requirements)
+                (ekg-agent--tool-available-p "add_org_item")
+                (not (ekg-agent--tool-called-p "add_org_item"))
+                (string-match-p
+                 "\\bno existing org task\\b"
+                 (downcase
+                  (or (ekg-agent--prompt-user-text ekg-agent--prompt)
+                      ""))))))
+    "The prompt says there is no existing org task to find; create the parent task first with add_org_item")
+   ((ekg-agent--diagnosis-before-edit-loop-p log-buf tool-name)
+    "A diagnostic run has already completed for this file-change task; apply the file change before running more diagnostics or status updates")
+   ((ekg-agent--repeated-status-tool-p log-buf tool-name)
+    "summarize_state was already the previous successful tool; do substantive work with another tool before summarizing again")
+   (t nil)))
+
 (defun ekg-agent--wrap-tool-function (tool log-buf origin-buf)
   "Return a copy of TOOL with its function wrapped for resilience.
 
@@ -775,44 +1051,98 @@ The wrapper provides four layers of protection:
                      (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
                            (called nil)
                            (ekg-agent--current-log-buffer log-buf))
-                       (condition-case err
-                           (if (buffer-live-p origin-buf)
-                               (with-current-buffer origin-buf
+                       (if-let ((repeat-result
+                                 (ekg-agent--repeat-read-only-result
+                                  log-buf tool-name args)))
+                           (progn
+                             (setq called t)
+                             (ekg-agent--log-tool-done log-buf marker)
+                             (ekg-agent--record-tool-completion
+                              log-buf tool-name repeat-result args)
+                             (funcall callback repeat-result))
+                         (condition-case err
+                             (if-let ((blocked
+                                       (ekg-agent--blocked-tool-error
+                                        log-buf tool-name args)))
+                                 (error "%s" blocked)
+                               (if (buffer-live-p origin-buf)
+                                   (with-current-buffer origin-buf
+                                     (apply original-fn
+                                            (lambda (result)
+                                              (unless called
+                                                (setq called t)
+                                                (let ((sanitized
+                                                       (ekg-agent--sanitize-tool-result result)))
+                                                  (ekg-agent--log-tool-done log-buf marker)
+                                                  (ekg-agent--log-tool-error-result
+                                                   tool-name sanitized args)
+                                                  (ekg-agent--record-tool-completion
+                                                   log-buf tool-name sanitized args)
+                                                  (funcall callback sanitized))))
+                                            args))
                                  (apply original-fn
                                         (lambda (result)
                                           (unless called
                                             (setq called t)
-                                            (ekg-agent--log-tool-done log-buf marker)
-                                            (funcall callback
-                                                     (ekg-agent--sanitize-tool-result result))))
-                                        args))
-                             (apply original-fn
-                                    (lambda (result)
-                                      (unless called
-                                        (setq called t)
-                                        (ekg-agent--log-tool-done log-buf marker)
-                                        (funcall callback
-                                                 (ekg-agent--sanitize-tool-result result))))
-                                    args))
-                         (error
-                          (unless called
-                            (setq called t)
-                            (ekg-agent--log-tool-done log-buf marker)
-                            (funcall callback
-                                     (format "Error: %s" (error-message-string err))))))))
+                                            (let ((sanitized
+                                                   (ekg-agent--sanitize-tool-result result)))
+                                              (ekg-agent--log-tool-done log-buf marker)
+                                              (ekg-agent--log-tool-error-result
+                                               tool-name sanitized args)
+                                              (ekg-agent--record-tool-completion
+                                               log-buf tool-name sanitized args)
+                                              (funcall callback sanitized))))
+                                        args)))
+                           (error
+                            (unless called
+                              (setq called t)
+                              (let ((sanitized
+                                     (format "Error: %s"
+                                             (error-message-string err))))
+                                (ekg-agent--log-tool-done log-buf marker)
+                                (ekg-agent--log-tool-error-result
+                                 tool-name sanitized args)
+                                (ekg-agent--record-tool-completion
+                                 log-buf tool-name sanitized args)
+                                (funcall callback sanitized))))))))
                  (lambda (&rest args)
                    (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
                          (ekg-agent--current-log-buffer log-buf))
-                     (condition-case err
-                         (let ((result (if (buffer-live-p origin-buf)
-                                           (with-current-buffer origin-buf
-                                             (apply original-fn args))
-                                         (apply original-fn args))))
-                           (ekg-agent--log-tool-done log-buf marker)
-                           (ekg-agent--sanitize-tool-result result))
-                       (error
-                        (ekg-agent--log-tool-done log-buf marker)
-                        (format "Error: %s" (error-message-string err)))))))
+                     (if-let ((repeat-result
+                               (ekg-agent--repeat-read-only-result
+                                log-buf tool-name args)))
+                         (progn
+                          (ekg-agent--log-tool-done log-buf marker)
+                          (ekg-agent--record-tool-completion
+                           log-buf tool-name repeat-result args)
+                          repeat-result)
+                       (condition-case err
+                           (let ((result (if-let ((blocked
+                                                   (ekg-agent--blocked-tool-error
+                                                    log-buf tool-name args)))
+                                             (error "%s" blocked)
+                                           (if (buffer-live-p origin-buf)
+                                               (with-current-buffer origin-buf
+                                                 (apply original-fn args))
+                                             (apply original-fn args)))))
+                             (let ((sanitized
+                                    (ekg-agent--sanitize-tool-result result)))
+                               (ekg-agent--log-tool-done log-buf marker)
+                               (ekg-agent--log-tool-error-result
+                                tool-name sanitized args)
+                               (ekg-agent--record-tool-completion
+                                log-buf tool-name sanitized args)
+                               sanitized))
+                         (error
+                          (let ((sanitized
+                                 (format "Error: %s"
+                                         (error-message-string err))))
+                            (ekg-agent--log-tool-done log-buf marker)
+                            (ekg-agent--log-tool-error-result
+                             tool-name sanitized args)
+                            (ekg-agent--record-tool-completion
+                             log-buf tool-name sanitized args)
+                            sanitized)))))))
      :name (llm-tool-name tool)
      :description (llm-tool-description tool)
      :args (llm-tool-args tool)
@@ -881,6 +1211,84 @@ non-string content in the assistant role."
   (format "Time limit reached. Before this session ends, immediately create a note with your current state using `create_note` (tag it with `%s`). Also call `summarize_state` with a brief update. Then finish by calling `end` or the appropriate completion tool."
           ekg-agent-self-info-tag))
 
+(defun ekg-agent--completion-requirements-for-question (question)
+  "Infer completion requirements from QUESTION."
+  (let ((lower (downcase (or question "")))
+        requirements)
+    (when (and (string-match-p "/[^ \n\t,;]+" (or question ""))
+               (string-match-p
+                "\\b\\(fix\\|add\\|write\\|update\\|modify\\|edit\\|replace\\|create\\|generate\\|produce\\|convert\\|build\\|implement\\)\\b"
+                lower))
+      (push 'file-change requirements))
+    (when (or (string-match-p "\\bskill\\b" lower)
+              (string-match-p "tag[^.\n]*prompt" lower)
+              (string-match-p
+               "\\bstore\\b.*\\b\\(memory\\|note\\|knowledge\\|finding\\)"
+               lower))
+      (push 'skill-note requirements)
+      (push 'create-note requirements))
+    (when (memq 'file-change requirements)
+      (push 'create-note requirements))
+    (when (string-match-p "\\brun_elisp\\b" lower)
+      (push 'run-elisp requirements))
+    (when (or (string-match-p "\\borg task\\b" lower)
+              (string-match-p "\\bsubtasks\\b" lower))
+      (push 'org-task requirements)
+      (when (string-match-p "\\b\\(done\\|complete\\|completed\\)\\b" lower)
+        (push 'org-status requirements)))
+    (when (and (string-match-p "\\bfollow\\b" lower)
+               (string-match-p "\\b\\(notes\\|conventions\\|skills\\)\\b"
+                               lower))
+      (push 'memory-lookup requirements))
+    requirements))
+
+(defun ekg-agent--completion-blocker ()
+  "Return a message explaining why the current run cannot finish, or nil."
+  (cond
+   ((and (memq 'file-change ekg-agent--completion-requirements)
+         (ekg-agent--any-tool-available-p
+          '("write_file"
+            "edit_file"
+            "edit_buffer"
+            "append_to_current_note"
+            "replace_current_note"))
+         (not (ekg-agent--any-tool-called-p
+               '("write_file"
+                 "edit_file"
+                 "edit_buffer"
+                 "append_to_current_note"
+                 "replace_current_note"))))
+    "The user asked for a file change, but no file edit/write tool has completed successfully. Read the relevant file if needed, apply the change with `write_file` or `edit_file`, verify it, then finish.")
+   ((and (memq 'create-note ekg-agent--completion-requirements)
+         (ekg-agent--tool-available-p "create_note")
+         (not (ekg-agent--tool-called-p "create_note")))
+    "This task requires a brief ekg note documenting the outcome, skill, memory, or prompt-tagged finding, but no `create_note` tool has completed successfully. Create the required note with suitable tags, then finish.")
+   ((and (memq 'run-elisp ekg-agent--completion-requirements)
+         (ekg-agent--tool-available-p "run_elisp")
+         (not (ekg-agent--tool-called-p "run_elisp")))
+    "The user explicitly asked to verify with run_elisp, but `run_elisp` has not completed successfully. Run the requested verification before finishing.")
+   ((and (memq 'memory-lookup ekg-agent--completion-requirements)
+         (ekg-agent--any-tool-available-p
+          '("get_notes_with_all_tags"
+            "get_notes_with_any_tags"
+            "get_note_by_id"
+            "list_all_tags"))
+         (not (ekg-agent--any-tool-called-p
+               '("get_notes_with_all_tags"
+                 "get_notes_with_any_tags"
+                 "get_note_by_id"
+                 "list_all_tags"))))
+    "The user asked to follow notes, conventions, or skills, but no memory lookup tool has completed successfully. Retrieve the relevant prompt-tagged notes before finishing.")
+   ((and (memq 'org-task ekg-agent--completion-requirements)
+         (ekg-agent--tool-available-p "add_org_item")
+         (not (ekg-agent--tool-called-p "add_org_item")))
+    "The user asked for org task/subtask management, but `add_org_item` has not completed successfully. Use the org task tools, not create_note, for org tasks.")
+   ((and (memq 'org-status ekg-agent--completion-requirements)
+         (ekg-agent--tool-available-p "set_org_item_status")
+         (not (ekg-agent--tool-called-p "set_org_item_status")))
+    "The user asked for org tasks to be marked done or complete, but `set_org_item_status` has not completed successfully. Mark the relevant org task items DONE before finishing.")
+   (t nil)))
+
 (defun ekg-agent--record-status-update (&optional timestamp)
   "Record TIMESTAMP as the latest status update time for the log buffer."
   (when-let ((buf ekg-agent--current-log-buffer))
@@ -906,6 +1314,7 @@ non-string content in the assistant role."
               (last ekg-agent--last-status-update-time)
               (now (float-time)))
           (when (and ekg-agent--running-p
+                     (not (ekg-agent--pending-file-change-p buf))
                      (numberp threshold)
                      (> threshold 0)
                      (numberp last)
@@ -926,12 +1335,23 @@ non-string content in the assistant role."
     (ekg-agent--ensure-log-window)
     (ekg-agent--record-status-update)
     (ekg-agent--log "State: %s" state)
-    "ok"))
+    (if (and ekg-agent--current-log-buffer
+             (ekg-agent--pending-required-note-p
+              ekg-agent--current-log-buffer))
+        (let ((id (ekg-agent-add-note state '("agent-task") "org-mode")))
+          (ekg-agent--log
+           "Created required note from status update: %s" id)
+          (ekg-agent--record-tool-completion
+           ekg-agent--current-log-buffer
+           "create_note"
+           (format "Created note with ID %s" id))
+          "ok. Created the required ekg note from this status update.")
+      "ok.")))
 
 (defconst ekg-agent-tool-summarize-state
   (make-llm-tool :function #'ekg-agent--summarize-state
                  :name "summarize_state"
-                 :description "Summarize the current state in the agent log window.  During long tasks, call this at least once a minute.  Include what you just finished, what you are doing now, and what is next or blocked."
+                 :description "Record a concise progress update in the agent log window."
                  :args '((:name "state" :type string :description "Brief but meaningful summary of completed work, current step, and next step or blocker."))))
 
 (defconst ekg-agent-tool-read-agents-md
@@ -1074,34 +1494,72 @@ identifiers."
              (edit-buf (or existing-buf
                            (generate-new-buffer " *ekg-agent-edit*"))))
         (unwind-protect
-            (with-current-buffer edit-buf
+            (progn
+              (with-current-buffer edit-buf
+                (unless existing-buf
+                  (insert-file-contents truepath))
+                (cl-labels
+                    ((find-boundary
+                       (line text role)
+                       (goto-char (point-min))
+                       (forward-line (1- line))
+                       (if (string-empty-p text)
+                           (list (line-beginning-position)
+                                 (line-end-position)
+                                 line)
+                         (let ((line-end (line-end-position)))
+                           (if (search-forward text line-end t)
+                               (list (match-beginning 0)
+                                     (match-end 0)
+                                     (line-number-at-pos
+                                      (match-beginning 0)))
+                             (let ((window-start
+                                    (save-excursion
+                                      (goto-char (point-min))
+                                      (forward-line (max 0 (- line 6)))
+                                      (point)))
+                                   (window-end
+                                    (save-excursion
+                                      (goto-char (point-min))
+                                      (forward-line (+ line 5))
+                                      (line-end-position))))
+                               (goto-char window-start)
+                               (if (search-forward text window-end t)
+                                   (list (match-beginning 0)
+                                         (match-end 0)
+                                         (line-number-at-pos
+                                          (match-beginning 0)))
+                                 (error "%s text not found near line %d"
+                                        role line))))))))
+                  (pcase-let* ((`(,begin-pos ,_begin-end ,actual-begin-line)
+                                (find-boundary begin-line begin-text "Begin"))
+                               (`(,_end-start ,end-pos ,actual-end-line)
+                                (find-boundary end-line end-text "End"))
+                               (region-start begin-pos)
+                               (line-indent (save-excursion
+                                              (goto-char begin-pos)
+                                              (current-indentation))))
+                    (when (> region-start end-pos)
+                      (error "Begin boundary occurs after end boundary"))
+                    (setq begin-line actual-begin-line)
+                    (setq end-line actual-end-line)
+                    ;; Expand to include leading whitespace so the
+                    ;; replacement controls the full indentation.
+                    (goto-char region-start)
+                    (let ((line-start (line-beginning-position)))
+                      (when (string-match-p
+                             "\\`[ \t]*\\'"
+                             (buffer-substring-no-properties
+                              line-start region-start))
+                        (setq region-start line-start)))
+                    (delete-region region-start end-pos)
+                    (goto-char region-start)
+                    (insert (ekg-agent--adjust-indentation
+                             replacement line-indent)))))
               (unless existing-buf
-                (insert-file-contents truepath))
-              (goto-char (point-min))
-              (forward-line (1- begin-line))
-              (let ((region-start (point))
-                    (line-indent (current-indentation)))
-                (unless (search-forward begin-text (line-end-position) t)
-                  (error "Begin text not found on line %d" begin-line))
-                (setq region-start (match-beginning 0))
-                ;; Expand to include leading whitespace so the
-                ;; replacement controls the full indentation.
-                (let ((line-start (line-beginning-position)))
-                  (when (string-match-p
-                         "\\`[ \t]*\\'"
-                         (buffer-substring-no-properties line-start region-start))
-                    (setq region-start line-start)))
-                (goto-char (point-min))
-                (forward-line (1- end-line))
-                (unless (search-forward end-text (line-end-position) t)
-                  (error "End text not found on line %d" end-line))
-                (let ((region-end (match-end 0)))
-                  (delete-region region-start region-end)
-                  (goto-char region-start)
-                  (insert (ekg-agent--adjust-indentation
-                           replacement line-indent))))
-              (unless existing-buf
-                (write-region (point-min) (point-max) truepath nil 'silent)))
+                (with-current-buffer edit-buf
+                  (write-region (point-min) (point-max)
+                                truepath nil 'silent))))
           (unless existing-buf
             (kill-buffer edit-buf)))
         (ekg-agent--read-file truepath
@@ -1112,7 +1570,7 @@ identifiers."
   (make-llm-tool
    :function #'ekg-agent--read-file
    :name "read_file"
-   :description "Read a file and return its contents.  Each line is prefixed with a unique 3-character identifier (not a line number).  Use these identifiers when calling edit_file.  Optionally restrict to a range by passing begin/end as either line numbers or identifiers, with range_type indicating which.  If the file is open in an Emacs buffer, reads from the buffer (which may have unsaved changes)."
+   :description "Read a file and return its contents. Each line is prefixed with a unique 3-character identifier. Optionally restrict to a range by line number or identifier. If the file is open in an Emacs buffer, reads from the buffer."
    :args '((:name "path" :type string :description "The file path to read." :required t)
            (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning.")
            (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end.")
@@ -1123,7 +1581,7 @@ identifiers."
   (make-llm-tool
    :function #'ekg-agent--edit-file
    :name "edit_file"
-   :description "Edit a file by replacing text between two boundary markers.  The begin and end positions are specified using the unique line identifiers returned by read_file.  The begin_text on the begin line and end_text on the end line are both included in the replacement.  Returns the edited region with surrounding context and new line identifiers.  If the file is open in an Emacs buffer, edits the buffer in place without saving; otherwise saves to disk."
+   :description "Edit a file by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context and new line identifiers. If the file is open in an Emacs buffer, edits the buffer in place without saving; otherwise saves to disk."
    :args '((:name "path" :type string :description "The file path to edit." :required t)
            (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts." :required t)
            (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace." :required t)
@@ -1155,7 +1613,7 @@ identifiers, like `ekg-agent--read-file'."
   (make-llm-tool
    :function #'ekg-agent--write-file
    :name "write_file"
-   :description "Write content to a file, creating it (and parent directories) if it does not exist.  If the file is already open in an Emacs buffer, replaces the buffer contents without saving.  Returns the new file content with line identifiers."
+   :description "Write full content to a file, creating it and parent directories if needed. If the file is open in an Emacs buffer, replaces the buffer contents without saving. Returns the new file content with line identifiers."
    :args '((:name "path" :type string :description "The file path to write." :required t)
            (:name "content" :type string :description "The full text content to write to the file." :required t))))
 
@@ -1278,7 +1736,7 @@ RANGE-TYPE are treated as nil."
   (make-llm-tool
    :function #'ekg-agent--read-buffer
    :name "read_buffer"
-   :description "Read an Emacs buffer and return its contents.  Each line is prefixed with a unique 3-character identifier.  The first line of the output shows the overall begin_pos and end_pos (buffer point positions) of the returned range.  Use these identifiers when calling edit_buffer.  Optionally restrict to a range by passing begin/end as either line numbers or identifiers."
+   :description "Read an Emacs buffer and return its contents. Each line is prefixed with a unique 3-character identifier. The first line reports the begin_pos and end_pos buffer positions. Optionally restrict to a range by line number or identifier."
    :args '((:name "buffer_name" :type string :description "The name of the buffer to read." :required t)
            (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning.")
            (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end.")
@@ -1335,7 +1793,7 @@ identifiers."
   (make-llm-tool
    :function #'ekg-agent--edit-buffer
    :name "edit_buffer"
-   :description "Edit a buffer by replacing text between two boundary markers.  The begin and end positions are specified using the unique line identifiers returned by read_buffer.  The begin_text on the begin line and end_text on the end line are both included in the replacement.  Returns the edited region with surrounding context, including begin_pos/end_pos."
+   :description "Edit a buffer by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context, including begin_pos and end_pos."
    :args '((:name "buffer_name" :type string :description "The name of the buffer to edit." :required t)
            (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts." :required t)
            (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace." :required t)
@@ -1354,10 +1812,7 @@ LINE-ID must be provided."
      (point
       (let ((pos (if (stringp point) (string-to-number point) point)))
         (with-current-buffer (get-buffer buffer-name)
-          (when (or (< pos (point-min)) (> pos (point-max)))
-            (error "Point %d is outside buffer range [%d, %d]"
-                   pos (point-min) (point-max))))
-        pos))
+          (min (point-max) (max (point-min) pos)))))
      (line-id
       (let ((line-num (ekg-agent--resolve-buffer-line-id buffer-name line-id)))
         (with-current-buffer (get-buffer buffer-name)
@@ -1391,8 +1846,10 @@ executes, including begin_pos/end_pos."
         (unless (commandp cmd)
           (error "Not an interactive command: %s" command))
         (with-current-buffer buf
-          (goto-char pos)
-          (call-interactively cmd)
+          (goto-char (min (point-max) (max (point-min) pos)))
+          (if (eq cmd 'eval-buffer)
+              (eval-buffer)
+            (call-interactively cmd))
           ;; Return context: ~10 lines around the post-command point,
           ;; since the command may have moved point.
           (let ((current-line (line-number-at-pos (point))))
@@ -1405,11 +1862,11 @@ executes, including begin_pos/end_pos."
   (make-llm-tool
    :function #'ekg-agent--run-interactive-command
    :name "run_interactive_command"
-   :description "Execute an interactive Emacs command in a buffer at a specific position.  The position can be specified as either a buffer point (integer) or a line identifier (from read_buffer) optionally refined by text on that line.  If both point and line_id are given, point takes precedence.  Returns the buffer content around the position after the command executes."
+   :description "Execute an interactive Emacs command in a buffer at a specific position. The position can be specified as a buffer point or as a line identifier optionally refined by text on that line. If both point and line_id are given, point takes precedence. Returns buffer content around the final position."
    :args '((:name "buffer_name" :type string :description "The name of the buffer." :required t)
            (:name "command" :type string :description "The interactive Emacs command to run (e.g. \"org-todo\", \"indent-region\")." :required t)
            (:name "point" :type string :description "Buffer position (integer as string) where the command should be executed.  Takes precedence over line_id if both are given.")
-           (:name "line_id" :type string :description "A 3-character line identifier from read_buffer to locate the position.")
+          (:name "line_id" :type string :description "A 3-character line identifier for the buffer line.")
            (:name "text" :type string :description "Text on the identified line to refine the position.  Point is placed at the start of this text.  Only used with line_id."))))
 
 (defun ekg-agent--run-command (callback command &optional directory)
@@ -1597,12 +2054,20 @@ agent will decide which is best."
                          "\n\nYour instructions are to answer the user's question, given below. "
                          "You have access to tools to help you. "
                          "After each tool call you will be given a chance to make more tool calls. "
-                         "Use `create_note` freely throughout your work to record progress, "
-                         "findings, and skills — it will NOT end your session. "
-                         "When you are FINISHED with ALL work (including the actual task, any "
-                         "skill notes, and your retrospective), call `display_result_in_popup` "
-                         "to present your final summary to the user.  This is the ONLY way to "
-                         "end your session."
+                         "Do the user's concrete task first. Use `create_note` when the task "
+                         "asks you to store memory, when you discover reusable knowledge, or "
+                         "when a longer task needs a checkpoint; it will NOT end your session. "
+                         "Action verbs such as fix, add, write, create, update, store, or "
+                         "follow require actual tool actions; reading and summarizing are "
+                         "not enough. If you find a file issue and the user asked you to fix "
+                         "it, call `write_file` or `edit_file` before the final response. "
+                         "For file changes, verify the change before finishing: inspect the "
+                         "tool result, re-read the file, or run a suitable check. "
+                         "If the user asks you to store a skill or memory, create the required "
+                         "note immediately after the concrete work is verified; do not spend "
+                         "extra turns re-verifying an already-correct tool result. "
+                         "When you are finished, call `display_result_in_popup` with a concise "
+                         "summary, or call `end` if there is nothing useful to display."
                          (when context
                            "\n\nHere is some additional context to help you:\n")
                          context
@@ -1620,8 +2085,11 @@ agent will decide which is best."
                          :tool-options (make-llm-tool-options :tool-choice 'any))
                         0
                         (ekg-agent--make-status-callback)
-                        '("display_result_in_popup")
-                        (ekg-agent--timeout-deadline))))
+                        '("display_result_in_popup" "end")
+                        nil
+                        nil
+                        (ekg-agent--completion-requirements-for-question
+                         question))))
 
 (defun ekg-agent-ask (question)
   "Ask the ekg agent a QUESTION and display the result.
@@ -1759,79 +2227,62 @@ note-taking and knowledge retention."
                           (format "%s seconds" ekg-agent-timeout-seconds)
                         "no timeout configured")))
     (format
-     "IMPORTANT: Read this whole section before starting any task. These rules are mandatory, not optional.
+     "IMPORTANT: Complete the user's concrete task before optional
+memory work. Use ekg memory to improve the work, but do not let
+memory bookkeeping delay or replace the requested outcome.
 
 ekg is an external memory system that stores notes in a database
-organized by tags. When you work on a task, you **must** use ekg to:
-- **Remember** important context, decisions, and findings
-- **Share** knowledge across tasks and sessions
-- **Learn** from past work and avoid repeating mistakes
+organized by tags. Use ekg to remember important context, share
+knowledge across sessions, and learn from past work when that is useful
+for the task or explicitly requested.
 
-The rules below ensure you use ekg effectively. Failure to follow these
-rules will result in lost context and repeated work.
+== TASK ORDER ==
 
-== MANDATORY WORKFLOW ==
+1. Do and verify concrete work first.
+   - For file tasks, read the relevant file, make the change, then verify
+     by inspecting the result or running the requested check.
+   - A request to fix, add, write, update, create, store, or follow
+     something is not complete until you have performed that action with
+     the appropriate tool.
+   - If the task also asks you to create notes or skills, do that after
+     the concrete work is complete unless the note itself is the main task.
+     If the file tool's returned content shows the requested edit, that is
+     enough verification for small changes; move on to the required note.
+   - Do not call `search_notes` just because you plan to create a note.
+     Semantic search may be unavailable; when exact memory lookup is
+     needed, prefer tag tools such as `list_all_tags`,
+     `get_notes_with_all_tags`, or `get_notes_with_any_tags`.
 
-Before you begin any substantive work on a task:
+2. Retrieve memory only when it affects the task.
+   - If the user asks you to follow notes, skills, conventions, or prior
+     context, look up the relevant prompt-tagged notes first using tag
+     tools such as `get_notes_with_all_tags` with tags like `prompt`
+     plus the topic tag. Do not call `get_note_by_id` with a tag name.
+   - Existing tags cotagged with the prompt tag are: %s.
+   - For file resource notes, use `get_note_by_id` with
+     `file:<absolute-path>` or exact `doc/<filename>` tags.
+   - Direct current user instructions override stored memory for this
+     session. However, if a prompt-tagged note states a CRITICAL,
+     MUST, or NEVER convention and the current task explicitly asks for
+     the opposite, call `ask_user` once to clarify which instruction to
+     follow before proceeding.
 
-1. **INITIAL INVESTIGATION (DO NOT SKIP)**
-   - Look up the current project's ekg tags. If there is an EKG-PROJECT
-     property in the org file, use that as the project tag.  Or, look at
-     existing tags that match the description.
-   - Search the ekg database for existing notes with relevant tags.
-   - Read existing notes to understand what's already known.
-   - Read the project's AGENTS.md file (if present) or check
-     ~/.pi/agent/AGENTS.md for global instructions.
-   - Read existing notes that contain instructions for directories,
-     skills, or projects mentioned in the task description.  Each of
-     these will have a tag cotagged with the prompt tag.  Existing
-     cotags with the prompt tag are: %s.
-   - When working with specific files, check for file resource notes.
-     These are notes whose ID is `file:<absolute-path>` and are tagged
-     with `doc/<filename>`.  Use `get_note_by_id` with `file:<path>`
-     or search for notes with the `doc/<filename>` tag.  These notes
-     contain file-specific conventions and instructions.
-   - If you find relevant notes, reference them in your task description.
-   - **CONTRADICTION HANDLING**: If your task instructions conflict
-     with conventions stored in ekg notes (especially `prompt`-tagged
-     skill notes), you MUST call `ask_user` to confirm which to follow
-     before proceeding.  Never silently override a stored convention.
+3. Create task/journal notes only when useful or requested.
+   - Use an `agent-task` note for long-running, restartable, org-task, or
+     explicitly journaled work.
+   - If you create a task note, append progress when you discover
+     important facts, hit a problem, or make a decision.
+   - For a small concrete edit, a final documentation note is enough when
+     the task or convention expects memory documentation.
 
-2. **CREATE INITIAL TASK NOTE**
-   - Create a new note with:
-     - A descriptive title based on the task.
-     - Tags: at minimum `agent-task`, plus any project-specific tags.
-     - Include the org task ID and description as the core content.
-     - Note the ekg note ID returned (you'll need it for updates).
-   - This note is your \"task journal\" - all findings go here.  It
-     will be the source of information if we need to recover the state
-     of the work in progress.
-
-3. **DOCUMENT PROGRESS AND UPDATE THE USER THROUGHOUT THE TASK**
-   - Before you start significant work: add an entry describing what you plan to do.
-   - When you discover important information: add a note about it.
-   - When you hit a problem or make a decision: document the rationale.
-   - Be specific: include file paths, code snippets, key insights, and context.
-   - Be sure and call the state summarization tool regularly, so that
-     the user understands the state of the work.
-
-4. **CREATE SKILL NOTES FOR REUSABLE KNOWLEDGE**
-   Any time you discover something generally useful — a pattern,
-   convention, gotcha, best practice, or technique — you MUST create
-   a **skill note** so it will be automatically shown in future tasks.
-
-   A skill note is a note tagged with `%s` plus one or more topic
-   tags (e.g., `elisp`, `performance`, `error-handling`, or a project
-   name).  Notes tagged with `%s` are special: they are automatically
-   included as instructions when the agent works on tasks that share
-   any of the co-tags.  This is how the agent learns and improves
-   over time.
-
-   Examples of when to create a skill note:
-   - You discover a performance anti-pattern (tag: `%s` + `elisp` + `performance`)
-   - You identify a project convention (tag: `%s` + `<project-name>`)
-   - You learn a useful technique (tag: `%s` + relevant topic)
-   - Your instructions could be improved (tag: `%s` + relevant context)
+4. Create skill notes for reusable knowledge.
+   - When the task asks you to store a skill, or when you discover a
+     generally reusable pattern, convention, gotcha, best practice, or
+     technique, create a skill note.
+   - A skill note is tagged with `%s` plus one or more topic tags such as
+     `elisp`, `performance`, `error-handling`, or a project name. Notes
+     tagged with `%s` can be included as instructions on future related
+     tasks.
 
 In org-mode, you can link to a note with `[[ekg-note:<id>][<link display
 text>]]`.  Tags can be linked with `[[ekg-tag:<tag>][<link display
@@ -1856,15 +2307,10 @@ When delegating work to a sub-agent via `run_subagent`:
 
 When the task is complete:
 
-5. **RETROSPECTIVE AND KNOWLEDGE EXTRACTION**
-   - Ask: what did I learn that's generally useful?
-   - For each learning, create a skill note (tagged with `%s` + topics).
-   - If something went wrong, document the lesson as a skill note.
-
-6. **UPDATE THE TASK NOTE**
-   - Add a final entry summarizing the outcome
-   - Link to any new notes you created
-   - Mark the task as done in the org file
+- Verify the requested outcome.
+- Create or update any required task, memory, or skill notes.
+- End immediately with `display_result_in_popup` or `end`. Do not keep
+  investigating once the work is verified and required notes are saved.
 
 Use the `summarize_state` tool regularly to write brief but meaningful
 status updates to the user-visible agent log window.  During long
@@ -1892,13 +2338,8 @@ When creating a note, text that you add will automatically have the tags
 surrounding it to indicate that it was written by an LLM.  Do not add
 these tags manually."
      (concat "[" (string-join (ekg-agent-cotagged-prompt-tags) " ") "]")
-     ekg-llm-prompt-tag  ; step 4 first mention
-     ekg-llm-prompt-tag  ; step 4 "Notes tagged with..."
-     ekg-llm-prompt-tag  ; step 4 example 1
-     ekg-llm-prompt-tag  ; step 4 example 2
-     ekg-llm-prompt-tag  ; step 4 example 3
-     ekg-llm-prompt-tag  ; step 4 example 4
-     ekg-llm-prompt-tag  ; step 5
+     ekg-llm-prompt-tag
+     ekg-llm-prompt-tag
      timeout-desc
      ekg-agent-self-info-tag)))
 
@@ -1957,26 +2398,55 @@ to create new notes or perform other actions to help the user."
                       0
                       (ekg-agent--make-status-callback)
                       '("end")
-                      (ekg-agent--timeout-deadline)))
+                      nil))
+
+(defun ekg-agent--prompt-user-text (prompt)
+  "Return the first user text from PROMPT."
+  (or (when-let ((interaction
+                  (car (seq-filter
+                        (lambda (interaction)
+                          (eq (llm-chat-prompt-interaction-role interaction)
+                              'user))
+                        (llm-chat-prompt-interactions prompt)))))
+        (format "%s" (llm-chat-prompt-interaction-content interaction)))
+      "ekg agent task"))
+
+(defun ekg-agent--fallback-prompt-id (prompt)
+  "Return a deterministic short identifier for PROMPT."
+  (let* ((words (split-string
+                 (downcase
+                  (replace-regexp-in-string
+                   "[^[:alnum:]]+" " "
+                   (ekg-agent--prompt-user-text prompt)))
+                 "[[:space:]]+" t))
+         (slug (string-join (seq-take words 5) "-")))
+    (if (string-empty-p slug)
+        "ekg-agent-task"
+      slug)))
 
 (defun ekg-agent--prompt-id (prompt)
-  "From llm PROMPT, call an LLM to get a short identifier."
+  "From llm PROMPT, return a short identifier.
+Falls back to a deterministic slug if the LLM naming call fails."
   (let (id)
-    (llm-chat (ekg-agent--provider)
-              (llm-make-chat-prompt
-               (llm-chat-prompt-interaction-content
-                (car (seq-filter (lambda (interaction)
-                                   (eq (llm-chat-prompt-interaction-role interaction) 'user))
-                                 (llm-chat-prompt-interactions prompt))))
-               :context "From user input of the what they are instruction an agent to do, call the tool to report a short name.  "
-               :tools (list
-                       (make-llm-tool :function (lambda (result) (setq id result))
-                                      :name "report_id"
-                                      :description "Report on the decided id so that the agent can use this id to name an emacs buffer that will hold the status of the agent.  "
-                                      :args '((:name "id" :type string
-                                                     :description "This id will be for naming an emacs buffer, so use lowercase and dashes.  This should be about 3-5 words.  Example name: 'check-gnus-email-and-respond'.  "))))
-               :tool-options (make-llm-tool-options :tool-choice 'any)))
-    id))
+    (condition-case err
+        (llm-chat (ekg-agent--provider)
+                  (llm-make-chat-prompt
+                   (ekg-agent--prompt-user-text prompt)
+                   :context "From user input of what they are instructing an agent to do, call the tool to report a short name."
+                   :tools (list
+                           (make-llm-tool
+                            :function (lambda (result) (setq id result))
+                            :name "report_id"
+                            :description "Report the decided id so the agent can use it to name an Emacs status buffer. Use lowercase words separated by hyphens, about 3-5 words."
+                            :args '((:name "id" :type string
+                                           :description "Lowercase hyphenated buffer id, e.g. check-email-and-respond."))))
+                   :tool-options (make-llm-tool-options :tool-choice 'any)))
+      (error
+       (message "ekg-agent prompt-id fallback: %s"
+                (error-message-string err))))
+    (if (and (stringp id) (not (string-empty-p id)))
+        id
+      (ekg-agent--fallback-prompt-id prompt))))
 
 (defvar ekg-agent-log-mode-map
   (let ((map (make-sparse-keymap)))
@@ -2007,7 +2477,127 @@ This acts as a once-only guard to ensure status callbacks fire exactly once."
         (force-mode-line-update)
         t))))
 
-(defun ekg-agent--iterate (prompt iteration-num &optional status-callback end-tools deadline timeout-final)
+(defun ekg-agent--cancel-current-work ()
+  "Cancel the current LLM request and any active tool subprocesses."
+  (when ekg-agent--current-request
+    (ignore-errors (llm-cancel-request ekg-agent--current-request))
+    (setq ekg-agent--current-request nil))
+  (dolist (item ekg-agent--tool-processes)
+    (cond
+     ((futur-p item)
+      (ignore-errors (futur-abort item "cancelled")))
+     ((processp item)
+      (when (process-live-p item)
+        (ignore-errors (delete-process item))))))
+  (setq ekg-agent--tool-processes nil))
+
+(defun ekg-agent--make-deadline-timer (log-buf deadline status-callback)
+  "Return a timer that stops LOG-BUF at DEADLINE.
+STATUS-CALLBACK is called with a timeout status when the timer
+stops a still-running agent."
+  (when deadline
+    (run-at-time
+     (max 0.1 (- deadline (float-time))) nil
+     (lambda ()
+       (when (and (buffer-live-p log-buf)
+                  (buffer-local-value 'ekg-agent--running-p log-buf))
+         (with-current-buffer log-buf
+           (let ((ekg-agent--current-log-buffer log-buf))
+             (ekg-agent--log "Timeout reached; stopping agent.")
+             (ekg-agent--cancel-current-work)
+             (when ekg-agent--prompt
+               (ekg-agent--clean-orphaned-tool-interactions
+                ekg-agent--prompt))
+             (when (ekg-agent--set-stopped log-buf)
+               (when status-callback
+                 (funcall status-callback "stopped by timeout"))))))))))
+
+(defun ekg-agent--handle-llm-result (result prompt iteration-num status-callback
+                                            end-tools deadline timeout-final
+                                            completion-requirements log-buf)
+  "Handle an async LLM RESULT for `ekg-agent--iterate'."
+  (if (and (buffer-live-p log-buf)
+           (buffer-local-value 'ekg-agent--cancelled-p log-buf))
+      (when (ekg-agent--set-stopped log-buf)
+        (ekg-agent--log "Agent stopped (cancelled by user)")
+        (when status-callback
+          (funcall status-callback "stopped by user")))
+    (let ((result-alist (plist-get result :tool-results))
+          (end-tools (or end-tools '("end"))))
+      (unless result-alist
+        ;; Everything must be a tool call.  If the model emits plain
+        ;; text, log it and continue with a direct instruction to use a
+        ;; completion tool.
+        (ekg-agent--log "%s" (plist-get result :text))
+        (llm-chat-prompt-append-response
+         prompt
+         (format "That has been communicated to the user. Please always call tools. This session cannot end until you call one of the following tools: %s."
+                 (string-join end-tools ", "))))
+      (cond
+       (timeout-final
+        (when (ekg-agent--set-stopped log-buf)
+          (when status-callback
+            (funcall status-callback "stopped by timeout"))))
+       ((and (or (assoc-default "run_elisp" result-alist)
+                 (assoc-default "run_interactive_command" result-alist))
+             (with-current-buffer log-buf
+               (and ekg-agent--completion-requirements
+                    (not (ekg-agent--completion-blocker)))))
+        (when (ekg-agent--set-stopped log-buf)
+          (when status-callback
+            (funcall status-callback "done"))))
+       ((and (assoc-default "set_org_item_status" result-alist)
+             (with-current-buffer log-buf
+               (and ekg-agent--completion-requirements
+                    (not (ekg-agent--completion-blocker)))))
+        (when (ekg-agent--set-stopped log-buf)
+          (when status-callback
+            (funcall status-callback "done"))))
+       ((seq-find (lambda (end-tool)
+                    (assoc-default end-tool result-alist))
+                  end-tools)
+        (let ((blocker (with-current-buffer log-buf
+                         (ekg-agent--completion-blocker))))
+          (if blocker
+              (progn
+                (ekg-agent--log "Completion blocked: %s" blocker)
+                (ekg-agent--prompt-append-user-message
+                 prompt
+                 (concat "You attempted to finish, but the task is not complete. "
+                         blocker))
+                (with-current-buffer log-buf
+                  (ekg-agent--iterate prompt
+                                      (+ 1 iteration-num)
+                                      status-callback
+                                      end-tools
+                                      deadline
+                                      timeout-final
+                                      completion-requirements)))
+            (when (ekg-agent--set-stopped log-buf)
+              (when status-callback
+                (funcall
+                 status-callback
+                 (mapconcat (lambda (end-tool)
+                              (format "%s"
+                                      (assoc-default end-tool result-alist)))
+                            (seq-filter
+                             (lambda (end-tool)
+                               (assoc-default end-tool result-alist))
+                             end-tools)
+                            ", ")))))))
+       (t
+        (with-current-buffer log-buf
+          (ekg-agent--iterate prompt
+                              (+ 1 iteration-num)
+                              status-callback
+                              end-tools
+                              deadline
+                              timeout-final
+                              completion-requirements)))))))
+
+(defun ekg-agent--iterate (prompt iteration-num &optional status-callback
+                                  end-tools deadline timeout-final
+                                  completion-requirements)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 
 PROMPT is the chat prompt for the LLM.
@@ -2026,6 +2616,9 @@ DEADLINE is a float time when the agent should stop.
 If TIMEOUT-FINAL is non-nil, this is the final iteration before
 stopping.
 
+COMPLETION-REQUIREMENTS is a list of inferred requirements that must be
+satisfied before an end tool is accepted.
+
 This is to start, and after every tool call to continue the agent
 session.  At iteration 0 the log buffer is created and
 `ekg-agent-log-mode' is enabled."
@@ -2034,6 +2627,7 @@ session.  At iteration 0 the log buffer is created and
       ;; buffer before switching to the log buffer.
       (let* ((origin-buf (current-buffer))
              (id (ekg-agent--prompt-id prompt))
+             (deadline (or deadline (ekg-agent--timeout-deadline)))
              (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
         (with-current-buffer buf
           (erase-buffer)
@@ -2054,6 +2648,8 @@ session.  At iteration 0 the log buffer is created and
           (setq ekg-agent--cancelled-p nil)
           (setq ekg-agent--current-request nil)
           (setq ekg-agent--tool-processes nil)
+          (setq ekg-agent--tool-call-history nil)
+          (setq ekg-agent--completion-requirements completion-requirements)
           (setq ekg-agent--status-callback status-callback)
           (setq ekg-agent--origin-buffer origin-buf)
           (setq ekg-agent--last-status-update-time (float-time))
@@ -2067,7 +2663,8 @@ session.  At iteration 0 the log buffer is created and
                               status-callback
                               end-tools
                               deadline
-                              timeout-final)))
+                              timeout-final
+                              completion-requirements)))
     ;; iteration > 0: run the agent loop.
     ;; current-buffer should be the log buffer (guaranteed by
     ;; iteration 0 and by the with-current-buffer around the recursive
@@ -2080,84 +2677,63 @@ session.  At iteration 0 the log buffer is created and
         (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
         (setq timeout-final t))
       (ekg-agent--maybe-remind-status-update prompt)
+      (when (and (integerp ekg-agent-llm-max-tokens)
+                 (> ekg-agent-llm-max-tokens 0)
+                 (not (llm-chat-prompt-max-tokens prompt)))
+        (setf (llm-chat-prompt-max-tokens prompt)
+              ekg-agent-llm-max-tokens))
       (when (and log-buf (buffer-live-p log-buf))
         (with-current-buffer log-buf
           (setq ekg-agent--current-activity "Waiting for LLM response…")
           (force-mode-line-update)
           (ekg-agent--log "⟳ Waiting for LLM response…")))
       (condition-case err
-          (let ((request
-                  (ekg-agent--llm-chat-async-with-retry
-                   (ekg-agent--provider)
-                   prompt
-                   (lambda (result)
-                     ;; Guard the entire callback body: this runs in a
-                     ;; process sentinel context where uncaught errors
-                     ;; vanish silently, leaving the agent hung.
-                     ;; Bind the log buffer so that any logging from
-                     ;; status callbacks targets the log, not whatever
-                     ;; buffer the process sentinel happened to use.
-                     (let ((ekg-agent--current-log-buffer log-buf))
-                       (condition-case err
-                           (if (and (buffer-live-p log-buf)
-                                    (buffer-local-value 'ekg-agent--cancelled-p log-buf))
-                               ;; Cancelled by user
-                               (when (ekg-agent--set-stopped log-buf)
-                                 (ekg-agent--log "Agent stopped (cancelled by user)")
-                                 (when status-callback (funcall status-callback "stopped by user")))
-                             ;; Normal processing of result
-                             (let ((result-alist (plist-get result :tool-results))
-                                   (end-tools (or end-tools '("end"))))
-                               (unless result-alist
-                                 ;; Everything must be a tool call, by default if it just gets
-                                 ;; non-tool output we'll log it, and then instruct it to use
-                                 ;; tools to end if needed.
-                                 (ekg-agent--log "%s" (plist-get result :text))
-                                 (llm-chat-prompt-append-response
-                                  prompt
-                                  (format "That has been communicated to the user.  Please always call tools.  This session cannot end until you call one of the following tools: %s."
-                                          (string-join end-tools ", "))))
-
-                               (cond
-                                (timeout-final
-                                 (when (ekg-agent--set-stopped log-buf)
-                                   (when status-callback (funcall status-callback "stopped by timeout"))))
-                                ((seq-find (lambda (end-tool) (assoc-default end-tool result-alist)) end-tools)
-                                 (when (ekg-agent--set-stopped log-buf)
-                                   (when status-callback
-                                     (funcall
-                                      status-callback
-                                      (mapconcat (lambda (end-tool)
-                                                   (format "%s" (assoc-default end-tool result-alist)))
-                                                 (seq-filter (lambda (end-tool) (assoc-default end-tool result-alist))
-                                                             end-tools)
-                                                 ", ")))))
-                                (t
-                                 ;; Recurse in the log buffer so that the
-                                 ;; next iteration sees the correct
-                                 ;; current-buffer for log-buf.
-                                 (with-current-buffer log-buf
-                                   (ekg-agent--iterate prompt
-                                                       (+ 1 iteration-num)
-                                                       status-callback
-                                                       end-tools
-                                                       deadline))))))
-                         (error
-                          (when (ekg-agent--set-stopped log-buf)
-                            (ekg-agent--log "Error in callback: %s"
-                                            (error-message-string err))
-                            (when status-callback (funcall status-callback 'error)))))))
-                   (lambda (_ err)
-                     (let ((ekg-agent--current-log-buffer log-buf))
-                       (when (ekg-agent--set-stopped log-buf)
-                         (ekg-agent--log "LLM error: %s" err)
-                         (when status-callback (funcall status-callback 'error)))))
-                   t
-                   log-buf)))
+          (let* ((deadline-timer
+                  (ekg-agent--make-deadline-timer
+                   log-buf deadline status-callback))
+                 (request
+                   (ekg-agent--llm-chat-async-with-retry
+                    (ekg-agent--provider)
+                    prompt
+                    (lambda (result)
+                      (when deadline-timer
+                        (cancel-timer deadline-timer)
+                        (setq deadline-timer nil))
+                      (let ((ekg-agent--current-log-buffer log-buf))
+                        (condition-case err
+                            (ekg-agent--handle-llm-result
+                             result
+                             prompt
+                             iteration-num
+                             status-callback
+                             end-tools
+                             deadline
+                             timeout-final
+                             completion-requirements
+                             log-buf)
+                          (error
+                           (when (ekg-agent--set-stopped log-buf)
+                             (ekg-agent--log "Error in callback: %s"
+                                             (error-message-string err))
+                             (when status-callback (funcall status-callback 'error)))))))
+                    (lambda (_ err)
+                      (when deadline-timer
+                        (cancel-timer deadline-timer)
+                        (setq deadline-timer nil))
+                      (let ((ekg-agent--current-log-buffer log-buf))
+                        (when (ekg-agent--set-stopped log-buf)
+                          (ekg-agent--log "LLM error: %s" err)
+                          (when status-callback (funcall status-callback 'error)))))
+                    t
+                    log-buf)))
             (when (buffer-live-p log-buf)
               (with-current-buffer log-buf
-                (setq ekg-agent--current-request request))))
+                (if ekg-agent--running-p
+                    (setq ekg-agent--current-request request)
+                  (ignore-errors (llm-cancel-request request))))))
         (error
+         (when (bound-and-true-p deadline-timer)
+           (cancel-timer deadline-timer))
          (when (ekg-agent--set-stopped log-buf)
            (ekg-agent--log "Error starting LLM request: %s"
                            (error-message-string err))
@@ -2212,19 +2788,7 @@ subprocesses.  Use \\[ekg-agent-continue] to resume."
   (unless ekg-agent--running-p
     (user-error "No agent is currently running"))
   (setq ekg-agent--cancelled-p t)
-  ;; Kill the in-flight LLM request.
-  (when ekg-agent--current-request
-    (ignore-errors (llm-cancel-request ekg-agent--current-request))
-    (setq ekg-agent--current-request nil))
-  ;; Kill any active tool subprocesses or abort futures.
-  (dolist (item ekg-agent--tool-processes)
-    (cond
-     ((futur-p item)
-      (ignore-errors (futur-abort item "force-cancelled")))
-     ((processp item)
-      (when (process-live-p item)
-        (ignore-errors (delete-process item))))))
-  (setq ekg-agent--tool-processes nil)
+  (ekg-agent--cancel-current-work)
   ;; Clean up orphaned tool-use interactions from the prompt.
   (when ekg-agent--prompt
     (ekg-agent--clean-orphaned-tool-interactions ekg-agent--prompt))
@@ -2376,7 +2940,7 @@ The user input will be the note they are currently editing.\n\n"
                              (lambda (_status)
                                (delete-overlay overlay)))
                             '("append_to_current_note" "replace_current_note")
-                            (ekg-agent--timeout-deadline))))))
+                            nil)))))
 
 (defvar ekg-agent-minor-mode-map
   (let ((map (make-sparse-keymap)))
@@ -2564,6 +3128,158 @@ notes from ekg."
 
 ;; ekg-org integration
 
+(defun ekg-agent-org--normalize-tool-tags (tags)
+  "Return TAGS as a plain list of strings."
+  (cond
+   ((vectorp tags) (append tags nil))
+   ((listp tags) tags)
+   ((stringp tags) (list tags))
+   (t nil)))
+
+(defun ekg-agent-org--save-item (title content tags parent-id status
+                                       deadline scheduled)
+  "Create and save an org task item, returning its note ID."
+  (let* ((status (if (and status (not (string-empty-p status)))
+                     status
+                   (ekg-agent--org-default-todo-keyword)))
+         (has-parent (and parent-id
+                          (not (equal parent-id 0))
+                          (not (string-empty-p (format "%s" parent-id)))))
+         (note (ekg-note-create
+                :text (or content "")
+                :tags (cl-remove-duplicates
+                       (append (list ekg-org-task-tag)
+                               (ekg-agent-org--normalize-tool-tags tags)
+                               (list (concat ekg-org-state-tag-prefix
+                                             (downcase status))))
+                       :test #'string=)
+                :properties (list :titled/title (list title)))))
+    (when has-parent
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note) :org/parent parent-id)))
+    ;; Assign sort-order at the end of existing siblings.
+    (let* ((siblings (if has-parent
+                         (ekg-org-view--sorted-children parent-id)
+                       (ekg-org-view--sorted-top-level)))
+           (last-id (when siblings
+                      (ekg-note-id (car (last siblings)))))
+           (sort-order (if siblings
+                           (ekg-org-view--assign-order-after siblings last-id)
+                         0)))
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note) :org/sort-order sort-order)))
+    (when (and deadline (not (string-empty-p deadline)))
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note)
+                       :org/deadline (ekg-org--to-timestamp deadline))))
+    (when (and scheduled (not (string-empty-p scheduled)))
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note)
+                       :org/scheduled (ekg-org--to-timestamp scheduled))))
+    (ekg-save-note note)
+    (ekg-note-id note)))
+
+(defun ekg-agent-org--org-note-title (content)
+  "Return the #+TITLE from CONTENT, if present."
+  (let ((case-fold-search t))
+    (when (string-match "^#\\+TITLE:[\t ]*\\(.+\\)$" content)
+      (string-trim (match-string 1 content)))))
+
+(defun ekg-agent-org--clean-heading-title (title)
+  "Strip trailing org tags from heading TITLE."
+  (string-trim
+   (replace-regexp-in-string
+    "[\t ]+:[[:alnum:]_@#%]+\\(?::[[:alnum:]_@#%]+\\)*:[\t ]*\\'"
+    ""
+    title)))
+
+(defun ekg-agent-org--parse-note-headings (content)
+  "Parse org task headings from CONTENT.
+Return a list of plists with :level, :status, :title, and :content."
+  (let ((todo-regexp (or (ekg-agent--org-todo-keyword-regexp)
+                         (regexp-quote
+                          (ekg-agent--org-default-todo-keyword))))
+        (default-status (ekg-agent--org-default-todo-keyword))
+        headings current body)
+    (dolist (line (split-string content "\n"))
+      (if (string-match
+           (format "^\\(\\*+\\)[\t ]+\\(?:\\(%s\\)[\t ]+\\)?\\(.+\\)$"
+                   todo-regexp)
+           line)
+          (progn
+            (when current
+              (setq current
+                    (plist-put current :content
+                               (string-trim
+                                (string-join (nreverse body) "\n"))))
+              (push current headings))
+            (setq current
+                  (list :level (length (match-string 1 line))
+                        :status (or (match-string 2 line) default-status)
+                        :title (ekg-agent-org--clean-heading-title
+                                (match-string 3 line))
+                        :content ""))
+            (setq body nil))
+        (when current
+          (push line body))))
+    (when current
+      (setq current
+            (plist-put current :content
+                       (string-trim (string-join (nreverse body) "\n"))))
+      (push current headings))
+    (nreverse headings)))
+
+(defun ekg-agent-org--create-items-from-note-content (tags content)
+  "Create org task items from org-mode note CONTENT.
+This is a compatibility path for models that call `create_note' with
+TODO headings after the user asked for org task management."
+  (let* ((tags (ekg-agent-org--normalize-tool-tags tags))
+         (headings (ekg-agent-org--parse-note-headings content))
+         (title (ekg-agent-org--org-note-title content))
+         min-level
+         needs-parent
+         (created nil)
+         (stack nil)
+         parent-id)
+    (unless headings
+      (error "No org TODO headings found in create_note content"))
+    (setq min-level (apply #'min (mapcar (lambda (heading)
+                                           (plist-get heading :level))
+                                         headings)))
+    (setq needs-parent (and title (> (length headings) 1)))
+    (when needs-parent
+      (setq parent-id
+            (ekg-agent-org--save-item
+             title
+             "Parent task created from org TODO note content."
+             tags nil (ekg-agent--org-default-todo-keyword) nil nil))
+      (push (cons parent-id title) created)
+      (push (cons (1- min-level) parent-id) stack))
+    (dolist (heading headings)
+      (let* ((level (plist-get heading :level))
+             (status (plist-get heading :status))
+             (heading-title (plist-get heading :title))
+             (body (plist-get heading :content))
+             (parent (or (cdr (assoc (1- level) stack))
+                         (and needs-parent (= level min-level) parent-id)))
+             (id (ekg-agent-org--save-item heading-title body tags parent
+                                           status nil nil)))
+        (push (cons id heading-title) created)
+        (setq stack (assq-delete-all level stack))
+        (push (cons level id) stack)))
+    (when (buffer-live-p ekg-agent--current-log-buffer)
+      (ekg-agent--record-tool-completion
+       ekg-agent--current-log-buffer "add_org_item"
+       "Created org task items from create_note org headings"))
+    (format
+     (concat
+      "Converted org TODO note content into org task items: %s. "
+      "Use these IDs with set_org_item_status after completing the work.")
+     (mapconcat (lambda (item)
+                  (format "%s (%s)" (car item) (cdr item)))
+                (nreverse created)
+                ", "))))
+
 (defun ekg-agent-org--tool-add-item (title content tags parent-id status deadline scheduled)
   "Add a new org task item to EKG.
 
@@ -2575,41 +3291,15 @@ STATUS is the task status (will be converted to uppercase).
 DEADLINE is the deadline timestamp string (ignored if empty).
 SCHEDULED is the scheduled timestamp string (ignored if empty)."
   (ekg-agent--with-error-as-text
-    (let* ((has-parent (and parent-id (not (equal parent-id 0))
-                            (not (string-empty-p (format "%s" parent-id)))))
-           (note (ekg-note-create :text content
-                                  :tags (append (list ekg-org-task-tag) tags
-                                                (when (and status (not (string-empty-p status)))
-                                                  (list (concat ekg-org-state-tag-prefix (downcase status)))))
-                                  :properties (list :titled/title (list title)))))
-      (when has-parent
-        (setf (ekg-note-properties note)
-              (plist-put (ekg-note-properties note) :org/parent parent-id)))
-      ;; Assign sort-order at the end of existing siblings.
-      (let* ((siblings (if has-parent
-                           (ekg-org-view--sorted-children parent-id)
-                         (ekg-org-view--sorted-top-level)))
-             (last-id (when siblings
-                        (ekg-note-id (car (last siblings)))))
-             (sort-order (if siblings
-                             (ekg-org-view--assign-order-after siblings last-id)
-                           0)))
-        (setf (ekg-note-properties note)
-              (plist-put (ekg-note-properties note) :org/sort-order sort-order)))
-      (when (and deadline (not (string-empty-p deadline)))
-        (setf (ekg-note-properties note)
-              (plist-put (ekg-note-properties note) :org/deadline (ekg-org--to-timestamp deadline))))
-      (when (and scheduled (not (string-empty-p scheduled)))
-        (setf (ekg-note-properties note)
-              (plist-put (ekg-note-properties note) :org/scheduled (ekg-org--to-timestamp scheduled))))
-      (ekg-save-note note)
-      (format "Added note with ID %s" (ekg-note-id note)))))
+    (format "Added note with ID %s"
+            (ekg-agent-org--save-item title content tags parent-id status
+                                      deadline scheduled))))
 
 (defconst ekg-agent-org-tool-add-task
   (llm-make-tool
    :function #'ekg-agent-org--tool-add-item
    :name "add_org_item"
-   :description "Add a new org-mode task item"
+   :description "Add a new org-mode task item."
    :args
    '((:name "title" :type string :description "The title/headline of the task" :require t)
      (:name "content" :type string :description "The content/description of the task" :required t)
@@ -2642,7 +3332,7 @@ STATUS is the new status (will be converted to uppercase)."
   (llm-make-tool
    :function #'ekg-agent-org--tool-set-status
    :name "set_org_item_status"
-   :description "Set the status of an org-mode task item.  Use this when you want to change the status of an existing task, for example setting it to DONE when completing it, or marking it WAITING if it's on hold."
+   :description "Set the status keyword of an org-mode task item."
    :args
    '((:name "id" :type integer :description "The ID of the task item" :required t)
      (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)" :required t))))
@@ -2669,7 +3359,7 @@ Returns text in Org format, as if they were in an Org file."
   (llm-make-tool
    :function #'ekg-agent-org--tool-list-items
    :name "list_org_items"
-   :description "Return all matching org-mode task items as an Org formatted string."
+   :description "Return matching org-mode task items as an Org formatted string."
    :args
    '((:name "state" :type string
             :description "Filter tasks by state (TODO, DONE, etc.)"))))
@@ -2745,7 +3435,7 @@ which ends the agent session.  No human input is required."
                         0
                         (ekg-agent--make-status-callback)
                         '("set_org_item_status")
-                        (ekg-agent--timeout-deadline))))
+                        nil)))
 
 (provide 'ekg-agent)
 

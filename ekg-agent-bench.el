@@ -193,13 +193,18 @@ ERROR-FILE is a path where init errors will be written for diagnosis."
   `(;; Wrap all init in condition-case so we get error diagnostics.
     (condition-case err
         (progn
-          ;; Prefer .el source over stale .elc.
+          ;; Benchmark source, not local .elc build artifacts.
           (setq load-prefer-newer t)
           (setq ekg-db-file (make-temp-file "ekg-bench-db"))
-          (require 'ekg)
-          (require 'ekg-agent)
-          (require 'ekg-llm)
-          (require 'ekg-org)
+          (let ((ekg-source-dir
+                 ,(file-name-directory
+                   (or load-file-name
+                       (locate-library "ekg-agent-bench")))))
+            (load (expand-file-name "ekg.el" ekg-source-dir) nil nil t)
+            (load (expand-file-name "ekg-llm.el" ekg-source-dir) nil nil t)
+            (load (expand-file-name "ekg-embedding.el" ekg-source-dir) nil nil t)
+            (load (expand-file-name "ekg-org.el" ekg-source-dir) nil nil t)
+            (load (expand-file-name "ekg-agent.el" ekg-source-dir) nil nil t))
           ;; Connect to the temp database.
           (ekg-connect)
           ;; Isolate the subprocess so it won't find any AGENTS.md
@@ -499,20 +504,23 @@ Return the buffer name string, or nil if not found."
 (defun ekg-agent-bench--poll-until-done (emacs-info timeout)
   "Poll the subprocess EMACS-INFO until the agent finishes.
 Return `done' if the agent finished, `timeout' if TIMEOUT seconds elapse."
-  (let ((deadline (+ (float-time) timeout))
+  (let ((remaining-polls
+         (ceiling (/ (float timeout) ekg-agent-bench-poll-interval)))
         (log-buf nil))
     ;; First, wait for the log buffer to appear.
-    (while (and (< (float-time) deadline)
+    (while (and (> remaining-polls 0)
                 (not log-buf))
       (sit-for ekg-agent-bench-poll-interval)
+      (cl-decf remaining-polls)
       (setq log-buf (ekg-agent-bench--find-log-buffer emacs-info)))
     (if (not log-buf)
         'timeout
       ;; Now poll until agent stops.
-      (while (and (< (float-time) deadline)
+      (while (and (> remaining-polls 0)
                   (ekg-agent-bench--agent-running-p emacs-info log-buf))
-        (sit-for ekg-agent-bench-poll-interval))
-      (if (< (float-time) deadline) 'done 'timeout))))
+        (sit-for ekg-agent-bench-poll-interval)
+        (cl-decf remaining-polls))
+      (if (> remaining-polls 0) 'done 'timeout))))
 
 (defun ekg-agent-bench--parse-log-timestamp (timestamp)
   "Parse TIMESTAMP from the agent log into a float time."
@@ -630,6 +638,38 @@ nil if the expression evaluated to false."
 
 ;;; Task Runner
 
+(defun ekg-agent-bench--timeout-setup-form (timeout &optional status-gap-target)
+  "Return an elisp form string configuring timeouts.
+TIMEOUT is the benchmark timeout in seconds.  STATUS-GAP-TARGET,
+when non-nil, is the maximum acceptable visible status-update gap."
+  (let* (;; The benchmark poller enforces the overall timeout.  Keep the
+         ;; agent's wall-clock timer disabled here because wall-clock jumps in
+         ;; daemonized test Emacs instances can stop runs prematurely.
+         (agent-timeout -1)
+         ;; Keep provider requests short enough that a stalled request can
+         ;; retry before the benchmark deadline.  A timeout close to the task
+         ;; timeout only proves the provider stalled; it does not give the
+         ;; agent a meaningful chance to recover.
+         ;;
+         ;; For status-gap benchmarks, the provider timeout itself must be
+         ;; below the allowed update gap because the agent cannot summarize
+         ;; while waiting for a stalled LLM response.
+         (request-timeout (min (max 20 (floor (/ timeout 3)))
+                               60
+                               (if status-gap-target
+                                   (max 15 (- status-gap-target 15))
+                                 60)))
+         (max-tokens (string-to-number
+                      (or (getenv "EKG_BENCH_MAX_TOKENS") "2048"))))
+    (format "(progn
+               (setq ekg-agent-timeout-seconds %d)
+               (setq llm-request-plz-timeout %d)
+               (setq ekg-agent-llm-max-tokens %S)
+               nil)"
+            agent-timeout
+            request-timeout
+            (and (> max-tokens 0) max-tokens))))
+
 (defun ekg-agent-bench--run-task (emacs-info group-setup task)
   "Run a single benchmark TASK in EMACS-INFO with GROUP-SETUP.
 Returns an `ekg-agent-bench-result'."
@@ -656,6 +696,17 @@ Returns an `ekg-agent-bench-result'."
            emacs-info
            (format "(progn %s nil)" (ekg-agent-bench-task-setup task)))
         (error (setq error-msg (format "Task setup failed: %s"
+                                       (error-message-string err))))))
+    ;; Keep the agent's own timeout slightly inside the benchmark timeout,
+    ;; and make individual HTTP requests finite so provider hangs cannot keep
+    ;; the agent running until the outer benchmark poller gives up.
+    (when (not error-msg)
+      (condition-case err
+          (ekg-agent-bench--eval-in-emacs
+           emacs-info
+           (ekg-agent-bench--timeout-setup-form
+            timeout (ekg-agent-bench-task-max-status-update-gap task)))
+        (error (setq error-msg (format "Timeout setup failed: %s"
                                        (error-message-string err))))))
     ;; Trigger the agent.  We schedule it via run-at-time so that
     ;; emacsclient returns immediately — the agent's iteration-0
@@ -1016,10 +1067,11 @@ via `run-at-time'.  Use for callbacks that do UI work (e.g.
 Return a futur that resolves to the result string."
   (ekg-agent-bench--eval-in-emacs-async emacs-info expr))
 
-(defun ekg-agent-bench--poll-step-async (emacs-info deadline log-buf)
-  "One async poll step in EMACS-INFO until DEADLINE with LOG-BUF.
+(defun ekg-agent-bench--poll-step-async (emacs-info remaining-polls log-buf)
+  "One async poll step in EMACS-INFO while REMAINING-POLLS is positive.
+LOG-BUF is the agent log buffer name, or nil before it appears.
 Return a futur resolving to `done' or `timeout'."
-  (if (>= (float-time) deadline)
+  (if (<= remaining-polls 0)
       (ekg-agent-bench--resolved 'timeout)
     (if (not log-buf)
         ;; Still waiting for log buffer to appear.
@@ -1038,7 +1090,7 @@ Return a futur resolving to `done' or `timeout'."
                                      (eq (aref found 0) ?\"))
                             (read found))))
             (ekg-agent-bench--poll-step-async
-             emacs-info deadline buf-name)))
+             emacs-info (1- remaining-polls) buf-name)))
       ;; Log buffer exists, check if agent is still running.
       (futur-let*
           ((_ <- (futur-timeout ekg-agent-bench-poll-interval))
@@ -1050,14 +1102,16 @@ Return a futur resolving to `done' or `timeout'."
                                       \"running\" \"stopped\"))"
                                log-buf))))
         (if (equal result "\"running\"")
-            (ekg-agent-bench--poll-step-async emacs-info deadline log-buf)
+            (ekg-agent-bench--poll-step-async
+             emacs-info (1- remaining-polls) log-buf)
           (ekg-agent-bench--resolved 'done))))))
 
 (defun ekg-agent-bench--poll-until-done-async (emacs-info timeout)
   "Poll EMACS-INFO asynchronously until the agent finishes or TIMEOUT is reached.
 Return a futur resolving to `done' or `timeout'."
-  (let ((deadline (+ (float-time) timeout)))
-    (ekg-agent-bench--poll-step-async emacs-info deadline nil)))
+  (let ((remaining-polls
+         (ceiling (/ (float timeout) ekg-agent-bench-poll-interval))))
+    (ekg-agent-bench--poll-step-async emacs-info remaining-polls nil)))
 
 (defun ekg-agent-bench--extract-metrics-async (emacs-info)
   "Async version of `ekg-agent-bench--extract-metrics' for EMACS-INFO.
@@ -1127,6 +1181,12 @@ Return a futur resolving to an `ekg-agent-bench-result'."
                   emacs-info
                   (format "(progn %s nil)" (ekg-agent-bench-task-setup task)))
                (ekg-agent-bench--resolved nil)))
+         ;; Timeout setup.
+         (_timeout-setup-result
+          <- (ekg-agent-bench--eval-async
+              emacs-info
+              (ekg-agent-bench--timeout-setup-form
+               timeout (ekg-agent-bench-task-max-status-update-gap task))))
          ;; Trigger.
          (trigger-result
           <- (ekg-agent-bench--eval-async

@@ -2,9 +2,10 @@
  :group "follow complex skill"
  :setup
  (progn
+(setq ekg-agent-extra-tools (list ekg-agent-tool-run-elisp))
 ;; A skill note with multi-step instructions for code changes.
 (ekg-agent-add-note
-  "When modifying elisp files, follow this checklist:\n1. Read the entire file first before making changes.\n2. Ensure lexical-binding is set in the first line.\n3. After making changes, verify the file compiles without warnings by evaluating it.\n4. Add a comment with the date and description of the change at the top of the file.\n5. Create a note documenting what was changed and why."
+  "When modifying elisp files, follow this checklist:\n1. Read the entire file first before making changes.\n2. Ensure lexical-binding is set in the first line.\n3. After making changes, verify the file compiles without warnings by evaluating it with run_elisp.\n4. Add a comment with the date and description of the change at the top of the file.\n5. Create a note documenting what was changed and why."
   '("prompt" "elisp" "code-changes") "org-mode")
 )
  :tasks
@@ -28,8 +29,10 @@
    (progn
 (ekg-agent-ask
   "Add a function ekg-bench-triple to /tmp/ekg-bench-checklist.el
-   that triples a number. Follow any relevant conventions from my
-   notes about modifying elisp files.")
+   that triples a number. Find and follow the relevant checklist from
+   my notes about modifying elisp files, including any documentation,
+   comment, and verification steps it requires. For the verification
+   step, use run_elisp to load the file and call the new function.")
 )
    :verify-task
    (progn

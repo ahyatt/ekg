@@ -29,7 +29,10 @@
   "The file /tmp/ekg-bench-buggy.el has a bug. Find the bug,
    fix it, and verify that the function ekg-bench-sum-list works
    correctly (e.g. (ekg-bench-sum-list '(1 2 3)) should return 6).
-   Use the run_elisp tool to test your fix.")
+   Once you identify the typo, use write_file or edit_file to update
+   the file before doing more diagnosis. Then use the run_elisp tool
+   to test your fix. After verification, create a brief ekg note
+   documenting the bug and fix.")
 )
    :verify-task
    (progn
@@ -58,7 +61,7 @@
                 all-notes)))
 )
    :max-iterations 20
-   :timeout 120
+   :timeout 180
   )
  )
 )

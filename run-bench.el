@@ -15,8 +15,13 @@
 ;;
 ;; EKG_BENCH_TASK: Optional. The name of a single benchmark task to run.
 ;;   If unset, all benchmarks are run.
+;;
+;; EKG_BENCH_MAX_TOKENS: Optional. Maximum output tokens for benchmark
+;;   LLM calls. Defaults to 2048.
 
 ;;; Code:
+
+(setq load-prefer-newer t)
 
 (defvar ekg-bench-ekg-path
   (file-name-directory (or load-file-name buffer-file-name default-directory))

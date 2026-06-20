@@ -31,17 +31,19 @@
    /tmp/ekg-bench-status-gap-3.el
    /tmp/ekg-bench-status-gap-4.el
 
-   In each file:
-   1. Add a docstring to the existing function.
-   2. Validate that VALUE is a number.
-   3. Keep returning VALUE unchanged.
+   Each file has the same simple structure. Do not read all four
+   files first, and do not use edit_file. For each file, use write_file
+   once with the complete corrected file content:
+   - keep the existing header and provide form for that file number,
+   - make the function body include a docstring,
+   - validate VALUE with numberp and error if it is not a number,
+   - keep returning VALUE unchanged.
 
    This is a long task. Use `summarize_state` explicitly with
    meaningful updates at least once a minute. Each update should say
    what you finished, what you are doing now, and what comes next.
-   Do not batch all of the edits together. Work one file at a time,
-   and call `summarize_state` after each file before moving on to the
-   next one.")
+   Do not batch all of the edits together. Work one file at a time:
+   write one file, call summarize_state, then move to the next file.")
 )
    :verify-task
    (progn

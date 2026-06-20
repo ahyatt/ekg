@@ -16,6 +16,9 @@
    :setup
    (progn
 (make-directory "/tmp/ekg-bench-widget" t)
+(let ((output "/tmp/ekg-bench-widget/utils.el"))
+  (when (file-exists-p output)
+    (delete-file output)))
 )
    :trigger
    (progn
