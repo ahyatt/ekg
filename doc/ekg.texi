@@ -2357,8 +2357,9 @@ the library you want and add its tool list to @samp{ekg-agent-extra-tools}.
 
 The Gnus tool library provides tools for listing folders@comma{} fetching latest
 counts@comma{} searching messages@comma{} reading message headers@comma{} and reading full messages
-by a @samp{result_id} returned from search.  Search prompts are disabled while the
-tools run so a backend prompt fails instead of blocking the agent.
+by an opaque @samp{message_id} returned from header and search tools.  Search prompts
+are disabled while the tools run so a backend prompt fails instead of blocking
+the agent.
 
 @lisp
 (require 'ekg-agent-tools-gnus)
@@ -2369,7 +2370,7 @@ tools run so a backend prompt fails instead of blocking the agent.
 For example@comma{} an agent can search for recent messages from a sender whose content
 matches a term by calling @samp{gnus_search_messages} with structured arguments such
 as @samp{from} set to "Stefan Monnier" and @samp{body} set to "uuid".  It can then pass
-the returned @samp{result_id} to @samp{gnus_read_message} to read the message.
+the returned @samp{message_id} to @samp{gnus_read_message} to read the message.
 
 The Elfeed tool library provides tools for listing feeds@comma{} searching entries
 using Elfeed filter syntax@comma{} and reading one entry by ID or link.

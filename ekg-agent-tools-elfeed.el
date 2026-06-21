@@ -472,7 +472,7 @@ MAX-CONTENT-CHARS limits the returned content."
    :args
    '((:name "id_or_link"
             :type string
-            :description "Exact entry ID or link from elfeed_search_entries.")
+            :description "Exact Elfeed entry ID or link.")
      (:name "max_content_chars"
             :type integer
             :description "Maximum content characters to return, capped at 50000."))))
