@@ -48,6 +48,9 @@
   :type '(choice (const nil) string)
   :group 'ekg-apple-notes)
 
+(defvar ekg-apple-notes--resolved-account nil
+  "Apple Notes account resolved for the current Emacs session.")
+
 (defcustom ekg-apple-notes-pandoc-executable "pandoc"
   "Path to the pandoc executable for content conversion."
   :type 'string
@@ -168,22 +171,55 @@ Signals an error if osascript fails."
           (string-trim (buffer-string))
         (error "AppleScript error (exit %d): %s" exit-code (buffer-string))))))
 
+(defun ekg-apple-notes--resolve-account ()
+  "Return the Apple Notes account containing the sync folder, or nil.
+When `ekg-apple-notes-account' is nil, resolving the account
+avoids ambiguous AppleScript references like \"folder \\\"ekg\\\"\"
+on systems with multiple Notes accounts."
+  (or ekg-apple-notes-account
+      ekg-apple-notes--resolved-account
+      (let* ((folder (ekg-apple-notes--get-folder))
+             (raw (ekg-apple-notes--run-applescript
+                   (format "tell application \"Notes\"
+  launch
+  set accountNames to {}
+  repeat with a in accounts
+    if exists folder %S of a then
+      set end of accountNames to name of a
+    end if
+  end repeat
+  set AppleScript's text item delimiters to ASCII character 10
+  return accountNames as string
+end tell"
+                           folder)))
+             (accounts (if (string-empty-p raw) nil
+                         (split-string raw "\n" t))))
+        (pcase accounts
+          (`(,account)
+           (setq ekg-apple-notes--resolved-account account))
+          (`()
+           nil)
+          (_
+           (error "Multiple Apple Notes accounts contain folder %S; set `ekg-apple-notes-account'"
+                  folder))))))
+
 (defun ekg-apple-notes--folder-ref ()
   "Return the AppleScript reference to the sync folder."
-  (let ((folder (ekg-apple-notes--get-folder)))
-    (if ekg-apple-notes-account
-        (format "folder %S of account %S"
-                folder ekg-apple-notes-account)
+  (let ((folder (ekg-apple-notes--get-folder))
+        (account (ekg-apple-notes--resolve-account)))
+    (if account
+        (format "folder %S of account %S" folder account)
       (format "folder %S" folder))))
 
 (defun ekg-apple-notes--ensure-folder ()
   "Create the sync folder in Apple Notes if it doesn't exist."
   (let ((folder (ekg-apple-notes--get-folder))
-        (acct-clause (if ekg-apple-notes-account
-                         (format " of account %S" ekg-apple-notes-account)
+        (account (ekg-apple-notes--resolve-account)))
+    (let ((acct-clause (if account
+                         (format " of account %S" account)
                        "")))
-    (ekg-apple-notes--run-applescript
-     (format "tell application \"Notes\"
+      (ekg-apple-notes--run-applescript
+       (format "tell application \"Notes\"
   launch
   try
     get folder %S%s
@@ -191,8 +227,8 @@ Signals an error if osascript fails."
     make new folder%s with properties {name:%S}
   end try
 end tell"
-             folder acct-clause
-             acct-clause folder))))
+               folder acct-clause
+               acct-clause folder)))))
 
 (defun ekg-apple-notes--applescript-escape (str)
   "Escape STR for safe embedding in an AppleScript string literal.
@@ -238,9 +274,10 @@ end tell"
                                       (format "tell application \"Notes\"
   launch
   set bodyText to read POSIX file %S as «class utf8»
-  set body of note id %S to bodyText
+  set body of note id %S of %s to bodyText
 end tell"
-                                              body-file apple-id)))))
+                                              body-file apple-id
+                                              (ekg-apple-notes--folder-ref))))))
 
 (defun ekg-apple-notes--delete-note (apple-id)
   "Delete the note with APPLE-ID.  Move it to Recently Deleted."
@@ -248,46 +285,123 @@ end tell"
       (ekg-apple-notes--run-applescript
        (format "tell application \"Notes\"
   launch
-  delete note id %S
+  delete note id %S of %s
 end tell"
-               apple-id))
+               apple-id
+               (ekg-apple-notes--folder-ref)))
     (error nil)))
 
 (cl-defstruct ekg-apple-notes--note
   "Representation of an Apple Notes note for sync."
   id name body modification-date)
 
-(defun ekg-apple-notes--list-notes ()
-  "Return a list of `ekg-apple-notes--note' for all notes in the sync folder."
+(defconst ekg-apple-notes--field-separator (string 31)
+  "Field separator used when serializing note data from AppleScript.")
+
+(defconst ekg-apple-notes--record-separator (string 30)
+  "Record separator used when serializing note data from AppleScript.")
+
+(defconst ekg-apple-notes--applescript-months
+  ["January" "February" "March" "April" "May" "June"
+   "July" "August" "September" "October" "November" "December"]
+  "AppleScript month constants indexed from zero.")
+
+(defun ekg-apple-notes--applescript-set-cutoff (since)
+  "Return AppleScript that sets a cutoff date from epoch SINCE."
+  (let* ((decoded (decode-time (seconds-to-time (max 0 (1- since)))))
+         (sec (nth 0 decoded))
+         (min (nth 1 decoded))
+         (hour (nth 2 decoded))
+         (day (nth 3 decoded))
+         (month (nth 4 decoded))
+         (year (nth 5 decoded))
+         (time (+ sec (* 60 min) (* 3600 hour))))
+    (format "  set cutoff to current date
+  set year of cutoff to %d
+  set month of cutoff to %s
+  set day of cutoff to %d
+  set time of cutoff to %d
+"
+            year
+            (aref ekg-apple-notes--applescript-months (1- month))
+            day time)))
+
+(cl-defun ekg-apple-notes--list-notes (&key include-body since)
+  "Return a list of `ekg-apple-notes--note' for notes in the sync folder.
+When INCLUDE-BODY is non-nil, include each note's body.  Listing
+bodies for every Apple Note is slow, so import normally lists only
+metadata and fetches bodies for the notes it will actually import.
+When SINCE is non-nil, only list notes modified at or after that
+integer epoch timestamp."
   (let* ((raw (condition-case nil
                   (ekg-apple-notes--run-applescript
                    (format "tell application \"Notes\"
   launch
   set noteData to {}
-  repeat with n in notes of %s
+  set fieldDelimiter to ASCII character 31
+%s  set noteSource to notes of %s%s
+  repeat with n in noteSource
     set noteId to id of n
     set noteName to name of n
-    set noteBody to body of n
     set noteMod to modification date of n as «class isot» as string
-    set end of noteData to noteId & \"|||\" & noteName & \"|||\" & noteMod & \"|||\" & noteBody
+    %s
+    set end of noteData to noteId & fieldDelimiter & noteName & fieldDelimiter & noteMod%s
   end repeat
-  set AppleScript's text item delimiters to \"###NOTE###\"
+  set AppleScript's text item delimiters to ASCII character 30
   return noteData as string
 end tell"
-                           (ekg-apple-notes--folder-ref)))
+                           (if since
+                               (ekg-apple-notes--applescript-set-cutoff since)
+                             "")
+                           (ekg-apple-notes--folder-ref)
+                           (if since
+                               " whose modification date is greater than cutoff"
+                             "")
+                           (if include-body
+                               "set noteBody to body of n as text"
+                             "")
+                           (if include-body
+                               " & fieldDelimiter & noteBody"
+                             "")))
                 (error "")))
          (entries (if (string-empty-p raw) nil
-                    (split-string raw "###NOTE###"))))
+                    (split-string raw
+                                  (regexp-quote
+                                   ekg-apple-notes--record-separator)))))
     (delq nil
           (mapcar
            (lambda (entry)
-             (when (string-match "\\`\\(x-coredata://[^|]+\\)|||\\([^|]*\\)|||\\([^|]+\\)|||\\(\\(?:.\\|\n\\)*\\)\\'" entry)
-               (make-ekg-apple-notes--note
-                :id (match-string 1 entry)
-                :name (match-string 2 entry)
-                :modification-date (match-string 3 entry)
-                :body (match-string 4 entry))))
+             (let ((fields (split-string
+                            entry
+                            (regexp-quote
+                             ekg-apple-notes--field-separator))))
+               (when (>= (length fields) 3)
+                 (make-ekg-apple-notes--note
+                  :id (nth 0 fields)
+                  :name (nth 1 fields)
+                  :modification-date (nth 2 fields)
+                  :body (when include-body
+                          (mapconcat #'identity (nthcdr 3 fields)
+                                     ekg-apple-notes--field-separator))))))
            entries))))
+
+(defun ekg-apple-notes--get-note-body (apple-id)
+  "Return the body for Apple Notes note APPLE-ID."
+  (ekg-apple-notes--run-applescript
+   (format "tell application \"Notes\"
+  launch
+  return body of note id %S of %s as text
+end tell"
+           apple-id
+           (ekg-apple-notes--folder-ref))))
+
+(defun ekg-apple-notes--ensure-note-body (apple-note)
+  "Ensure APPLE-NOTE has its body loaded and return APPLE-NOTE."
+  (unless (ekg-apple-notes--note-body apple-note)
+    (setf (ekg-apple-notes--note-body apple-note)
+          (ekg-apple-notes--get-note-body
+           (ekg-apple-notes--note-id apple-note))))
+  apple-note)
 
 ;;; ---- Tag Conversion ----
 
@@ -545,26 +659,41 @@ Returns non-nil if a note was created or updated."
                    apple-id)
           t)))))
 
-(defun ekg-apple-notes-import ()
-  "Import new and modified notes from Apple Notes into ekg."
-  (interactive)
+(defun ekg-apple-notes--should-import-note-p (apple-note last-import)
+  "Return non-nil if APPLE-NOTE should be considered for import.
+LAST-IMPORT is the previous import watermark.  Apple Notes may
+deliver notes from iCloud after a sync with their original, older
+modification time, so unmapped Apple Notes must be considered even
+when their modification time is older than LAST-IMPORT."
+  (or (not (ekg-apple-notes--get-ekg-id
+            (ekg-apple-notes--note-id apple-note)))
+      (>= (ekg-apple-notes--parse-iso-time
+           (ekg-apple-notes--note-modification-date apple-note))
+          last-import)))
+
+(defun ekg-apple-notes-import (&optional force)
+  "Import new and modified notes from Apple Notes into ekg.
+With FORCE, scan all Apple Notes in the sync folder.  Without
+FORCE, ask Apple Notes only for notes modified since the last
+import."
+  (interactive "P")
   (ekg-apple-notes-connect)
   (let* ((last-import (ekg-apple-notes--get-last-import))
          (start-time (current-time))
-         (apple-notes (ekg-apple-notes--list-notes))
+         (apple-notes (ekg-apple-notes--list-notes
+                       :since (unless force last-import)))
          (count 0))
     (message "ekg-apple-notes: checking %d notes in Apple Notes folder"
              (length apple-notes))
     (dolist (an apple-notes)
-      (let ((mod-time (ekg-apple-notes--parse-iso-time
-                       (ekg-apple-notes--note-modification-date an))))
-        (when (>= mod-time last-import)
-          (condition-case err
-              (when (ekg-apple-notes--import-note an)
-                (cl-incf count))
-            (error (message "ekg-apple-notes: failed to import note %s: %s"
-                            (ekg-apple-notes--note-id an)
-                            (error-message-string err)))))))
+      (when (ekg-apple-notes--should-import-note-p an last-import)
+        (condition-case err
+            (when (ekg-apple-notes--import-note
+                   (ekg-apple-notes--ensure-note-body an))
+              (cl-incf count))
+          (error (message "ekg-apple-notes: failed to import note %s: %s"
+                          (ekg-apple-notes--note-id an)
+                          (error-message-string err))))))
     (message "ekg-apple-notes: imported %d notes" count)
     (ekg-apple-notes--set-last-import start-time)))
 
@@ -575,10 +704,11 @@ Returns non-nil if a note was created or updated."
 (defun ekg-apple-notes-sync (&optional force)
   "Bidirectional sync between ekg and Apple Notes.
 Imports from Apple Notes first, then exports to Apple Notes.
-With FORCE (prefix arg), re-export all notes."
+With FORCE (prefix arg), scan all Apple Notes for import and
+re-export all ekg notes."
   (interactive "P")
   (ekg-apple-notes-connect)
-  (ekg-apple-notes-import)
+  (ekg-apple-notes-import force)
   (ekg-apple-notes-export force))
 
 (provide 'ekg-apple-notes)

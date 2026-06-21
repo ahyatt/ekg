@@ -206,6 +206,39 @@
     (should (integerp epoch))
     (should (> epoch 0))))
 
+;;; ---- Import Watermark Tests ----
+
+(ekg-deftest-with-db ekg-apple-notes-test-import-considers-old-unmapped-notes ()
+  "Unmapped Apple Notes are imported even before the import watermark."
+  (ekg-apple-notes-add-schema)
+  (triples-set-type ekg-db 'apple-notes 'apple-notes
+                    :last-import
+                    (ekg-apple-notes--parse-iso-time "2026-06-19T00:45:16"))
+  (ekg-apple-notes--set-apple-id 1 "known-old")
+  (ekg-apple-notes--set-apple-id 2 "known-new")
+  (let* ((old-time "2026-06-18T12:00:00")
+         (new-time "2026-06-19T01:00:00")
+         (notes (list
+                 (make-ekg-apple-notes--note
+                  :id "known-old" :name "known old"
+                  :modification-date old-time :body "<div>old</div>")
+                 (make-ekg-apple-notes--note
+                  :id "unknown-old" :name "unknown old"
+                  :modification-date old-time :body "<div>old</div>")
+                 (make-ekg-apple-notes--note
+                  :id "known-new" :name "known new"
+                  :modification-date new-time :body "<div>new</div>")))
+         imported)
+    (cl-letf (((symbol-function 'ekg-apple-notes--list-notes)
+               (lambda (&rest _args) notes))
+              ((symbol-function 'ekg-apple-notes--import-note)
+               (lambda (note)
+                 (push (ekg-apple-notes--note-id note) imported)
+                 t)))
+      (ekg-apple-notes-import))
+    (should (equal '("unknown-old" "known-new")
+                   (nreverse imported)))))
+
 (provide 'ekg-apple-notes-test)
 
 ;;; ekg-apple-notes-test.el ends here
