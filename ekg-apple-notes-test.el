@@ -278,6 +278,39 @@
     (should (ekg-apple-notes--needs-body-for-import-p known-new))
     (should (ekg-apple-notes--needs-body-for-import-p unknown-old))))
 
+(ekg-deftest-with-db ekg-apple-notes-test-import-preserves-apple-times ()
+  "Imported notes keep Apple Notes creation and modification times."
+  (ekg-apple-notes-add-schema)
+  (let* ((creation "2026-06-13T14:06:06")
+         (modified "2026-06-13T14:06:55")
+         (apple-note (make-ekg-apple-notes--note
+                      :id "apple-id" :name "Apple note"
+                      :creation-date creation
+                      :modification-date modified
+                      :body "<div>Apple note</div>")))
+    (cl-letf (((symbol-function 'ekg-apple-notes--from-html)
+               (lambda (_body _mode) "Apple note")))
+      (let* ((id (ekg-apple-notes--import-note apple-note))
+             (note (ekg-get-note-with-id id)))
+        (should (equal "Apple note" (ekg-note-text note)))
+        (should (= (ekg-apple-notes--parse-iso-time creation)
+                   (ekg-note-creation-time note)))
+        (should (= (ekg-apple-notes--parse-iso-time modified)
+                   (ekg-note-modified-time note)))))))
+
+(ekg-deftest-with-db ekg-apple-notes-test-sync-excludes-imported-notes ()
+  "Sync does not export notes imported in the same sync run."
+  (let (export-args)
+    (cl-letf (((symbol-function 'ekg-apple-notes-import)
+               (lambda (&optional force)
+                 (should force)
+                 '(1 2)))
+              ((symbol-function 'ekg-apple-notes-export)
+               (lambda (&optional force exclude-ids)
+                 (setq export-args (list force exclude-ids)))))
+      (ekg-apple-notes-sync t))
+    (should (equal '(t (1 2)) export-args))))
+
 (provide 'ekg-apple-notes-test)
 
 ;;; ekg-apple-notes-test.el ends here

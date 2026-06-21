@@ -295,7 +295,7 @@ end tell"
 
 (cl-defstruct ekg-apple-notes--note
   "Representation of an Apple Notes note for sync."
-  id name body modification-date)
+  id name body creation-date modification-date)
 
 (defconst ekg-apple-notes--field-separator (string 31)
   "Field separator used when serializing note data from AppleScript.")
@@ -345,9 +345,10 @@ integer epoch timestamp."
   repeat with n in noteSource
     set noteId to id of n
     set noteName to name of n
+    set noteCreated to creation date of n as «class isot» as string
     set noteMod to modification date of n as «class isot» as string
     %s
-    set end of noteData to noteId & fieldDelimiter & noteName & fieldDelimiter & noteMod%s
+    set end of noteData to noteId & fieldDelimiter & noteName & fieldDelimiter & noteCreated & fieldDelimiter & noteMod%s
   end repeat
   set AppleScript's text item delimiters to ASCII character 30
   return noteData as string
@@ -377,13 +378,14 @@ end tell"
                             entry
                             (regexp-quote
                              ekg-apple-notes--field-separator))))
-               (when (>= (length fields) 3)
+               (when (>= (length fields) 4)
                  (make-ekg-apple-notes--note
                   :id (nth 0 fields)
                   :name (nth 1 fields)
-                  :modification-date (nth 2 fields)
+                  :creation-date (nth 2 fields)
+                  :modification-date (nth 3 fields)
                   :body (when include-body
-                          (mapconcat #'identity (nthcdr 3 fields)
+                          (mapconcat #'identity (nthcdr 4 fields)
                                      ekg-apple-notes--field-separator))))))
            entries))))
 
@@ -553,13 +555,19 @@ MODE should be the symbol `org-mode' or `markdown-mode'."
 
 ;;; ---- Export (ekg → Apple Notes) ----
 
-(defun ekg-apple-notes--notes-to-export (since)
+(defun ekg-apple-notes--notes-to-export (since &optional exclude-ids)
   "Return ekg notes modified since SINCE (integer epoch).
-Respects `ekg-apple-notes-export-tags' if set."
+Respects `ekg-apple-notes-export-tags' if set.  Exclude notes
+whose IDs are in EXCLUDE-IDS."
   (let* ((pred (if (= 0 since) :time-tracked/creation-time :time-tracked/modified-time))
          (rows (triples-db-select-pred-op ekg-db pred '>= since))
          (ids (seq-uniq (mapcar #'car rows)))
          (notes (delq nil (mapcar #'ekg-get-note-with-id ids))))
+    (when exclude-ids
+      (setq notes (seq-remove
+                   (lambda (note)
+                     (member (ekg-note-id note) exclude-ids))
+                   notes)))
     (setq notes (seq-filter #'ekg-note-active-p notes))
     (let ((excluded (ekg-apple-notes--exclude-tags)))
       (setq notes (seq-filter
@@ -590,15 +598,16 @@ Creates or updates the corresponding Apple Note."
       (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
       (message "ekg-apple-notes: created note %s" title))))
 
-(defun ekg-apple-notes-export (&optional force)
+(defun ekg-apple-notes-export (&optional force exclude-ids)
   "Export modified ekg notes to Apple Notes.
 With FORCE (prefix arg), re-export all notes regardless of
-modification time."
+modification time.  Do not export notes whose IDs are in
+EXCLUDE-IDS."
   (interactive "P")
   (ekg-apple-notes-connect)
   (ekg-apple-notes--ensure-folder)
   (let* ((last-export (if force 0 (ekg-apple-notes--get-last-export)))
-         (notes (ekg-apple-notes--notes-to-export last-export))
+         (notes (ekg-apple-notes--notes-to-export last-export exclude-ids))
          (count 0))
     (message "ekg-apple-notes: exporting %d notes modified since %s"
              (length notes)
@@ -620,10 +629,26 @@ modification time."
   "Parse ISO-STR (e.g. 2026-02-24T14:30:00) to an integer epoch."
   (floor (float-time (encode-time (iso8601-parse iso-str)))))
 
+(defun ekg-apple-notes--apply-apple-times (note apple-note)
+  "Set NOTE's tracked times from APPLE-NOTE after saving it."
+  (let* ((modified-time (ekg-apple-notes--parse-iso-time
+                         (ekg-apple-notes--note-modification-date apple-note)))
+         (creation-date (ekg-apple-notes--note-creation-date apple-note))
+         (creation-time (if (and creation-date
+                                  (not (string-empty-p creation-date)))
+                            (ekg-apple-notes--parse-iso-time creation-date)
+                          (or (ekg-note-creation-time note)
+                              modified-time))))
+    (triples-set-type ekg-db (ekg-note-id note) 'time-tracked
+                      :creation-time creation-time
+                      :modified-time modified-time)
+    (setf (ekg-note-creation-time note) creation-time
+          (ekg-note-modified-time note) modified-time)))
+
 (defun ekg-apple-notes--import-note (apple-note)
   "Import a single APPLE-NOTE into ekg.
 APPLE-NOTE is an `ekg-apple-notes--note' struct.
-Returns non-nil if a note was created or updated."
+Return the ekg note ID if a note was created or updated."
   (let* ((apple-id (ekg-apple-notes--note-id apple-note))
          (body (ekg-apple-notes--note-body apple-note))
          (ekg-id (ekg-apple-notes--get-ekg-id apple-id))
@@ -644,9 +669,10 @@ Returns non-nil if a note was created or updated."
                 (when tags
                   (setf (ekg-note-tags note) tags))
                 (ekg-save-note note)
+                (ekg-apple-notes--apply-apple-times note apple-note)
                 (message "ekg-apple-notes: updated ekg note from Apple Notes %s"
                          apple-id)
-                t))))
+                (ekg-note-id note)))))
       ;; New note from Apple Notes — skip if tags match exclusions.
       (unless (seq-intersection (or tags '("imported"))
                                 (ekg-apple-notes--exclude-tags))
@@ -656,10 +682,11 @@ Returns non-nil if a note was created or updated."
                      :tags (or tags '("imported"))
                      :id resource)))
           (ekg-save-note note)
+          (ekg-apple-notes--apply-apple-times note apple-note)
           (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
           (message "ekg-apple-notes: imported new note from Apple Notes %s"
                    apple-id)
-          t)))))
+          (ekg-note-id note))))))
 
 (defun ekg-apple-notes--should-import-note-p (apple-note last-import)
   "Return non-nil if APPLE-NOTE should be considered for import.
@@ -696,21 +723,25 @@ import."
          (start-time (current-time))
          (apple-notes (ekg-apple-notes--list-notes
                        :since (unless force last-import)))
-         (count 0))
+         (count 0)
+         imported-ids)
     (message "ekg-apple-notes: checking %d notes in Apple Notes folder"
              (length apple-notes))
     (dolist (an apple-notes)
       (when (ekg-apple-notes--should-import-note-p an last-import)
         (condition-case err
-            (when (and (ekg-apple-notes--needs-body-for-import-p an)
-                       (ekg-apple-notes--import-note
-                        (ekg-apple-notes--ensure-note-body an)))
-              (cl-incf count))
+            (let ((imported-id (and (ekg-apple-notes--needs-body-for-import-p an)
+                                    (ekg-apple-notes--import-note
+                                     (ekg-apple-notes--ensure-note-body an)))))
+              (when imported-id
+                (push imported-id imported-ids)
+                (cl-incf count)))
           (error (message "ekg-apple-notes: failed to import note %s: %s"
                           (ekg-apple-notes--note-id an)
                           (error-message-string err))))))
     (message "ekg-apple-notes: imported %d notes" count)
-    (ekg-apple-notes--set-last-import start-time)))
+    (ekg-apple-notes--set-last-import start-time)
+    (nreverse imported-ids)))
 
 ;;; ---- Sync ----
 
@@ -723,8 +754,8 @@ With FORCE (prefix arg), scan all Apple Notes for import and
 re-export all ekg notes."
   (interactive "P")
   (ekg-apple-notes-connect)
-  (ekg-apple-notes-import force)
-  (ekg-apple-notes-export force))
+  (let ((imported-ids (ekg-apple-notes-import force)))
+    (ekg-apple-notes-export force imported-ids)))
 
 (provide 'ekg-apple-notes)
 
