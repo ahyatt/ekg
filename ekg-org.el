@@ -202,11 +202,18 @@ PARENT is the parent org-element node."
       (org-element-set-contents
        element
        (append
-        (list
-         (org-element-create 'property-drawer nil
-                             (org-element-create 'node-property `(:key "EKG_ID" :value ,id)))
-         (org-element-create 'paragraph `(:post-blank 1)
-                             (format "EKG Entry: [[ekg-note:%s][View in EKG]]" id)))
+        (append
+         (when (or deadline scheduled)
+           (list
+            (org-element-create
+             'planning
+             `(,@(when deadline `(:deadline ,deadline))
+               ,@(when scheduled `(:scheduled ,scheduled))))))
+         (list
+          (org-element-create 'property-drawer nil
+                              (org-element-create 'node-property `(:key "EKG_ID" :value ,id)))
+          (org-element-create 'paragraph `(:post-blank 1)
+                              (format "EKG Entry: [[ekg-note:%s][View in EKG]]" id))))
         (let ((text (ekg-display-note-text note)))
           (when (and text (not (string-empty-p text)))
             (with-temp-buffer
