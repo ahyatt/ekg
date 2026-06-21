@@ -206,6 +206,24 @@
     (should (integerp epoch))
     (should (> epoch 0))))
 
+;;; ---- Account Resolution Tests ----
+
+(ekg-deftest-with-db ekg-apple-notes-test-resolved-account-cache-by-folder ()
+  "Resolved Apple Notes accounts are cached per sync folder."
+  (ekg-apple-notes-add-schema)
+  (let ((ekg-apple-notes-account nil)
+        (ekg-apple-notes--resolved-accounts nil)
+        scripts)
+    (cl-letf (((symbol-function 'ekg-apple-notes--run-applescript)
+               (lambda (script)
+                 (push script scripts)
+                 (if (string-match-p "work" script) "Work" "iCloud"))))
+      (should (equal "iCloud" (ekg-apple-notes--resolve-account)))
+      (should (equal "iCloud" (ekg-apple-notes--resolve-account)))
+      (ekg-apple-notes-set-folder "work")
+      (should (equal "Work" (ekg-apple-notes--resolve-account)))
+      (should (= 2 (length scripts))))))
+
 ;;; ---- Import Watermark Tests ----
 
 (ekg-deftest-with-db ekg-apple-notes-test-import-considers-old-unmapped-notes ()
@@ -238,6 +256,27 @@
       (ekg-apple-notes-import))
     (should (equal '("unknown-old" "known-new")
                    (nreverse imported)))))
+
+(ekg-deftest-with-db ekg-apple-notes-test-import-skips-body-for-exported-notes ()
+  "Mapped notes at or before last export do not need body fetches."
+  (ekg-apple-notes-add-schema)
+  (triples-set-type ekg-db 'apple-notes 'apple-notes
+                    :last-export
+                    (ekg-apple-notes--parse-iso-time "2026-06-19T00:46:12"))
+  (ekg-apple-notes--set-apple-id 1 "known-old")
+  (ekg-apple-notes--set-apple-id 2 "known-new")
+  (let ((known-old (make-ekg-apple-notes--note
+                    :id "known-old" :name "known old"
+                    :modification-date "2026-06-19T00:46:12"))
+        (known-new (make-ekg-apple-notes--note
+                    :id "known-new" :name "known new"
+                    :modification-date "2026-06-19T00:46:13"))
+        (unknown-old (make-ekg-apple-notes--note
+                      :id "unknown-old" :name "unknown old"
+                      :modification-date "2026-06-19T00:46:12")))
+    (should-not (ekg-apple-notes--needs-body-for-import-p known-old))
+    (should (ekg-apple-notes--needs-body-for-import-p known-new))
+    (should (ekg-apple-notes--needs-body-for-import-p unknown-old))))
 
 (provide 'ekg-apple-notes-test)
 

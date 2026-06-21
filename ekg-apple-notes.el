@@ -48,8 +48,8 @@
   :type '(choice (const nil) string)
   :group 'ekg-apple-notes)
 
-(defvar ekg-apple-notes--resolved-account nil
-  "Apple Notes account resolved for the current Emacs session.")
+(defvar ekg-apple-notes--resolved-accounts nil
+  "Alist mapping Apple Notes folder names to resolved account names.")
 
 (defcustom ekg-apple-notes-pandoc-executable "pandoc"
   "Path to the pandoc executable for content conversion."
@@ -177,10 +177,11 @@ When `ekg-apple-notes-account' is nil, resolving the account
 avoids ambiguous AppleScript references like \"folder \\\"ekg\\\"\"
 on systems with multiple Notes accounts."
   (or ekg-apple-notes-account
-      ekg-apple-notes--resolved-account
       (let* ((folder (ekg-apple-notes--get-folder))
-             (raw (ekg-apple-notes--run-applescript
-                   (format "tell application \"Notes\"
+             (cached (assoc folder ekg-apple-notes--resolved-accounts)))
+        (or (cdr cached)
+            (let* ((raw (ekg-apple-notes--run-applescript
+                         (format "tell application \"Notes\"
   launch
   set accountNames to {}
   repeat with a in accounts
@@ -191,17 +192,18 @@ on systems with multiple Notes accounts."
   set AppleScript's text item delimiters to ASCII character 10
   return accountNames as string
 end tell"
-                           folder)))
-             (accounts (if (string-empty-p raw) nil
-                         (split-string raw "\n" t))))
-        (pcase accounts
-          (`(,account)
-           (setq ekg-apple-notes--resolved-account account))
-          (`()
-           nil)
-          (_
-           (error "Multiple Apple Notes accounts contain folder %S; set `ekg-apple-notes-account'"
-                  folder))))))
+                                 folder)))
+                   (accounts (if (string-empty-p raw) nil
+                               (split-string raw "\n" t))))
+            (pcase accounts
+              (`(,account)
+               (push (cons folder account) ekg-apple-notes--resolved-accounts)
+               account)
+              (`()
+               nil)
+              (_
+               (error "Multiple Apple Notes accounts contain folder %S; set `ekg-apple-notes-account'"
+                      folder))))))))
 
 (defun ekg-apple-notes--folder-ref ()
   "Return the AppleScript reference to the sync folder."
@@ -671,6 +673,18 @@ when their modification time is older than LAST-IMPORT."
            (ekg-apple-notes--note-modification-date apple-note))
           last-import)))
 
+(defun ekg-apple-notes--needs-body-for-import-p (apple-note)
+  "Return non-nil if APPLE-NOTE needs its body fetched for import.
+Mapped notes at or before the last export were modified by our
+own export, so `ekg-apple-notes--import-note' would skip them
+without using the body."
+  (let ((ekg-id (ekg-apple-notes--get-ekg-id
+                 (ekg-apple-notes--note-id apple-note))))
+    (or (not ekg-id)
+        (> (ekg-apple-notes--parse-iso-time
+            (ekg-apple-notes--note-modification-date apple-note))
+           (ekg-apple-notes--get-last-export)))))
+
 (defun ekg-apple-notes-import (&optional force)
   "Import new and modified notes from Apple Notes into ekg.
 With FORCE, scan all Apple Notes in the sync folder.  Without
@@ -688,8 +702,9 @@ import."
     (dolist (an apple-notes)
       (when (ekg-apple-notes--should-import-note-p an last-import)
         (condition-case err
-            (when (ekg-apple-notes--import-note
-                   (ekg-apple-notes--ensure-note-body an))
+            (when (and (ekg-apple-notes--needs-body-for-import-p an)
+                       (ekg-apple-notes--import-note
+                        (ekg-apple-notes--ensure-note-body an)))
               (cl-incf count))
           (error (message "ekg-apple-notes: failed to import note %s: %s"
                           (ekg-apple-notes--note-id an)
