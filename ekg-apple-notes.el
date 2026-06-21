@@ -309,7 +309,7 @@ end tell"
   "AppleScript month constants indexed from zero.")
 
 (defun ekg-apple-notes--applescript-set-cutoff (since)
-  "Return AppleScript that sets a cutoff date from epoch SINCE."
+  "Return AppleScript to set a cutoff date from epoch SINCE."
   (let* ((decoded (decode-time (seconds-to-time (max 0 (1- since)))))
          (sec (nth 0 decoded))
          (min (nth 1 decoded))
