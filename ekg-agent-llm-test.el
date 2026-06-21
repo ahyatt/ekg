@@ -43,6 +43,26 @@
              (and p (not (string-empty-p p)))))
   (require 'ekg-agent-bench)
 
+  (defconst ekg-agent-llm-test--verdict-instructions
+    "\n\nVerdict tool rules:
+- The final verdict must be an actual tool call to `pass-test' or
+  `fail-test'.
+- Do not write `pass-test', `fail-test', `Passed', or `Done' as
+  assistant text.  Plain text verdicts are ignored and the test will
+  fail.
+- After calling a verdict tool, stop; do not make more tool calls or
+  send more text."
+    "Additional llm-test verdict instructions for EKG integration tests.")
+
+  (defun ekg-agent-llm-test--strengthen-verdict-instructions ()
+    "Clarify that llm-test verdicts must be tool calls."
+    (when (and (boundp 'llm-test--system-prompt)
+               (not (string-match-p "Plain text verdicts are ignored"
+                                    llm-test--system-prompt)))
+      (setq llm-test--system-prompt
+            (concat llm-test--system-prompt
+                    ekg-agent-llm-test--verdict-instructions))))
+
   (defun ekg-agent-llm-test--init-forms ()
     "Return init forms for the llm-test subprocess.
 Sets up a temp ekg database, requires the relevant ekg modules,
@@ -139,6 +159,7 @@ post-hoc."
 
   (defun ekg-agent-llm-test--register ()
     "Register llm-test YAML specs from llm-tests/ as ERT tests."
+    (ekg-agent-llm-test--strengthen-verdict-instructions)
     ;; Use the same Emacs binary as the host, to avoid version/build
     ;; mismatches between host and daemon (e.g. Homebrew vs Emacs.app).
     (setq llm-test-emacs-executable
