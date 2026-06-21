@@ -887,8 +887,14 @@ strings."
     "set_org_item_status")
   "Tool names that may change file, buffer, note, or task state.")
 
+(defconst ekg-agent--file-change-tools
+  '("write_file"
+    "edit_file"
+    "edit_buffer")
+  "Tool names that directly edit files or buffers.")
+
 (defun ekg-agent--repeat-read-only-result (log-buf tool-name args)
-  "Return a concise repeat result for identical read-only TOOL-NAME ARGS.
+  "Return a repeat result in LOG-BUF for read-only TOOL-NAME ARGS.
 Only repeats before any intervening state-changing tool are
 short-circuited; after a write or note mutation, the read is run
 normally."
@@ -933,11 +939,7 @@ normally."
          (and (memq 'create-note ekg-agent--completion-requirements)
               (not (ekg-agent--tool-called-p "create_note"))
               (ekg-agent--any-tool-called-p
-               '("write_file"
-                 "edit_file"
-                 "edit_buffer"
-                 "append_to_current_note"
-                 "replace_current_note"))))))
+               ekg-agent--file-change-tools)))))
 
 (defun ekg-agent--maybe-auto-create-required-note (log-buf tool-name result)
   "Auto-create an ordinary required note in LOG-BUF after TOOL-NAME RESULT."
@@ -969,25 +971,19 @@ normally."
        (with-current-buffer log-buf
          (and (memq 'file-change ekg-agent--completion-requirements)
               (not (ekg-agent--any-tool-called-p
-                    '("write_file"
-                      "edit_file"
-                      "edit_buffer"
-                      "append_to_current_note"
-                      "replace_current_note")))))))
+                    ekg-agent--file-change-tools))))))
 
 (defun ekg-agent--diagnosis-before-edit-loop-p (log-buf tool-name)
-  "Return non-nil if TOOL-NAME would continue diagnosis before editing."
+  "Return non-nil if TOOL-NAME in LOG-BUF would diagnose before editing."
   (and (member tool-name '("run_elisp" "summarize_state"))
        (buffer-live-p log-buf)
        (with-current-buffer log-buf
          (and (memq 'file-change ekg-agent--completion-requirements)
               (ekg-agent--any-tool-available-p
-               '("write_file" "edit_file" "edit_buffer"))
+               ekg-agent--file-change-tools)
               (ekg-agent--tool-called-p "run_elisp")
               (not (ekg-agent--any-tool-called-p
-                    '("write_file"
-                      "edit_file"
-                      "edit_buffer")))))))
+                    ekg-agent--file-change-tools))))))
 
 (defun ekg-agent--blocked-tool-error (log-buf tool-name &optional args)
   "Return an error string if TOOL-NAME should be blocked in LOG-BUF."
@@ -1247,17 +1243,9 @@ non-string content in the assistant role."
   (cond
    ((and (memq 'file-change ekg-agent--completion-requirements)
          (ekg-agent--any-tool-available-p
-          '("write_file"
-            "edit_file"
-            "edit_buffer"
-            "append_to_current_note"
-            "replace_current_note"))
+          ekg-agent--file-change-tools)
          (not (ekg-agent--any-tool-called-p
-               '("write_file"
-                 "edit_file"
-                 "edit_buffer"
-                 "append_to_current_note"
-                 "replace_current_note"))))
+               ekg-agent--file-change-tools)))
     "The user asked for a file change, but no file edit/write tool has completed successfully. Read the relevant file if needed, apply the change with `write_file` or `edit_file`, verify it, then finish.")
    ((and (memq 'create-note ekg-agent--completion-requirements)
          (ekg-agent--tool-available-p "create_note")
@@ -2515,7 +2503,9 @@ stops a still-running agent."
 (defun ekg-agent--handle-llm-result (result prompt iteration-num status-callback
                                             end-tools deadline timeout-final
                                             completion-requirements log-buf)
-  "Handle an async LLM RESULT for `ekg-agent--iterate'."
+  "Handle async LLM RESULT for PROMPT at ITERATION-NUM.
+STATUS-CALLBACK, END-TOOLS, DEADLINE, TIMEOUT-FINAL,
+COMPLETION-REQUIREMENTS, and LOG-BUF are the active loop state."
   (if (and (buffer-live-p log-buf)
            (buffer-local-value 'ekg-agent--cancelled-p log-buf))
       (when (ekg-agent--set-stopped log-buf)
@@ -2538,21 +2528,6 @@ stops a still-running agent."
         (when (ekg-agent--set-stopped log-buf)
           (when status-callback
             (funcall status-callback "stopped by timeout"))))
-       ((and (or (assoc-default "run_elisp" result-alist)
-                 (assoc-default "run_interactive_command" result-alist))
-             (with-current-buffer log-buf
-               (and ekg-agent--completion-requirements
-                    (not (ekg-agent--completion-blocker)))))
-        (when (ekg-agent--set-stopped log-buf)
-          (when status-callback
-            (funcall status-callback "done"))))
-       ((and (assoc-default "set_org_item_status" result-alist)
-             (with-current-buffer log-buf
-               (and ekg-agent--completion-requirements
-                    (not (ekg-agent--completion-blocker)))))
-        (when (ekg-agent--set-stopped log-buf)
-          (when status-callback
-            (funcall status-callback "done"))))
        ((seq-find (lambda (end-tool)
                     (assoc-default end-tool result-alist))
                   end-tools)
@@ -3138,7 +3113,7 @@ notes from ekg."
 
 (defun ekg-agent-org--save-item (title content tags parent-id status
                                        deadline scheduled)
-  "Create and save an org task item, returning its note ID."
+  "Create TITLE under PARENT-ID with CONTENT and TAGS, returning its note ID."
   (let* ((status (if (and status (not (string-empty-p status)))
                      status
                    (ekg-agent--org-default-todo-keyword)))
@@ -3230,7 +3205,7 @@ Return a list of plists with :level, :status, :title, and :content."
     (nreverse headings)))
 
 (defun ekg-agent-org--create-items-from-note-content (tags content)
-  "Create org task items from org-mode note CONTENT.
+  "Create org task items with TAGS from `org-mode' note CONTENT.
 This is a compatibility path for models that call `create_note' with
 TODO headings after the user asked for org task management."
   (let* ((tags (ekg-agent-org--normalize-tool-tags tags))

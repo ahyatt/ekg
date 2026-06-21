@@ -8,7 +8,8 @@
 "
    :setup
    (progn
-(delete-file "/tmp/ekg-bench-report.org" t)
+(when (file-exists-p "/tmp/ekg-bench-report.org")
+  (delete-file "/tmp/ekg-bench-report.org"))
 (with-temp-file "/tmp/ekg-bench-data.csv"
   (insert "Name,Score,Grade\n")
   (insert "Charlie,78,C\n")
