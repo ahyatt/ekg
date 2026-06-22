@@ -125,6 +125,25 @@
              (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
              (should (string= ekg-notes-name "tags (any): tag/a, tag/b")))
 
+(ekg-deftest-with-db ekg-test-edit-save-skips-stale-notes-buffer ()
+             (let* ((note (ekg-note-create :text "before"
+                                            :mode 'text-mode
+                                            :tags '("stale")))
+                    (stale-buf (get-buffer-create "*ekg stale notes*"))
+                    note-buf)
+               (ekg-save-note note)
+               (with-current-buffer stale-buf
+                 (ekg-notes-mode)
+                 (should-not ekg-notes-fetch-notes-function))
+               (setq note-buf (ekg-edit note))
+               (with-current-buffer note-buf
+                 (erase-buffer)
+                 (insert "after")
+                 (ekg-edit-save))
+               (should (string= "after"
+                                (ekg-note-text
+                                 (ekg-get-note-with-id (ekg-note-id note)))))))
+
 (ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
   (with-temp-buffer
     (insert "[[attachment:foo.png]]\n")
