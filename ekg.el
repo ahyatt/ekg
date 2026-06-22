@@ -324,6 +324,13 @@ editing the note.")
 
 This is used to understand when the database needs upgrading.")
 
+(defconst ekg--upgrade-code-generation
+  (make-symbol "ekg-upgrade-code-generation")
+  "Unique token for the currently loaded upgrade implementation.")
+
+(defvar ekg--last-upgrade-check-key nil
+  "Cache key for the last automatic `ekg-upgrade-db' check.")
+
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties inlines)
 
@@ -346,6 +353,25 @@ This will be the location of the database file."
    (or (ekg-db-file)
        triples-default-database-filename)))
 
+(defun ekg--upgrade-check-key ()
+  "Return the cache key for automatic upgrade checks."
+  (let ((file (or (ekg-db-file)
+                  triples-default-database-filename)))
+    (list (when file (expand-file-name file))
+          triples-sqlite-interface
+          (version-to-list ekg-version)
+          ekg--upgrade-code-generation)))
+
+(defun ekg--maybe-upgrade-db (from-version force)
+  "Run `ekg-upgrade-db' when the automatic upgrade cache is stale.
+FROM-VERSION is the version currently stored in the database before
+any version update in this connection.  When FORCE is non-nil, run
+the upgrade regardless of the cache."
+  (let ((key (ekg--upgrade-check-key)))
+    (when (or force (not (equal key ekg--last-upgrade-check-key)))
+      (ekg-upgrade-db from-version)
+      (setq ekg--last-upgrade-check-key key))))
+
 ;; `ekg-connect' will do things that might themselves call `ekg-connect', so we
 ;; need to protect against an infinite recursion.
 (defalias 'ekg-connect
@@ -356,15 +382,22 @@ This will be the location of the database file."
         (unwind-protect
             (progn (unless ekg-db
                      (setq ekg-db (triples-connect (ekg-db-file))))
-                   (let ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg)))
-                     (when (or (null (plist-get ekg-plist :version))
-                               (version-list-< (plist-get ekg-plist :version) (version-to-list ekg-version)))
+                   (let* ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg))
+                          (from-version (plist-get ekg-plist :version))
+                          (version-changed
+                           (or (null from-version)
+                               (version-list-< from-version
+                                               (version-to-list ekg-version)))))
+                     (when version-changed
                        (ekg-add-schema)
-                       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version)))
-                     ;; Always run upgrades — they are idempotent and
-                     ;; handle invariants that may need to be
-                     ;; re-established even without a version change.
-                     (ekg-upgrade-db (plist-get ekg-plist :version)))
+                       (triples-set-type ekg-db 'ekg 'ekg
+                                         :version
+                                         (version-to-list ekg-version)))
+                     ;; Run automatic upgrades once per database/code
+                     ;; generation, and again when the stored version changes.
+                     ;; This keeps idempotent upgrade invariants without paying
+                     ;; for them on every note open/save.
+                     (ekg--maybe-upgrade-db from-version version-changed))
                    (unless (triples-backups-configuration ekg-db)
                      (triples-backups-setup ekg-db ekg-default-num-backups
                                             ekg-default-backups-strategy)))
