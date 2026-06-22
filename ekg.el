@@ -324,9 +324,11 @@ editing the note.")
 
 This is used to understand when the database needs upgrading.")
 
-(defconst ekg--upgrade-code-generation
-  (make-symbol "ekg-upgrade-code-generation")
-  "Unique token for the currently loaded upgrade implementation.")
+(defvar ekg--upgrade-code-generation nil
+  "Token identifying the currently loaded upgrade implementation.
+This is reset each time ekg.el is loaded.")
+
+(setq ekg--upgrade-code-generation (make-symbol "ekg-upgrade-code-generation"))
 
 (defvar ekg--last-upgrade-check-key nil
   "Cache key for the last automatic `ekg-upgrade-db' check.")
