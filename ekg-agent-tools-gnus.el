@@ -499,14 +499,14 @@ are omitted."
     (setq value (or (ignore-errors (rfc2047-decode-string value)) value))
     (string-trim (replace-regexp-in-string "[\t\n\r]+" " " value))))
 
-(defun ekg-agent-tools-gnus--result-id (group article)
-  "Return a stable tool result ID for GROUP and ARTICLE."
+(defun ekg-agent-tools-gnus--message-id (group article)
+  "Return a stable opaque message ID for GROUP and ARTICLE."
   (base64-encode-string (format "%s\t%s" group article) t))
 
-(defun ekg-agent-tools-gnus--decode-result-id (result-id)
-  "Decode RESULT-ID into a list of group and article."
-  (when (and (stringp result-id) (not (string-empty-p result-id)))
-    (let ((parts (split-string (base64-decode-string result-id) "\t")))
+(defun ekg-agent-tools-gnus--decode-message-id (message-id)
+  "Decode MESSAGE-ID into a list of group and article."
+  (when (and (stringp message-id) (not (string-empty-p message-id)))
+    (let ((parts (split-string (base64-decode-string message-id) "\t")))
       (when (= (length parts) 2)
         (list (car parts) (string-to-number (cadr parts)))))))
 
@@ -526,28 +526,29 @@ are omitted."
                    (mail-fetch-field "from")))
             (date (ekg-agent-tools-gnus--clean-header-value
                    (mail-fetch-field "date")))
-            (message-id (ekg-agent-tools-gnus--clean-header-value
-                         (mail-fetch-field "message-id"))))
+            (rfc-message-id (ekg-agent-tools-gnus--clean-header-value
+                             (mail-fetch-field "message-id"))))
         (unless (string-empty-p subject)
-          (list :result-id (ekg-agent-tools-gnus--result-id group article)
+          (list :message-id (ekg-agent-tools-gnus--message-id group article)
                 :group group
                 :article article
                 :date date
                 :date-time (ekg-agent-tools-gnus--parse-date-time date)
                 :from from
                 :subject subject
-                :message-id message-id))))))
+                :rfc-message-id rfc-message-id))))))
 
 (defun ekg-agent-tools-gnus--header-line (group article)
   "Return a tab-separated header line for ARTICLE in GROUP, or nil."
   (when-let* ((metadata (ekg-agent-tools-gnus--article-metadata group article)))
-    (format "%s\t%s\t%s\t%s\t%s\t%s"
+    (format "%s\t%s\t%s\t%s\t%s\t%s\t%s"
+            (plist-get metadata :message-id)
             (plist-get metadata :group)
             (plist-get metadata :article)
             (plist-get metadata :date)
             (plist-get metadata :from)
             (plist-get metadata :subject)
-            (plist-get metadata :message-id))))
+            (plist-get metadata :rfc-message-id))))
 
 ;;;###autoload
 (cl-defun ekg-agent-tools-gnus-recent-headers (&key folder num-headers)
@@ -581,7 +582,7 @@ not message bodies."
         (setq article (1- article)))
       (if lines
           (string-join
-           (cons "group\tarticle\tdate\tfrom\tsubject\tmessage-id"
+           (cons "message_id\tgroup\tarticle\tdate\tfrom\tsubject\trfc_message_id"
                  (nreverse lines))
            "\n")
         (format "No recent headers found for Gnus folder: %s" folder)))))
@@ -677,14 +678,14 @@ configured search engine."
          (metadata (ekg-agent-tools-gnus--article-metadata group article)))
     (if metadata
         (plist-put metadata :score score)
-      (list :result-id (ekg-agent-tools-gnus--result-id group article)
-            :group group
+      (list :group group
             :article article
             :date ""
             :date-time nil
             :from ""
             :subject ""
-            :message-id ""
+            :message-id (ekg-agent-tools-gnus--message-id group article)
+            :rfc-message-id ""
             :score score))))
 
 (defun ekg-agent-tools-gnus--latest-first-p (a b)
@@ -704,8 +705,8 @@ configured search engine."
         deduped)
     (dolist (item metadata (nreverse deduped))
       (let ((key (or (and (not (string-empty-p
-                                (or (plist-get item :message-id) "")))
-                          (plist-get item :message-id))
+                                (or (plist-get item :rfc-message-id) "")))
+                          (plist-get item :rfc-message-id))
                      (format "%s\t%s"
                              (plist-get item :group)
                              (plist-get item :article)))))
@@ -716,13 +717,13 @@ configured search engine."
 (defun ekg-agent-tools-gnus--search-result-line (metadata)
   "Return a tab-separated search result line for METADATA."
   (format "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s"
-          (ekg-agent-tools-gnus--clean-field (plist-get metadata :result-id))
+          (ekg-agent-tools-gnus--clean-field (plist-get metadata :message-id))
           (ekg-agent-tools-gnus--clean-field (plist-get metadata :group))
           (plist-get metadata :article)
           (ekg-agent-tools-gnus--clean-field (plist-get metadata :date))
           (ekg-agent-tools-gnus--clean-field (plist-get metadata :from))
           (ekg-agent-tools-gnus--clean-field (plist-get metadata :subject))
-          (ekg-agent-tools-gnus--clean-field (plist-get metadata :message-id))
+          (ekg-agent-tools-gnus--clean-field (plist-get metadata :rfc-message-id))
           (or (plist-get metadata :score) "")))
 
 ;;;###autoload
@@ -788,22 +789,24 @@ NUM-RESULTS limits returned rows."
                                   (append results nil))
                           #'ekg-agent-tools-gnus--latest-first-p))))
               (string-join
-               (cons (concat "result_id\tgroup\tarticle\tdate\tfrom\tsubject"
-                             "\tmessage-id\tscore")
+               (cons (concat "message_id\tgroup\tarticle\tdate\tfrom\tsubject"
+                             "\trfc_message_id\tscore")
                      (mapcar #'ekg-agent-tools-gnus--search-result-line
                              (seq-take metadata num-results)))
                "\n"))
           (format "No Gnus messages found for query: %s" query))))))
 
 ;;;###autoload
-(cl-defun ekg-agent-tools-gnus-read-message (&key result-id group article
+(cl-defun ekg-agent-tools-gnus-read-message (&key message-id result-id group article
                                             max-content-chars)
-  "Read a Gnus message by RESULT-ID or GROUP and ARTICLE.
-RESULT-ID is emitted by `ekg-agent-tools-gnus-search-messages'.
+  "Read a Gnus message by MESSAGE-ID or GROUP and ARTICLE.
+MESSAGE-ID is an opaque ID emitted by Gnus header and search tools.
+RESULT-ID is accepted for compatibility with older callers.
 MAX-CONTENT-CHARS limits the returned raw message content."
   (ekg-agent-tools-gnus--preserve-session
     (ekg-agent-tools-gnus--ensure-ready)
-    (let* ((decoded (ekg-agent-tools-gnus--decode-result-id result-id))
+    (let* ((decoded (ekg-agent-tools-gnus--decode-message-id
+                     (or message-id result-id)))
            (group (or group (car decoded)))
            (article (or article (cadr decoded)))
            (max-content-chars (ekg-agent-tools-gnus--clip-number
@@ -879,7 +882,7 @@ MAX-CONTENT-CHARS limits the returned raw message content."
                  (error (format "Error: %s" (error-message-string err)))))
    :name "gnus_recent_headers"
    :description
-   "Fetch recent Gnus message headers. Does not fetch message bodies."
+   "Fetch recent Gnus message headers with message_id. Does not fetch bodies."
    :args
    '((:name "folder"
             :type string
@@ -904,7 +907,7 @@ MAX-CONTENT-CHARS limits the returned raw message content."
    :name "gnus_search_messages"
    :description
    (concat
-    "Search Gnus messages and return latest matching headers with result_id. "
+    "Search Gnus messages and return latest matching headers with message_id. "
     "For sender/content searches, prefer from/body args; e.g. "
     "from=Stefan Monnier and body=uuid.")
    :args
@@ -935,27 +938,27 @@ MAX-CONTENT-CHARS limits the returned raw message content."
 
 (defconst ekg-agent-tools-gnus-tool-read-message
   (make-llm-tool
-   :function (lambda (result-id group article max-content-chars)
+   :function (lambda (message-id group article max-content-chars)
                (condition-case err
                    (ekg-agent-tools-gnus-read-message
-                    :result-id result-id
+                    :message-id message-id
                     :group group
                     :article article
                     :max-content-chars max-content-chars)
                  (error (format "Error: %s" (error-message-string err)))))
    :name "gnus_read_message"
    :description
-   "Read one Gnus message from a result_id returned by gnus_search_messages."
+   "Read one Gnus message by opaque message_id, or by exact group and article."
    :args
-   '((:name "result_id"
+   '((:name "message_id"
             :type string
-            :description "Opaque result_id from gnus_search_messages.")
+            :description "Opaque message_id from Gnus header or search output.")
      (:name "group"
             :type string
-            :description "Optional exact Gnus folder name when result_id is absent.")
+            :description "Optional exact Gnus folder name when message_id is absent.")
      (:name "article"
             :type integer
-            :description "Optional article number when result_id is absent.")
+            :description "Optional article number when message_id is absent.")
      (:name "max_content_chars"
             :type integer
             :description "Maximum raw message characters to return, capped at 100000."))))
