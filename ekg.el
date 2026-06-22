@@ -354,7 +354,7 @@ This will be the location of the database file."
        triples-default-database-filename)))
 
 (defun ekg--upgrade-check-key ()
-  "Return the cache key for automatic upgrade checks."
+  "Return the automatic upgrade cache key."
   (let ((file (or (ekg-db-file)
                   triples-default-database-filename)))
     (list (when file (expand-file-name file))
