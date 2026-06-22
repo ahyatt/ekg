@@ -793,6 +793,48 @@ result when the agent finishes."
               (should (string-match-p "def greet" (buffer-string))))))
       (kill-buffer buf))))
 
+(ekg-deftest ekg-agent-test-iterate-uses-bound-log-buffer ()
+  "A non-initial iteration logs to the bound log buffer, not current buffer."
+  (let ((origin-buf (get-buffer-create "*ekg-agent-test-origin*"))
+        (log-buf (get-buffer-create "*ekg-agent-test-log*"))
+        (done-flag nil))
+    (unwind-protect
+        (progn
+          (with-current-buffer origin-buf
+            (erase-buffer)
+            (insert "origin content\n"))
+          (with-current-buffer log-buf
+            (erase-buffer)
+            (setq ekg-agent--running-p t)
+            (setq ekg-agent--cancelled-p nil))
+          (let ((ekg-llm-provider (make-llm-fake))
+                (ekg-agent--current-log-buffer log-buf))
+            (cl-letf (((symbol-function 'llm-chat-async)
+                       (lambda (_provider _prompt response-callback
+                                _error-callback &optional _multi-output)
+                         (funcall response-callback
+                                  (list :tool-results
+                                        (list (cons "end" "ok"))))
+                         'mock-request)))
+              (with-current-buffer origin-buf
+                (ekg-agent--iterate
+                 (llm-make-chat-prompt
+                  "Test: continue from a non-log buffer."
+                  :tools (list ekg-agent-tool-end)
+                  :tool-options (make-llm-tool-options :tool-choice 'any))
+                 1
+                 (lambda (status) (setq done-flag status))
+                 '("end")))))
+          (should (equal done-flag "ok"))
+          (with-current-buffer origin-buf
+            (should-not (string-match-p "Waiting for LLM response"
+                                        (buffer-string))))
+          (with-current-buffer log-buf
+            (should (string-match-p "Waiting for LLM response"
+                                    (buffer-string)))))
+      (kill-buffer origin-buf)
+      (kill-buffer log-buf))))
+
 ;; Web rendering / browsing / search
 
 (ekg-deftest ekg-agent-test-web-render-html-basic ()
