@@ -144,6 +144,21 @@
                                 (ekg-note-text
                                  (ekg-get-note-with-id (ekg-note-id note)))))))
 
+(ekg-deftest-with-db ekg-test-notes-refresh-reuses-highlight-overlay ()
+             (ekg-save-note (ekg-note-create :text "note"
+                                             :mode 'text-mode
+                                             :tags '("refresh")))
+             (ekg-show-notes-with-tag "refresh")
+             (let ((buf (get-buffer "*ekg tag: refresh*")))
+               (with-current-buffer buf
+                 (ekg-notes-refresh)
+                 (ekg-notes-refresh)
+                 (should
+                  (= 1 (cl-count-if
+                        (lambda (overlay)
+                          (eq (overlay-get overlay 'face) hl-line-face))
+                        (overlays-in (point-min) (point-max))))))))
+
 (ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
   (with-temp-buffer
     (insert "[[attachment:foo.png]]\n")

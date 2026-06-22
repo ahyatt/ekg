@@ -2080,7 +2080,11 @@ NAME is displayed at the top of the buffer."
     (ekg-notes-mode))
   (setq-local ekg-notes-fetch-notes-function notes-func
               ekg-notes-name name
-              ekg-notes-hl (make-overlay 1 1)
+              ekg-notes-hl (if (and (overlayp ekg-notes-hl)
+                                     (eq (overlay-buffer ekg-notes-hl)
+                                         (current-buffer)))
+                                ekg-notes-hl
+                              (make-overlay 1 1))
               ekg-notes-tags tags
               header-line-format (propertize (concat " " name)
                                              'face 'bold))
