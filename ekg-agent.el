@@ -2343,13 +2343,15 @@ session.  At iteration 0 the log buffer is created and
                               end-tools
                               deadline
                               timeout-final)))
-    ;; iteration > 0: run the agent loop.
-    ;; current-buffer should be the log buffer (guaranteed by
-    ;; iteration 0 and by the with-current-buffer around the recursive
-    ;; call below).
-    (let ((log-buf (current-buffer))
-          (ekg-agent--current-log-buffer (current-buffer))
-          (expired (and deadline (> (float-time) deadline))))
+    ;; iteration > 0: run the agent loop.  Prefer the dynamically
+    ;; bound log buffer when present; async tools such as sub-agents can
+    ;; enter here while `current-buffer' is the origin buffer.
+    (let* ((log-buf (if (and ekg-agent--current-log-buffer
+                             (buffer-live-p ekg-agent--current-log-buffer))
+                        ekg-agent--current-log-buffer
+                      (current-buffer)))
+           (ekg-agent--current-log-buffer log-buf)
+           (expired (and deadline (> (float-time) deadline))))
       (when (and expired (not timeout-final))
         (ekg-agent--log "Timeout reached; requesting final state note.")
         (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
