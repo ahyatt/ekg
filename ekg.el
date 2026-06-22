@@ -2055,7 +2055,8 @@ cursor always lands on a note."
          (instance (vui--create-instance vnode nil))
          (vui--pending-effects nil))
     (setf (vui-instance-buffer instance) (current-buffer))
-    (ekg-notes-mode)
+    (unless (derived-mode-p 'ekg-notes-mode)
+      (ekg-notes-mode))
     (let ((inhibit-read-only t))
       (erase-buffer)
       (setq-local vui--root-instance instance)
@@ -2075,13 +2076,19 @@ cursor always lands on a note."
   "Display notes from NOTES-FUNC in buffer.
 New notes are created with additional tags TAGS.
 NAME is displayed at the top of the buffer."
-  (ekg--notes-mount name notes-func)
+  (unless (derived-mode-p 'ekg-notes-mode)
+    (ekg-notes-mode))
   (setq-local ekg-notes-fetch-notes-function notes-func
               ekg-notes-name name
-              ekg-notes-hl (make-overlay 1 1)
+              ekg-notes-hl (if (and (overlayp ekg-notes-hl)
+                                     (eq (overlay-buffer ekg-notes-hl)
+                                         (current-buffer)))
+                                ekg-notes-hl
+                              (make-overlay 1 1))
               ekg-notes-tags tags
               header-line-format (propertize (concat " " name)
                                              'face 'bold))
+  (ekg--notes-mount name notes-func)
   (overlay-put ekg-notes-hl 'face hl-line-face)
   (ekg--note-highlight)
   (when (eq ekg-capture-default-mode 'org-mode)
@@ -2105,13 +2112,17 @@ NAME is displayed at the top of the buffer."
   (dolist (buf (buffer-list))
     (when (and (buffer-live-p buf)
                (with-current-buffer buf
-                 (derived-mode-p 'ekg-notes-mode)))
+                 (and (derived-mode-p 'ekg-notes-mode)
+                      (functionp ekg-notes-fetch-notes-function))))
       (with-current-buffer buf
         (ekg-notes-refresh)))))
 
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
   (interactive nil ekg-notes-mode)
+  (unless (functionp ekg-notes-fetch-notes-function)
+    (user-error
+     "This EKG notes buffer is missing its refresh function; recreate it"))
   (ekg--show-notes
    ekg-notes-name
    ekg-notes-fetch-notes-function
