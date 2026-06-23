@@ -208,6 +208,38 @@
   (should (equal (ekg-tag-to-hierarchy "foo/bar") '("foo" "foo/bar")))
   (should (equal (ekg-tag-to-hierarchy "foo") '("foo"))))
 
+(ert-deftest ekg-test-connect-caches-upgrade-check ()
+  (ekg--with-testing-env
+   (let* ((ekg-db-dir (make-temp-file "ekg-test-dir" t))
+          (ekg-db-file (expand-file-name "db" ekg-db-dir))
+          (ekg-db nil)
+          (triples-default-database-filename nil)
+          (ekg--last-upgrade-check-key nil)
+          (upgrade-calls 0))
+     (unwind-protect
+         (cl-letf (((symbol-function 'ekg-upgrade-db)
+                    (lambda (_from-version)
+                      (cl-incf upgrade-calls))))
+           (ekg-connect)
+           (should (= upgrade-calls 1))
+           (ekg-connect)
+           (should (= upgrade-calls 1))
+           (let ((ekg--upgrade-code-generation
+                  (make-symbol "ekg-upgrade-code-generation")))
+             (ekg-connect)
+             (should (= upgrade-calls 2))
+             (ekg-connect)
+             (should (= upgrade-calls 2)))
+           (setq ekg--last-upgrade-check-key (ekg--upgrade-check-key))
+           (triples-set-type ekg-db 'ekg 'ekg :version '(0 7 9))
+           (ekg-connect)
+           (should (= upgrade-calls 3))
+           (ekg-connect)
+           (should (= upgrade-calls 3)))
+       (when ekg-db
+         (triples-close ekg-db))
+       (delete-directory ekg-db-dir t)))))
+
 (ekg-deftest-with-db ekg-test-extract-inlines ()
              (pcase (ekg-extract-inlines "Foo %(transclude 1) %n(transclude \"abc\") Bar")
                (`(,text . ,inlines)
