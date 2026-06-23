@@ -2915,90 +2915,86 @@ session.  At iteration 0 the log buffer is created and
                               deadline
                               timeout-final
                               completion-requirements)))
-    ;; iteration > 0: run the agent loop.
-    ;; current-buffer should be the log buffer (guaranteed by
-    ;; iteration 0 and by the with-current-buffer around the recursive
-    ;; call below).
-    (let ((log-buf (current-buffer))
-          (ekg-agent--current-log-buffer (current-buffer))
-          (expired (and deadline (> (float-time) deadline))))
-      timeout-final
-      completion-requirements)))
-;; iteration > 0: run the agent loop.  Prefer the dynamically
-;; bound log buffer when present; async tools such as sub-agents can
-;; enter here while `current-buffer' is the origin buffer.
-(let* ((log-buf (if (and ekg-agent--current-log-buffer
-                         (buffer-live-p ekg-agent--current-log-buffer))
-                    ekg-agent--current-log-buffer
-                  (current-buffer)))
-       (ekg-agent--current-log-buffer log-buf)
-       (expired (and deadline (> (float-time) deadline))))
-  (when (and expired (not timeout-final))
-    (ekg-agent--log "Timeout reached; requesting final state note.")
-    (ekg-agent--prompt-append-user-message prompt (ekg-agent--timeout-warning-message))
-    (setq timeout-final t))
-  (ekg-agent--maybe-remind-status-update prompt)
-  (when (and (integerp ekg-agent-llm-max-tokens)
-             (> ekg-agent-llm-max-tokens 0)
-             (not (llm-chat-prompt-max-tokens prompt)))
-    (setf (llm-chat-prompt-max-tokens prompt)
-          ekg-agent-llm-max-tokens))
-  (when (and log-buf (buffer-live-p log-buf))
-    (with-current-buffer log-buf
-      (setq ekg-agent--current-activity "Waiting for LLM response…")
-      (force-mode-line-update)
-      (ekg-agent--log "⟳ Waiting for LLM response…")))
-  (condition-case err
-      (let* ((deadline-timer
-              (ekg-agent--make-deadline-timer
-               log-buf deadline status-callback))
-             (request
-               (ekg-agent--llm-chat-async-with-retry
-                (ekg-agent--provider)
-                prompt
-                (lambda (result)
-                  (when deadline-timer
-                    (cancel-timer deadline-timer)
-                    (setq deadline-timer nil))
-                  (let ((ekg-agent--current-log-buffer log-buf))
-                    (condition-case err
-                        (ekg-agent--handle-llm-result
-                         result
-                         prompt
-                         iteration-num
-                         status-callback
-                         end-tools
-                         deadline
-                         timeout-final
-                         completion-requirements
-                         log-buf)
-                      (error
-                       (when (ekg-agent--set-stopped log-buf)
-                         (ekg-agent--log "Error in callback: %s"
-                                         (error-message-string err))
-                         (when status-callback (funcall status-callback 'error)))))))
-                (lambda (_ err)
-                  (when deadline-timer
-                    (cancel-timer deadline-timer)
-                    (setq deadline-timer nil))
-                  (let ((ekg-agent--current-log-buffer log-buf))
-                    (when (ekg-agent--set-stopped log-buf)
-                      (ekg-agent--log "LLM error: %s" err)
-                      (when status-callback (funcall status-callback 'error)))))
-                t
-                log-buf)))
-        (when (buffer-live-p log-buf)
-          (with-current-buffer log-buf
-            (if ekg-agent--running-p
-                (setq ekg-agent--current-request request)
-              (ignore-errors (llm-cancel-request request))))))
-    (error
-     (when (bound-and-true-p deadline-timer)
-       (cancel-timer deadline-timer))
-     (when (ekg-agent--set-stopped log-buf)
-       (ekg-agent--log "Error starting LLM request: %s"
-                       (error-message-string err))
-       (when status-callback (funcall status-callback 'error))))))))
+    ;; iteration > 0: run the agent loop.  Prefer the dynamically
+    ;; bound log buffer when present; async tools such as sub-agents can
+    ;; enter here while `current-buffer' is the origin buffer.
+    (let* ((log-buf (if (and ekg-agent--current-log-buffer
+                             (buffer-live-p ekg-agent--current-log-buffer))
+                        ekg-agent--current-log-buffer
+                      (current-buffer)))
+           (ekg-agent--current-log-buffer log-buf)
+           (expired (and deadline (> (float-time) deadline)))
+           (deadline-timer nil))
+      (when (and expired (not timeout-final))
+        (ekg-agent--log "Timeout reached; requesting final state note.")
+        (ekg-agent--prompt-append-user-message
+         prompt (ekg-agent--timeout-warning-message))
+        (setq timeout-final t))
+      (ekg-agent--maybe-remind-status-update prompt)
+      (when (and (integerp ekg-agent-llm-max-tokens)
+                 (> ekg-agent-llm-max-tokens 0)
+                 (not (llm-chat-prompt-max-tokens prompt)))
+        (setf (llm-chat-prompt-max-tokens prompt)
+              ekg-agent-llm-max-tokens))
+      (when (and log-buf (buffer-live-p log-buf))
+        (with-current-buffer log-buf
+          (setq ekg-agent--current-activity "Waiting for LLM response…")
+          (force-mode-line-update)
+          (ekg-agent--log "⟳ Waiting for LLM response…")))
+      (condition-case err
+          (let* ((request
+                  (progn
+                    (setq deadline-timer
+                          (ekg-agent--make-deadline-timer
+                           log-buf deadline status-callback))
+                    (ekg-agent--llm-chat-async-with-retry
+                     (ekg-agent--provider)
+                     prompt
+                     (lambda (result)
+                       (when deadline-timer
+                         (cancel-timer deadline-timer)
+                         (setq deadline-timer nil))
+                       (let ((ekg-agent--current-log-buffer log-buf))
+                         (condition-case err
+                             (ekg-agent--handle-llm-result
+                              result
+                              prompt
+                              iteration-num
+                              status-callback
+                              end-tools
+                              deadline
+                              timeout-final
+                              completion-requirements
+                              log-buf)
+                           (error
+                            (when (ekg-agent--set-stopped log-buf)
+                              (ekg-agent--log "Error in callback: %s"
+                                              (error-message-string err))
+                              (when status-callback
+                                (funcall status-callback 'error)))))))
+                     (lambda (_ err)
+                       (when deadline-timer
+                         (cancel-timer deadline-timer)
+                         (setq deadline-timer nil))
+                       (let ((ekg-agent--current-log-buffer log-buf))
+                         (when (ekg-agent--set-stopped log-buf)
+                           (ekg-agent--log "LLM error: %s" err)
+                           (when status-callback
+                             (funcall status-callback 'error)))))
+                     t
+                     log-buf))))
+            (when (buffer-live-p log-buf)
+              (with-current-buffer log-buf
+                (if ekg-agent--running-p
+                    (setq ekg-agent--current-request request)
+                  (ignore-errors (llm-cancel-request request))))))
+        (error
+         (when deadline-timer
+           (cancel-timer deadline-timer))
+         (when (ekg-agent--set-stopped log-buf)
+           (ekg-agent--log "Error starting LLM request: %s"
+                           (error-message-string err))
+           (when status-callback (funcall status-callback 'error))))))))
 
 (defun ekg-agent-continue (message)
   "Continue the agent from where it left off.
