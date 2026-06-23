@@ -30,6 +30,7 @@
 (require 'org)
 (require 'markdown-mode)
 (require 'ekg-test-utils)
+(require 'cl-lib)
 
 (defun ekg-test-count-words-in-string (text)
   "Counts words in the given TEXT string using forward-word in a temp buffer."
@@ -124,6 +125,53 @@
              (ekg-show-notes-with-any-tags '("tag/b" "tag/a"))
              (should (string= ekg-notes-name "tags (any): tag/a, tag/b")))
 
+(ekg-deftest-with-db ekg-test-edit-save-skips-stale-notes-buffer ()
+             (let* ((note (ekg-note-create :text "before"
+                                            :mode 'text-mode
+                                            :tags '("stale")))
+                    (stale-buf (get-buffer-create "*ekg stale notes*"))
+                    note-buf)
+               (ekg-save-note note)
+               (with-current-buffer stale-buf
+                 (ekg-notes-mode)
+                 (should-not ekg-notes-fetch-notes-function))
+               (setq note-buf (ekg-edit note))
+               (with-current-buffer note-buf
+                 (erase-buffer)
+                 (insert "after")
+                 (ekg-edit-save))
+               (should (string= "after"
+                                (ekg-note-text
+                                 (ekg-get-note-with-id (ekg-note-id note)))))))
+
+(ekg-deftest-with-db ekg-test-notes-refresh-reuses-highlight-overlay ()
+             (ekg-save-note (ekg-note-create :text "note"
+                                             :mode 'text-mode
+                                             :tags '("refresh")))
+             (ekg-show-notes-with-tag "refresh")
+             (let ((buf (get-buffer "*ekg tag: refresh*")))
+               (with-current-buffer buf
+                 (ekg-notes-refresh)
+                 (ekg-notes-refresh)
+                 (should
+                  (= 1 (cl-count-if
+                        (lambda (overlay)
+                          (eq (overlay-get overlay 'face) hl-line-face))
+                        (overlays-in (point-min) (point-max))))))))
+
+(ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
+  (with-temp-buffer
+    (insert "[[attachment:foo.png]]\n")
+    (ekg-notes-mode)
+    (cl-letf (((symbol-function 'display-graphic-p)
+               (lambda (&optional _frame) t)))
+      (should-not
+       (string-match-p
+        "org-element-at-point"
+        (ert-with-message-capture messages
+          (ekg--org-redisplay-inline-images)
+          messages))))))
+
 (ekg-deftest-with-db ekg-test-note-roundtrip ()
              (let ((text "foo\n\tbar \"baz\" ☃"))
                (ekg-save-note (ekg-note-create :text text :mode #'text-mode :tags '("test")))
@@ -159,6 +207,38 @@
 (ekg-deftest ekg-test-tag-to-hierarchy ()
   (should (equal (ekg-tag-to-hierarchy "foo/bar") '("foo" "foo/bar")))
   (should (equal (ekg-tag-to-hierarchy "foo") '("foo"))))
+
+(ert-deftest ekg-test-connect-caches-upgrade-check ()
+  (ekg--with-testing-env
+   (let* ((ekg-db-dir (make-temp-file "ekg-test-dir" t))
+          (ekg-db-file (expand-file-name "db" ekg-db-dir))
+          (ekg-db nil)
+          (triples-default-database-filename nil)
+          (ekg--last-upgrade-check-key nil)
+          (upgrade-calls 0))
+     (unwind-protect
+         (cl-letf (((symbol-function 'ekg-upgrade-db)
+                    (lambda (_from-version)
+                      (cl-incf upgrade-calls))))
+           (ekg-connect)
+           (should (= upgrade-calls 1))
+           (ekg-connect)
+           (should (= upgrade-calls 1))
+           (let ((ekg--upgrade-code-generation
+                  (make-symbol "ekg-upgrade-code-generation")))
+             (ekg-connect)
+             (should (= upgrade-calls 2))
+             (ekg-connect)
+             (should (= upgrade-calls 2)))
+           (setq ekg--last-upgrade-check-key (ekg--upgrade-check-key))
+           (triples-set-type ekg-db 'ekg 'ekg :version '(0 7 9))
+           (ekg-connect)
+           (should (= upgrade-calls 3))
+           (ekg-connect)
+           (should (= upgrade-calls 3)))
+       (when ekg-db
+         (triples-close ekg-db))
+       (delete-directory ekg-db-dir t)))))
 
 (ekg-deftest-with-db ekg-test-extract-inlines ()
              (pcase (ekg-extract-inlines "Foo %(transclude 1) %n(transclude \"abc\") Bar")

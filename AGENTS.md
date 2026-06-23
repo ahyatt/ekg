@@ -56,6 +56,38 @@ texinfo to generate the other formats in this directory.
 - Test utilities in `ekg-test-utils.el` provide database setup and teardown
 - Tests cover note lifecycle, tag management, embedding functionality, and integrations
 
+## Testing with a Fresh Emacs
+
+Use a fresh Emacs when verifying agent behavior, which generally is too disruptive to the user.
+
+- To find the executable path for the Emacs build you are currently using,
+  evaluate this in that Emacs:
+  `(expand-file-name invocation-name invocation-directory)`
+- From a shell, the equivalent for the `emacs` on `PATH` is:
+  `emacs --batch --eval '(princ (expand-file-name invocation-name invocation-directory))'`
+- Prefer a named daemon so `emacsclient` does not connect to a normal user
+  session:
+  ```sh
+  EMACS="/path/from/the/previous/step"
+  SERVER="ekg-fresh-test"
+  INIT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ekg-emacs.XXXXXX")"
+  HOME="$INIT_DIR" "$EMACS" -Q --bg-daemon="$SERVER"
+  ```
+- Use an `emacsclient` from the same Emacs installation when possible:
+  ```sh
+  CLIENT="$(dirname "$EMACS")/emacsclient"
+  [ -x "$CLIENT" ] || CLIENT="$(dirname "$EMACS")/bin/emacsclient"
+  [ -x "$CLIENT" ] || CLIENT="$(command -v emacsclient)"
+  "$CLIENT" -s "$SERVER" --eval '(emacs-version)'
+  ```
+- If the fresh daemon needs EKG and its Eldev-installed dependencies, first run
+  an Eldev command with the same Emacs executable so dependencies are available:
+  `EMACS="$EMACS" eldev test ekg-agent-test.el`
+  Then load the repository and the matching `.eldev/<emacs-version>/packages/*`
+  directories into the daemon before `(require 'ekg-agent)`.
+- Stop the isolated daemon when finished:
+  `"$CLIENT" -s "$SERVER" --eval '(kill-emacs)'`
+
 ## Database Schema
 
 Uses `triples` library for RDF-like storage in SQLite:

@@ -39,6 +39,7 @@
 (require 'hl-line)
 (require 'iso8601)
 (require 'url-parse)
+(require 'warnings)
 
 (declare-function org-open-at-point "org")
 (declare-function org-redisplay-inline-images "org")
@@ -323,6 +324,15 @@ editing the note.")
 
 This is used to understand when the database needs upgrading.")
 
+(defvar ekg--upgrade-code-generation nil
+  "Token identifying the currently loaded upgrade implementation.
+This is reset each time ekg.el is loaded.")
+
+(setq ekg--upgrade-code-generation (make-symbol "ekg-upgrade-code-generation"))
+
+(defvar ekg--last-upgrade-check-key nil
+  "Cache key for the last automatic `ekg-upgrade-db' check.")
+
 (cl-defstruct ekg-note
   id text mode tags creation-time modified-time properties inlines)
 
@@ -345,6 +355,25 @@ This will be the location of the database file."
    (or (ekg-db-file)
        triples-default-database-filename)))
 
+(defun ekg--upgrade-check-key ()
+  "Return the automatic upgrade cache key."
+  (let ((file (or (ekg-db-file)
+                  triples-default-database-filename)))
+    (list (when file (expand-file-name file))
+          triples-sqlite-interface
+          (version-to-list ekg-version)
+          ekg--upgrade-code-generation)))
+
+(defun ekg--maybe-upgrade-db (from-version force)
+  "Run `ekg-upgrade-db' when the automatic upgrade cache is stale.
+FROM-VERSION is the version currently stored in the database before
+any version update in this connection.  When FORCE is non-nil, run
+the upgrade regardless of the cache."
+  (let ((key (ekg--upgrade-check-key)))
+    (when (or force (not (equal key ekg--last-upgrade-check-key)))
+      (ekg-upgrade-db from-version)
+      (setq ekg--last-upgrade-check-key key))))
+
 ;; `ekg-connect' will do things that might themselves call `ekg-connect', so we
 ;; need to protect against an infinite recursion.
 (defalias 'ekg-connect
@@ -355,15 +384,22 @@ This will be the location of the database file."
         (unwind-protect
             (progn (unless ekg-db
                      (setq ekg-db (triples-connect (ekg-db-file))))
-                   (let ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg)))
-                     (when (or (null (plist-get ekg-plist :version))
-                               (version-list-< (plist-get ekg-plist :version) (version-to-list ekg-version)))
+                   (let* ((ekg-plist (triples-get-type ekg-db 'ekg 'ekg))
+                          (from-version (plist-get ekg-plist :version))
+                          (version-changed
+                           (or (null from-version)
+                               (version-list-< from-version
+                                               (version-to-list ekg-version)))))
+                     (when version-changed
                        (ekg-add-schema)
-                       (triples-set-type ekg-db 'ekg 'ekg :version (version-to-list ekg-version)))
-                     ;; Always run upgrades — they are idempotent and
-                     ;; handle invariants that may need to be
-                     ;; re-established even without a version change.
-                     (ekg-upgrade-db (plist-get ekg-plist :version)))
+                       (triples-set-type ekg-db 'ekg 'ekg
+                                         :version
+                                         (version-to-list ekg-version)))
+                     ;; Run automatic upgrades once per database/code
+                     ;; generation, and again when the stored version changes.
+                     ;; This keeps idempotent upgrade invariants without paying
+                     ;; for them on every note open/save.
+                     (ekg--maybe-upgrade-db from-version version-changed))
                    (unless (triples-backups-configuration ekg-db)
                      (triples-backups-setup ekg-db ekg-default-num-backups
                                             ekg-default-backups-strategy)))
@@ -620,53 +656,52 @@ Draft notes are not returned, unless TAGS contains the draft tag."
 (defun ekg-get-note-with-id (id)
   "Get the note with ID, or nil if it does not exist."
   (ekg-connect)
-  (let ((v (triples-get-subject ekg-db id)))
-    (when v
-      (let* ((stored-types (triples-get-types ekg-db id))
-             (core-types '(text time-tracked inline titled tagged))
-             (inlines (mapcar (lambda (iid)
-                                (let ((iv (triples-get-type ekg-db iid
-                                                            'inline)))
-                                  (make-ekg-inline :pos (plist-get iv :pos)
-                                                   :command (cons
-                                                             (plist-get iv :command)
-                                                             (plist-get iv :args))
-                                                   :type (plist-get iv :type))))
-                              (plist-get v :text/inlines)))
-             ;; Query extension types not already returned by
-             ;; triples-get-subject, to pick up virtual reversed
-             ;; properties like org/children.
-             (extra-props
-              (mapcan (lambda (type)
-                        (unless (or (memq type stored-types)
-                                    (memq type core-types))
-                          (let ((type-data (triples-get-type ekg-db id type)))
-                            (when type-data
-                              (cl-loop for (k v) on type-data by #'cddr
-                                       nconc (list (intern (format ":%s/%s" type
-                                                                   (substring (symbol-name k) 1)))
-                                                   v))))))
-                      (ekg-note-cotypes))))
-        (make-ekg-note :id id
-                       :text (plist-get v :text/text)
-                       :mode (plist-get v :text/mode)
-                       :inlines inlines
-                       :tags (plist-get v :tagged/tag)
-                       :creation-time (plist-get v :time-tracked/creation-time)
-                       :modified-time (plist-get v :time-tracked/modified-time)
-                       :properties (append
-                                    (map-into
-                                     (map-filter
-                                      (lambda (plist-key _)
-                                        (not (member plist-key
-                                                     '(:text/text
-                                                       :text/mode
-                                                       :text/inlines
-                                                       :tagged/tag
-                                                       :time-tracked/creation-time
-                                                       :time-tracked/modified-time)))) v)
-                                     'plist)
-                                    extra-props))))))
+  (when-let* ((v (triples-get-subject ekg-db id)))
+    (let* ((stored-types (triples-get-types ekg-db id))
+           (core-types '(text time-tracked inline titled tagged))
+           (inlines (mapcar (lambda (iid)
+                              (let ((iv (triples-get-type ekg-db iid
+                                                          'inline)))
+                                (make-ekg-inline :pos (plist-get iv :pos)
+                                                 :command (cons
+                                                           (plist-get iv :command)
+                                                           (plist-get iv :args))
+                                                 :type (plist-get iv :type))))
+                            (plist-get v :text/inlines)))
+           ;; Query extension types not already returned by
+           ;; triples-get-subject, to pick up virtual reversed
+           ;; properties like org/children.
+           (extra-props
+            (mapcan (lambda (type)
+                      (unless (or (memq type stored-types)
+                                  (memq type core-types))
+                        (let ((type-data (triples-get-type ekg-db id type)))
+                          (when type-data
+                            (cl-loop for (k v) on type-data by #'cddr
+                                     nconc (list (intern (format ":%s/%s" type
+                                                                 (substring (symbol-name k) 1)))
+                                                 v))))))
+                    (ekg-note-cotypes))))
+      (make-ekg-note :id id
+                     :text (plist-get v :text/text)
+                     :mode (plist-get v :text/mode)
+                     :inlines inlines
+                     :tags (plist-get v :tagged/tag)
+                     :creation-time (plist-get v :time-tracked/creation-time)
+                     :modified-time (plist-get v :time-tracked/modified-time)
+                     :properties (append
+                                  (map-into
+                                   (map-filter
+                                    (lambda (plist-key _)
+                                      (not (member plist-key
+                                                   '(:text/text
+                                                     :text/mode
+                                                     :text/inlines
+                                                     :tagged/tag
+                                                     :time-tracked/creation-time
+                                                     :time-tracked/modified-time)))) v)
+                                   'plist)
+                                  extra-props)))))
 
 (defun ekg-get-notes-with-title (title)
   "Get a list of note structs with TITLE."
@@ -755,7 +790,7 @@ or, if unknown, `ekg-inline'."
                                      (literal ")"))))))
     ;; Keep removing commands left to right to make sure our positions are
     ;; without commands, since that's how they will need to be inserted.
-    (while (when-let (index (string-match inline-rx newtext))
+    (while (when-let* ((index (string-match inline-rx newtext)))
              (push (make-ekg-inline :pos index
                                     :command (read (format "(%s)" (match-string 3 newtext)))
                                     :type (pcase (match-string 2 newtext)
@@ -963,8 +998,8 @@ desired output properties as described in `ekg-display-note-template'."
 (defun ekg-display-note-titled (note &optional numwords &rest format)
   "Return text of the title of NOTE.
 NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
-  (ekg-display--format (if-let (titles (plist-get (ekg-note-properties note)
-                                                  :titled/title))
+  (ekg-display--format (if-let* ((titles (plist-get (ekg-note-properties note)
+                                                    :titled/title)))
                            (propertize (concat (mapconcat #'identity titles ", ") "\n")
                                        'face 'ekg-title)
                          "")
@@ -1415,7 +1450,17 @@ True when the ID represents a meaningful resource to the user,
 rather than an auto-generated number."
   (not (numberp id)))
 
-
+(defun ekg--org-redisplay-inline-images ()
+  "Redisplay Org inline images, suppressing Org parser warnings.
+This avoids warnings when not in an `org-mode' buffer"
+  (if (derived-mode-p 'org-mode)
+      (org-redisplay-inline-images)
+    (let ((warning-suppress-types
+           (cons '(org-element org-element-parser) warning-suppress-types))
+          (warning-suppress-log-types
+           (cons '(org-element org-element-parser)
+                 warning-suppress-log-types)))
+      (org-redisplay-inline-images))))
 
 ;;;###autoload
 (cl-defun ekg-capture (&key text mode tags properties id)
@@ -1446,7 +1491,7 @@ If ID is given, force the triple subject to be that value."
     (if (and (eq mode 'org-mode)
              ekg-notes-display-images)
         (condition-case nil
-            (org-redisplay-inline-images)
+            (ekg--org-redisplay-inline-images)
           (wrong-type-argument (message "Problem showing image for note ID %s (content: \"%s\")"
                                         id (ekg-truncate-at text 10)))))
     (set-buffer-modified-p nil)
@@ -1669,7 +1714,7 @@ it.  If there are multiple titles, select which one to change."
       (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
       (if (and (eq (ekg-note-mode note) 'org-mode)
                ekg-notes-display-images)
-          (org-redisplay-inline-images)))
+          (ekg--org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -2044,7 +2089,8 @@ cursor always lands on a note."
          (instance (vui--create-instance vnode nil))
          (vui--pending-effects nil))
     (setf (vui-instance-buffer instance) (current-buffer))
-    (ekg-notes-mode)
+    (unless (derived-mode-p 'ekg-notes-mode)
+      (ekg-notes-mode))
     (let ((inhibit-read-only t))
       (erase-buffer)
       (setq-local vui--root-instance instance)
@@ -2064,18 +2110,24 @@ cursor always lands on a note."
   "Display notes from NOTES-FUNC in buffer.
 New notes are created with additional tags TAGS.
 NAME is displayed at the top of the buffer."
-  (ekg--notes-mount name notes-func)
+  (unless (derived-mode-p 'ekg-notes-mode)
+    (ekg-notes-mode))
   (setq-local ekg-notes-fetch-notes-function notes-func
               ekg-notes-name name
-              ekg-notes-hl (make-overlay 1 1)
+              ekg-notes-hl (if (and (overlayp ekg-notes-hl)
+                                    (eq (overlay-buffer ekg-notes-hl)
+                                        (current-buffer)))
+                               ekg-notes-hl
+                             (make-overlay 1 1))
               ekg-notes-tags tags
               header-line-format (propertize (concat " " name)
                                              'face 'bold))
+  (ekg--notes-mount name notes-func)
   (overlay-put ekg-notes-hl 'face hl-line-face)
   (ekg--note-highlight)
   (when (eq ekg-capture-default-mode 'org-mode)
     (ekg--notes-activate-links)
-    (if ekg-notes-display-images (org-redisplay-inline-images)))
+    (if ekg-notes-display-images (ekg--org-redisplay-inline-images)))
   (set-buffer-modified-p nil))
 
 (defun ekg--notes-activate-links()
@@ -2094,13 +2146,17 @@ NAME is displayed at the top of the buffer."
   (dolist (buf (buffer-list))
     (when (and (buffer-live-p buf)
                (with-current-buffer buf
-                 (derived-mode-p 'ekg-notes-mode)))
+                 (and (derived-mode-p 'ekg-notes-mode)
+                      (functionp ekg-notes-fetch-notes-function))))
       (with-current-buffer buf
         (ekg-notes-refresh)))))
 
 (defun ekg-notes-refresh ()
   "Refresh the current `ekg-notes' buffer."
   (interactive nil ekg-notes-mode)
+  (unless (functionp ekg-notes-fetch-notes-function)
+    (user-error
+     "This EKG notes buffer is missing its refresh function; recreate it"))
   (ekg--show-notes
    ekg-notes-name
    ekg-notes-fetch-notes-function

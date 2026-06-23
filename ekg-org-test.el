@@ -75,6 +75,8 @@
     ;; Verify basic structure
     (should (string-match-p "\\* TODO Timed Task" rendered))
     (should (string-match-p "Content" rendered))
+    (should (string-match-p "^DEADLINE: <2026-02-01 Sun>" rendered))
+    (should (string-match-p "SCHEDULED: <2026-01-31 Sat>" rendered))
     ;; Verify the timestamps are stored as properties
     (let ((props (ekg-note-properties note)))
       (should (plist-get props :org/deadline))

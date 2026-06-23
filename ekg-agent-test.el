@@ -855,6 +855,48 @@ result when the agent finishes."
               (should (string-match-p "def greet" (buffer-string))))))
       (kill-buffer buf))))
 
+(ekg-deftest ekg-agent-test-iterate-uses-bound-log-buffer ()
+  "A non-initial iteration logs to the bound log buffer, not current buffer."
+  (let ((origin-buf (get-buffer-create "*ekg-agent-test-origin*"))
+        (log-buf (get-buffer-create "*ekg-agent-test-log*"))
+        (done-flag nil))
+    (unwind-protect
+        (progn
+          (with-current-buffer origin-buf
+            (erase-buffer)
+            (insert "origin content\n"))
+          (with-current-buffer log-buf
+            (erase-buffer)
+            (setq ekg-agent--running-p t)
+            (setq ekg-agent--cancelled-p nil))
+          (let ((ekg-llm-provider (make-llm-fake))
+                (ekg-agent--current-log-buffer log-buf))
+            (cl-letf (((symbol-function 'llm-chat-async)
+                       (lambda (_provider _prompt response-callback
+                                _error-callback &optional _multi-output)
+                         (funcall response-callback
+                                  (list :tool-results
+                                        (list (cons "end" "ok"))))
+                         'mock-request)))
+              (with-current-buffer origin-buf
+                (ekg-agent--iterate
+                 (llm-make-chat-prompt
+                  "Test: continue from a non-log buffer."
+                  :tools (list ekg-agent-tool-end)
+                  :tool-options (make-llm-tool-options :tool-choice 'any))
+                 1
+                 (lambda (status) (setq done-flag status))
+                 '("end")))))
+          (should (equal done-flag "ok"))
+          (with-current-buffer origin-buf
+            (should-not (string-match-p "Waiting for LLM response"
+                                        (buffer-string))))
+          (with-current-buffer log-buf
+            (should (string-match-p "Waiting for LLM response"
+                                    (buffer-string)))))
+      (kill-buffer origin-buf)
+      (kill-buffer log-buf))))
+
 ;; Web rendering / browsing / search
 
 (ekg-deftest ekg-agent-test-web-render-html-basic ()
@@ -963,6 +1005,53 @@ result when the agent finishes."
                  (funcall callback "ok"))))
       (ekg-agent--web-search #'ignore "test"))
     (should (string-match-p "^https://google.com/search\\?q=" captured-url))))
+
+;; Emacs help / Info tools
+
+(ekg-deftest ekg-agent-test-emacs-help-symbol-cl-defstruct ()
+  "The Emacs help symbol tool returns useful help for `cl-defstruct'."
+  (let ((result (ekg-agent--emacs-help-symbol "cl-defstruct")))
+    (should (stringp result))
+    (should (string-match-p "cl-defstruct" result))
+    (should (string-match-p "Define a struct type" result))
+    (should (string-match-p ":include" result))))
+
+(ekg-deftest ekg-agent-test-emacs-help-symbol-bad-kind ()
+  "The Emacs help symbol tool reports bad help kinds as text."
+  (let ((result (ekg-agent--emacs-help-symbol "cl-defstruct" "bogus")))
+    (should (string-match-p "Error:" result))
+    (should (string-match-p "Unknown help kind" result))))
+
+(ekg-deftest ekg-agent-test-emacs-help-search-finds-defstruct ()
+  "The Emacs help search tool can discover `cl-defstruct'."
+  (let ((result (ekg-agent--emacs-help-search "cl-defstruct" "no" 5)))
+    (should (stringp result))
+    (should (string-match-p "cl-defstruct" result))))
+
+(ekg-deftest ekg-agent-test-emacs-info-node-structures ()
+  "The Emacs Info node tool can read the CL Structures node."
+  (let ((result (ekg-agent--emacs-info-node "(cl)Structures")))
+    (should (stringp result))
+    (should (string-match-p "Manual: cl" result))
+    (should (string-match-p "Node: Structures" result))
+    (should (string-match-p ":include" result))))
+
+(ekg-deftest ekg-agent-test-emacs-info-search-finds-include ()
+  "The Emacs Info search tool can find struct include information."
+  (let ((result (ekg-agent--emacs-info-search ":include" "cl" 3)))
+    (should (stringp result))
+    (should (string-match-p "Manual: cl" result))
+    (should (string-match-p "Node: Structures" result))
+    (should (string-match-p ":include" result))))
+
+(ekg-deftest ekg-agent-test-emacs-reference-tools-in-base-tools ()
+  "Emacs help and Info tools are part of the base agent tool set."
+  (let ((names (mapcar #'llm-tool-name ekg-agent-base-tools)))
+    (dolist (name '("emacs_help_symbol"
+                    "emacs_help_search"
+                    "emacs_info_node"
+                    "emacs_info_search"))
+      (should (member name names)))))
 
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here

@@ -1,4 +1,21 @@
 #!/bin/bash
+# Copyright (C) 2026  Andrew Hyatt <ahyatt@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
 # ekg-org-add-child - Create a child org task under a parent task
 #
 # Usage: ekg-org-add-child <parent-id> --title "title" [--note "content"] [--tag tag1]
@@ -152,12 +169,12 @@ ELISP_EXPR="(progn
         (ekg-save-note note)
         (format \"%s\" (ekg-note-id note))))))"
 
-EMACSCLIENT_CMD="emacsclient"
+EMACSCLIENT_CMD=("${EMACSCLIENT:-emacsclient}")
 if [[ -n "$DAEMON_NAME" ]]; then
-    EMACSCLIENT_CMD+=" -s $DAEMON_NAME"
+    EMACSCLIENT_CMD+=("-s" "$DAEMON_NAME")
 fi
 
-if ! OUTPUT=$($EMACSCLIENT_CMD --eval "$ELISP_EXPR" 2>&1); then
+if ! OUTPUT=$("${EMACSCLIENT_CMD[@]}" --eval "$ELISP_EXPR" 2>&1); then
     echo "Error: Failed to create child task. Is the Emacs daemon running?" >&2
     echo "$OUTPUT" >&2
     exit 1
