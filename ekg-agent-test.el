@@ -184,8 +184,6 @@
                        :tool-name "read_file"
                        :result "file contents"))))))
             (setq-local ekg-agent--end-tools '("end"))
-            (setq-local ekg-agent--completion-requirements
-                        '(file-change create-note))
             (setq-local ekg-agent--tool-call-history
                         (list (list :name "read_file"
                                     :args '("/tmp/example.txt")
@@ -452,29 +450,97 @@ result when the agent finishes."
                  :description "Test-only tool."
                  :args '()))
 
-(ekg-deftest ekg-agent-test-current-note-tools-do-not-satisfy-file-change ()
-  "Current-note response tools do not satisfy a required file change."
-  (with-temp-buffer
-    (setq-local ekg-agent--prompt
-                (llm-make-chat-prompt
-                 "Update /tmp/example.txt"
-                 :tools (list
-                         (ekg-agent-test--dummy-tool "write_file")
-                         (ekg-agent-test--dummy-tool "append_to_current_note")
-                         (ekg-agent-test--dummy-tool "replace_current_note"))))
-    (setq-local ekg-agent--completion-requirements '(file-change))
-    (setq-local ekg-agent--tool-call-history
-                (list (list :name "append_to_current_note"
-                            :args nil
-                            :result "ok")))
-    (should (ekg-agent--completion-blocker))
-    (should (ekg-agent--pending-file-change-p (current-buffer)))
-    (setq-local ekg-agent--tool-call-history
-                (list (list :name "edit_file"
-                            :args nil
-                            :result "ok")))
-    (should-not (ekg-agent--completion-blocker))
-    (should-not (ekg-agent--pending-file-change-p (current-buffer)))))
+(ekg-deftest ekg-agent-test-clean-orphaned-tool-interaction ()
+  "Trailing assistant tool-use interactions are removed for recovery."
+  (let ((prompt (llm-make-chat-prompt "Do work.")))
+    (setf (llm-chat-prompt-interactions prompt)
+          (append
+           (llm-chat-prompt-interactions prompt)
+           (list
+            (make-llm-chat-prompt-interaction
+             :role 'assistant
+             :content
+             (list
+              (make-llm-provider-utils-tool-use
+               :id "call-1"
+               :name "add_to_load_path"
+               :args '((directory . "/tmp/pkg"))))))))
+    (should (ekg-agent--clean-orphaned-tool-interactions prompt))
+    (should (= 1 (length (llm-chat-prompt-interactions prompt))))
+    (should-not (ekg-agent--clean-orphaned-tool-interactions prompt))))
+
+(ekg-deftest ekg-agent-test-recovers-from-unknown-tool-error ()
+  "Unknown tool provider errors are converted into a continuation."
+  (let ((ekg-llm-provider (make-llm-fake))
+        (prompt (llm-make-chat-prompt
+                 "Recover from a bad tool call."
+                 :tools (list ekg-agent-tool-end
+                              ekg-agent-tool-run-elisp)
+                 :tool-options (make-llm-tool-options :tool-choice 'any)))
+        (done-flag nil)
+        (calls 0))
+    (cl-letf (((symbol-function 'ekg-agent--prompt-id)
+               (lambda (_) "test-agent"))
+              ((symbol-function 'llm-chat-async)
+               (lambda (_provider active-prompt response-callback
+                         error-callback &optional _multi-output)
+                 (cl-incf calls)
+                 (if (= calls 1)
+                     (progn
+                       (setf (llm-chat-prompt-interactions active-prompt)
+                             (append
+                              (llm-chat-prompt-interactions active-prompt)
+                              (list
+                               (make-llm-chat-prompt-interaction
+                                :role 'assistant
+                                :content
+                                (list
+                                 (make-llm-provider-utils-tool-use
+                                  :id "call-bad"
+                                  :name "add_to_load_path"
+                                  :args '((directory . "/tmp/pkg"))))))))
+                       (funcall error-callback
+                                'error
+                                "Unknown tool 'add_to_load_path' called"))
+                   (funcall response-callback
+                            (list :tool-results
+                                  (list (cons "end" "recovered")))))
+                 nil))
+              ((symbol-function 'ekg-agent--ensure-log-window)
+               #'ignore))
+      (ekg-agent--iterate prompt
+                          0
+                          (lambda (status) (setq done-flag status))
+                          '("end")))
+    (should (equal "recovered" done-flag))
+    (should (= 2 calls))
+    (let* ((interactions (llm-chat-prompt-interactions prompt))
+           (last-message
+            (llm-chat-prompt-interaction-content (car (last interactions)))))
+      (should (string-match-p "unavailable tool `add_to_load_path'"
+                              last-message))
+      (should (string-match-p "run_elisp" last-message))
+      (should-not
+       (seq-some
+        (lambda (interaction)
+          (and (eq (llm-chat-prompt-interaction-role interaction)
+                   'assistant)
+               (not (stringp
+                     (llm-chat-prompt-interaction-content interaction)))))
+        interactions))))
+    (let ((buf (get-buffer (format ekg-agent-log-buffer-name-format
+                                   "test-agent"))))
+      (when buf
+        (kill-buffer buf))))
+
+(ekg-deftest ekg-agent-test-run-elisp-description-documents-state-changes ()
+  "The run_elisp description advertises key recoverable uses."
+  (let ((description (llm-tool-description ekg-agent-tool-run-elisp)))
+    (should (string-match-p "test out elisp" description))
+    (should (string-match-p "load-path" description))
+    (should (string-match-p "requiring libraries" description))
+    (should (string-match-p "void-function" description))
+    (should (string-match-p "locate-library" description))))
 
 (ekg-deftest ekg-agent-test-run-elisp-does-not-finish-before-end-tool ()
   "A diagnostic tool result should not stop the loop before an end tool."
@@ -501,8 +567,7 @@ result when the agent finishes."
        (lambda (status) (setq done-flag status))
        '("end")
        nil
-       nil
-       '(run-elisp))
+       nil)
       (setq status done-flag))
     (should (= run-elisp-calls 1))
     (should (equal status "done"))))
