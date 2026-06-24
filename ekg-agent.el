@@ -30,6 +30,7 @@
 
 (require 'cl-lib)
 (require 'llm)
+(require 'llm-provider-utils)
 (require 'llm-vertex)
 (require 'ekg-llm)
 (require 'ekg-embedding)
@@ -2750,11 +2751,357 @@ Falls back to a deterministic slug if the LLM naming call fails."
         id
       (ekg-agent--fallback-prompt-id prompt))))
 
+(defun ekg-agent--json-object (&rest pairs)
+  "Return a JSON object from alternating string keys and values in PAIRS."
+  (let ((object (make-hash-table :test 'equal)))
+    (while pairs
+      (puthash (pop pairs) (pop pairs) object))
+    object))
+
+(defun ekg-agent--json-array (values)
+  "Return VALUES as a JSON array vector."
+  (apply #'vector values))
+
+(defun ekg-agent--json-bool (value)
+  "Return VALUE as a JSON boolean sentinel."
+  (if value t :json-false))
+
+(defun ekg-agent--json-safe-string (value)
+  "Return VALUE as a property-free JSON-safe string."
+  (replace-regexp-in-string
+   "[\x3fff80-\x3fffff]" ""
+   (substring-no-properties (format "%s" value))))
+
+(defun ekg-agent--json-key (key)
+  "Return KEY as a stable JSON object key."
+  (cond
+   ((keywordp key) (substring (symbol-name key) 1))
+   ((symbolp key) (symbol-name key))
+   ((stringp key) key)
+   (t (ekg-agent--json-safe-string key))))
+
+(defun ekg-agent--json-time (time)
+  "Return TIME as an ISO-like timestamp string, or nil."
+  (when (numberp time)
+    (format-time-string "%FT%T%z" (seconds-to-time time))))
+
+(defun ekg-agent--json-plist-p (value)
+  "Return non-nil if VALUE looks like a keyword plist."
+  (and (listp value)
+       (zerop (mod (length value) 2))
+       (cl-loop for (key _value) on value by #'cddr
+                always (keywordp key))))
+
+(defun ekg-agent--json-alist-p (value)
+  "Return non-nil if VALUE looks like an object-like alist."
+  (and (consp value)
+       (cl-every
+        (lambda (cell)
+          (and (consp cell)
+               (not (keywordp (car cell)))
+               (or (stringp (car cell))
+                   (symbolp (car cell))
+                   (numberp (car cell)))))
+        value)))
+
+(defun ekg-agent--debug-tool-use-to-json (tool-use)
+  "Return a JSON object for TOOL-USE."
+  (ekg-agent--json-object
+   "id" (ekg-agent--json-safe-value
+         (llm-provider-utils-tool-use-id tool-use))
+   "name" (ekg-agent--json-safe-value
+           (llm-provider-utils-tool-use-name tool-use))
+   "args" (ekg-agent--json-safe-value
+           (llm-provider-utils-tool-use-args tool-use))))
+
+(defun ekg-agent--debug-tool-result-to-json (tool-result)
+  "Return a JSON object for TOOL-RESULT."
+  (let ((result (llm-chat-prompt-tool-result-result tool-result)))
+    (ekg-agent--json-object
+     "call_id" (ekg-agent--json-safe-value
+                (llm-chat-prompt-tool-result-call-id tool-result))
+     "tool_name" (ekg-agent--json-safe-value
+                  (llm-chat-prompt-tool-result-tool-name tool-result))
+     "result" (ekg-agent--json-safe-value result)
+     "result_char_count" (if (stringp result) (length result) nil))))
+
+(defun ekg-agent--json-hash-table (value)
+  "Return a JSON-safe copy of hash table VALUE."
+  (let ((object (make-hash-table :test 'equal)))
+    (maphash (lambda (key item)
+               (puthash (ekg-agent--json-key key)
+                        (ekg-agent--json-safe-value item)
+                        object))
+             value)
+    object))
+
+(defun ekg-agent--json-plist (value)
+  "Return VALUE, a plist, as a JSON object."
+  (let ((object (make-hash-table :test 'equal)))
+    (while value
+      (puthash (ekg-agent--json-key (pop value))
+               (ekg-agent--json-safe-value (pop value))
+               object))
+    object))
+
+(defun ekg-agent--json-alist (value)
+  "Return VALUE, an alist, as a JSON object."
+  (let ((object (make-hash-table :test 'equal)))
+    (dolist (cell value)
+      (puthash (ekg-agent--json-key (car cell))
+               (ekg-agent--json-safe-value (cdr cell))
+               object))
+    object))
+
+(defun ekg-agent--json-safe-value (value)
+  "Return VALUE converted to a structure accepted by `json-encode'."
+  (cond
+   ((null value) nil)
+   ((eq value :json-false) :json-false)
+   ((eq value t) t)
+   ((stringp value) (ekg-agent--json-safe-string value))
+   ((numberp value) value)
+   ((llm-provider-utils-tool-use-p value)
+    (ekg-agent--debug-tool-use-to-json value))
+   ((llm-chat-prompt-tool-result-p value)
+    (ekg-agent--debug-tool-result-to-json value))
+   ((llm-multipart-p value)
+    (ekg-agent--json-object
+     "type" "multipart"
+     "parts" (ekg-agent--json-array
+              (mapcar #'ekg-agent--json-safe-value
+                      (llm-multipart-parts value)))))
+   ((llm-media-p value)
+    (ekg-agent--json-object
+     "type" "media"
+     "mime_type" (llm-media-mime-type value)
+     "byte_count" (length (llm-media-data value))))
+   ((hash-table-p value) (ekg-agent--json-hash-table value))
+   ((vectorp value)
+    (ekg-agent--json-array
+     (mapcar #'ekg-agent--json-safe-value (append value nil))))
+   ((ekg-agent--json-plist-p value) (ekg-agent--json-plist value))
+   ((ekg-agent--json-alist-p value) (ekg-agent--json-alist value))
+   ((listp value)
+    (ekg-agent--json-array (mapcar #'ekg-agent--json-safe-value value)))
+   ((symbolp value) (symbol-name value))
+   (t (ekg-agent--json-safe-string (format "%S" value)))))
+
+(defun ekg-agent--debug-content-type (content)
+  "Return a short type label for interaction CONTENT."
+  (cond
+   ((null content) "null")
+   ((stringp content) "string")
+   ((llm-multipart-p content) "multipart")
+   ((and (listp content)
+         (cl-some #'llm-provider-utils-tool-use-p content))
+    "tool_uses")
+   ((listp content) "list")
+   ((vectorp content) "vector")
+   (t (symbol-name (type-of content)))))
+
+(defun ekg-agent--debug-tool-uses (content)
+  "Return any tool-use structs from interaction CONTENT as JSON."
+  (ekg-agent--json-array
+   (if (listp content)
+       (mapcar #'ekg-agent--debug-tool-use-to-json
+               (seq-filter #'llm-provider-utils-tool-use-p content))
+     nil)))
+
+(defun ekg-agent--debug-interaction-multi-turn-plist (interaction)
+  "Return provider multi-turn metadata from INTERACTION when available."
+  (when (fboundp 'llm-chat-prompt-interaction-multi-turn-plist)
+    (llm-chat-prompt-interaction-multi-turn-plist interaction)))
+
+(defun ekg-agent--debug-interaction-to-json (interaction index)
+  "Return a JSON object for PROMPT INTERACTION at INDEX."
+  (let* ((role (llm-chat-prompt-interaction-role interaction))
+         (content (llm-chat-prompt-interaction-content interaction))
+         (tool-results
+          (llm-chat-prompt-interaction-tool-results interaction)))
+    (ekg-agent--json-object
+     "index" index
+     "role" (ekg-agent--json-safe-value role)
+     "content_type" (ekg-agent--debug-content-type content)
+     "content" (ekg-agent--json-safe-value content)
+     "content_char_count" (if (stringp content) (length content) nil)
+     "tool_uses" (ekg-agent--debug-tool-uses content)
+     "tool_results"
+     (ekg-agent--json-array
+      (mapcar #'ekg-agent--debug-tool-result-to-json tool-results))
+     "multi_turn_plist"
+     (ekg-agent--json-safe-value
+      (ekg-agent--debug-interaction-multi-turn-plist interaction)))))
+
+(defun ekg-agent--debug-tool-to-json (tool)
+  "Return a JSON object for TOOL."
+  (ekg-agent--json-object
+   "name" (llm-tool-name tool)
+   "description" (llm-tool-description tool)
+   "args" (ekg-agent--json-safe-value (llm-tool-args tool))
+   "async" (ekg-agent--json-bool (llm-tool-async tool))))
+
+(defun ekg-agent--debug-example-to-json (example)
+  "Return a JSON object for prompt EXAMPLE."
+  (ekg-agent--json-object
+   "user" (ekg-agent--json-safe-value (car example))
+   "assistant" (ekg-agent--json-safe-value (cdr example))))
+
+(defun ekg-agent--debug-tool-options-to-json (tool-options)
+  "Return TOOL-OPTIONS as a JSON object, or nil."
+  (when tool-options
+    (ekg-agent--json-object
+     "tool_choice"
+     (ekg-agent--json-safe-value
+      (llm-tool-options-tool-choice tool-options)))))
+
+(defun ekg-agent--debug-prompt-to-json (prompt)
+  "Return PROMPT as a JSON object for debugging."
+  (let ((context (llm-chat-prompt-context prompt))
+        (interactions (llm-chat-prompt-interactions prompt)))
+    (ekg-agent--json-object
+     "context" (ekg-agent--json-safe-value context)
+     "context_char_count" (if (stringp context) (length context) nil)
+     "user_text" (ekg-agent--prompt-user-text prompt)
+     "examples"
+     (ekg-agent--json-array
+      (mapcar #'ekg-agent--debug-example-to-json
+              (llm-chat-prompt-examples prompt)))
+     "interactions"
+     (ekg-agent--json-array
+      (cl-loop for interaction in interactions
+               for index from 0
+               collect
+               (ekg-agent--debug-interaction-to-json interaction index)))
+     "tools"
+     (ekg-agent--json-array
+      (mapcar #'ekg-agent--debug-tool-to-json
+              (llm-chat-prompt-tools prompt)))
+     "temperature" (ekg-agent--json-safe-value
+                    (llm-chat-prompt-temperature prompt))
+     "max_tokens" (ekg-agent--json-safe-value
+                   (llm-chat-prompt-max-tokens prompt))
+     "response_format" (ekg-agent--json-safe-value
+                        (llm-chat-prompt-response-format prompt))
+     "reasoning" (ekg-agent--json-safe-value
+                  (llm-chat-prompt-reasoning prompt))
+     "non_standard_params"
+     (ekg-agent--json-safe-value
+      (llm-chat-prompt-non-standard-params prompt))
+     "tool_options"
+     (ekg-agent--debug-tool-options-to-json
+      (llm-chat-prompt-tool-options prompt)))))
+
+(defun ekg-agent--debug-history-entry-to-json (entry index)
+  "Return a JSON object for tool history ENTRY at INDEX."
+  (let ((time (plist-get entry :time))
+        (result (plist-get entry :result)))
+    (ekg-agent--json-object
+     "index" index
+     "name" (ekg-agent--json-safe-value (plist-get entry :name))
+     "args" (ekg-agent--json-safe-value (plist-get entry :args))
+     "result" (ekg-agent--json-safe-value result)
+     "result_char_count" (if (stringp result) (length result) nil)
+     "time" time
+     "time_iso" (ekg-agent--json-time time))))
+
+(defun ekg-agent--debug-config-to-json ()
+  "Return agent configuration values relevant to debugging."
+  (ekg-agent--json-object
+   "timeout_seconds" ekg-agent-timeout-seconds
+   "status_reminder_seconds" ekg-agent-status-reminder-seconds
+   "llm_max_retries" ekg-agent-llm-max-retries
+   "llm_retry_base_delay" ekg-agent-llm-retry-base-delay
+   "llm_max_tokens" (ekg-agent--json-safe-value ekg-agent-llm-max-tokens)
+   "code_command" (ekg-agent--json-safe-value ekg-agent-code-command)
+   "code_command_prompt_method"
+   (ekg-agent--json-safe-value ekg-agent-code-command-prompt-method)
+   "web_max_chars" ekg-agent-web-max-chars
+   "emacs_reference_max_chars" ekg-agent-emacs-reference-max-chars
+   "log_buffer_name_format" ekg-agent-log-buffer-name-format))
+
+(defun ekg-agent--debug-session-to-json ()
+  "Return the current agent log buffer state as a JSON object."
+  (unless ekg-agent--prompt
+    (user-error "No agent prompt available in this buffer"))
+  (let* ((log-text (buffer-substring-no-properties (point-min) (point-max)))
+         (origin-name (and (buffer-live-p ekg-agent--origin-buffer)
+                           (buffer-name ekg-agent--origin-buffer)))
+         (origin-directory
+          (and (buffer-live-p ekg-agent--origin-buffer)
+               (buffer-local-value 'default-directory
+                                   ekg-agent--origin-buffer)))
+         (history (reverse ekg-agent--tool-call-history)))
+    (ekg-agent--json-object
+     "schema" "ekg-agent-debug-session"
+     "schema_version" 1
+     "generated_at" (format-time-string "%FT%T%z")
+     "emacs_version" emacs-version
+     "session"
+     (ekg-agent--json-object
+      "buffer_name" (buffer-name)
+      "running" (ekg-agent--json-bool ekg-agent--running-p)
+      "cancelled" (ekg-agent--json-bool ekg-agent--cancelled-p)
+      "current_activity" (ekg-agent--json-safe-value
+                          ekg-agent--current-activity)
+      "origin_buffer_name" (ekg-agent--json-safe-value origin-name)
+      "origin_default_directory" (ekg-agent--json-safe-value
+                                  origin-directory)
+      "current_default_directory" (ekg-agent--json-safe-value
+                                   default-directory)
+      "end_tools" (ekg-agent--json-safe-value ekg-agent--end-tools)
+      "completion_requirements"
+      (ekg-agent--json-array
+       (mapcar #'symbol-name ekg-agent--completion-requirements))
+      "last_status_update_time" ekg-agent--last-status-update-time
+      "last_status_update_time_iso"
+      (ekg-agent--json-time ekg-agent--last-status-update-time)
+      "last_status_reminder_time" ekg-agent--last-status-reminder-time
+      "last_status_reminder_time_iso"
+      (ekg-agent--json-time ekg-agent--last-status-reminder-time)
+      "active_tool_process_count" (length ekg-agent--tool-processes)
+      "current_request" (ekg-agent--json-safe-value
+                         (and ekg-agent--current-request
+                              (format "%S" ekg-agent--current-request))))
+     "configuration" (ekg-agent--debug-config-to-json)
+     "prompt" (ekg-agent--debug-prompt-to-json ekg-agent--prompt)
+     "tool_call_history"
+     (ekg-agent--json-array
+      (cl-loop for entry in history
+               for index from 0
+               collect (ekg-agent--debug-history-entry-to-json
+                        entry index)))
+     "log"
+     (ekg-agent--json-object
+      "text" (ekg-agent--json-safe-string log-text)
+      "char_count" (length log-text)
+      "line_count" (length (split-string log-text "\n"))))))
+
+(defun ekg-agent-export-debug-json (&optional file)
+  "Write current agent prompt and log state to FILE as JSON.
+When FILE is nil, write to a new temporary file.  Return the file
+path.  The command is intended to be run from an agent log buffer."
+  (interactive)
+  (let* ((path (or file (make-temp-file "ekg-agent-debug-" nil ".json")))
+         (payload (ekg-agent--debug-session-to-json))
+         (coding-system-for-write 'utf-8-unix)
+         (json-encoding-pretty-print t))
+    (with-temp-file path
+      (insert (json-encode payload))
+      (insert "\n"))
+    (when (called-interactively-p 'interactive)
+      (kill-new path)
+      (let ((ekg-agent--current-log-buffer (current-buffer)))
+        (ekg-agent--log "Debug JSON exported to %s" path))
+      (message "Wrote EKG agent debug JSON to %s" path))
+    path))
+
 (defvar ekg-agent-log-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'ekg-agent-continue)
     (define-key map (kbd "C-c C-k") #'ekg-agent-cancel)
     (define-key map (kbd "C-c C-q") #'ekg-agent-force-cancel)
+    (define-key map (kbd "C-c C-d") #'ekg-agent-export-debug-json)
     map)
   "Keymap for `ekg-agent-log-mode'.")
 

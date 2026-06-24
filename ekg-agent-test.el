@@ -142,6 +142,98 @@
             (should (= 221.0 ekg-agent--last-status-reminder-time))))
       (kill-buffer buf))))
 
+(ekg-deftest ekg-agent-test-export-debug-json-includes-conversation ()
+  "The debug export includes prompt interactions and tool history."
+  (let ((buf (get-buffer-create "*ekg-agent-test-debug-json*"))
+        (file (make-temp-file "ekg-agent-debug-test" nil ".json")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "2026-01-01 00:00:00 STARTED read_file\n")
+            (setq-local ekg-agent--prompt
+                        (llm-make-chat-prompt
+                         "Inspect the file."
+                         :context "Agent instructions."
+                         :tools (list
+                                 (make-llm-tool
+                                  :function (lambda (_path) "contents")
+                                  :name "read_file"
+                                  :description "Read a file."
+                                  :args '((:name "path" :type string))))
+                         :tool-options
+                         (make-llm-tool-options :tool-choice 'any)))
+            (setf (llm-chat-prompt-interactions ekg-agent--prompt)
+                  (append
+                   (llm-chat-prompt-interactions ekg-agent--prompt)
+                   (list
+                    (make-llm-chat-prompt-interaction
+                     :role 'assistant
+                     :content
+                     (list
+                      (make-llm-provider-utils-tool-use
+                       :id "call-1"
+                       :name "read_file"
+                       :args '((path . "/tmp/example.txt")))))
+                    (make-llm-chat-prompt-interaction
+                     :role 'tool-results
+                     :tool-results
+                     (list
+                      (make-llm-chat-prompt-tool-result
+                       :call-id "call-1"
+                       :tool-name "read_file"
+                       :result "file contents"))))))
+            (setq-local ekg-agent--end-tools '("end"))
+            (setq-local ekg-agent--completion-requirements
+                        '(file-change create-note))
+            (setq-local ekg-agent--tool-call-history
+                        (list (list :name "read_file"
+                                    :args '("/tmp/example.txt")
+                                    :result "file contents"
+                                    :time 1700000000.0)))
+            (ekg-agent-export-debug-json file))
+          (let* ((json-object-type 'hash-table)
+                 (json-array-type 'list)
+                 (json-key-type 'string)
+                 (data (json-read-file file))
+                 (prompt (gethash "prompt" data))
+                 (session (gethash "session" data))
+                 (interactions (gethash "interactions" prompt))
+                 (tools (gethash "tools" prompt))
+                 (assistant (nth 1 interactions))
+                 (tool-results (nth 2 interactions))
+                 (history (gethash "tool_call_history" data)))
+            (should (equal "ekg-agent-debug-session"
+                           (gethash "schema" data)))
+            (should (= 1 (gethash "schema_version" data)))
+            (should (equal '("end") (gethash "end_tools" session)))
+            (should (equal "Inspect the file."
+                           (gethash "user_text" prompt)))
+            (should (equal "tool_uses"
+                           (gethash "content_type" assistant)))
+            (should (equal "read_file"
+                           (gethash
+                            "name"
+                            (car (gethash "tool_uses" assistant)))))
+            (should (equal "path"
+                           (gethash "name"
+                                    (car (gethash "args" (car tools))))))
+            (should (equal "file contents"
+                           (gethash
+                            "result"
+                            (car (gethash "tool_results" tool-results)))))
+            (should (equal "read_file"
+                           (gethash "name" (car history))))))
+      (when (buffer-live-p buf)
+        (kill-buffer buf))
+      (when (file-exists-p file)
+        (delete-file file)))))
+
+(ekg-deftest ekg-agent-test-log-mode-debug-export-keybinding ()
+  "The agent log exposes the debug export command."
+  (should (eq (lookup-key ekg-agent-log-mode-map (kbd "C-c C-d"))
+              #'ekg-agent-export-debug-json)))
+
 ;; Line ID generation
 
 (ekg-deftest ekg-agent-test-line-ids-unique ()

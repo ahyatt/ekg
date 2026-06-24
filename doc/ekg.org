@@ -1732,6 +1732,12 @@ The following commands are available in the log buffer:
   call in progress).  The conversation prompt is preserved in the buffer, so you
   can resume later with =C-c C-c=.
 
+- =C-c C-d= (=ekg-agent-export-debug-json=): Export the stored prompt,
+  conversation interactions, tool definitions, successful tool history,
+  completion requirements, configuration, and visible log text to a temporary
+  JSON file.  The file path is copied to the kill ring and can be analyzed with
+  the =agent_tools/ekg-agent-debug-analyzer= skill.
+
 This makes it easy to supervise long-running agent sessions: you can cancel if
 the agent is going in the wrong direction, give it new guidance, and continue.
 
@@ -1798,6 +1804,13 @@ ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
 
 This way, the agent always has up-to-date documentation for the ekg tools
 without needing to duplicate it.
+
+The directory =agent_tools/ekg-agent-debug-analyzer/= contains a separate skill
+for investigating JSON exports from =ekg-agent-export-debug-json=.  It includes
+a script that produces a first-pass Markdown report of inefficient tool use,
+errors, repeated calls, oversized tool results, completion blockers, and missing
+required actions.  Symlink its =SKILL.md= into an agent skill directory when you
+want an external agent to improve =ekg-agent= behavior from exported sessions.
 **** Instructions for configuring agents
 
 When setting up an AI agent to use ekg for memory, the recommended approach is

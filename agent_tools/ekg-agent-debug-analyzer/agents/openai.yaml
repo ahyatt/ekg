@@ -1,0 +1,4 @@
+interface:
+  display_name: "EKG Agent Debug Analyzer"
+  short_description: "Analyze EKG agent debug JSON"
+  default_prompt: "Use $ekg-agent-debug-analyzer to inspect this EKG agent debug JSON export and recommend tool or prompt improvements."
