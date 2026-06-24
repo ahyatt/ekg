@@ -2298,6 +2298,15 @@ When called from an @samp{ekg-notes-mode} buffer@comma{} it uses the note at poi
 called from a note editing buffer@comma{} it uses that note.  You can also pass a note
 ID programmatically.
 
+When @code{ekg-llm-provider} is a list@comma{} the @samp{ekg-agent-ask}@comma{}
+@samp{ekg-agent-ask-with-note}@comma{} @samp{ekg-agent-ask-with-buffer}@comma{} and
+@samp{ekg-agent-ask-with-region} commands can be called with a prefix argument
+(normally via @samp{C-u M-x}) to select the provider for that agent session.  Without
+a prefix argument@comma{} the agent chooses the first configured provider with tool
+calling support@comma{} falling back to the first provider in the list.  When
+@code{ekg-llm-provider} is a single provider@comma{} the prefix argument does not prompt for
+a provider.
+
 Internal agent notes (using the @samp{agent/self-info} and @samp{agent/instruct}
 tags) are hidden from normal view by being added to @samp{ekg-hidden-tags}. You can
 view these notes specifically with @samp{ekg-agent-show-internal-notes}.

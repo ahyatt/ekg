@@ -1624,6 +1624,15 @@ When called from an =ekg-notes-mode= buffer, it uses the note at point; when
 called from a note editing buffer, it uses that note.  You can also pass a note
 ID programmatically.
 
+When ~ekg-llm-provider~ is a list, the =ekg-agent-ask=,
+=ekg-agent-ask-with-note=, =ekg-agent-ask-with-buffer=, and
+=ekg-agent-ask-with-region= commands can be called with a prefix argument
+(normally via =C-u M-x=) to select the provider for that agent session.  Without
+a prefix argument, the agent chooses the first configured provider with tool
+calling support, falling back to the first provider in the list.  When
+~ekg-llm-provider~ is a single provider, the prefix argument does not prompt for
+a provider.
+
 Internal agent notes (using the =agent/self-info= and =agent/instruct=
 tags) are hidden from normal view by being added to =ekg-hidden-tags=. You can
 view these notes specifically with =ekg-agent-show-internal-notes=.
