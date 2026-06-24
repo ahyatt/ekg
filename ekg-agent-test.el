@@ -687,6 +687,42 @@ result when the agent finishes."
     (while (not result) (accept-process-output nil 0.1))
     (should (string-match-p "Exit code: 42" result))))
 
+(ekg-deftest ekg-agent-test-agent-run-command-timeout ()
+  "The run_command tool times out long-running commands."
+  (let ((ekg-agent-run-command-timeout-seconds 0.1)
+        result)
+    (ekg-agent--run-command (lambda (r) (setq result r)) "sleep 2")
+    (while (not result) (accept-process-output nil 0.1))
+    (should (string-match-p "Command timed out" result))))
+
+(ekg-deftest ekg-agent-test-agent-run-command-large-output-hidden-buffer ()
+  "Large run_command output is truncated and stored in a hidden buffer."
+  (let ((log-buf (get-buffer-create "*ekg-agent-test-hidden-log*"))
+        (ekg-agent-run-command-max-output-chars 50)
+        result)
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer log-buf))
+          (with-current-buffer log-buf
+            (setq ekg-agent--hidden-result-buffers nil))
+          (ekg-agent--run-command
+           (lambda (r) (setq result r))
+           "printf '%0200d' 0")
+          (while (not result) (accept-process-output nil 0.1))
+          (should (string-match-p "output truncated at 50" result))
+          (should (string-match "hidden buffer `\\([^`]+\\)`" result))
+          (let* ((buffer-name (match-string 1 result))
+                 (hidden-buf (get-buffer buffer-name)))
+            (should hidden-buf)
+            (with-current-buffer hidden-buf
+              (should (> (buffer-size) 200)))
+            (let ((status (ekg-agent--status-with-hidden-buffer-cleanup
+                           "done")))
+              (should (string-match-p "Deleted hidden result buffers"
+                                      status))
+              (should-not (get-buffer buffer-name)))))
+      (when (buffer-live-p log-buf)
+        (kill-buffer log-buf)))))
+
 ;; Buffer line ID generation
 
 (ekg-deftest ekg-agent-test-buffer-line-ids-unique ()
@@ -812,6 +848,50 @@ result when the agent finishes."
               ;; "hello\n" is 6 chars, so line 2 starts at position 7.
               (should (= 7 begin-pos)))))
       (kill-buffer buf))))
+
+(ekg-deftest ekg-agent-test-search-buffer-finds-targeted-lines ()
+  "Searching a buffer returns matching lines without dumping the buffer."
+  (let ((buf (get-buffer-create "*ekg-agent-test-search*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "alpha\nneedle one\nbeta\nneedle two\ngamma\n"))
+          (let ((result (ekg-agent--search-buffer
+                         "*ekg-agent-test-search*" "needle" 10 0)))
+            (should (string-match-p "Found 2 matches" result))
+            (should (string-match-p ">...: needle one" result))
+            (should (string-match-p ">...: needle two" result))
+            (should-not (string-match-p "alpha" result))
+            (should-not (string-match-p "gamma" result))))
+      (kill-buffer buf))))
+
+(ekg-deftest ekg-agent-test-read-buffer-large-output-hidden-buffer ()
+  "Large read_buffer tool output is truncated into a hidden buffer."
+  (let ((buf (get-buffer-create "*ekg-agent-test-large-read*"))
+        (log-buf (get-buffer-create "*ekg-agent-test-large-read-log*"))
+        (ekg-agent-tool-result-max-output-chars 80))
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer log-buf))
+          (with-current-buffer buf
+            (erase-buffer)
+            (dotimes (i 30)
+              (insert (format "line-%02d with enough text\n" i))))
+          (with-current-buffer log-buf
+            (setq ekg-agent--hidden-result-buffers nil))
+          (let ((result (ekg-agent--read-buffer-tool
+                         "*ekg-agent-test-large-read*")))
+            (should (string-match-p "read_buffer output truncated at 80"
+                                    result))
+            (should (string-match "hidden buffer `\\([^`]+\\)`" result))
+            (let ((buffer-name (match-string 1 result)))
+              (should (get-buffer buffer-name))
+              (ekg-agent--cleanup-hidden-result-buffers log-buf)
+              (should-not (get-buffer buffer-name)))))
+      (when (buffer-live-p buf)
+        (kill-buffer buf))
+      (when (buffer-live-p log-buf)
+        (kill-buffer log-buf)))))
 
 (ekg-deftest ekg-agent-test-read-buffer-nonexistent ()
   "Reading a nonexistent buffer returns an error string."
