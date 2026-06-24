@@ -55,6 +55,74 @@
                  "result_id"
                  (llm-tool-description ekg-agent-tools-gnus-tool-read-message)))))
 
+(ekg-deftest ekg-agent-tools-test-gnus-read-message-does-not-mark-read ()
+  "Reading a Gnus message should not use summary mark machinery."
+  (let ((gnus-mark-article-hook '(gnus-summary-mark-read-and-unread-as-read))
+        (summary-selected nil)
+        (marked nil))
+    (cl-letf (((symbol-function 'ekg-agent-tools-gnus--ensure-ready)
+               (lambda () t))
+              ((symbol-function 'gnus-get-info)
+               (lambda (group) (list group 1 nil)))
+              ((symbol-function 'gnus-request-article)
+               (lambda (_article _group buffer)
+                 (should-not gnus-mark-article-hook)
+                 (with-current-buffer buffer
+                   (insert "Subject: Test\n\nBody"))
+                 t))
+              ((symbol-function 'gnus-summary-select-article)
+               (lambda (&rest _args)
+                 (setq summary-selected t)))
+              ((symbol-function 'gnus-summary-mark-article)
+               (lambda (&rest _args)
+                 (setq marked t)))
+              ((symbol-function 'gnus-mark-article-as-read)
+               (lambda (&rest _args)
+                 (setq marked t))))
+      (should (string-match-p
+               "Body"
+               (ekg-agent-tools-gnus-read-message
+                :group "nnimap+test:INBOX"
+                :article 1)))
+      (should-not summary-selected)
+      (should-not marked))))
+
+(ekg-deftest ekg-agent-tools-test-gnus-header-fetch-does-not-mark-read ()
+  "Fetching Gnus metadata should not enable article mark hooks."
+  (let ((gnus-mark-article-hook '(gnus-summary-mark-read-and-unread-as-read))
+        (summary-selected nil)
+        (marked nil)
+        (nntp-server-buffer (generate-new-buffer " *ekg-gnus-test*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'gnus-request-head)
+                   (lambda (_article _group)
+                     (should-not gnus-mark-article-hook)
+                     (with-current-buffer nntp-server-buffer
+                       (erase-buffer)
+                       (insert (string-join
+                                '("Subject: Test"
+                                  "From: Person <person@example.com>"
+                                  "Date: Mon, 1 Jun 2026 12:00:00 -0400"
+                                  "Message-ID: <test@example.com>"
+                                  "")
+                                "\n")))
+                     t))
+                  ((symbol-function 'gnus-summary-select-article)
+                   (lambda (&rest _args)
+                     (setq summary-selected t)))
+                  ((symbol-function 'gnus-summary-mark-article)
+                   (lambda (&rest _args)
+                     (setq marked t)))
+                  ((symbol-function 'gnus-mark-article-as-read)
+                   (lambda (&rest _args)
+                     (setq marked t))))
+          (let ((metadata (ekg-agent-tools-gnus--article-metadata
+                           "nnimap+test:INBOX" 1)))
+            (should (equal (plist-get metadata :subject) "Test"))
+            (should-not summary-selected)
+            (should-not marked)))
+      (kill-buffer nntp-server-buffer))))
+
 (ekg-deftest ekg-agent-tools-test-gnus-search-result-line ()
   "Gnus search result rows separate opaque and RFC message IDs."
   (should
