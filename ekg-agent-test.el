@@ -78,6 +78,23 @@
                  (ekg-agent--with-error-as-text
                    (+ 40 2)))))
 
+(ekg-deftest ekg-agent-test-current-buffer-context-is-lightweight ()
+  "Current buffer context includes metadata but not full contents."
+  (let ((buf (get-buffer-create "*ekg-agent-test-context*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (erase-buffer)
+          (emacs-lisp-mode)
+          (insert "SECRET-CONTENT-SHOULD-NOT-BE-IN-CONTEXT\n")
+          (let ((context (ekg-agent--current-buffer-context)))
+            (should (string-match-p "Current buffer:" context))
+            (should (string-match-p "name: \\*ekg-agent-test-context\\*"
+                                    context))
+            (should (string-match-p "major mode: emacs-lisp-mode" context))
+            (should (string-match-p "search_buffer" context))
+            (should-not (string-match-p "SECRET-CONTENT" context))))
+      (kill-buffer buf))))
+
 (ekg-deftest ekg-agent-test-status-reminder-adds-prompt-when-overdue ()
   "An overdue session gets a prompt reminder to summarize state."
   (let ((buf (get-buffer-create "*ekg-agent-test-reminder*"))

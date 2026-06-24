@@ -2365,6 +2365,27 @@ or `ekg-agent-tool-code'."
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
 
+(defun ekg-agent--current-buffer-context ()
+  "Return lightweight context about the current buffer.
+This intentionally does not include buffer contents; the agent can use
+`search_buffer' or `read_buffer' when it needs specific text."
+  (format
+   (concat "Current buffer:\n"
+           "- name: %s\n"
+           "- file: %s\n"
+           "- major mode: %s\n"
+           "- size: %d characters\n"
+           "- point: %d\n"
+           "- line: %d\n\n"
+           "Use `search_buffer` for targeted text lookup and `read_buffer` "
+           "with a range when exact buffer content is needed.")
+   (buffer-name)
+   (or buffer-file-name "none")
+   major-mode
+   (buffer-size)
+   (point)
+   (line-number-at-pos)))
+
 (defun ekg-agent--ask (question context &optional extra-tools provider)
   "Ask the ekg agent a QUESTION and display the result.
 
@@ -2431,6 +2452,8 @@ is a list."
   (ekg-connect)
   (ekg-agent--ask question
                   (concat
+                   (ekg-agent--current-buffer-context)
+                   "\n\n"
                    "The last 10 notes:\n\n"
                    (mapconcat #'ekg-llm-note-to-text
                               (ekg-get-latest-modified 10) "\n\n"))
@@ -2469,25 +2492,6 @@ is a list."
                      prompt-context)
                     extra-tools
                     (ekg-agent--read-provider-for-prefix arg))))
-
-(defun ekg-agent-ask-with-buffer (instructions &optional arg)
-  "Issue INSTRUCTIONS to the agent, with the current buffer as context.
-
-With prefix ARG, prompt for the LLM provider when `ekg-llm-provider'
-is a list."
-  (interactive (list (read-string "Instructions: ") current-prefix-arg))
-  (ekg-connect)
-  (ekg-agent--ask instructions
-                  (concat
-                   (format "The current buffer is named %s%s, the major mode is %s.  The content is:\n"
-                           (buffer-name)
-                           (if buffer-file-name
-                               (format " (file: %s)" buffer-file-name)
-                             "")
-                           major-mode)
-                   (buffer-substring-no-properties (point-min) (point-max)))
-                  nil
-                  (ekg-agent--read-provider-for-prefix arg)))
 
 (defun ekg-agent-ask-with-region (instructions start end &optional arg)
   "Issue INSTRUCTIONS to the agent, with the region from START to END as context.

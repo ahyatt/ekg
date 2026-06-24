@@ -2268,30 +2268,22 @@ prefix argument allows you to edit the instructions sent to the agent.
 
 You can also ask the agent a direct question at any time with the command
 @samp{ekg-agent-ask}. This will prompt you for a question@comma{} which is then sent to the
-agent.  To provide context@comma{} ekg will automatically include your last 10 notes in
-the information sent to the agent. The agent will be able to search your notes and
-use any other tools available. It will then provide its response either by
-displaying it in a popup buffer or by creating a new note@comma{} choosing the method
-it deems most appropriate. Once the agent has provided a response@comma{} its task for
-that question is complete.  For example:
+agent.  To provide context@comma{} ekg will automatically include lightweight
+information about the current buffer and your last 10 notes.  The current buffer
+contents are not sent up front; the agent can use tools such as @samp{search_buffer}
+or @samp{read_buffer} when it needs specific text.  The agent will be able to search
+your notes and use any other tools available. It will then provide its response
+either by displaying it in a popup buffer or by creating a new note@comma{} choosing the
+method it deems most appropriate. Once the agent has provided a response@comma{} its
+task for that question is complete.  For example:
 
 @lisp
 (ekg-agent-ask "What are the main themes in my recent notes on 'systems thinking'?")
 @end lisp
 
 This allows for quick@comma{} ad-hoc interactions with the agent without needing to be
-in a specific note buffer.
-
-If you want to ask a question about the current buffer you are in@comma{} you can use
-the command @samp{ekg-agent-ask-with-buffer}. This will send the entire buffer's
-content as context to the agent@comma{} along with your question.  For example:
-
-@lisp
-(ekg-agent-ask-with-buffer "Summarize this for me.")
-@end lisp
-
-This allows for quick@comma{} ad-hoc interactions with the agent without needing to be
-in a specific note buffer.  There's a similar @samp{ekg-agent-ask-with-region}.
+in a specific note buffer.  There's a similar @samp{ekg-agent-ask-with-region} when
+you explicitly want to send a selected region as context.
 
 You can also ask a question about a specific note with @samp{ekg-agent-ask-with-note}.
 When called from an @samp{ekg-notes-mode} buffer@comma{} it uses the note at point; when
@@ -2299,8 +2291,8 @@ called from a note editing buffer@comma{} it uses that note.  You can also pass 
 ID programmatically.
 
 When @code{ekg-llm-provider} is a list@comma{} the @samp{ekg-agent-ask}@comma{}
-@samp{ekg-agent-ask-with-note}@comma{} @samp{ekg-agent-ask-with-buffer}@comma{} and
-@samp{ekg-agent-ask-with-region} commands can be called with a prefix argument
+@samp{ekg-agent-ask-with-note}@comma{} and @samp{ekg-agent-ask-with-region} commands can be
+called with a prefix argument
 (normally via @samp{C-u M-x}) to select the provider for that agent session.  Without
 a prefix argument@comma{} the agent chooses the first configured provider with tool
 calling support@comma{} falling back to the first provider in the list.  When
@@ -2422,6 +2414,13 @@ instructions or redirect its work.
 stop after the current in-flight LLM call completes (it does not interrupt a
 call in progress).  The conversation prompt is preserved in the buffer@comma{} so you
 can resume later with @samp{C-c C-c}.
+
+@item
+@samp{C-c C-d} (@samp{ekg-agent-export-debug-json}): Export the stored prompt@comma{}
+conversation interactions@comma{} tool definitions@comma{} successful tool history@comma{}
+completion requirements@comma{} configuration@comma{} and visible log text to a temporary
+JSON file.  The file path is copied to the kill ring and can be analyzed with
+the @samp{agent_tools/ekg-agent-debug-analyzer} skill.
 @end itemize
 
 This makes it easy to supervise long-running agent sessions: you can cancel if
@@ -2509,6 +2508,13 @@ ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
 
 This way@comma{} the agent always has up-to-date documentation for the ekg tools
 without needing to duplicate it.
+
+The directory @samp{agent_tools/ekg-agent-debug-analyzer/} contains a separate skill
+for investigating JSON exports from @samp{ekg-agent-export-debug-json}.  It includes
+a script that produces a first-pass Markdown report of inefficient tool use@comma{}
+errors@comma{} repeated calls@comma{} oversized tool results@comma{} completion blockers@comma{} and missing
+required actions.  Symlink its @samp{SKILL.md} into an agent skill directory when you
+want an external agent to improve @samp{ekg-agent} behavior from exported sessions.
 
 @item
 @anchor{Instructions for configuring agents}Instructions for configuring agents
