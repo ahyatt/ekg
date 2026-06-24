@@ -279,10 +279,23 @@ even when tool functions execute in the origin buffer.")
 If there is a list of providers, find the first one that has tool
 calling, or if none have tool calling, just return the first provider."
   (if (listp ekg-llm-provider)
-      (or (car (seq-filter (lambda (provider) (member 'tool-use (llm-capabilities provider)))
-                           ekg-llm-provider))
-          (car ekg-llm-provider))
+    (or (car (seq-filter (lambda (provider) (member 'tool-use (llm-capabilities provider)))
+                         ekg-llm-provider))
+        (car ekg-llm-provider))
     ekg-llm-provider))
+
+(defun ekg-agent--read-provider-for-prefix (arg)
+  "Read an LLM provider when ARG is non-nil and providers are configured.
+Return nil when ARG is nil or `ekg-llm-provider' is not a non-empty list."
+  (when (and arg (consp ekg-llm-provider))
+    (let ((provider-alist (mapcar (lambda (provider)
+                                    (cons (llm-name provider)
+                                          provider))
+                                  ekg-llm-provider)))
+      (assoc-default (completing-read "Provider: "
+                                      provider-alist
+                                      nil t)
+                     provider-alist))))
 
 (defun ekg-agent--transient-error-p (err-string)
   "Return non-nil if ERR-STRING indicates a transient LLM error.
@@ -2302,13 +2315,16 @@ or `ekg-agent-tool-code'."
   :type '(repeat (sexp :tag "Tool"))
   :group 'ekg-agent)
 
-(defun ekg-agent--ask (question context &optional extra-tools)
+(defun ekg-agent--ask (question context &optional extra-tools provider)
   "Ask the ekg agent a QUESTION and display the result.
 
 CONTEXT is what we'll display to the agent as context.  If nil no
 additional context is added.
 
 EXTRA-TOOLS is a list of additional tools used for this request.
+
+PROVIDER is the LLM provider to use.  If nil, use
+`ekg-agent--provider'.
 
 The agent has access to all the defined tools, and can create notes or
 display results in a popup buffer, or ask the user a question.  The
@@ -2352,30 +2368,39 @@ agent will decide which is best."
                         nil
                         nil
                         (ekg-agent--completion-requirements-for-question
-                         question))))
+                         question)
+                        provider)))
 
-(defun ekg-agent-ask (question)
+(defun ekg-agent-ask (question &optional arg)
   "Ask the ekg agent a QUESTION and display the result.
 The agent has access to all the ekg tools, and can create notes
 or display results in a popup buffer.  The agent will decide
-which is best."
-  (interactive "sQuestion: ")
+which is best.
+
+With prefix ARG, prompt for the LLM provider when `ekg-llm-provider'
+is a list."
+  (interactive (list (read-string "Question: ") current-prefix-arg))
   (ekg-connect)
   (ekg-agent--ask question
                   (concat
                    "The last 10 notes:\n\n"
                    (mapconcat #'ekg-llm-note-to-text
-                              (ekg-get-latest-modified 10) "\n\n"))))
+                              (ekg-get-latest-modified 10) "\n\n"))
+                  nil
+                  (ekg-agent--read-provider-for-prefix arg)))
 
-(defun ekg-agent-ask-with-note (question &optional id extra-tools)
+(defun ekg-agent-ask-with-note (question &optional id extra-tools arg)
   "Ask the agent QUESTION with the note with ID as context.
 
 If ID is nil, we will use the current buffer's associated note, or the
 note at point if in a `ekg-notes-mode` buffer.
 
 EXTRA-TOOLS is a list of additional tools to make available to the
-agent."
-  (interactive "sQuestion: \n")
+agent.
+
+With prefix ARG, prompt for the LLM provider when `ekg-llm-provider'
+is a list."
+  (interactive (list (read-string "Question: ") nil nil current-prefix-arg))
   (ekg-connect)
   (let* ((note (or (and id (ekg-agent--get-note-with-id id))
                    (ekg-current-note-or-error-expanded)))
@@ -2394,11 +2419,15 @@ agent."
                      "The user is issuing instructions with a note as context. This is the text of that note:\n"
                      note-text
                      prompt-context)
-                    extra-tools)))
+                    extra-tools
+                    (ekg-agent--read-provider-for-prefix arg))))
 
-(defun ekg-agent-ask-with-buffer (instructions)
-  "Issue INSTRUCTIONS to the agent, with the current buffer as context."
-  (interactive "sInstructions: ")
+(defun ekg-agent-ask-with-buffer (instructions &optional arg)
+  "Issue INSTRUCTIONS to the agent, with the current buffer as context.
+
+With prefix ARG, prompt for the LLM provider when `ekg-llm-provider'
+is a list."
+  (interactive (list (read-string "Instructions: ") current-prefix-arg))
   (ekg-connect)
   (ekg-agent--ask instructions
                   (concat
@@ -2408,11 +2437,19 @@ agent."
                                (format " (file: %s)" buffer-file-name)
                              "")
                            major-mode)
-                   (buffer-substring-no-properties (point-min) (point-max)))))
+                   (buffer-substring-no-properties (point-min) (point-max)))
+                  nil
+                  (ekg-agent--read-provider-for-prefix arg)))
 
-(defun ekg-agent-ask-with-region (instructions start end)
-  "Issue INSTRUCTIONS to the agent, with the region from START to END as context."
-  (interactive "sInstructions: \nr")
+(defun ekg-agent-ask-with-region (instructions start end &optional arg)
+  "Issue INSTRUCTIONS to the agent, with the region from START to END as context.
+
+With prefix ARG, prompt for the LLM provider when `ekg-llm-provider'
+is a list."
+  (interactive (list (read-string "Instructions: ")
+                     (region-beginning)
+                     (region-end)
+                     current-prefix-arg))
   (ekg-connect)
   (ekg-agent--ask instructions
                   (concat
@@ -2422,7 +2459,9 @@ agent."
                                (format " (file: %s)" buffer-file-name)
                              "")
                            major-mode)
-                   (buffer-substring-no-properties start end))))
+                   (buffer-substring-no-properties start end))
+                  nil
+                  (ekg-agent--read-provider-for-prefix arg)))
 
 (defun ekg-agent-latest-notes-context ()
   "Return the context for an agent for new sessions.
@@ -2777,10 +2816,12 @@ stops a still-running agent."
 
 (defun ekg-agent--handle-llm-result (result prompt iteration-num status-callback
                                             end-tools deadline timeout-final
-                                            completion-requirements log-buf)
+                                            completion-requirements log-buf
+                                            provider)
   "Handle async LLM RESULT for PROMPT at ITERATION-NUM.
 STATUS-CALLBACK, END-TOOLS, DEADLINE, TIMEOUT-FINAL,
-COMPLETION-REQUIREMENTS, and LOG-BUF are the active loop state."
+COMPLETION-REQUIREMENTS, LOG-BUF, and PROVIDER are the active
+loop state."
   (if (and (buffer-live-p log-buf)
            (buffer-local-value 'ekg-agent--cancelled-p log-buf))
       (when (ekg-agent--set-stopped log-buf)
@@ -2822,7 +2863,8 @@ COMPLETION-REQUIREMENTS, and LOG-BUF are the active loop state."
                                       end-tools
                                       deadline
                                       timeout-final
-                                      completion-requirements)))
+                                      completion-requirements
+                                      provider)))
             (when (ekg-agent--set-stopped log-buf)
               (when status-callback
                 (funcall
@@ -2843,11 +2885,12 @@ COMPLETION-REQUIREMENTS, and LOG-BUF are the active loop state."
                               end-tools
                               deadline
                               timeout-final
-                              completion-requirements)))))))
+                              completion-requirements
+                              provider)))))))
 
 (defun ekg-agent--iterate (prompt iteration-num &optional status-callback
                                   end-tools deadline timeout-final
-                                  completion-requirements)
+                                  completion-requirements provider)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 
 PROMPT is the chat prompt for the LLM.
@@ -2868,6 +2911,9 @@ stopping.
 
 COMPLETION-REQUIREMENTS is a list of inferred requirements that must be
 satisfied before an end tool is accepted.
+
+PROVIDER is the LLM provider to use.  If nil, use
+`ekg-agent--provider'.
 
 This is to start, and after every tool call to continue the agent
 session.  At iteration 0 the log buffer is created and
@@ -2914,7 +2960,8 @@ session.  At iteration 0 the log buffer is created and
                               end-tools
                               deadline
                               timeout-final
-                              completion-requirements)))
+                              completion-requirements
+                              provider)))
     ;; iteration > 0: run the agent loop.  Prefer the dynamically
     ;; bound log buffer when present; async tools such as sub-agents can
     ;; enter here while `current-buffer' is the origin buffer.
@@ -2948,7 +2995,7 @@ session.  At iteration 0 the log buffer is created and
                           (ekg-agent--make-deadline-timer
                            log-buf deadline status-callback))
                     (ekg-agent--llm-chat-async-with-retry
-                     (ekg-agent--provider)
+                     (or provider (ekg-agent--provider))
                      prompt
                      (lambda (result)
                        (when deadline-timer
@@ -2965,7 +3012,8 @@ session.  At iteration 0 the log buffer is created and
                               deadline
                               timeout-final
                               completion-requirements
-                              log-buf)
+                              log-buf
+                              provider)
                            (error
                             (when (ekg-agent--set-stopped log-buf)
                               (ekg-agent--log "Error in callback: %s"
