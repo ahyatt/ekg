@@ -8,6 +8,8 @@
 "
    :setup
    (progn
+(when (file-exists-p "/tmp/ekg-bench-report.org")
+  (delete-file "/tmp/ekg-bench-report.org"))
 (with-temp-file "/tmp/ekg-bench-data.csv"
   (insert "Name,Score,Grade\n")
   (insert "Charlie,78,C\n")
@@ -23,6 +25,8 @@
    1. A title '#+TITLE: Student Report'
    2. An org table with the data sorted by Score descending
    3. A summary line below the table showing the average score.
+   4. After the report is written, create a brief ekg note documenting
+      the CSV-to-org report conversion so the work is remembered.
    Use elisp or shell commands as needed to accomplish this.")
 )
    :verify-task

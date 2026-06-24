@@ -36,7 +36,11 @@
 (ekg-agent-ask
   "Continue the refactoring task for the ekg-bench-cont files.
    Check my notes for previous progress on this task and pick up
-   where we left off. Don't redo work that's already done.")
+   where we left off. Don't redo work that's already done. After you
+   find the progress note, update only /tmp/ekg-bench-cont-3.el as
+   needed. Read that whole file without a range, then use write_file
+   with the full corrected file content rather than regex line IDs.
+   Finally update or create an ekg note saying file 3 is done.")
 )
    :verify-task
    (progn

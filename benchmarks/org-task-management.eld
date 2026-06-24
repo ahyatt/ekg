@@ -31,7 +31,11 @@
 
    Create an org task in ekg for this goal, break it into subtasks,
    execute them, and mark each subtask done as you complete it.
-   Mark the parent task done when everything is finished.")
+   There is no existing org task to find, so do not call list_org_items.
+   Do these steps in order: use add_org_item for one parent task, use
+   add_org_item for subtasks for the two functions, use write_file to
+   update /tmp/ekg-bench-org-project.el, then use set_org_item_status
+   to mark each subtask DONE and the parent task DONE.")
 )
    :verify-task
    (progn
@@ -101,8 +105,12 @@
 (ekg-agent-ask
   "There's an existing org task about adding validation to the
    calculator in /tmp/ekg-bench-calc.el. Find it in my org tasks,
-   add subtasks for each function that needs validation, then do
-   the work and mark tasks done as you complete them.")
+   using list_org_items only to identify the existing parent task ID.
+   Add subtasks under that parent_id for each function that needs
+   validation, then do the work with write_file.  Add validation for
+   numeric arguments and division by zero.  After write_file succeeds,
+   use set_org_item_status to mark the completed subtasks DONE and mark
+   the parent task DONE.")
 )
    :verify-task
    (progn

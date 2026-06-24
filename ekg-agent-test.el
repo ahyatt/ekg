@@ -353,6 +353,68 @@ result when the agent finishes."
                                          "test-agent"))))
        (kill-buffer buf))))
 
+(defun ekg-agent-test--dummy-tool (name)
+  "Return a no-op test tool named NAME."
+  (make-llm-tool :function (lambda (&rest _args) "ok")
+                 :name name
+                 :description "Test-only tool."
+                 :args '()))
+
+(ekg-deftest ekg-agent-test-current-note-tools-do-not-satisfy-file-change ()
+  "Current-note response tools do not satisfy a required file change."
+  (with-temp-buffer
+    (setq-local ekg-agent--prompt
+                (llm-make-chat-prompt
+                 "Update /tmp/example.txt"
+                 :tools (list
+                         (ekg-agent-test--dummy-tool "write_file")
+                         (ekg-agent-test--dummy-tool "append_to_current_note")
+                         (ekg-agent-test--dummy-tool "replace_current_note"))))
+    (setq-local ekg-agent--completion-requirements '(file-change))
+    (setq-local ekg-agent--tool-call-history
+                (list (list :name "append_to_current_note"
+                            :args nil
+                            :result "ok")))
+    (should (ekg-agent--completion-blocker))
+    (should (ekg-agent--pending-file-change-p (current-buffer)))
+    (setq-local ekg-agent--tool-call-history
+                (list (list :name "edit_file"
+                            :args nil
+                            :result "ok")))
+    (should-not (ekg-agent--completion-blocker))
+    (should-not (ekg-agent--pending-file-change-p (current-buffer)))))
+
+(ekg-deftest ekg-agent-test-run-elisp-does-not-finish-before-end-tool ()
+  "A diagnostic tool result should not stop the loop before an end tool."
+  (let ((run-elisp-calls 0)
+        status)
+    (ekg-agent-test--with-mock-agent
+        (list
+         (list (cons "run_elisp" nil))
+         (list (cons "end" nil)))
+      (ekg-agent--iterate
+       (llm-make-chat-prompt
+        "Verify with run_elisp."
+        :tools (list
+                (make-llm-tool
+                 :function (lambda ()
+                             (cl-incf run-elisp-calls)
+                             "ok")
+                 :name "run_elisp"
+                 :description "Test-only diagnostic tool."
+                 :args '())
+                ekg-agent-tool-end)
+        :tool-options (make-llm-tool-options :tool-choice 'any))
+       0
+       (lambda (status) (setq done-flag status))
+       '("end")
+       nil
+       nil
+       '(run-elisp))
+      (setq status done-flag))
+    (should (= run-elisp-calls 1))
+    (should (equal status "done"))))
+
 (ekg-deftest ekg-agent-test-agent-reads-and-edits-file ()
   "The agent loop reads a file, edits it, and ends."
   (let ((path (make-temp-file "ekg-agent-int-test")))

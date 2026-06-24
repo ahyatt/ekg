@@ -15,8 +15,13 @@
 ;;
 ;; EKG_BENCH_TASK: Optional. The name of a single benchmark task to run.
 ;;   If unset, all benchmarks are run.
+;;
+;; EKG_BENCH_MAX_TOKENS: Optional. Maximum output tokens for benchmark
+;;   LLM calls. Defaults to 2048.
 
 ;;; Code:
+
+(setq load-prefer-newer t)
 
 (defvar ekg-bench-ekg-path
   (file-name-directory (or load-file-name buffer-file-name default-directory))
@@ -39,6 +44,37 @@
 (add-to-list 'load-path ekg-bench-ekg-path)
 
 (require 'ekg-agent-bench)
+
+(defun ekg-bench--format-gap (result)
+  "Return the status-update gap summary for RESULT."
+  (let ((gap (ekg-agent-bench-result-max-status-update-gap result)))
+    (if gap
+        (format "%.1fs" gap)
+      "n/a")))
+
+(defun ekg-bench--message-result (result)
+  "Print one batch-friendly summary line for benchmark RESULT."
+  (message "%-30s task:%s skill:%s memory:%s iters:%d time:%.0fs status:%s status-updates:%d max-gap:%s"
+           (ekg-agent-bench-result-name result)
+           (ekg-agent-bench--format-pass
+            (ekg-agent-bench-result-task-passed result))
+           (ekg-agent-bench--format-pass
+            (ekg-agent-bench-result-skill-passed result))
+           (ekg-agent-bench--format-pass
+            (ekg-agent-bench-result-memory-passed result))
+           (ekg-agent-bench-result-iterations result)
+           (ekg-agent-bench-result-wall-time result)
+           (ekg-agent-bench-result-status result)
+           (or (ekg-agent-bench-result-status-update-count result) 0)
+           (ekg-bench--format-gap result))
+  (when-let* ((err (ekg-agent-bench-result-error-message result)))
+    (message "  Error: %s" err))
+  (when (getenv "EKG_BENCH_VERBOSE_LOGS")
+    (when-let* ((log (ekg-agent-bench-result-agent-log result)))
+      (unless (string-empty-p log)
+        (message "\n--- agent log: %s ---\n%s\n--- end agent log ---"
+                 (ekg-agent-bench-result-name result)
+                 log)))))
 
 (unless (or (bound-and-true-p byte-compile-current-file)
             (boundp 'eldev-project-dir))
@@ -72,9 +108,9 @@
                        (if gap
                            (format "%.1fs" gap)
                          "n/a")))
-            (when-let ((err (ekg-agent-bench-result-error-message result)))
+            (when-let* ((err (ekg-agent-bench-result-error-message result)))
               (message "Error: %s" err))
-            (when-let ((log (ekg-agent-bench-result-agent-log result)))
+            (when-let* ((log (ekg-agent-bench-result-agent-log result)))
               (unless (string-empty-p log)
                 (message "\n--- agent log ---\n%s\n--- end agent log ---" log)))
             (unless (ekg-agent-bench-result-task-passed result)
@@ -82,6 +118,9 @@
       (progn
         (message "Running all benchmarks...")
         (let ((results (ekg-agent-bench-run)))
+          (message "\n=== Benchmark results ===")
+          (dolist (result results)
+            (ekg-bench--message-result result))
           (let ((failures (seq-filter
                            (lambda (r) (not (ekg-agent-bench-result-task-passed r)))
                            results)))

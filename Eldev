@@ -3,6 +3,7 @@
 (eldev-use-package-archive 'gnu-elpa)
 (eldev-use-package-archive 'melpa-unstable)
 (eldev-use-plugin 'maintainer)
+(eldev-add-extra-dependencies 'build 'futur)
 (eldev-add-extra-dependencies 'test '(:package markdown-mode :archive melpa))
 (eldev-add-extra-dependencies 'test 'denote)
 (eldev-add-extra-dependencies 'test 'futur)
