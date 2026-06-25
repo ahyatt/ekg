@@ -180,6 +180,16 @@ result in another buffer."
   :type 'integer
   :group 'ekg-agent)
 
+(defcustom ekg-agent-llm-name-log-buffer nil
+  "Whether to ask the LLM for a better agent log buffer name.
+When nil, `ekg-agent--prompt-id' uses a deterministic slug from the
+user's prompt.  When non-nil, the agent starts with that slug and later
+renames the log buffer from an async LLM request scheduled outside the
+startup call stack.  This is nil by default because even async request
+setup can briefly block Emacs."
+  :type 'boolean
+  :group 'ekg-agent)
+
 (defcustom ekg-agent-code-command nil
   "Command to run for the coding tool.
 
@@ -1535,6 +1545,15 @@ identifiers."
                               (max 1 (- begin-line 2))
                               (+ end-line 5))))))
 
+(defun ekg-agent--edit-file-tool (path begin-id begin-text end-id end-text
+                                       replacement)
+  "Edit PATH for the `edit_file' tool with bounded output."
+  (ekg-agent--bounded-tool-result
+   ekg-agent--current-log-buffer
+   "edit_file"
+   (ekg-agent--edit-file path begin-id begin-text end-id end-text replacement)
+   ekg-agent-tool-result-max-output-chars))
+
 (defun ekg-agent--read-file-tool (path &optional begin end range-type)
   "Read PATH for the `read_file' tool with bounded output."
   (ekg-agent--bounded-tool-result
@@ -1556,9 +1575,9 @@ identifiers."
 
 (defconst ekg-agent-tool-edit-file
   (make-llm-tool
-   :function #'ekg-agent--edit-file
+   :function #'ekg-agent--edit-file-tool
    :name "edit_file"
-   :description "Edit a file by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context and new line identifiers. If the file is open in an Emacs buffer, edits the buffer in place without saving; otherwise saves to disk."
+   :description "Edit a file by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context and new line identifiers. Large results are bounded and stored in a hidden buffer for later inspection. If the file is open in an Emacs buffer, edits the buffer in place without saving; otherwise saves to disk."
    :args '((:name "path" :type string :description "The file path to edit." :required t)
            (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts." :required t)
            (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace." :required t)
@@ -2874,6 +2893,17 @@ name can be applied asynchronously after the log buffer is created."
        (message "ekg-agent prompt-id async fallback: %s"
                 (error-message-string err))))))
 
+(defun ekg-agent--schedule-prompt-id-async (prompt log-buf &optional provider)
+  "Maybe schedule async LLM naming for PROMPT and LOG-BUF.
+Return non-nil when a naming request was scheduled."
+  (when ekg-agent-llm-name-log-buffer
+    (run-at-time
+     0 nil
+     (lambda ()
+       (when (buffer-live-p log-buf)
+         (ekg-agent--prompt-id-async prompt log-buf provider))))
+    t))
+
 (defun ekg-agent--json-object (&rest pairs)
   "Return a JSON object from alternating string keys and values in PAIRS."
   (let ((object (make-hash-table :test 'equal)))
@@ -3396,14 +3426,14 @@ session.  At iteration 0 the log buffer is created and
           (setq header-line-format
                 '(:eval (ekg-agent--format-header-line)))
           (ekg-agent--wrap-prompt-tools prompt buf origin-buf)
-          (ekg-agent--prompt-id-async prompt buf provider)
           (goto-char (point-min))
           (ekg-agent--iterate prompt 1
                               status-callback
                               end-tools
                               deadline
                               timeout-final
-                              provider)))
+                              provider)
+          (ekg-agent--schedule-prompt-id-async prompt buf provider)))
     ;; iteration > 0: run the agent loop.  Prefer the dynamically
     ;; bound log buffer when present; async tools such as sub-agents can
     ;; enter here while `current-buffer' is the origin buffer.

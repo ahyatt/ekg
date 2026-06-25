@@ -152,6 +152,36 @@
         (when-let* ((buf (get-buffer name)))
           (kill-buffer buf))))))
 
+(ekg-deftest ekg-agent-test-prompt-id-async-not-scheduled-by-default ()
+  "LLM naming is opt-in so startup does not start an extra request."
+  (let ((ekg-agent-llm-name-log-buffer nil)
+        (prompt (llm-make-chat-prompt "Explain org sync behavior"))
+        (log-buf (get-buffer-create "*ekg-agent-test-name-log*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'run-at-time)
+                   (lambda (&rest _args)
+                     (error "run-at-time should not be called"))))
+          (should-not (ekg-agent--schedule-prompt-id-async
+                       prompt log-buf (make-llm-fake))))
+      (kill-buffer log-buf))))
+
+(ekg-deftest ekg-agent-test-prompt-id-async-schedules-when-enabled ()
+  "Optional LLM naming is scheduled instead of run during setup."
+  (let ((ekg-agent-llm-name-log-buffer t)
+        (prompt (llm-make-chat-prompt "Explain org sync behavior"))
+        (log-buf (get-buffer-create "*ekg-agent-test-name-log*"))
+        scheduled)
+    (unwind-protect
+        (cl-letf (((symbol-function 'run-at-time)
+                   (lambda (&rest args)
+                     (setq scheduled args)
+                     'mock-timer)))
+          (should (ekg-agent--schedule-prompt-id-async
+                   prompt log-buf (make-llm-fake)))
+          (should scheduled)
+          (should (= 0 (car scheduled))))
+      (kill-buffer log-buf))))
+
 (ekg-deftest ekg-agent-test-status-reminder-adds-prompt-when-overdue ()
   "An overdue session gets a prompt reminder to summarize state."
   (let ((buf (get-buffer-create "*ekg-agent-test-reminder*"))
@@ -456,6 +486,36 @@
               ;; Should be adjusted to 2-space indent
               (should (string-match-p "^  new content" (buffer-string))))))
       (delete-file path))))
+
+(ekg-deftest ekg-agent-test-edit-file-tool-large-output-hidden-buffer ()
+  "Large edit_file tool output is truncated into a hidden buffer."
+  (let ((path (make-temp-file "ekg-agent-test"))
+        (log-buf (get-buffer-create "*ekg-agent-test-large-edit-log*"))
+        (ekg-agent-tool-result-max-output-chars 80))
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer log-buf))
+          (with-temp-file path
+            (dotimes (i 80)
+              (insert (format "line-%02d with enough text for output\n" i))))
+          (with-current-buffer log-buf
+            (setq ekg-agent--hidden-result-buffers nil))
+          (let* ((truepath (file-truename path))
+                 (id1 (ekg-agent--line-id truepath 1))
+                 (id60 (ekg-agent--line-id truepath 60))
+                 (result (ekg-agent--edit-file-tool
+                          path id1 "line-00" id60 "line-59"
+                          "replacement")))
+            (should (string-match-p "edit_file output truncated at 80"
+                                    result))
+            (should (string-match "hidden buffer `\\([^`]+\\)`" result))
+            (let ((buffer-name (match-string 1 result)))
+              (should (get-buffer buffer-name))
+              (ekg-agent--cleanup-hidden-result-buffers log-buf)
+              (should-not (get-buffer buffer-name)))))
+      (when (file-exists-p path)
+        (delete-file path))
+      (when (buffer-live-p log-buf)
+        (kill-buffer log-buf)))))
 
 ;; Agent integration tests
 ;;
