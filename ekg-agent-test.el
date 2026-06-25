@@ -95,6 +95,63 @@
             (should-not (string-match-p "SECRET-CONTENT" context))))
       (kill-buffer buf))))
 
+(ekg-deftest-with-db ekg-agent-test-latest-note-previews-are-bounded ()
+  "Default ask context includes bounded latest-note previews."
+  (let ((ekg-agent-ask-latest-note-preview-words 5))
+    (ekg-save-note
+     (ekg-note-create
+      :text "one two three four five six seven eight nine ten"
+      :mode 'text-mode
+      :tags '("preview-test")))
+    (let ((context (ekg-agent--latest-note-previews-context)))
+      (should (string-match-p "first 5 words" context))
+      (should (string-match-p "one two three four five" context))
+      (should-not (string-match-p "six seven eight" context)))))
+
+(ekg-deftest ekg-agent-test-ask-defers-startup ()
+  "`ekg-agent-ask' schedules startup so preprocessing is not immediate."
+  (let (scheduled ask-called)
+    (cl-letf (((symbol-function 'run-at-time)
+               (lambda (&rest args)
+                 (setq scheduled args)
+                 'ekg-agent-test-timer))
+              ((symbol-function 'ekg-agent--read-provider-for-prefix)
+               (lambda (_arg) 'provider))
+              ((symbol-function 'ekg-agent--ask)
+               (lambda (&rest _args)
+                 (setq ask-called t))))
+      (ekg-agent-ask "Question?" nil)
+      (should scheduled)
+      (should-not ask-called))))
+
+(ekg-deftest ekg-agent-test-prompt-id-async-renames-log-buffer ()
+  "Prompt IDs use a fallback immediately and LLM naming runs async."
+  (let* ((prompt (llm-make-chat-prompt "Explain org sync behavior"))
+         (log-buf (get-buffer-create "*ekg agent log: explain-org-sync-behavior*"))
+         (async-called nil))
+    (unwind-protect
+        (progn
+          (cl-letf (((symbol-function 'llm-chat)
+                     (lambda (&rest _args)
+                       (error "llm-chat should not be called"))))
+            (should (equal "explain-org-sync-behavior"
+                           (ekg-agent--prompt-id prompt))))
+          (cl-letf (((symbol-function 'llm-chat-async)
+                     (lambda (_provider name-prompt response-callback
+                              _error-callback &optional _multi-output)
+                       (setq async-called t)
+                       (let ((tool (car (llm-chat-prompt-tools name-prompt))))
+                         (funcall (llm-tool-function tool) "better-run-name"))
+                       (funcall response-callback nil)
+                       'mock-name-request)))
+            (ekg-agent--prompt-id-async prompt log-buf (make-llm-fake)))
+          (should async-called)
+          (should (get-buffer "*ekg agent log: better-run-name*")))
+      (dolist (name '("*ekg agent log: explain-org-sync-behavior*"
+                      "*ekg agent log: better-run-name*"))
+        (when-let* ((buf (get-buffer name)))
+          (kill-buffer buf))))))
+
 (ekg-deftest ekg-agent-test-status-reminder-adds-prompt-when-overdue ()
   "An overdue session gets a prompt reminder to summarize state."
   (let ((buf (get-buffer-create "*ekg-agent-test-reminder*"))
@@ -450,6 +507,8 @@ result when the agent finishes."
          (mock-fn (ekg-agent-test--make-tool-response ,tool-call-sequence)))
      (cl-letf (((symbol-function 'ekg-agent--prompt-id)
                 (lambda (_) "test-agent"))
+               ((symbol-function 'ekg-agent--prompt-id-async)
+                #'ignore)
                ((symbol-function 'llm-chat-async)
                 mock-fn)
                ((symbol-function 'ekg-agent--ensure-log-window)
@@ -498,6 +557,8 @@ result when the agent finishes."
         (calls 0))
     (cl-letf (((symbol-function 'ekg-agent--prompt-id)
                (lambda (_) "test-agent"))
+              ((symbol-function 'ekg-agent--prompt-id-async)
+               #'ignore)
               ((symbol-function 'llm-chat-async)
                (lambda (_provider active-prompt response-callback
                          error-callback &optional _multi-output)
@@ -883,11 +944,11 @@ result when the agent finishes."
             (should-not (string-match-p "gamma" result))))
       (kill-buffer buf))))
 
-(ekg-deftest ekg-agent-test-read-buffer-large-output-hidden-buffer ()
-  "Large read_buffer tool output is truncated into a hidden buffer."
+(ekg-deftest ekg-agent-test-read-buffer-large-output-line-truncation ()
+  "Large read_buffer tool output is truncated by line count."
   (let ((buf (get-buffer-create "*ekg-agent-test-large-read*"))
         (log-buf (get-buffer-create "*ekg-agent-test-large-read-log*"))
-        (ekg-agent-tool-result-max-output-chars 80))
+        (ekg-agent-read-buffer-max-lines 3))
     (unwind-protect
         (let ((ekg-agent--current-log-buffer log-buf))
           (with-current-buffer buf
@@ -898,13 +959,13 @@ result when the agent finishes."
             (setq ekg-agent--hidden-result-buffers nil))
           (let ((result (ekg-agent--read-buffer-tool
                          "*ekg-agent-test-large-read*")))
-            (should (string-match-p "read_buffer output truncated at 80"
+            (should (string-match-p "read_buffer output truncated: showing lines 1-3"
                                     result))
-            (should (string-match "hidden buffer `\\([^`]+\\)`" result))
-            (let ((buffer-name (match-string 1 result)))
-              (should (get-buffer buffer-name))
-              (ekg-agent--cleanup-hidden-result-buffers log-buf)
-              (should-not (get-buffer buffer-name)))))
+            (should (string-match-p "line-00" result))
+            (should (string-match-p "line-02" result))
+            (should-not (string-match-p "line-03" result))
+            (should-not (string-match-p "hidden buffer" result))
+            (should-not ekg-agent--hidden-result-buffers)))
       (when (buffer-live-p buf)
         (kill-buffer buf))
       (when (buffer-live-p log-buf)

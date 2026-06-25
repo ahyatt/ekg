@@ -166,6 +166,20 @@ hidden temporary buffer and the result includes that buffer name."
   :type 'integer
   :group 'ekg-agent)
 
+(defcustom ekg-agent-read-buffer-max-lines 1000
+  "Maximum number of buffer lines `read_buffer' returns directly.
+When a requested buffer range contains more lines, `read_buffer'
+returns only the first this many lines and reports that the output was
+truncated.  Unlike character-bounded tools, it does not store the full
+result in another buffer."
+  :type 'integer
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-ask-latest-note-preview-words 100
+  "Maximum words per latest-note preview in `ekg-agent-ask' context."
+  :type 'integer
+  :group 'ekg-agent)
+
 (defcustom ekg-agent-code-command nil
   "Command to run for the coding tool.
 
@@ -1649,7 +1663,9 @@ header line.
 BEGIN and END restrict the output to a range.  RANGE-TYPE is
 either \"line_number\" or \"identifier\" and indicates how to
 interpret BEGIN and END.  Empty strings for BEGIN, END, or
-RANGE-TYPE are treated as nil."
+RANGE-TYPE are treated as nil.  At most
+`ekg-agent-read-buffer-max-lines' lines are returned; larger ranges
+are truncated without storing the omitted lines elsewhere."
   (ekg-agent--with-error-as-text
     (let* ((begin (and (ekg-agent--nonempty-string-p begin) begin))
            (end (and (ekg-agent--nonempty-string-p end) end))
@@ -1669,13 +1685,22 @@ RANGE-TYPE are treated as nil."
                        ((string= range-type "identifier")
                         (ekg-agent--resolve-buffer-line-id buffer-name begin))
                        (t (error "Unknown range_type: %s" range-type))))
-               (finish (cond
-                        ((null end) total)
-                        ((or (null range-type) (string= range-type "line_number"))
-                         (min total (if (stringp end) (string-to-number end) end)))
-                        ((string= range-type "identifier")
-                         (ekg-agent--resolve-buffer-line-id buffer-name end))
-                        (t total)))
+               (requested-finish (cond
+                                  ((null end) total)
+                                  ((or (null range-type) (string= range-type "line_number"))
+                                   (min total (if (stringp end) (string-to-number end) end)))
+                                  ((string= range-type "identifier")
+                                   (ekg-agent--resolve-buffer-line-id buffer-name end))
+                                  (t total)))
+               (max-lines (if (and (integerp ekg-agent-read-buffer-max-lines)
+                                   (> ekg-agent-read-buffer-max-lines 0))
+                              ekg-agent-read-buffer-max-lines
+                            1000))
+               (requested-lines (max 0 (1+ (- requested-finish start))))
+               (truncated (> requested-lines max-lines))
+               (finish (if truncated
+                           (min requested-finish (1- (+ start max-lines)))
+                         requested-finish))
                ;; Compute buffer positions for the returned range.
                (begin-pos (save-excursion
                             (goto-char (point-min))
@@ -1690,18 +1715,19 @@ RANGE-TYPE are treated as nil."
                                   collect (format "%s: %s"
                                                   (ekg-agent--buffer-line-id buffer-name i)
                                                   line))))
-          (format "begin_pos: %d  end_pos: %d\n%s"
+          (format "begin_pos: %d  end_pos: %d\n%s%s"
                   begin-pos end-pos
+                  (if truncated
+                      (format "[read_buffer output truncated: showing lines %d-%d of requested lines %d-%d (%d of %d lines). Use begin/end to read another range.]\n"
+                              start finish start requested-finish
+                              (length selected) requested-lines)
+                    "")
                   (substring-no-properties
                    (mapconcat #'identity selected "\n"))))))))
 
 (defun ekg-agent--read-buffer-tool (buffer-name &optional begin end range-type)
-  "Read BUFFER-NAME for the `read_buffer' tool with bounded output."
-  (ekg-agent--bounded-tool-result
-   ekg-agent--current-log-buffer
-   "read_buffer"
-   (ekg-agent--read-buffer buffer-name begin end range-type)
-   ekg-agent-tool-result-max-output-chars))
+  "Read BUFFER-NAME for the `read_buffer' tool."
+  (ekg-agent--read-buffer buffer-name begin end range-type))
 
 (defun ekg-agent--search-buffer (buffer-name query &optional max-results context-lines)
   "Search BUFFER-NAME for QUERY and return matching lines with IDs."
@@ -1758,7 +1784,7 @@ RANGE-TYPE are treated as nil."
   (make-llm-tool
    :function #'ekg-agent--read-buffer-tool
    :name "read_buffer"
-   :description "Read an Emacs buffer and return its contents. Each line is prefixed with a unique 3-character identifier. The first line reports the begin_pos and end_pos buffer positions. Optionally restrict to a range by line number or identifier."
+   :description "Read an Emacs buffer and return its contents. Each line is prefixed with a unique 3-character identifier. The first line reports the begin_pos and end_pos buffer positions. Optionally restrict to a range by line number or identifier. Large results are truncated to `ekg-agent-read-buffer-max-lines' lines; use begin/end to read additional ranges."
    :args '((:name "buffer_name" :type string :description "The name of the buffer to read." :required t)
            (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning.")
            (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end.")
@@ -2386,6 +2412,21 @@ This intentionally does not include buffer contents; the agent can use
    (point)
    (line-number-at-pos)))
 
+(defun ekg-agent--latest-note-previews-context ()
+  "Return bounded previews of the latest notes for default ask context."
+  (format
+   "The last 10 note previews (first %d words each):\n\n%s"
+   ekg-agent-ask-latest-note-preview-words
+   (ekg-agent--notes-to-json (ekg-get-latest-modified 10)
+                             ekg-agent-ask-latest-note-preview-words)))
+
+(defun ekg-agent--ask-default-context ()
+  "Return the default lightweight context for `ekg-agent-ask'."
+  (concat
+   (ekg-agent--current-buffer-context)
+   "\n\n"
+   (ekg-agent--latest-note-previews-context)))
+
 (defun ekg-agent--ask (question context &optional extra-tools provider)
   "Ask the ekg agent a QUESTION and display the result.
 
@@ -2449,16 +2490,25 @@ which is best.
 With prefix ARG, prompt for the LLM provider when `ekg-llm-provider'
 is a list."
   (interactive (list (read-string "Question: ") current-prefix-arg))
-  (ekg-connect)
-  (ekg-agent--ask question
-                  (concat
-                   (ekg-agent--current-buffer-context)
-                   "\n\n"
-                   "The last 10 notes:\n\n"
-                   (mapconcat #'ekg-llm-note-to-text
-                              (ekg-get-latest-modified 10) "\n\n"))
-                  nil
-                  (ekg-agent--read-provider-for-prefix arg)))
+  (let ((origin-buffer (current-buffer))
+        (provider (ekg-agent--read-provider-for-prefix arg)))
+    (message "Starting ekg agent…")
+    (run-at-time
+     0 nil
+     (lambda ()
+       (if (not (buffer-live-p origin-buffer))
+           (message "Could not start ekg agent: origin buffer was killed")
+         (with-current-buffer origin-buffer
+           (condition-case err
+               (progn
+                 (ekg-connect)
+                 (ekg-agent--ask question
+                                 (ekg-agent--ask-default-context)
+                                 nil
+                                 provider))
+             (error
+              (message "Could not start ekg agent: %s"
+                       (error-message-string err))))))))))
 
 (defun ekg-agent-ask-with-note (question &optional id extra-tools arg)
   "Ask the agent QUESTION with the note with ID as context.
@@ -2784,27 +2834,45 @@ to create new notes or perform other actions to help the user."
 
 (defun ekg-agent--prompt-id (prompt)
   "From llm PROMPT, return a short identifier.
-Falls back to a deterministic slug if the LLM naming call fails."
+This is deterministic and does not call the LLM.  A better LLM-created
+name can be applied asynchronously after the log buffer is created."
+  (ekg-agent--fallback-prompt-id prompt))
+
+(defun ekg-agent--rename-log-buffer (log-buf id)
+  "Rename LOG-BUF to use ID when possible."
+  (when (and (buffer-live-p log-buf)
+             (stringp id)
+             (not (string-empty-p id)))
+    (with-current-buffer log-buf
+      (rename-buffer (format ekg-agent-log-buffer-name-format id) t)
+      (setq header-line-format
+            '(:eval (ekg-agent--format-header-line))))))
+
+(defun ekg-agent--prompt-id-async (prompt log-buf &optional provider)
+  "Asynchronously choose a short identifier for PROMPT and rename LOG-BUF."
   (let (id)
     (condition-case err
-        (llm-chat (ekg-agent--provider)
-                  (llm-make-chat-prompt
-                   (ekg-agent--prompt-user-text prompt)
-                   :context "From user input of what they are instructing an agent to do, call the tool to report a short name."
-                   :tools (list
-                           (make-llm-tool
-                            :function (lambda (result) (setq id result))
-                            :name "report_id"
-                            :description "Report the decided id so the agent can use it to name an Emacs status buffer. Use lowercase words separated by hyphens, about 3-5 words."
-                            :args '((:name "id" :type string
-                                           :description "Lowercase hyphenated buffer id, e.g. check-email-and-respond."))))
-                   :tool-options (make-llm-tool-options :tool-choice 'any)))
+        (llm-chat-async
+         (or provider (ekg-agent--provider))
+         (llm-make-chat-prompt
+          (ekg-agent--prompt-user-text prompt)
+          :context "From user input of what they are instructing an agent to do, call the tool to report a short name."
+          :tools (list
+                  (make-llm-tool
+                   :function (lambda (result) (setq id result))
+                   :name "report_id"
+                   :description "Report the decided id so the agent can use it to name an Emacs status buffer. Use lowercase words separated by hyphens, about 3-5 words."
+                   :args '((:name "id" :type string
+                                  :description "Lowercase hyphenated buffer id, e.g. check-email-and-respond."))))
+          :tool-options (make-llm-tool-options :tool-choice 'any))
+         (lambda (_result)
+           (ekg-agent--rename-log-buffer log-buf id))
+         (lambda (_type err)
+           (message "ekg-agent prompt-id async fallback: %s" err))
+         t)
       (error
-       (message "ekg-agent prompt-id fallback: %s"
-                (error-message-string err))))
-    (if (and (stringp id) (not (string-empty-p id)))
-        id
-      (ekg-agent--fallback-prompt-id prompt))))
+       (message "ekg-agent prompt-id async fallback: %s"
+                (error-message-string err))))))
 
 (defun ekg-agent--json-object (&rest pairs)
   "Return a JSON object from alternating string keys and values in PAIRS."
@@ -3328,6 +3396,7 @@ session.  At iteration 0 the log buffer is created and
           (setq header-line-format
                 '(:eval (ekg-agent--format-header-line)))
           (ekg-agent--wrap-prompt-tools prompt buf origin-buf)
+          (ekg-agent--prompt-id-async prompt buf provider)
           (goto-char (point-min))
           (ekg-agent--iterate prompt 1
                               status-callback

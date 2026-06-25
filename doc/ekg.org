@@ -1595,12 +1595,13 @@ prefix argument allows you to edit the instructions sent to the agent.
 You can also ask the agent a direct question at any time with the command
 =ekg-agent-ask=. This will prompt you for a question, which is then sent to the
 agent.  To provide context, ekg will automatically include lightweight
-information about the current buffer and your last 10 notes.  The current buffer
-contents are not sent up front; the agent can use tools such as =search_buffer=
-or =read_buffer= when it needs specific text.  The agent will be able to search
-your notes and use any other tools available. It will then provide its response
-either by displaying it in a popup buffer or by creating a new note, choosing the
-method it deems most appropriate. Once the agent has provided a response, its
+information about the current buffer and short previews of your last 10 notes.
+The current buffer contents are not sent up front; the agent can use tools such
+as =search_buffer= or =read_buffer= when it needs specific text.  The agent will
+be able to search your notes and use any other tools available. It will then
+provide its response either by displaying it in a popup buffer or by creating a
+new note, choosing the method it deems most appropriate. Once the agent has
+provided a response, its
 task for that question is complete.  For example:
 
 #+begin_src emacs-lisp
