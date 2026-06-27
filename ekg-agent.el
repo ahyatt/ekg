@@ -976,56 +976,6 @@ strings."
   "Return non-nil if any tool in TOOL-NAMES is available."
   (cl-some #'ekg-agent--tool-available-p tool-names))
 
-(defconst ekg-agent--repeatable-read-only-tools
-  '("get_notes_with_all_tags"
-    "get_notes_with_any_tags"
-    "get_note_by_id"
-    "search_notes"
-    "list_all_tags"
-    "read_agents_md"
-    "read_file"
-    "list_buffers"
-    "read_buffer"
-    "list_org_items")
-  "Tool names whose identical repeated calls can reuse prior context.")
-
-(defconst ekg-agent--state-changing-tools
-  '("append_to_note"
-    "replace_note"
-    "create_note"
-    "run_elisp"
-    "run_code_tool"
-    "run_subagent"
-    "edit_file"
-    "write_file"
-    "edit_buffer"
-    "run_interactive_command"
-    "run_command"
-    "append_to_current_note"
-    "replace_current_note"
-    "add_org_item"
-    "set_org_item_status")
-  "Tool names that may change file, buffer, note, or task state.")
-
-(defun ekg-agent--repeat-read-only-result (log-buf tool-name args)
-  "Return a repeat result in LOG-BUF for read-only TOOL-NAME ARGS.
-Only repeats before any intervening state-changing tool are
-short-circuited; after a write or note mutation, the read is run
-normally."
-  (when (and (member tool-name ekg-agent--repeatable-read-only-tools)
-             (buffer-live-p log-buf))
-    (with-current-buffer log-buf
-      (cl-loop for call in ekg-agent--tool-call-history
-               for call-name = (plist-get call :name)
-               if (member call-name ekg-agent--state-changing-tools)
-               return nil
-               if (and (string= call-name tool-name)
-                       (equal (plist-get call :args) args))
-               return
-               (format
-                "This exact %s call already completed earlier in this run. Use the earlier result, or call a lookup with different arguments if you need different information."
-                tool-name)))))
-
 (defun ekg-agent--record-tool-completion (log-buf tool-name result &optional args)
   "Record TOOL-NAME with ARGS as complete in LOG-BUF unless RESULT is an error."
   (when (and (buffer-live-p log-buf)
@@ -1085,98 +1035,81 @@ The wrapper provides four layers of protection:
                      (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
                            (called nil)
                            (ekg-agent--current-log-buffer log-buf))
-                       (if-let* ((repeat-result
-                                  (ekg-agent--repeat-read-only-result
-                                   log-buf tool-name args)))
-                           (progn
-                             (setq called t)
-                             (ekg-agent--log-tool-done log-buf marker)
-                             (ekg-agent--record-tool-completion
-                              log-buf tool-name repeat-result args)
-                             (funcall callback repeat-result))
-                         (condition-case err
-                             (if-let* ((blocked
-                                        (ekg-agent--blocked-tool-error
-                                         log-buf tool-name args)))
-                                 (error "%s" blocked)
-                               (if (buffer-live-p origin-buf)
-                                   (with-current-buffer origin-buf
-                                     (apply original-fn
-                                            (lambda (result)
-                                              (unless called
-                                                (setq called t)
-                                                (let ((sanitized
-                                                       (ekg-agent--sanitize-tool-result result)))
-                                                  (ekg-agent--log-tool-done log-buf marker)
-                                                  (ekg-agent--log-tool-error-result
-                                                   tool-name sanitized args)
-                                                  (ekg-agent--record-tool-completion
-                                                   log-buf tool-name sanitized args)
-                                                  (funcall callback sanitized))))
-                                            args))
-                                 (apply original-fn
-                                        (lambda (result)
-                                          (unless called
-                                            (setq called t)
-                                            (let ((sanitized
-                                                   (ekg-agent--sanitize-tool-result result)))
-                                              (ekg-agent--log-tool-done log-buf marker)
-                                              (ekg-agent--log-tool-error-result
-                                               tool-name sanitized args)
-                                              (ekg-agent--record-tool-completion
-                                               log-buf tool-name sanitized args)
-                                              (funcall callback sanitized))))
-                                        args)))
-                           (error
-                            (unless called
-                              (setq called t)
-                              (let ((sanitized
-                                     (format "Error: %s"
-                                             (error-message-string err))))
-                                (ekg-agent--log-tool-done log-buf marker)
-                                (ekg-agent--log-tool-error-result
-                                 tool-name sanitized args)
-                                (ekg-agent--record-tool-completion
-                                 log-buf tool-name sanitized args)
-                                (funcall callback sanitized))))))))
+                       (condition-case err
+                           (if-let* ((blocked
+                                      (ekg-agent--blocked-tool-error
+                                       log-buf tool-name args)))
+                               (error "%s" blocked)
+                             (if (buffer-live-p origin-buf)
+                                 (with-current-buffer origin-buf
+                                   (apply original-fn
+                                          (lambda (result)
+                                            (unless called
+                                              (setq called t)
+                                              (let ((sanitized
+                                                     (ekg-agent--sanitize-tool-result result)))
+                                                (ekg-agent--log-tool-done log-buf marker)
+                                                (ekg-agent--log-tool-error-result
+                                                 tool-name sanitized args)
+                                                (ekg-agent--record-tool-completion
+                                                 log-buf tool-name sanitized args)
+                                                (funcall callback sanitized))))
+                                          args))
+                               (apply original-fn
+                                      (lambda (result)
+                                        (unless called
+                                          (setq called t)
+                                          (let ((sanitized
+                                                 (ekg-agent--sanitize-tool-result result)))
+                                            (ekg-agent--log-tool-done log-buf marker)
+                                            (ekg-agent--log-tool-error-result
+                                             tool-name sanitized args)
+                                            (ekg-agent--record-tool-completion
+                                             log-buf tool-name sanitized args)
+                                            (funcall callback sanitized))))
+                                      args)))
+                         (error
+                          (unless called
+                            (setq called t)
+                            (let ((sanitized
+                                   (format "Error: %s"
+                                           (error-message-string err))))
+                              (ekg-agent--log-tool-done log-buf marker)
+                              (ekg-agent--log-tool-error-result
+                               tool-name sanitized args)
+                              (ekg-agent--record-tool-completion
+                               log-buf tool-name sanitized args)
+                              (funcall callback sanitized)))))))
                  (lambda (&rest args)
                    (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
                          (ekg-agent--current-log-buffer log-buf))
-                     (if-let* ((repeat-result
-                                (ekg-agent--repeat-read-only-result
-                                 log-buf tool-name args)))
-                         (progn
-                           (ekg-agent--log-tool-done log-buf marker)
-                           (ekg-agent--record-tool-completion
-                            log-buf tool-name repeat-result args)
-                           repeat-result)
-                       (condition-case err
-                           (let ((result (if-let* ((blocked
-                                                    (ekg-agent--blocked-tool-error
-                                                     log-buf tool-name args)))
-                                             (error "%s" blocked)
-                                           (if (buffer-live-p origin-buf)
-                                               (with-current-buffer origin-buf
-                                                 (apply original-fn args))
-                                             (apply original-fn args)))))
-                             (let ((sanitized
-                                    (ekg-agent--sanitize-tool-result result)))
-                               (ekg-agent--log-tool-done log-buf marker)
-                               (ekg-agent--log-tool-error-result
-                                tool-name sanitized args)
-                               (ekg-agent--record-tool-completion
-                                log-buf tool-name sanitized args)
-                               sanitized))
-                         (error
-                          (let ((sanitized
-                                 (format "Error: %s"
-                                         (error-message-string err))))
-                            (ekg-agent--log-tool-done log-buf marker)
-                            (ekg-agent--log-tool-error-result
-                             tool-name sanitized args)
-                            (ekg-agent--record-tool-completion
-                             log-buf tool-name sanitized args)
-                            sanitized)))))))
+                     (condition-case err
+                         (let ((result (if-let* ((blocked
+                                                  (ekg-agent--blocked-tool-error
+                                                   log-buf tool-name args)))
+                                           (error "%s" blocked)
+                                         (if (buffer-live-p origin-buf)
+                                             (with-current-buffer origin-buf
+                                               (apply original-fn args))
+                                           (apply original-fn args)))))
+                           (let ((sanitized
+                                  (ekg-agent--sanitize-tool-result result)))
+                             (ekg-agent--log-tool-done log-buf marker)
+                             (ekg-agent--log-tool-error-result
+                              tool-name sanitized args)
+                             (ekg-agent--record-tool-completion
+                              log-buf tool-name sanitized args)
+                             sanitized))
+                       (error
+                        (let ((sanitized
+                               (format "Error: %s"
+                                       (error-message-string err))))
+                          (ekg-agent--log-tool-done log-buf marker)
+                          (ekg-agent--log-tool-error-result
+                           tool-name sanitized args)
+                          (ekg-agent--record-tool-completion
+                           log-buf tool-name sanitized args)
+                          sanitized))))))
      :name (llm-tool-name tool)
      :description (llm-tool-description tool)
      :args (llm-tool-args tool)
@@ -1840,10 +1773,14 @@ identifiers."
         (with-current-buffer buf
           (goto-char (point-min))
           (forward-line (1- begin-line))
-          (let ((region-start (point))
-                (line-indent (current-indentation)))
-            (unless (search-forward begin-text (line-end-position) t)
-              (error "Begin text not found on line %d" begin-line))
+            (let ((region-start (point))
+                  (line-indent (current-indentation)))
+              (unless (search-forward begin-text (line-end-position) t)
+                (error "Begin text not found on line %d. Current line: %S"
+                       begin-line
+                       (buffer-substring-no-properties
+                        (line-beginning-position)
+                        (line-end-position))))
             (setq region-start (match-beginning 0))
             ;; Expand to include leading whitespace so the replacement
             ;; controls the full indentation.
@@ -1855,7 +1792,11 @@ identifiers."
             (goto-char (point-min))
             (forward-line (1- end-line))
             (unless (search-forward end-text (line-end-position) t)
-              (error "End text not found on line %d" end-line))
+              (error "End text not found on line %d. Current line: %S"
+                     end-line
+                     (buffer-substring-no-properties
+                      (line-beginning-position)
+                      (line-end-position))))
             (let ((region-end (match-end 0)))
               (delete-region region-start region-end)
               (goto-char region-start)

@@ -246,6 +246,32 @@
             (should (= 221.0 ekg-agent--last-status-reminder-time))))
       (kill-buffer buf))))
 
+(ekg-deftest ekg-agent-test-repeat-read-only-guard-removed ()
+  "Repeated read-only calls are no longer short-circuited by the wrapper."
+  (should-not (fboundp 'ekg-agent--repeat-read-only-result))
+  (should-not (boundp 'ekg-agent--repeatable-read-only-tools))
+  (let ((log-buf (get-buffer-create "*ekg-agent-test-repeat-read-log*"))
+        (origin-buf (get-buffer-create "*ekg-agent-test-repeat-read-origin*"))
+        (calls 0))
+    (unwind-protect
+        (let* ((tool (make-llm-tool
+                      :function (lambda (&rest _args)
+                                  (cl-incf calls)
+                                  (format "call-%d" calls))
+                      :name "read_buffer"
+                      :description "Test read tool."
+                      :args '()))
+               (wrapped (ekg-agent--wrap-tool-function
+                         tool log-buf origin-buf))
+               (fn (llm-tool-function wrapped)))
+          (with-current-buffer log-buf
+            (setq ekg-agent--tool-call-history nil))
+          (should (equal "call-1" (funcall fn)))
+          (should (equal "call-2" (funcall fn)))
+          (should (= calls 2)))
+      (kill-buffer log-buf)
+      (kill-buffer origin-buf))))
+
 (ekg-deftest ekg-agent-test-export-debug-json-includes-conversation ()
   "The debug export includes prompt interactions and tool history."
   (let ((buf (get-buffer-create "*ekg-agent-test-debug-json*"))
@@ -1082,6 +1108,26 @@ result when the agent finishes."
   (let ((result (ekg-agent--edit-buffer "*no-such-buffer*"
                                        "abc" "text" "abc" "text" "new")))
     (should (string-match-p "Error:" result))))
+
+(ekg-deftest ekg-agent-test-edit-buffer-error-shows-current-line ()
+  "Boundary mismatch errors include the current line text for recovery."
+  (let ((buf (get-buffer-create "*ekg-agent-test-edit-error-line*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "alpha\nactual end line\n"))
+          (let* ((output (ekg-agent--read-buffer
+                          "*ekg-agent-test-edit-error-line*"))
+                 (content-lines (cdr (split-string output "\n")))
+                 (id1 (substring (nth 0 content-lines) 0 3))
+                 (id2 (substring (nth 1 content-lines) 0 3))
+                 (result (ekg-agent--edit-buffer
+                          "*ekg-agent-test-edit-error-line*"
+                          id1 "alpha" id2 "missing end text" "new")))
+            (should (string-match-p "End text not found" result))
+            (should (string-match-p "actual end line" result))))
+      (kill-buffer buf))))
 
 ;; Run interactive command
 
