@@ -677,6 +677,18 @@ or \"WAIT(w@/!)\"."
                  :description "Indicate that a sub-agent has completed its task and is returning control to the parent agent.  The return value will be passed back to the parent agent as the result of the sub-agent's `run_subagent` call."
                  :args '((:name "result" :type string :description "The result to return to the parent agent."))))
 
+(defun ekg-agent--markdown-mode-no-hooks ()
+  "Enable `markdown-mode' in the current buffer without user hooks."
+  (when (featurep 'markdown-mode)
+    (if (fboundp 'delay-mode-hooks)
+        (delay-mode-hooks (markdown-mode))
+      (let ((delay-mode-hooks t))
+        (markdown-mode)))
+    (when (featurep 'flycheck)
+      (flycheck-mode 0))
+    (when (featurep 'flymake)
+      (flymake-mode 0))))
+
 (defun ekg-agent--popup-result-in-buffer (result)
   "Display RESULT in a new buffer and pop up to it."
   (ekg-agent--with-error-as-text
@@ -684,12 +696,7 @@ or \"WAIT(w@/!)\"."
       (with-current-buffer buf
         (erase-buffer)
         (insert result)
-        (when (featurep 'markdown-mode)
-          (markdown-mode)
-          (when (featurep 'flycheck)
-            (flycheck-mode 0))
-          (when (featurep 'flymake)
-            (flymake-mode 0)))
+        (ekg-agent--markdown-mode-no-hooks)
         (goto-char (point-min)))
       (pop-to-buffer buf)
       (format "Popup displayed in buffer %s" (buffer-name)))))
@@ -3342,12 +3349,7 @@ session.  At iteration 0 the log buffer is created and
           (erase-buffer)
           ;; Set up major mode first since it calls
           ;; `kill-all-local-variables'.
-          (when (featurep 'markdown-mode)
-            (markdown-mode)
-            (when (featurep 'flycheck)
-              (flycheck-mode 0))
-            (when (featurep 'flymake)
-              (flymake-mode 0)))
+          (ekg-agent--markdown-mode-no-hooks)
           (let ((ekg-agent--current-log-buffer buf))
             (ekg-agent--log-session-start (buffer-name)))
           (insert (format "Agent session for: %s\n\n" id))
