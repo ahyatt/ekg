@@ -51,7 +51,7 @@ fixes are pushed to the main branch soon, so it is usually a good idea to keep
 your version up to date.
 
 There are many ways to use Melpa to download ekg, but using =use-package= is the
-easiest way, and recommended because it allows you to get the pacakge and
+easiest way, and recommended because it allows you to get the package and
 configure it in one place.  An example use is below.
 
 #+begin_src emacs-lisp
@@ -133,8 +133,8 @@ triples library is already installed.
 - Fix metadata face which didn't work well with all themes - now the metadata section is just bolded.
 - Improve display regenerating embeddings via =ekg-embedding-generate-all=.
 - Change multi-title note display from using newlines to commas
-- Made deleting titles and resources possible, and properly skipped empty properties for multi-line propeties.
-- Handle backup errors better, warning and proceding if not a forced backup, erroring out with a better message if forced.
+- Made deleting titles and resources possible, and properly skipped empty properties for multi-line properties.
+- Handle backup errors better, warning and proceeding if not a forced backup, erroring out with a better message if forced.
 - Don't show trashed notes in drafts.
 ** Version 0.4.3
 - Added autoloads
@@ -248,7 +248,7 @@ with their tag.
 :CUSTOM_ID: note-buffer
 :END:
 
-The note buffer is a buffer of the particular mode for the node, which can change based off the setting, and can be different for different notes.  It acts mosty just like that mode, but has a header that displays some of the properties of the note, and lets you edit those properties.
+The note buffer is a buffer of the particular mode for the node, which can change based off the setting, and can be different for different notes.  It acts mostly just like that mode, but has a header that displays some of the properties of the note, and lets you edit those properties.
 
 The properties shown in the note property area come from the data stored in the
 database for the entity. At a minimum, there will be tags. Some properties are
@@ -347,7 +347,7 @@ See also the section on the [[#autosave][auto save]], to see how to turn on and 
 save, which can automatically save drafts for new notes.
 ** A warning about org-mode
 Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
-of funtionality, but much of it depends on the assumption that the buffer is all
+of functionality, but much of it depends on the assumption that the buffer is all
 for use by org-mode (not true in this case, because of the properties portion),
 and the assumption that the buffer is visiting a file, which is also not
 true.  In particular, attachments will not work.  However, the =ekg-org= module
@@ -427,7 +427,7 @@ of tags are also searched, so the same thing will happen if the tag you add is
 "daily reflection/morning" - it will get the template for "daily reflection" as
 long as it exists.
 
-The adding of templates happens whether intially when setting up the capture
+The adding of templates happens whether initially when setting up the capture
 buffer, or later when the user types a tag that is a valid tag.  Because of
 this, it's best to avoid adding templates to tags that are prefixes of other
 tags you'd like to use, but don't want the template on, because as soon as ekg
@@ -756,7 +756,7 @@ easily undone.)
 You can customize the behavior of ekg in a number of ways.
 
 First, you can create your own schema to store your own data.  The hook
-~ekg-add-schema-hook~ is called whenver the database is connected to.  At that
+~ekg-add-schema-hook~ is called whenever the database is connected to.  At that
 point, ekg adds all of its schema, and runs the hooks in this variable.  Adding
 schema is idempotent, so it can be called any number of times without causing
 problems.  Adding schema can be done by calling the triples library.  For
@@ -995,7 +995,7 @@ shown in a variety of contexts, mostly tag related, but not always.  In logseq,
 a note lives in one page and is referenced from other pages.  In ekg, each note
 has its own identity and is tied to other notes solely via the tags it shares
 with them.  To compensate for this difference, we export notes based on their
-first non-date tag as the page where the text will apear, and reference other
+first non-date tag as the page where the text will appear, and reference other
 tags, where they will appear as backlinks.  In addition, in org-mode, notes in a
 page appear as top-level outlines, which are supposed to have text for the
 outline node.  If there is an ekg note with a title, the title will appear as
@@ -1834,7 +1834,7 @@ The system will automatically:
 - Format the content with appropriate markers
 - Store timestamps for creation and modification
 
-Tags may contain spaces or other special characters.  Tags can be hiearchical, some are standard, such as "project/revise event processing/design"
+Tags may contain spaces or other special characters.  Tags can be hierarchical, some are standard, such as "project/revise event processing/design"
 
 Example usage:
   ekg-add-note --tag "project/revise event processing" --tag "progress" \\
