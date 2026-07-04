@@ -133,7 +133,7 @@ we want to try to include as much information as possible.")
                ('org-mode "emacs org-mode")
                ('markdown-mode "markdown")
                (_ (format "emacs %s" (symbol-name major-mode))))))
-   "Anything inside an LLM_OUTPUT block is previous output you have given, but do not generate the block delimeters yourself.  We will do that around the result you give to us."))
+   "Anything inside an LLM_OUTPUT block is previous output you have given, but do not generate the block delimiters yourself.  We will do that around the result you give to us."))
 
 (defun ekg-llm-instructions-for-note (note)
   "Return the prompt for NOTE, using the tags on the note.
@@ -415,7 +415,7 @@ The valid interaction types are `'append' and `'replace'."
     (_ (error "Invalid interaction type %s" interaction-type))))
 
 (defun ekg-llm-note-metadata-for-input (note)
-  "Return a brief description of the metdata of NOTE.
+  "Return a brief description of the metadata of NOTE.
 The description is appropriate for input to a LLM.  This is
 designed to be on a line of its own.  It does not return a
 newline."

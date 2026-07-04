@@ -69,27 +69,27 @@ Installation
 
 Changelog
 
-* Version 0.9.0: Version 090. 
-* Version 0.8.0: Version 080. 
-* Version 0.7.1: Version 071. 
-* Version 0.7.0: Version 070. 
-* Version 0.6.4: Version 064. 
-* Version 0.6.3: Version 063. 
-* Version 0.6.2: Version 062. 
-* Version 0.6.1: Version 061. 
-* Version 0.6.0: Version 060. 
-* Version 0.5.1: Version 051. 
-* Version 0.5: Version 05. 
-* Version 0.4.3: Version 043. 
-* Version 0.4.2: Version 042. 
-* Version 0.4.1: Version 041. 
-* Version 0.4: Version 04. 
-* Version 0.3.3: Version 033. 
-* Version 0.3.2: Version 032. 
-* Version 0.3.1: Version 031. 
-* Version 0.3: Version 03. 
-* Version 0.2.1: Version 021. 
-* Version 0.2: Version 02. 
+* Version 0.9.0: Version 090.
+* Version 0.8.0: Version 080.
+* Version 0.7.1: Version 071.
+* Version 0.7.0: Version 070.
+* Version 0.6.4: Version 064.
+* Version 0.6.3: Version 063.
+* Version 0.6.2: Version 062.
+* Version 0.6.1: Version 061.
+* Version 0.6.0: Version 060.
+* Version 0.5.1: Version 051.
+* Version 0.5: Version 05.
+* Version 0.4.3: Version 043.
+* Version 0.4.2: Version 042.
+* Version 0.4.1: Version 041.
+* Version 0.4: Version 04.
+* Version 0.3.3: Version 033.
+* Version 0.3.2: Version 032.
+* Version 0.3.1: Version 031.
+* Version 0.3: Version 03.
+* Version 0.2.1: Version 021.
+* Version 0.2: Version 02.
 
 Understanding and editing the note buffer
 
@@ -157,7 +157,7 @@ Agent
 
 * Optional connected-data tool libraries::
 * Agent log mode continuing and cancelling::
-* AGENTS.md support: AGENTSmd support. 
+* AGENTS.md support: AGENTSmd support.
 * Command-line tools for agent integration::
 
 Design
@@ -211,7 +211,7 @@ fixes are pushed to the main branch soon@comma{} so it is usually a good idea to
 your version up to date.
 
 There are many ways to use Melpa to download ekg@comma{} but using @samp{use-package} is the
-easiest way@comma{} and recommended because it allows you to get the pacakge and
+easiest way@comma{} and recommended because it allows you to get the package and
 configure it in one place.  An example use is below.
 
 @lisp
@@ -240,27 +240,27 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
-* Version 0.9.0: Version 090. 
-* Version 0.8.0: Version 080. 
-* Version 0.7.1: Version 071. 
-* Version 0.7.0: Version 070. 
-* Version 0.6.4: Version 064. 
-* Version 0.6.3: Version 063. 
-* Version 0.6.2: Version 062. 
-* Version 0.6.1: Version 061. 
-* Version 0.6.0: Version 060. 
-* Version 0.5.1: Version 051. 
-* Version 0.5: Version 05. 
-* Version 0.4.3: Version 043. 
-* Version 0.4.2: Version 042. 
-* Version 0.4.1: Version 041. 
-* Version 0.4: Version 04. 
-* Version 0.3.3: Version 033. 
-* Version 0.3.2: Version 032. 
-* Version 0.3.1: Version 031. 
-* Version 0.3: Version 03. 
-* Version 0.2.1: Version 021. 
-* Version 0.2: Version 02. 
+* Version 0.9.0: Version 090.
+* Version 0.8.0: Version 080.
+* Version 0.7.1: Version 071.
+* Version 0.7.0: Version 070.
+* Version 0.6.4: Version 064.
+* Version 0.6.3: Version 063.
+* Version 0.6.2: Version 062.
+* Version 0.6.1: Version 061.
+* Version 0.6.0: Version 060.
+* Version 0.5.1: Version 051.
+* Version 0.5: Version 05.
+* Version 0.4.3: Version 043.
+* Version 0.4.2: Version 042.
+* Version 0.4.1: Version 041.
+* Version 0.4: Version 04.
+* Version 0.3.3: Version 033.
+* Version 0.3.2: Version 032.
+* Version 0.3.1: Version 031.
+* Version 0.3: Version 03.
+* Version 0.2.1: Version 021.
+* Version 0.2: Version 02.
 @end menu
 
 @node Version 090
@@ -424,9 +424,9 @@ Improve display regenerating embeddings via @samp{ekg-embedding-generate-all}.
 @item
 Change multi-title note display from using newlines to commas
 @item
-Made deleting titles and resources possible@comma{} and properly skipped empty properties for multi-line propeties.
+Made deleting titles and resources possible@comma{} and properly skipped empty properties for multi-line properties.
 @item
-Handle backup errors better@comma{} warning and proceding if not a forced backup@comma{} erroring out with a better message if forced.
+Handle backup errors better@comma{} warning and proceeding if not a forced backup@comma{} erroring out with a better message if forced.
 @item
 Don't show trashed notes in drafts.
 @end itemize
@@ -659,7 +659,7 @@ with their tag.
 @node Understanding and editing the note buffer
 @chapter Understanding and editing the note buffer
 
-The note buffer is a buffer of the particular mode for the node@comma{} which can change based off the setting@comma{} and can be different for different notes.  It acts mosty just like that mode@comma{} but has a header that displays some of the properties of the note@comma{} and lets you edit those properties.
+The note buffer is a buffer of the particular mode for the node@comma{} which can change based off the setting@comma{} and can be different for different notes.  It acts mostly just like that mode@comma{} but has a header that displays some of the properties of the note@comma{} and lets you edit those properties.
 
 The properties shown in the note property area come from the data stored in the
 database for the entity. At a minimum@comma{} there will be tags. Some properties are
@@ -778,7 +778,7 @@ save@comma{} which can automatically save drafts for new notes.
 @section A warning about org-mode
 
 Org-mode notes are primarily to use org-mode formatting on.  Org-mode has a lot
-of funtionality@comma{} but much of it depends on the assumption that the buffer is all
+of functionality@comma{} but much of it depends on the assumption that the buffer is all
 for use by org-mode (not true in this case@comma{} because of the properties portion)@comma{}
 and the assumption that the buffer is visiting a file@comma{} which is also not
 true.  In particular@comma{} attachments will not work.  However@comma{} the @samp{ekg-org} module
@@ -869,7 +869,7 @@ of tags are also searched@comma{} so the same thing will happen if the tag you a
 "daily reflection/morning" - it will get the template for "daily reflection" as
 long as it exists.
 
-The adding of templates happens whether intially when setting up the capture
+The adding of templates happens whether initially when setting up the capture
 buffer@comma{} or later when the user types a tag that is a valid tag.  Because of
 this@comma{} it's best to avoid adding templates to tags that are prefixes of other
 tags you'd like to use@comma{} but don't want the template on@comma{} because as soon as ekg
@@ -1251,7 +1251,7 @@ easily undone.)
 You can customize the behavior of ekg in a number of ways.
 
 First@comma{} you can create your own schema to store your own data.  The hook
-@code{ekg-add-schema-hook} is called whenver the database is connected to.  At that
+@code{ekg-add-schema-hook} is called whenever the database is connected to.  At that
 point@comma{} ekg adds all of its schema@comma{} and runs the hooks in this variable.  Adding
 schema is idempotent@comma{} so it can be called any number of times without causing
 problems.  Adding schema can be done by calling the triples library.  For
@@ -1533,7 +1533,7 @@ shown in a variety of contexts@comma{} mostly tag related@comma{} but not always
 a note lives in one page and is referenced from other pages.  In ekg@comma{} each note
 has its own identity and is tied to other notes solely via the tags it shares
 with them.  To compensate for this difference@comma{} we export notes based on their
-first non-date tag as the page where the text will apear@comma{} and reference other
+first non-date tag as the page where the text will appear@comma{} and reference other
 tags@comma{} where they will appear as backlinks.  In addition@comma{} in org-mode@comma{} notes in a
 page appear as top-level outlines@comma{} which are supposed to have text for the
 outline node.  If there is an ekg note with a title@comma{} the title will appear as
@@ -2346,7 +2346,7 @@ final command-line argument@comma{} set @samp{ekg-agent-code-command-prompt-meth
 @menu
 * Optional connected-data tool libraries::
 * Agent log mode continuing and cancelling::
-* AGENTS.md support: AGENTSmd support. 
+* AGENTS.md support: AGENTSmd support.
 * Command-line tools for agent integration::
 @end menu
 
@@ -2552,7 +2552,7 @@ The system will automatically:
 - Format the content with appropriate markers
 - Store timestamps for creation and modification
 
-Tags may contain spaces or other special characters.  Tags can be hiearchical@comma{} some are standard@comma{} such as "project/revise event processing/design"
+Tags may contain spaces or other special characters.  Tags can be hierarchical@comma{} some are standard@comma{} such as "project/revise event processing/design"
 
 Example usage:
   ekg-add-note --tag "project/revise event processing" --tag "progress" \\
