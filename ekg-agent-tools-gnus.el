@@ -54,6 +54,7 @@
 (defvar gnus-inhibit-demon)
 (defvar gnus-large-ephemeral-newsgroup)
 (defvar gnus-large-newsgroup)
+(defvar gnus-mark-article-hook)
 (defvar nntp-server-buffer)
 
 (declare-function gnus-get-unread-articles-in-group "gnus-start"
@@ -160,6 +161,7 @@ headers may require trying more than N article numbers."
          (gnus-inhibit-demon t)
          (gnus-large-ephemeral-newsgroup nil)
          (gnus-large-newsgroup nil)
+         (gnus-mark-article-hook nil)
          (use-dialog-box nil))
      (cl-letf (((symbol-function 'completing-read)
                 (lambda (&rest _args)
