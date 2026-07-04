@@ -78,6 +78,110 @@
                  (ekg-agent--with-error-as-text
                    (+ 40 2)))))
 
+(ekg-deftest ekg-agent-test-current-buffer-context-is-lightweight ()
+  "Current buffer context includes metadata but not full contents."
+  (let ((buf (get-buffer-create "*ekg-agent-test-context*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (erase-buffer)
+          (emacs-lisp-mode)
+          (insert "SECRET-CONTENT-SHOULD-NOT-BE-IN-CONTEXT\n")
+          (let ((context (ekg-agent--current-buffer-context)))
+            (should (string-match-p "Current buffer:" context))
+            (should (string-match-p "name: \\*ekg-agent-test-context\\*"
+                                    context))
+            (should (string-match-p "major mode: emacs-lisp-mode" context))
+            (should (string-match-p "search_buffer" context))
+            (should-not (string-match-p "SECRET-CONTENT" context))))
+      (kill-buffer buf))))
+
+(ekg-deftest-with-db ekg-agent-test-latest-note-previews-are-bounded ()
+  "Default ask context includes bounded latest-note previews."
+  (let ((ekg-agent-ask-latest-note-preview-words 5))
+    (ekg-save-note
+     (ekg-note-create
+      :text "one two three four five six seven eight nine ten"
+      :mode 'text-mode
+      :tags '("preview-test")))
+    (let ((context (ekg-agent--latest-note-previews-context)))
+      (should (string-match-p "first 5 words" context))
+      (should (string-match-p "one two three four five" context))
+      (should-not (string-match-p "six seven eight" context)))))
+
+(ekg-deftest ekg-agent-test-ask-defers-startup ()
+  "`ekg-agent-ask' schedules startup so preprocessing is not immediate."
+  (let (scheduled ask-called)
+    (cl-letf (((symbol-function 'run-at-time)
+               (lambda (&rest args)
+                 (setq scheduled args)
+                 'ekg-agent-test-timer))
+              ((symbol-function 'ekg-agent--read-provider-for-prefix)
+               (lambda (_arg) 'provider))
+              ((symbol-function 'ekg-agent--ask)
+               (lambda (&rest _args)
+                 (setq ask-called t))))
+      (ekg-agent-ask "Question?" nil)
+      (should scheduled)
+      (should-not ask-called))))
+
+(ekg-deftest ekg-agent-test-prompt-id-async-renames-log-buffer ()
+  "Prompt IDs use a fallback immediately and LLM naming runs async."
+  (let* ((prompt (llm-make-chat-prompt "Explain org sync behavior"))
+         (log-buf (get-buffer-create "*ekg agent log: explain-org-sync-behavior*"))
+         (async-called nil))
+    (unwind-protect
+        (progn
+          (cl-letf (((symbol-function 'llm-chat)
+                     (lambda (&rest _args)
+                       (error "llm-chat should not be called"))))
+            (should (equal "explain-org-sync-behavior"
+                           (ekg-agent--prompt-id prompt))))
+          (cl-letf (((symbol-function 'llm-chat-async)
+                     (lambda (_provider name-prompt response-callback
+                              _error-callback &optional _multi-output)
+                       (setq async-called t)
+                       (let ((tool (car (llm-chat-prompt-tools name-prompt))))
+                         (funcall (llm-tool-function tool) "better-run-name"))
+                       (funcall response-callback nil)
+                       'mock-name-request)))
+            (ekg-agent--prompt-id-async prompt log-buf (make-llm-fake)))
+          (should async-called)
+          (should (get-buffer "*ekg agent log: better-run-name*")))
+      (dolist (name '("*ekg agent log: explain-org-sync-behavior*"
+                      "*ekg agent log: better-run-name*"))
+        (when-let* ((buf (get-buffer name)))
+          (kill-buffer buf))))))
+
+(ekg-deftest ekg-agent-test-prompt-id-async-not-scheduled-by-default ()
+  "LLM naming is opt-in so startup does not start an extra request."
+  (let ((ekg-agent-llm-name-log-buffer nil)
+        (prompt (llm-make-chat-prompt "Explain org sync behavior"))
+        (log-buf (get-buffer-create "*ekg-agent-test-name-log*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'run-at-time)
+                   (lambda (&rest _args)
+                     (error "run-at-time should not be called"))))
+          (should-not (ekg-agent--schedule-prompt-id-async
+                       prompt log-buf (make-llm-fake))))
+      (kill-buffer log-buf))))
+
+(ekg-deftest ekg-agent-test-prompt-id-async-schedules-when-enabled ()
+  "Optional LLM naming is scheduled instead of run during setup."
+  (let ((ekg-agent-llm-name-log-buffer t)
+        (prompt (llm-make-chat-prompt "Explain org sync behavior"))
+        (log-buf (get-buffer-create "*ekg-agent-test-name-log*"))
+        scheduled)
+    (unwind-protect
+        (cl-letf (((symbol-function 'run-at-time)
+                   (lambda (&rest args)
+                     (setq scheduled args)
+                     'mock-timer)))
+          (should (ekg-agent--schedule-prompt-id-async
+                   prompt log-buf (make-llm-fake)))
+          (should scheduled)
+          (should (= 0 (car scheduled))))
+      (kill-buffer log-buf))))
+
 (ekg-deftest ekg-agent-test-status-reminder-adds-prompt-when-overdue ()
   "An overdue session gets a prompt reminder to summarize state."
   (let ((buf (get-buffer-create "*ekg-agent-test-reminder*"))
@@ -141,6 +245,122 @@
           (with-current-buffer buf
             (should (= 221.0 ekg-agent--last-status-reminder-time))))
       (kill-buffer buf))))
+
+(ekg-deftest ekg-agent-test-repeat-read-only-guard-removed ()
+  "Repeated read-only calls are no longer short-circuited by the wrapper."
+  (should-not (fboundp 'ekg-agent--repeat-read-only-result))
+  (should-not (boundp 'ekg-agent--repeatable-read-only-tools))
+  (let ((log-buf (get-buffer-create "*ekg-agent-test-repeat-read-log*"))
+        (origin-buf (get-buffer-create "*ekg-agent-test-repeat-read-origin*"))
+        (calls 0))
+    (unwind-protect
+        (let* ((tool (make-llm-tool
+                      :function (lambda (&rest _args)
+                                  (cl-incf calls)
+                                  (format "call-%d" calls))
+                      :name "read_buffer"
+                      :description "Test read tool."
+                      :args '()))
+               (wrapped (ekg-agent--wrap-tool-function
+                         tool log-buf origin-buf))
+               (fn (llm-tool-function wrapped)))
+          (with-current-buffer log-buf
+            (setq ekg-agent--tool-call-history nil))
+          (should (equal "call-1" (funcall fn)))
+          (should (equal "call-2" (funcall fn)))
+          (should (= calls 2)))
+      (kill-buffer log-buf)
+      (kill-buffer origin-buf))))
+
+(ekg-deftest ekg-agent-test-export-debug-json-includes-conversation ()
+  "The debug export includes prompt interactions and tool history."
+  (let ((buf (get-buffer-create "*ekg-agent-test-debug-json*"))
+        (file (make-temp-file "ekg-agent-debug-test" nil ".json")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "2026-01-01 00:00:00 STARTED read_file\n")
+            (setq-local ekg-agent--prompt
+                        (llm-make-chat-prompt
+                         "Inspect the file."
+                         :context "Agent instructions."
+                         :tools (list
+                                 (make-llm-tool
+                                  :function (lambda (_path) "contents")
+                                  :name "read_file"
+                                  :description "Read a file."
+                                  :args '((:name "path" :type string))))
+                         :tool-options
+                         (make-llm-tool-options :tool-choice 'any)))
+            (setf (llm-chat-prompt-interactions ekg-agent--prompt)
+                  (append
+                   (llm-chat-prompt-interactions ekg-agent--prompt)
+                   (list
+                    (make-llm-chat-prompt-interaction
+                     :role 'assistant
+                     :content
+                     (list
+                      (make-llm-provider-utils-tool-use
+                       :id "call-1"
+                       :name "read_file"
+                       :args '((path . "/tmp/example.txt")))))
+                    (make-llm-chat-prompt-interaction
+                     :role 'tool-results
+                     :tool-results
+                     (list
+                      (make-llm-chat-prompt-tool-result
+                       :call-id "call-1"
+                       :tool-name "read_file"
+                       :result "file contents"))))))
+            (setq-local ekg-agent--end-tools '("end"))
+            (setq-local ekg-agent--tool-call-history
+                        (list (list :name "read_file"
+                                    :args '("/tmp/example.txt")
+                                    :result "file contents"
+                                    :time 1700000000.0)))
+            (ekg-agent-export-debug-json file))
+          (let* ((json-object-type 'hash-table)
+                 (json-array-type 'list)
+                 (json-key-type 'string)
+                 (data (json-read-file file))
+                 (prompt (gethash "prompt" data))
+                 (session (gethash "session" data))
+                 (interactions (gethash "interactions" prompt))
+                 (tools (gethash "tools" prompt))
+                 (assistant (nth 1 interactions))
+                 (tool-results (nth 2 interactions))
+                 (history (gethash "tool_call_history" data)))
+            (should (equal "ekg-agent-debug-session"
+                           (gethash "schema" data)))
+            (should (= 1 (gethash "schema_version" data)))
+            (should (equal '("end") (gethash "end_tools" session)))
+            (should (equal "Inspect the file."
+                           (gethash "user_text" prompt)))
+            (should (equal "tool_uses"
+                           (gethash "content_type" assistant)))
+            (should (equal "read_file"
+                           (gethash
+                            "name"
+                            (car (gethash "tool_uses" assistant)))))
+            (should (equal "path"
+                           (gethash "name"
+                                    (car (gethash "args" (car tools))))))
+            (should (equal "file contents"
+                           (gethash
+                            "result"
+                            (car (gethash "tool_results" tool-results)))))
+            (should (equal "read_file"
+                           (gethash "name" (car history))))))
+      (when (buffer-live-p buf)
+        (kill-buffer buf))
+      (when (file-exists-p file)
+        (delete-file file)))))
+
+(ekg-deftest ekg-agent-test-log-mode-debug-export-keybinding ()
+  "The agent log exposes the debug export command."
+  (should (eq (lookup-key ekg-agent-log-mode-map (kbd "C-c C-d"))
+              #'ekg-agent-export-debug-json)))
 
 ;; Line ID generation
 
@@ -293,6 +513,36 @@
               (should (string-match-p "^  new content" (buffer-string))))))
       (delete-file path))))
 
+(ekg-deftest ekg-agent-test-edit-file-tool-large-output-hidden-buffer ()
+  "Large edit_file tool output is truncated into a hidden buffer."
+  (let ((path (make-temp-file "ekg-agent-test"))
+        (log-buf (get-buffer-create "*ekg-agent-test-large-edit-log*"))
+        (ekg-agent-tool-result-max-output-chars 80))
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer log-buf))
+          (with-temp-file path
+            (dotimes (i 80)
+              (insert (format "line-%02d with enough text for output\n" i))))
+          (with-current-buffer log-buf
+            (setq ekg-agent--hidden-result-buffers nil))
+          (let* ((truepath (file-truename path))
+                 (id1 (ekg-agent--line-id truepath 1))
+                 (id60 (ekg-agent--line-id truepath 60))
+                 (result (ekg-agent--edit-file-tool
+                          path id1 "line-00" id60 "line-59"
+                          "replacement")))
+            (should (string-match-p "edit_file output truncated at 80"
+                                    result))
+            (should (string-match "hidden buffer `\\([^`]+\\)`" result))
+            (let ((buffer-name (match-string 1 result)))
+              (should (get-buffer buffer-name))
+              (ekg-agent--cleanup-hidden-result-buffers log-buf)
+              (should-not (get-buffer buffer-name)))))
+      (when (file-exists-p path)
+        (delete-file path))
+      (when (buffer-live-p log-buf)
+        (kill-buffer log-buf)))))
+
 ;; Agent integration tests
 ;;
 ;; These simulate the agent loop by mocking llm-chat-async to make
@@ -343,6 +593,8 @@ result when the agent finishes."
          (mock-fn (ekg-agent-test--make-tool-response ,tool-call-sequence)))
      (cl-letf (((symbol-function 'ekg-agent--prompt-id)
                 (lambda (_) "test-agent"))
+               ((symbol-function 'ekg-agent--prompt-id-async)
+                #'ignore)
                ((symbol-function 'llm-chat-async)
                 mock-fn)
                ((symbol-function 'ekg-agent--ensure-log-window)
@@ -360,29 +612,99 @@ result when the agent finishes."
                  :description "Test-only tool."
                  :args '()))
 
-(ekg-deftest ekg-agent-test-current-note-tools-do-not-satisfy-file-change ()
-  "Current-note response tools do not satisfy a required file change."
-  (with-temp-buffer
-    (setq-local ekg-agent--prompt
-                (llm-make-chat-prompt
-                 "Update /tmp/example.txt"
-                 :tools (list
-                         (ekg-agent-test--dummy-tool "write_file")
-                         (ekg-agent-test--dummy-tool "append_to_current_note")
-                         (ekg-agent-test--dummy-tool "replace_current_note"))))
-    (setq-local ekg-agent--completion-requirements '(file-change))
-    (setq-local ekg-agent--tool-call-history
-                (list (list :name "append_to_current_note"
-                            :args nil
-                            :result "ok")))
-    (should (ekg-agent--completion-blocker))
-    (should (ekg-agent--pending-file-change-p (current-buffer)))
-    (setq-local ekg-agent--tool-call-history
-                (list (list :name "edit_file"
-                            :args nil
-                            :result "ok")))
-    (should-not (ekg-agent--completion-blocker))
-    (should-not (ekg-agent--pending-file-change-p (current-buffer)))))
+(ekg-deftest ekg-agent-test-clean-orphaned-tool-interaction ()
+  "Trailing assistant tool-use interactions are removed for recovery."
+  (let ((prompt (llm-make-chat-prompt "Do work.")))
+    (setf (llm-chat-prompt-interactions prompt)
+          (append
+           (llm-chat-prompt-interactions prompt)
+           (list
+            (make-llm-chat-prompt-interaction
+             :role 'assistant
+             :content
+             (list
+              (make-llm-provider-utils-tool-use
+               :id "call-1"
+               :name "add_to_load_path"
+               :args '((directory . "/tmp/pkg"))))))))
+    (should (ekg-agent--clean-orphaned-tool-interactions prompt))
+    (should (= 1 (length (llm-chat-prompt-interactions prompt))))
+    (should-not (ekg-agent--clean-orphaned-tool-interactions prompt))))
+
+(ekg-deftest ekg-agent-test-recovers-from-unknown-tool-error ()
+  "Unknown tool provider errors are converted into a continuation."
+  (let ((ekg-llm-provider (make-llm-fake))
+        (prompt (llm-make-chat-prompt
+                 "Recover from a bad tool call."
+                 :tools (list ekg-agent-tool-end
+                              ekg-agent-tool-run-elisp)
+                 :tool-options (make-llm-tool-options :tool-choice 'any)))
+        (done-flag nil)
+        (calls 0))
+    (cl-letf (((symbol-function 'ekg-agent--prompt-id)
+               (lambda (_) "test-agent"))
+              ((symbol-function 'ekg-agent--prompt-id-async)
+               #'ignore)
+              ((symbol-function 'llm-chat-async)
+               (lambda (_provider active-prompt response-callback
+                         error-callback &optional _multi-output)
+                 (cl-incf calls)
+                 (if (= calls 1)
+                     (progn
+                       (setf (llm-chat-prompt-interactions active-prompt)
+                             (append
+                              (llm-chat-prompt-interactions active-prompt)
+                              (list
+                               (make-llm-chat-prompt-interaction
+                                :role 'assistant
+                                :content
+                                (list
+                                 (make-llm-provider-utils-tool-use
+                                  :id "call-bad"
+                                  :name "add_to_load_path"
+                                  :args '((directory . "/tmp/pkg"))))))))
+                       (funcall error-callback
+                                'error
+                                "Unknown tool 'add_to_load_path' called"))
+                   (funcall response-callback
+                            (list :tool-results
+                                  (list (cons "end" "recovered")))))
+                 nil))
+              ((symbol-function 'ekg-agent--ensure-log-window)
+               #'ignore))
+      (ekg-agent--iterate prompt
+                          0
+                          (lambda (status) (setq done-flag status))
+                          '("end")))
+    (should (equal "recovered" done-flag))
+    (should (= 2 calls))
+    (let* ((interactions (llm-chat-prompt-interactions prompt))
+           (last-message
+            (llm-chat-prompt-interaction-content (car (last interactions)))))
+      (should (string-match-p "unavailable tool `add_to_load_path'"
+                              last-message))
+      (should (string-match-p "run_elisp" last-message))
+      (should-not
+       (seq-some
+        (lambda (interaction)
+          (and (eq (llm-chat-prompt-interaction-role interaction)
+                   'assistant)
+               (not (stringp
+                     (llm-chat-prompt-interaction-content interaction)))))
+        interactions))))
+    (let ((buf (get-buffer (format ekg-agent-log-buffer-name-format
+                                   "test-agent"))))
+      (when buf
+        (kill-buffer buf))))
+
+(ekg-deftest ekg-agent-test-run-elisp-description-documents-state-changes ()
+  "The run_elisp description advertises key recoverable uses."
+  (let ((description (llm-tool-description ekg-agent-tool-run-elisp)))
+    (should (string-match-p "test out elisp" description))
+    (should (string-match-p "load-path" description))
+    (should (string-match-p "requiring libraries" description))
+    (should (string-match-p "void-function" description))
+    (should (string-match-p "locate-library" description))))
 
 (ekg-deftest ekg-agent-test-run-elisp-does-not-finish-before-end-tool ()
   "A diagnostic tool result should not stop the loop before an end tool."
@@ -409,8 +731,7 @@ result when the agent finishes."
        (lambda (status) (setq done-flag status))
        '("end")
        nil
-       nil
-       '(run-elisp))
+       nil)
       (setq status done-flag))
     (should (= run-elisp-calls 1))
     (should (equal status "done"))))
@@ -529,6 +850,42 @@ result when the agent finishes."
     (ekg-agent--run-command (lambda (r) (setq result r)) "exit 42")
     (while (not result) (accept-process-output nil 0.1))
     (should (string-match-p "Exit code: 42" result))))
+
+(ekg-deftest ekg-agent-test-agent-run-command-timeout ()
+  "The run_command tool times out long-running commands."
+  (let ((ekg-agent-run-command-timeout-seconds 0.1)
+        result)
+    (ekg-agent--run-command (lambda (r) (setq result r)) "sleep 2")
+    (while (not result) (accept-process-output nil 0.1))
+    (should (string-match-p "Command timed out" result))))
+
+(ekg-deftest ekg-agent-test-agent-run-command-large-output-hidden-buffer ()
+  "Large run_command output is truncated and stored in a hidden buffer."
+  (let ((log-buf (get-buffer-create "*ekg-agent-test-hidden-log*"))
+        (ekg-agent-run-command-max-output-chars 50)
+        result)
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer log-buf))
+          (with-current-buffer log-buf
+            (setq ekg-agent--hidden-result-buffers nil))
+          (ekg-agent--run-command
+           (lambda (r) (setq result r))
+           "printf '%0200d' 0")
+          (while (not result) (accept-process-output nil 0.1))
+          (should (string-match-p "output truncated at 50" result))
+          (should (string-match "hidden buffer `\\([^`]+\\)`" result))
+          (let* ((buffer-name (match-string 1 result))
+                 (hidden-buf (get-buffer buffer-name)))
+            (should hidden-buf)
+            (with-current-buffer hidden-buf
+              (should (> (buffer-size) 200)))
+            (let ((status (ekg-agent--status-with-hidden-buffer-cleanup
+                           "done")))
+              (should (string-match-p "Deleted hidden result buffers"
+                                      status))
+              (should-not (get-buffer buffer-name)))))
+      (when (buffer-live-p log-buf)
+        (kill-buffer log-buf)))))
 
 ;; Buffer line ID generation
 
@@ -656,6 +1013,50 @@ result when the agent finishes."
               (should (= 7 begin-pos)))))
       (kill-buffer buf))))
 
+(ekg-deftest ekg-agent-test-search-buffer-finds-targeted-lines ()
+  "Searching a buffer returns matching lines without dumping the buffer."
+  (let ((buf (get-buffer-create "*ekg-agent-test-search*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "alpha\nneedle one\nbeta\nneedle two\ngamma\n"))
+          (let ((result (ekg-agent--search-buffer
+                         "*ekg-agent-test-search*" "needle" 10 0)))
+            (should (string-match-p "Found 2 matches" result))
+            (should (string-match-p ">...: needle one" result))
+            (should (string-match-p ">...: needle two" result))
+            (should-not (string-match-p "alpha" result))
+            (should-not (string-match-p "gamma" result))))
+      (kill-buffer buf))))
+
+(ekg-deftest ekg-agent-test-read-buffer-large-output-line-truncation ()
+  "Large read_buffer tool output is truncated by line count."
+  (let ((buf (get-buffer-create "*ekg-agent-test-large-read*"))
+        (log-buf (get-buffer-create "*ekg-agent-test-large-read-log*"))
+        (ekg-agent-read-buffer-max-lines 3))
+    (unwind-protect
+        (let ((ekg-agent--current-log-buffer log-buf))
+          (with-current-buffer buf
+            (erase-buffer)
+            (dotimes (i 30)
+              (insert (format "line-%02d with enough text\n" i))))
+          (with-current-buffer log-buf
+            (setq ekg-agent--hidden-result-buffers nil))
+          (let ((result (ekg-agent--read-buffer-tool
+                         "*ekg-agent-test-large-read*")))
+            (should (string-match-p "read_buffer output truncated: showing lines 1-3"
+                                    result))
+            (should (string-match-p "line-00" result))
+            (should (string-match-p "line-02" result))
+            (should-not (string-match-p "line-03" result))
+            (should-not (string-match-p "hidden buffer" result))
+            (should-not ekg-agent--hidden-result-buffers)))
+      (when (buffer-live-p buf)
+        (kill-buffer buf))
+      (when (buffer-live-p log-buf)
+        (kill-buffer log-buf)))))
+
 (ekg-deftest ekg-agent-test-read-buffer-nonexistent ()
   "Reading a nonexistent buffer returns an error string."
   (let ((result (ekg-agent--read-buffer "*no-such-buffer-exists*")))
@@ -707,6 +1108,26 @@ result when the agent finishes."
   (let ((result (ekg-agent--edit-buffer "*no-such-buffer*"
                                        "abc" "text" "abc" "text" "new")))
     (should (string-match-p "Error:" result))))
+
+(ekg-deftest ekg-agent-test-edit-buffer-error-shows-current-line ()
+  "Boundary mismatch errors include the current line text for recovery."
+  (let ((buf (get-buffer-create "*ekg-agent-test-edit-error-line*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer buf
+            (erase-buffer)
+            (insert "alpha\nactual end line\n"))
+          (let* ((output (ekg-agent--read-buffer
+                          "*ekg-agent-test-edit-error-line*"))
+                 (content-lines (cdr (split-string output "\n")))
+                 (id1 (substring (nth 0 content-lines) 0 3))
+                 (id2 (substring (nth 1 content-lines) 0 3))
+                 (result (ekg-agent--edit-buffer
+                          "*ekg-agent-test-edit-error-line*"
+                          id1 "alpha" id2 "missing end text" "new")))
+            (should (string-match-p "End text not found" result))
+            (should (string-match-p "actual end line" result))))
+      (kill-buffer buf))))
 
 ;; Run interactive command
 

@@ -1594,30 +1594,23 @@ prefix argument allows you to edit the instructions sent to the agent.
 
 You can also ask the agent a direct question at any time with the command
 =ekg-agent-ask=. This will prompt you for a question, which is then sent to the
-agent.  To provide context, ekg will automatically include your last 10 notes in
-the information sent to the agent. The agent will be able to search your notes and
-use any other tools available. It will then provide its response either by
-displaying it in a popup buffer or by creating a new note, choosing the method
-it deems most appropriate. Once the agent has provided a response, its task for
-that question is complete.  For example:
+agent.  To provide context, ekg will automatically include lightweight
+information about the current buffer and short previews of your last 10 notes.
+The current buffer contents are not sent up front; the agent can use tools such
+as =search_buffer= or =read_buffer= when it needs specific text.  The agent will
+be able to search your notes and use any other tools available. It will then
+provide its response either by displaying it in a popup buffer or by creating a
+new note, choosing the method it deems most appropriate. Once the agent has
+provided a response, its
+task for that question is complete.  For example:
 
 #+begin_src emacs-lisp
 (ekg-agent-ask "What are the main themes in my recent notes on 'systems thinking'?")
 #+end_src
 
 This allows for quick, ad-hoc interactions with the agent without needing to be
-in a specific note buffer.
-
-If you want to ask a question about the current buffer you are in, you can use
-the command =ekg-agent-ask-with-buffer=. This will send the entire buffer's
-content as context to the agent, along with your question.  For example:
-
-#+begin_src emacs-lisp
-(ekg-agent-ask-with-buffer "Summarize this for me.")
-#+end_src
-
-This allows for quick, ad-hoc interactions with the agent without needing to be
-in a specific note buffer.  There's a similar =ekg-agent-ask-with-region=.
+in a specific note buffer.  There's a similar =ekg-agent-ask-with-region= when
+you explicitly want to send a selected region as context.
 
 You can also ask a question about a specific note with =ekg-agent-ask-with-note=.
 When called from an =ekg-notes-mode= buffer, it uses the note at point; when
@@ -1625,8 +1618,8 @@ called from a note editing buffer, it uses that note.  You can also pass a note
 ID programmatically.
 
 When ~ekg-llm-provider~ is a list, the =ekg-agent-ask=,
-=ekg-agent-ask-with-note=, =ekg-agent-ask-with-buffer=, and
-=ekg-agent-ask-with-region= commands can be called with a prefix argument
+=ekg-agent-ask-with-note=, and =ekg-agent-ask-with-region= commands can be
+called with a prefix argument
 (normally via =C-u M-x=) to select the provider for that agent session.  Without
 a prefix argument, the agent chooses the first configured provider with tool
 calling support, falling back to the first provider in the list.  When
@@ -1732,6 +1725,12 @@ The following commands are available in the log buffer:
   call in progress).  The conversation prompt is preserved in the buffer, so you
   can resume later with =C-c C-c=.
 
+- =C-c C-d= (=ekg-agent-export-debug-json=): Export the stored prompt,
+  conversation interactions, tool definitions, successful tool history,
+  completion requirements, configuration, and visible log text to a temporary
+  JSON file.  The file path is copied to the kill ring and can be analyzed with
+  the =agent_tools/ekg-agent-debug-analyzer= skill.
+
 This makes it easy to supervise long-running agent sessions: you can cancel if
 the agent is going in the wrong direction, give it new guidance, and continue.
 
@@ -1798,6 +1797,13 @@ ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
 
 This way, the agent always has up-to-date documentation for the ekg tools
 without needing to duplicate it.
+
+The directory =agent_tools/ekg-agent-debug-analyzer/= contains a separate skill
+for investigating JSON exports from =ekg-agent-export-debug-json=.  It includes
+a script that produces a first-pass Markdown report of inefficient tool use,
+errors, repeated calls, oversized tool results, completion blockers, and missing
+required actions.  Symlink its =SKILL.md= into an agent skill directory when you
+want an external agent to improve =ekg-agent= behavior from exported sessions.
 **** Instructions for configuring agents
 
 When setting up an AI agent to use ekg for memory, the recommended approach is
