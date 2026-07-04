@@ -2895,14 +2895,14 @@ Return non-nil when a naming request was scheduled."
     (format-time-string "%FT%T%z" (seconds-to-time time))))
 
 (defun ekg-agent--json-plist-p (value)
-  "Return non-nil if VALUE looks like a keyword plist."
+  "Return non-nil if VALUE resembles a keyword plist."
   (and (listp value)
        (zerop (mod (length value) 2))
        (cl-loop for (key _value) on value by #'cddr
                 always (keywordp key))))
 
 (defun ekg-agent--json-alist-p (value)
-  "Return non-nil if VALUE looks like an object-like alist."
+  "Return non-nil if VALUE resembles an object-like alist."
   (and (consp value)
        (cl-every
         (lambda (cell)
