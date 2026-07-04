@@ -16,10 +16,19 @@ jobs:
           - 29.1
           - 29.2
     steps:
-      - name: Set up Emacs
-        uses: jcs090218/setup-emacs@master
+      - name: Set up Nix
+        uses: cachix/install-nix-action@v31
         with:
-          version: ${{matrix.emacs_version}}
+          github_access_token: ${{ github.token }}
+
+      - name: Set up Emacs
+        env:
+          EMACS_VERSION: ${{ matrix.emacs_version }}
+          NIX_EMACS_CI_REV: 868482a78575138aebb1b5c16a9266b95c800f2e
+        run: |
+          nix profile install --accept-flake-config \
+            "github:purcell/nix-emacs-ci/${NIX_EMACS_CI_REV}#emacs-${EMACS_VERSION//./-}"
+          emacs --version
 
       - name: Install Eldev
         uses: emacs-eldev/setup-eldev@v1
@@ -45,10 +54,19 @@ jobs:
     environment: llm-test
     timeout-minutes: 10
     steps:
-      - name: Set up Emacs
-        uses: jcs090218/setup-emacs@master
+      - name: Set up Nix
+        uses: cachix/install-nix-action@v31
         with:
-          version: 30.1
+          github_access_token: ${{ github.token }}
+
+      - name: Set up Emacs
+        env:
+          EMACS_VERSION: 30.1
+          NIX_EMACS_CI_REV: 868482a78575138aebb1b5c16a9266b95c800f2e
+        run: |
+          nix profile install --accept-flake-config \
+            "github:purcell/nix-emacs-ci/${NIX_EMACS_CI_REV}#emacs-${EMACS_VERSION//./-}"
+          emacs --version
 
       - name: Install Eldev
         uses: emacs-eldev/setup-eldev@v1
