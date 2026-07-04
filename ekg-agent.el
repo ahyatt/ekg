@@ -328,7 +328,7 @@ even when tool functions execute in the origin buffer.")
             (or label "tool-output")))))
 
 (defun ekg-agent--store-hidden-result-buffer (log-buf label content)
-  "Store CONTENT in a hidden buffer tracked by LOG-BUF.
+  "Store CONTENT under LABEL in a hidden buffer tracked by LOG-BUF.
 Return the hidden buffer name."
   (let* ((name (ekg-agent--hidden-result-buffer-name label))
          (buf (get-buffer-create name)))
@@ -1487,7 +1487,9 @@ identifiers."
 
 (defun ekg-agent--edit-file-tool (path begin-id begin-text end-id end-text
                                        replacement)
-  "Edit PATH for the `edit_file' tool with bounded output."
+  "Edit PATH for the `edit_file' tool with bounded output.
+BEGIN-ID and END-ID identify the range when provided; BEGIN-TEXT and
+END-TEXT are fallback boundary text.  REPLACEMENT is the text to insert."
   (ekg-agent--bounded-tool-result
    ekg-agent--current-log-buffer
    "edit_file"
@@ -1495,7 +1497,8 @@ identifiers."
    ekg-agent-tool-result-max-output-chars))
 
 (defun ekg-agent--read-file-tool (path &optional begin end range-type)
-  "Read PATH for the `read_file' tool with bounded output."
+  "Read PATH for the `read_file' tool with bounded output.
+Optional BEGIN, END, and RANGE-TYPE restrict the returned range."
   (ekg-agent--bounded-tool-result
    ekg-agent--current-log-buffer
    "read_file"
@@ -1685,11 +1688,14 @@ are truncated without storing the omitted lines elsewhere."
                    (mapconcat #'identity selected "\n"))))))))
 
 (defun ekg-agent--read-buffer-tool (buffer-name &optional begin end range-type)
-  "Read BUFFER-NAME for the `read_buffer' tool."
+  "Read BUFFER-NAME for the `read_buffer' tool.
+Optional BEGIN, END, and RANGE-TYPE restrict the returned range."
   (ekg-agent--read-buffer buffer-name begin end range-type))
 
 (defun ekg-agent--search-buffer (buffer-name query &optional max-results context-lines)
-  "Search BUFFER-NAME for QUERY and return matching lines with IDs."
+  "Search BUFFER-NAME for QUERY and return matching lines with IDs.
+Optional MAX-RESULTS limits the number of hits, and CONTEXT-LINES controls
+how many surrounding lines to include."
   (ekg-agent--with-error-as-text
     (let* ((buf (get-buffer buffer-name))
            (max-results (if (and max-results (> max-results 0))
@@ -2816,7 +2822,8 @@ name can be applied asynchronously after the log buffer is created."
             '(:eval (ekg-agent--format-header-line))))))
 
 (defun ekg-agent--prompt-id-async (prompt log-buf &optional provider)
-  "Asynchronously choose a short identifier for PROMPT and rename LOG-BUF."
+  "Asynchronously choose a short identifier for PROMPT and rename LOG-BUF.
+Optional PROVIDER is the LLM provider to use."
   (let (id)
     (condition-case err
         (llm-chat-async
@@ -2843,6 +2850,7 @@ name can be applied asynchronously after the log buffer is created."
 
 (defun ekg-agent--schedule-prompt-id-async (prompt log-buf &optional provider)
   "Maybe schedule async LLM naming for PROMPT and LOG-BUF.
+Optional PROVIDER is the LLM provider to use.
 Return non-nil when a naming request was scheduled."
   (when ekg-agent-llm-name-log-buffer
     (run-at-time

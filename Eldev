@@ -1,4 +1,4 @@
-                                        ; -*- mode: emacs-lisp; lexical-binding: t -*-
+; -*- mode: emacs-lisp; lexical-binding: t -*-
 
 (eldev-use-package-archive 'gnu-elpa)
 (eldev-use-package-archive 'melpa-unstable)
