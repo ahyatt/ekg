@@ -69,27 +69,28 @@ Installation
 
 Changelog
 
-* Version 0.9.0: Version 090.
-* Version 0.8.0: Version 080.
-* Version 0.7.1: Version 071.
-* Version 0.7.0: Version 070.
-* Version 0.6.4: Version 064.
-* Version 0.6.3: Version 063.
-* Version 0.6.2: Version 062.
-* Version 0.6.1: Version 061.
-* Version 0.6.0: Version 060.
-* Version 0.5.1: Version 051.
-* Version 0.5: Version 05.
-* Version 0.4.3: Version 043.
-* Version 0.4.2: Version 042.
-* Version 0.4.1: Version 041.
-* Version 0.4: Version 04.
-* Version 0.3.3: Version 033.
-* Version 0.3.2: Version 032.
-* Version 0.3.1: Version 031.
-* Version 0.3: Version 03.
-* Version 0.2.1: Version 021.
-* Version 0.2: Version 02.
+* Version 0.9.1: Version 091. 
+* Version 0.9.0: Version 090. 
+* Version 0.8.0: Version 080. 
+* Version 0.7.1: Version 071. 
+* Version 0.7.0: Version 070. 
+* Version 0.6.4: Version 064. 
+* Version 0.6.3: Version 063. 
+* Version 0.6.2: Version 062. 
+* Version 0.6.1: Version 061. 
+* Version 0.6.0: Version 060. 
+* Version 0.5.1: Version 051. 
+* Version 0.5: Version 05. 
+* Version 0.4.3: Version 043. 
+* Version 0.4.2: Version 042. 
+* Version 0.4.1: Version 041. 
+* Version 0.4: Version 04. 
+* Version 0.3.3: Version 033. 
+* Version 0.3.2: Version 032. 
+* Version 0.3.1: Version 031. 
+* Version 0.3: Version 03. 
+* Version 0.2.1: Version 021. 
+* Version 0.2: Version 02. 
 
 Understanding and editing the note buffer
 
@@ -157,7 +158,7 @@ Agent
 
 * Optional connected-data tool libraries::
 * Agent log mode continuing and cancelling::
-* AGENTS.md support: AGENTSmd support.
+* AGENTS.md support: AGENTSmd support. 
 * Command-line tools for agent integration::
 
 Design
@@ -240,28 +241,45 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
-* Version 0.9.0: Version 090.
-* Version 0.8.0: Version 080.
-* Version 0.7.1: Version 071.
-* Version 0.7.0: Version 070.
-* Version 0.6.4: Version 064.
-* Version 0.6.3: Version 063.
-* Version 0.6.2: Version 062.
-* Version 0.6.1: Version 061.
-* Version 0.6.0: Version 060.
-* Version 0.5.1: Version 051.
-* Version 0.5: Version 05.
-* Version 0.4.3: Version 043.
-* Version 0.4.2: Version 042.
-* Version 0.4.1: Version 041.
-* Version 0.4: Version 04.
-* Version 0.3.3: Version 033.
-* Version 0.3.2: Version 032.
-* Version 0.3.1: Version 031.
-* Version 0.3: Version 03.
-* Version 0.2.1: Version 021.
-* Version 0.2: Version 02.
+* Version 0.9.1: Version 091. 
+* Version 0.9.0: Version 090. 
+* Version 0.8.0: Version 080. 
+* Version 0.7.1: Version 071. 
+* Version 0.7.0: Version 070. 
+* Version 0.6.4: Version 064. 
+* Version 0.6.3: Version 063. 
+* Version 0.6.2: Version 062. 
+* Version 0.6.1: Version 061. 
+* Version 0.6.0: Version 060. 
+* Version 0.5.1: Version 051. 
+* Version 0.5: Version 05. 
+* Version 0.4.3: Version 043. 
+* Version 0.4.2: Version 042. 
+* Version 0.4.1: Version 041. 
+* Version 0.4: Version 04. 
+* Version 0.3.3: Version 033. 
+* Version 0.3.2: Version 032. 
+* Version 0.3.1: Version 031. 
+* Version 0.3: Version 03. 
+* Version 0.2.1: Version 021. 
+* Version 0.2: Version 02. 
 @end menu
+
+@node Version 091
+@section Version 0.9.1
+
+@itemize
+@item
+Improve @samp{ekg-agent} quality and token use
+@item
+Allow the user to change the provider for agent commands
+@item
+Fix warnings when displaying images
+@item
+Improve reliability and fix issues in Apple Notes sync
+@item
+Only perform database upgrades when the code changes
+@end itemize
 
 @node Version 090
 @section Version 0.9.0
@@ -2346,7 +2364,7 @@ final command-line argument@comma{} set @samp{ekg-agent-code-command-prompt-meth
 @menu
 * Optional connected-data tool libraries::
 * Agent log mode continuing and cancelling::
-* AGENTS.md support: AGENTSmd support.
+* AGENTS.md support: AGENTSmd support. 
 * Command-line tools for agent integration::
 @end menu
 

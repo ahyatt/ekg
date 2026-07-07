@@ -73,6 +73,12 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.9.1
+- Improve =ekg-agent= quality and token use
+- Allow the user to change the provider for agent commands
+- Fix warnings when displaying images
+- Improve reliability and fix issues in Apple Notes sync
+- Only perform database upgrades when the code changes
 ** Version 0.9.0
 - Added the ability to sync with Apple Notes.
 - Changed how note metadata is represented in the note editing UI.
