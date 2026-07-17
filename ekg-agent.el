@@ -481,38 +481,38 @@ tool call."
      (error (format "Error: %s" (error-message-string err)))))
 
 (defconst ekg-agent-tool-all-tags
-  (make-llm-tool :function (lambda (tags num)
+  (make-llm-tool :function (lambda (&optional tags num)
                              (ekg-agent--with-error-as-text
                                (let* ((ekg-llm-note-numwords 500)
                                       (tag-list (append tags nil))
                                       (notes (ekg-agent--get-notes
                                               :tags (or tag-list nil)
                                               :latest (null tag-list)
-                                              :num num)))
+                                              :num (or num 10))))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
                                    "No notes found."))))
                  :name "get_notes_with_all_tags"
                  :description "Retrieve notes that have all the specified tags.  Results are returned newest first."
-                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be empty to retrieve the latest notes.")
-                         (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
+                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be omitted or empty to retrieve the latest notes." :optional t)
+                         (:name "num" :type integer :description "Maximum number of notes to retrieve.  Defaults to 10." :optional t))))
 
 (defconst ekg-agent-tool-any-tags
-  (make-llm-tool :function (lambda (tags num)
+  (make-llm-tool :function (lambda (&optional tags num)
                              (ekg-agent--with-error-as-text
                                (let* ((ekg-llm-note-numwords 500)
                                       (tag-list (append tags nil))
                                       (notes (ekg-agent--get-notes
                                               :any-tags (or tag-list nil)
                                               :latest (null tag-list)
-                                              :num num)))
+                                              :num (or num 10))))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
                                    "No notes found."))))
                  :name "get_notes_with_any_tags"
                  :description "Retrieve notes that have any of the specified tags.  Results are returned newest first."
-                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be empty to retrieve the latest notes.")
-                         (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
+                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be omitted or empty to retrieve the latest notes." :optional t)
+                         (:name "num" :type integer :description "Maximum number of notes to retrieve.  Defaults to 10." :optional t))))
 
 (defconst ekg-agent-tool-get-note-by-id
   (make-llm-tool :function (lambda (id)
@@ -526,17 +526,17 @@ tool call."
                  :args '((:name "id" :type string :description "The unique identifier of the note."))))
 
 (defconst ekg-agent-tool-search-notes
-  (make-llm-tool :function (lambda (query num)
+  (make-llm-tool :function (lambda (query &optional num)
                              (ekg-agent--with-error-as-text
                                (let ((ekg-llm-note-numwords 500)
-                                     (notes (ekg-agent--get-notes :semantic-search query :num num)))
+                                     (notes (ekg-agent--get-notes :semantic-search query :num (or num 10))))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
                                    "No notes found matching that search."))))
                  :name "search_notes"
                  :description "Search notes by a query string, retrieving by semantic similarity."
                  :args '((:name "query" :type string :description "The search query string.")
-                         (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
+                         (:name "num" :type integer :description "Maximum number of notes to retrieve.  Defaults to 10." :optional t))))
 
 (defconst ekg-agent-tool-ask-user
   (make-llm-tool :function (lambda (question)
@@ -560,7 +560,7 @@ tool call."
                                    "No tags found."))))
                  :name "list_all_tags"
                  :description "List all existing tags in the ekg database."
-                 :args '((:name "regex_filter" :type string :description "Optional regex to filter the tags by"))))
+                 :args '((:name "regex_filter" :type string :description "Optional regex to filter the tags by" :optional t))))
 
 (defun ekg-agent--get-note-with-id (id)
   "Retrieve the note with string ID, handling different ID types.
@@ -795,10 +795,9 @@ CALLBACK is called with the result string when the process finishes."
                                 (funcall callback (format "Error: %s" (error-message-string err))))))
                  :name "run_elisp"
                  :description "Evaluate arbitrary Emacs Lisp and return the printed result of the final form.  Use this to test out elisp and for Emacs state changes such as adding to `load-path', requiring libraries, setting variables, or calling Emacs functions.  If a form returns `void-function' or `file-missing', diagnose with checks such as `fboundp', `featurep', `locate-library', package directories, and `load-path' before retrying the same form.  Do not use this when another tool is more appropriate.  If that other tool is giving errors, report that to the user instead."
-                 :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate." :required t)
+                 :args '((:name "elisp" :type string :description "The Emacs Lisp code to evaluate.")
                          (:name "return" :type string :enum ["result" "buffer"]
-                                :description "Whether to return the result of the evaluated elisp, or the buffer after the elisp has been evaluated. If there is an error, it will be returned regardless of this value."
-                                :required t))
+                                :description "Whether to return the result of the evaluated elisp, or the buffer after the elisp has been evaluated. If there is an error, it will be returned regardless of this value."))
                  :async t))
 
 (defconst ekg-agent-tool-code
@@ -1510,23 +1509,23 @@ Optional BEGIN, END, and RANGE-TYPE restrict the returned range."
    :function #'ekg-agent--read-file-tool
    :name "read_file"
    :description "Read a file and return its contents. Each line is prefixed with a unique 3-character identifier. Optionally restrict to a range by line number or identifier. If the file is open in an Emacs buffer, reads from the buffer."
-   :args '((:name "path" :type string :description "The file path to read." :required t)
-           (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning.")
-           (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end.")
+   :args '((:name "path" :type string :description "The file path to read.")
+           (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning." :optional t)
+           (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end." :optional t)
            (:name "range_type" :type string :enum ["line_number" "identifier"]
-                  :description "How to interpret begin and end.  Required when begin or end is set."))))
+                  :description "How to interpret begin and end.  Required when begin or end is set." :optional t))))
 
 (defconst ekg-agent-tool-edit-file
   (make-llm-tool
    :function #'ekg-agent--edit-file-tool
    :name "edit_file"
    :description "Edit a file by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context and new line identifiers. Large results are bounded and stored in a hidden buffer for later inspection. If the file is open in an Emacs buffer, edits the buffer in place without saving; otherwise saves to disk."
-   :args '((:name "path" :type string :description "The file path to edit." :required t)
-           (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts." :required t)
-           (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace." :required t)
-           (:name "end_id" :type string :description "The 3-character line identifier where the replacement region ends." :required t)
-           (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive)." :required t)
-           (:name "replacement" :type string :description "The new text to insert in place of the matched region." :required t))))
+   :args '((:name "path" :type string :description "The file path to edit.")
+           (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts.")
+           (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace.")
+           (:name "end_id" :type string :description "The 3-character line identifier where the replacement region ends.")
+           (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive).")
+           (:name "replacement" :type string :description "The new text to insert in place of the matched region."))))
 
 (defun ekg-agent--write-file (path content)
   "Write CONTENT to the file at PATH, creating it if necessary.
@@ -1553,8 +1552,8 @@ identifiers, like `ekg-agent--read-file'."
    :function #'ekg-agent--write-file
    :name "write_file"
    :description "Write full content to a file, creating it and parent directories if needed. If the file is open in an Emacs buffer, replaces the buffer contents without saving. Returns the new file content with line identifiers."
-   :args '((:name "path" :type string :description "The file path to write." :required t)
-           (:name "content" :type string :description "The full text content to write to the file." :required t))))
+   :args '((:name "path" :type string :description "The file path to write.")
+           (:name "content" :type string :description "The full text content to write to the file."))))
 
 (defun ekg-agent--buffer-line-id (buffer-name line-num)
   "Return a 3-char base64 identifier unique to BUFFER-NAME and LINE-NUM."
@@ -1612,7 +1611,7 @@ are excluded."
    :name "list_buffers"
    :description "List open Emacs buffers.  Returns one line per buffer showing name, size, major mode, and associated file (if any).  Internal buffers (names starting with a space) are excluded."
    :args '((:name "regex_filter" :type string
-                  :description "Optional regex to filter buffer names by."))))
+                  :description "Optional regex to filter buffer names by." :optional t))))
 
 (defun ekg-agent--read-buffer (buffer-name &optional begin end range-type)
   "Read BUFFER-NAME, returning contents with line identifiers.
@@ -1762,21 +1761,21 @@ how many surrounding lines to include."
    :function #'ekg-agent--read-buffer-tool
    :name "read_buffer"
    :description "Read an Emacs buffer and return its contents. Each line is prefixed with a unique 3-character identifier. The first line reports the beginning and ending percentages through the buffer. Optionally restrict to a range by line number or identifier. Large results are truncated to `ekg-agent-read-buffer-max-lines' lines; use begin/end to read additional ranges."
-   :args '((:name "buffer_name" :type string :description "The name of the buffer to read." :required t)
-           (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning.")
-           (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end.")
+   :args '((:name "buffer_name" :type string :description "The name of the buffer to read.")
+           (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning." :optional t)
+           (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end." :optional t)
            (:name "range_type" :type string :enum ["line_number" "identifier"]
-                  :description "How to interpret begin and end.  Required when begin or end is set."))))
+                  :description "How to interpret begin and end.  Required when begin or end is set." :optional t))))
 
 (defconst ekg-agent-tool-search-buffer
   (make-llm-tool
    :function #'ekg-agent--search-buffer
    :name "search_buffer"
    :description "Search an Emacs buffer with an Emacs regexp and return matching lines with stable line identifiers. Use this instead of reading a whole large buffer when you need specific text."
-   :args '((:name "buffer_name" :type string :description "The name of the buffer to search." :required t)
-           (:name "query" :type string :description "Emacs regexp to search for." :required t)
-           (:name "max_results" :type integer :description "Maximum matching lines to return. Defaults to 20 and is capped at 100.")
-           (:name "context_lines" :type integer :description "Number of surrounding lines to include around each match. Defaults to 0 and is capped at 10."))))
+   :args '((:name "buffer_name" :type string :description "The name of the buffer to search.")
+           (:name "query" :type string :description "Emacs regexp to search for.")
+           (:name "max_results" :type integer :description "Maximum matching lines to return. Defaults to 20 and is capped at 100." :optional t)
+           (:name "context_lines" :type integer :description "Number of surrounding lines to include around each match. Defaults to 0 and is capped at 10." :optional t))))
 
 (defun ekg-agent--edit-buffer (buffer-name begin-id begin-text
                                            end-id end-text replacement)
@@ -1798,14 +1797,14 @@ identifiers."
         (with-current-buffer buf
           (goto-char (point-min))
           (forward-line (1- begin-line))
-            (let ((region-start (point))
-                  (line-indent (current-indentation)))
-              (unless (search-forward begin-text (line-end-position) t)
-                (error "Begin text not found on line %d. Current line: %S"
-                       begin-line
-                       (buffer-substring-no-properties
-                        (line-beginning-position)
-                        (line-end-position))))
+          (let ((region-start (point))
+                (line-indent (current-indentation)))
+            (unless (search-forward begin-text (line-end-position) t)
+              (error "Begin text not found on line %d. Current line: %S"
+                     begin-line
+                     (buffer-substring-no-properties
+                      (line-beginning-position)
+                      (line-end-position))))
             (setq region-start (match-beginning 0))
             ;; Expand to include leading whitespace so the replacement
             ;; controls the full indentation.
@@ -1837,12 +1836,12 @@ identifiers."
    :function #'ekg-agent--edit-buffer
    :name "edit_buffer"
    :description "Edit a buffer by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context, including its beginning and ending percentages through the buffer."
-   :args '((:name "buffer_name" :type string :description "The name of the buffer to edit." :required t)
-           (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts." :required t)
-           (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace." :required t)
-           (:name "end_id" :type string :description "The 3-character line identifier where the replacement region ends." :required t)
-           (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive)." :required t)
-           (:name "replacement" :type string :description "The new text to insert in place of the matched region." :required t))))
+   :args '((:name "buffer_name" :type string :description "The name of the buffer to edit.")
+           (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts.")
+           (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace.")
+           (:name "end_id" :type string :description "The 3-character line identifier where the replacement region ends.")
+           (:name "end_text" :type string :description "The text on the end line that marks the end of the region to replace (inclusive).")
+           (:name "replacement" :type string :description "The new text to insert in place of the matched region."))))
 
 (defun ekg-agent--resolve-buffer-point (buffer-name point line-id text)
   "Resolve a point in BUFFER-NAME from either POINT, or LINE-ID + TEXT.
@@ -1907,11 +1906,11 @@ the buffer."
    :function #'ekg-agent--run-interactive-command
    :name "run_interactive_command"
    :description "Execute an interactive Emacs command in a buffer at a specific position. The position can be specified as a buffer point or as a line identifier optionally refined by text on that line. If both point and line_id are given, point takes precedence. Returns buffer content around the final position."
-   :args '((:name "buffer_name" :type string :description "The name of the buffer." :required t)
-           (:name "command" :type string :description "The interactive Emacs command to run (e.g. \"org-todo\", \"indent-region\")." :required t)
-           (:name "point" :type string :description "Buffer position (integer as string) where the command should be executed.  Takes precedence over line_id if both are given.")
-           (:name "line_id" :type string :description "A 3-character line identifier for the buffer line.")
-           (:name "text" :type string :description "Text on the identified line to refine the position.  Point is placed at the start of this text.  Only used with line_id."))))
+   :args '((:name "buffer_name" :type string :description "The name of the buffer.")
+           (:name "command" :type string :description "The interactive Emacs command to run (e.g. \"org-todo\", \"indent-region\").")
+           (:name "point" :type string :description "Buffer position (integer as string) where the command should be executed.  Takes precedence over line_id if both are given." :optional t)
+           (:name "line_id" :type string :description "A 3-character line identifier for the buffer line." :optional t)
+           (:name "text" :type string :description "Text on the identified line to refine the position.  Point is placed at the start of this text.  Only used with line_id." :optional t))))
 
 (defun ekg-agent--run-command (callback command &optional directory)
   "Run shell COMMAND asynchronously and call CALLBACK with the result.
@@ -1979,8 +1978,8 @@ DIRECTORY, if given, is used as `default-directory' for the process."
    :function #'ekg-agent--run-command
    :name "run_command"
    :description "Run a non-interactive shell command and return its combined stdout/stderr and exit code. Avoid commands that can open UI, prompt the user, disturb the user's session, run indefinitely, or produce significant output. For large text, write it to a temporary file or buffer and inspect it in later tool calls."
-   :args '((:name "command" :type string :description "The shell command to run." :required t)
-           (:name "directory" :type string :description "Working directory for the command.  Defaults to the current buffer's directory."))
+   :args '((:name "command" :type string :description "The shell command to run.")
+           (:name "directory" :type string :description "Working directory for the command.  Defaults to the current buffer's directory." :optional t))
    :async t))
 
 (defcustom ekg-agent-web-max-chars 20000
@@ -2066,7 +2065,7 @@ supported."
    :function #'ekg-agent--web-browse
    :name "web_browse"
    :description "Fetch a web page and return its content as readable text.  Uses the same rendering engine as Emacs eww browser."
-   :args '((:name "url" :type string :description "The URL to fetch." :required t))
+   :args '((:name "url" :type string :description "The URL to fetch."))
    :async t))
 
 (defun ekg-agent--web-search (callback query)
@@ -2081,7 +2080,7 @@ Uses `eww-search-prefix' to construct the search URL."
    :function #'ekg-agent--web-search
    :name "web_search"
    :description "Search the web for a query and return the search results page as text.  Uses the search engine configured in `eww-search-prefix' (DuckDuckGo by default)."
-   :args '((:name "query" :type string :description "The search query." :required t))
+   :args '((:name "query" :type string :description "The search query."))
    :async t))
 
 (defcustom ekg-agent-emacs-info-default-manuals
@@ -2161,9 +2160,10 @@ KIND may be \"auto\", \"function\", \"variable\", or \"face\"."
    :function #'ekg-agent--emacs-help-symbol
    :name "emacs_help_symbol"
    :description "Show Emacs help for a symbol using the same help facilities as describe-symbol, describe-function, describe-variable, and describe-face.  Use this for elisp functions, macros, variables, faces, and symbols before guessing from memory."
-   :args '((:name "symbol" :type string :description "The Emacs Lisp symbol to describe, such as \"cl-defstruct\"." :required t)
+   :args '((:name "symbol" :type string :description "The Emacs Lisp symbol to describe, such as \"cl-defstruct\".")
            (:name "kind" :type string :enum ["auto" "function" "variable" "face"]
-                  :description "Which help facility to use.  Defaults to auto."))))
+                  :description "Which help facility to use.  Defaults to auto."
+                  :optional t))))
 
 (defun ekg-agent--symbol-summary-line (symbol)
   "Return a compact apropos summary line for SYMBOL."
@@ -2211,11 +2211,12 @@ When SEARCH-DOCS is \"yes\", search documentation text with
    :function #'ekg-agent--emacs-help-search
    :name "emacs_help_search"
    :description "Search Emacs help/apropos for symbols or documentation.  Use this to discover relevant Emacs Lisp functions, macros, variables, or concepts when you do not know the exact symbol name."
-   :args '((:name "query" :type string :description "Emacs regexp to search for, such as \"defstruct\" or \"window\"." :required t)
+   :args '((:name "query" :type string :description "Emacs regexp to search for, such as \"defstruct\" or \"window\".")
            (:name "search_docs" :type string :enum ["no" "yes"]
-                  :description "Use \"yes\" to search documentation text with apropos-documentation; defaults to symbol-name search.")
+                  :description "Use \"yes\" to search documentation text with apropos-documentation; defaults to symbol-name search." :optional t)
            (:name "max_results" :type integer
-                  :description "Maximum symbol-name results to return.  Defaults to 20; capped at 20."))))
+                  :description "Maximum symbol-name results to return.  Defaults to 20; capped at 20."
+                  :optional t))))
 
 (defun ekg-agent--info-manual-name ()
   "Return a compact name for the current Info manual."
@@ -2255,7 +2256,7 @@ When SEARCH-DOCS is \"yes\", search documentation text with
    :name "emacs_info_node"
    :description "Read an Emacs Info node and return its text.  Pass either a full node like \"(cl)Structures\" or a manual plus node, such as manual \"elisp\" and node \"Processes\"."
    :args '((:name "node" :type string :description "Info node name, such as \"Top\", \"Structures\", or \"(cl)Structures\".")
-           (:name "manual" :type string :description "Optional Info manual name, such as \"emacs\", \"elisp\", or \"cl\"."))))
+           (:name "manual" :type string :description "Optional Info manual name, such as \"emacs\", \"elisp\", or \"cl\"." :optional t))))
 
 (defun ekg-agent--info-snippet (&optional matched-regexp)
   "Return an Info search result snippet around point.
@@ -2331,10 +2332,10 @@ MAX-RESULTS is capped at 20."
    :function #'ekg-agent--emacs-info-search
    :name "emacs_info_search"
    :description "Search Emacs Info manuals and return matching manual/node snippets.  Use this for Emacs behavior, built-in facilities, and Emacs Lisp reference material.  The query is an Emacs regexp; omit manual to search the default Emacs, Elisp, and CL manuals."
-   :args '((:name "query" :type string :description "Emacs regexp to search for in Info manuals, such as \":include\" or \"cl-defmethod\"." :required t)
-           (:name "manual" :type string :description "Optional Info manual name, such as \"emacs\", \"elisp\", or \"cl\".")
+   :args '((:name "query" :type string :description "Emacs regexp to search for in Info manuals, such as \":include\" or \"cl-defmethod\".")
+           (:name "manual" :type string :description "Optional Info manual name, such as \"emacs\", \"elisp\", or \"cl\"." :optional t)
            (:name "max_results" :type integer
-                  :description "Maximum search results to return.  Defaults to 8; capped at 20."))))
+                  :description "Maximum search results to return.  Defaults to 8; capped at 20." :optional t))))
 
 (defconst ekg-agent-base-tools
   (list
@@ -4030,7 +4031,8 @@ TODO headings after the user asked for org task management."
                 (nreverse created)
                 ", "))))
 
-(defun ekg-agent-org--tool-add-item (title content tags parent-id status deadline scheduled)
+(defun ekg-agent-org--tool-add-item (title &optional content tags parent-id
+                                           status deadline scheduled)
   "Add a new org task item to EKG.
 
 TITLE is the task title.
@@ -4049,16 +4051,16 @@ SCHEDULED is the scheduled timestamp string (ignored if empty)."
   (llm-make-tool
    :function #'ekg-agent-org--tool-add-item
    :name "add_org_item"
-   :description "Add a new org-mode task item."
+   :description "Add a new ekg-based org-mode task item, for use with `ekg-org'"
    :args
-   '((:name "title" :type string :description "The title/headline of the task" :require t)
-     (:name "content" :type string :description "The content/description of the task" :required t)
+   '((:name "title" :type string :description "The title/headline of the task")
+     (:name "content" :type string :description "The content/description of the task" :optional t)
      (:name "tags" :type array :items (:type string)
-            :description "Additional tags for the task (org tags and agent tags will be added automatically)")
-     (:name "parent_id" :type integer :description "The parent task ID if exists")
-     (:name "status" :type string :description "The task status (TODO, DONE, etc.), will default to TODO if not set")
-     (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format")
-     (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format"))))
+            :description "Additional tags for the task (org tags and agent tags will be added automatically)" :optional t)
+     (:name "parent_id" :type integer :description "The parent task ID if exists" :optional t)
+     (:name "status" :type string :description "The task status (TODO, DONE, etc.), will default to TODO if not set" :optional t)
+     (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format" :optional t)
+     (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format" :optional t))))
 
 (defun ekg-agent-org--tool-set-status (id status)
   "Set the status of an org task item.
@@ -4082,10 +4084,10 @@ STATUS is the new status (will be converted to uppercase)."
   (llm-make-tool
    :function #'ekg-agent-org--tool-set-status
    :name "set_org_item_status"
-   :description "Set the status keyword of an org-mode task item."
+   :description "Set the status keyword of an ekg org-mode task item."
    :args
-   '((:name "id" :type integer :description "The ID of the task item" :required t)
-     (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)" :required t))))
+   '((:name "id" :type integer :description "The ID of the task item")
+     (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)"))))
 
 (defun ekg-agent-org--tool-list-items (&optional state)
   "List all org task items.
@@ -4109,10 +4111,10 @@ Returns text in Org format, as if they were in an Org file."
   (llm-make-tool
    :function #'ekg-agent-org--tool-list-items
    :name "list_org_items"
-   :description "Return matching org-mode task items as an Org formatted string."
+   :description "Return matching ekg org-mode task items as an Org formatted string."
    :args
    '((:name "state" :type string
-            :description "Filter tasks by state (TODO, DONE, etc.)"))))
+            :description "Filter tasks by state (TODO, DONE, etc.)" :optional t))))
 
 (defun ekg-agent-org-plan-task ()
   "Plan the current task and add the plan as child tasks using the agent."
