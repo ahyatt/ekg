@@ -481,38 +481,38 @@ tool call."
      (error (format "Error: %s" (error-message-string err)))))
 
 (defconst ekg-agent-tool-all-tags
-  (make-llm-tool :function (lambda (tags num)
+  (make-llm-tool :function (lambda (&optional tags num)
                              (ekg-agent--with-error-as-text
                                (let* ((ekg-llm-note-numwords 500)
                                       (tag-list (append tags nil))
                                       (notes (ekg-agent--get-notes
                                               :tags (or tag-list nil)
                                               :latest (null tag-list)
-                                              :num num)))
+                                              :num (or num 10))))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
                                    "No notes found."))))
                  :name "get_notes_with_all_tags"
                  :description "Retrieve notes that have all the specified tags.  Results are returned newest first."
-                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be empty to retrieve the latest notes.")
-                         (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
+                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be omitted or empty to retrieve the latest notes." :optional t)
+                         (:name "num" :type integer :description "Maximum number of notes to retrieve.  Defaults to 10." :optional t))))
 
 (defconst ekg-agent-tool-any-tags
-  (make-llm-tool :function (lambda (tags num)
+  (make-llm-tool :function (lambda (&optional tags num)
                              (ekg-agent--with-error-as-text
                                (let* ((ekg-llm-note-numwords 500)
                                       (tag-list (append tags nil))
                                       (notes (ekg-agent--get-notes
                                               :any-tags (or tag-list nil)
                                               :latest (null tag-list)
-                                              :num num)))
+                                              :num (or num 10))))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
                                    "No notes found."))))
                  :name "get_notes_with_any_tags"
                  :description "Retrieve notes that have any of the specified tags.  Results are returned newest first."
-                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be empty to retrieve the latest notes.")
-                         (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
+                 :args '((:name "tags" :type array :items (:type string) :description "List of tags to filter notes by.  Each tag may have spaces or non-alphanumeric characters.  May be omitted or empty to retrieve the latest notes." :optional t)
+                         (:name "num" :type integer :description "Maximum number of notes to retrieve.  Defaults to 10." :optional t))))
 
 (defconst ekg-agent-tool-get-note-by-id
   (make-llm-tool :function (lambda (id)
@@ -526,17 +526,17 @@ tool call."
                  :args '((:name "id" :type string :description "The unique identifier of the note."))))
 
 (defconst ekg-agent-tool-search-notes
-  (make-llm-tool :function (lambda (query num)
+  (make-llm-tool :function (lambda (query &optional num)
                              (ekg-agent--with-error-as-text
                                (let ((ekg-llm-note-numwords 500)
-                                     (notes (ekg-agent--get-notes :semantic-search query :num num)))
+                                     (notes (ekg-agent--get-notes :semantic-search query :num (or num 10))))
                                  (if notes
                                      (mapconcat #'ekg-llm-note-to-text notes "\n\n")
                                    "No notes found matching that search."))))
                  :name "search_notes"
                  :description "Search notes by a query string, retrieving by semantic similarity."
                  :args '((:name "query" :type string :description "The search query string.")
-                         (:name "num" :type integer :description "Maximum number of notes to retrieve."))))
+                         (:name "num" :type integer :description "Maximum number of notes to retrieve.  Defaults to 10." :optional t))))
 
 (defconst ekg-agent-tool-ask-user
   (make-llm-tool :function (lambda (question)
@@ -2065,7 +2065,7 @@ supported."
    :function #'ekg-agent--web-browse
    :name "web_browse"
    :description "Fetch a web page and return its content as readable text.  Uses the same rendering engine as Emacs eww browser."
-   :args '((:name "url" :type string :description "The URL to fetch." :required t))
+   :args '((:name "url" :type string :description "The URL to fetch."))
    :async t))
 
 (defun ekg-agent--web-search (callback query)
@@ -4031,7 +4031,8 @@ TODO headings after the user asked for org task management."
                 (nreverse created)
                 ", "))))
 
-(defun ekg-agent-org--tool-add-item (title content tags parent-id status deadline scheduled)
+(defun ekg-agent-org--tool-add-item (title &optional content tags parent-id
+                                           status deadline scheduled)
   "Add a new org task item to EKG.
 
 TITLE is the task title.
@@ -4050,16 +4051,16 @@ SCHEDULED is the scheduled timestamp string (ignored if empty)."
   (llm-make-tool
    :function #'ekg-agent-org--tool-add-item
    :name "add_org_item"
-   :description "Add a new org-mode task item."
+   :description "Add a new ekg-based org-mode task item, for use with `ekg-org'"
    :args
-   '((:name "title" :type string :description "The title/headline of the task" :require t)
-     (:name "content" :type string :description "The content/description of the task" :required t)
+   '((:name "title" :type string :description "The title/headline of the task")
+     (:name "content" :type string :description "The content/description of the task" :optional t)
      (:name "tags" :type array :items (:type string)
-            :description "Additional tags for the task (org tags and agent tags will be added automatically)")
-     (:name "parent_id" :type integer :description "The parent task ID if exists")
-     (:name "status" :type string :description "The task status (TODO, DONE, etc.), will default to TODO if not set")
-     (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format")
-     (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format"))))
+            :description "Additional tags for the task (org tags and agent tags will be added automatically)" :optional t)
+     (:name "parent_id" :type integer :description "The parent task ID if exists" :optional t)
+     (:name "status" :type string :description "The task status (TODO, DONE, etc.), will default to TODO if not set" :optional t)
+     (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format" :optional t)
+     (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format" :optional t))))
 
 (defun ekg-agent-org--tool-set-status (id status)
   "Set the status of an org task item.
@@ -4083,10 +4084,10 @@ STATUS is the new status (will be converted to uppercase)."
   (llm-make-tool
    :function #'ekg-agent-org--tool-set-status
    :name "set_org_item_status"
-   :description "Set the status keyword of an org-mode task item."
+   :description "Set the status keyword of an ekg org-mode task item."
    :args
-   '((:name "id" :type integer :description "The ID of the task item" :required t)
-     (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)" :required t))))
+   '((:name "id" :type integer :description "The ID of the task item")
+     (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)"))))
 
 (defun ekg-agent-org--tool-list-items (&optional state)
   "List all org task items.
@@ -4110,10 +4111,10 @@ Returns text in Org format, as if they were in an Org file."
   (llm-make-tool
    :function #'ekg-agent-org--tool-list-items
    :name "list_org_items"
-   :description "Return matching org-mode task items as an Org formatted string."
+   :description "Return matching ekg org-mode task items as an Org formatted string."
    :args
    '((:name "state" :type string
-            :description "Filter tasks by state (TODO, DONE, etc.)"))))
+            :description "Filter tasks by state (TODO, DONE, etc.)" :optional t))))
 
 (defun ekg-agent-org-plan-task ()
   "Plan the current task and add the plan as child tasks using the agent."
