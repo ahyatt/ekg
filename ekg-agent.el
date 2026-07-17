@@ -1617,9 +1617,9 @@ are excluded."
   "Read BUFFER-NAME, returning contents with line identifiers.
 
 Each line is prefixed with a 3-char identifier derived from the
-buffer name and line number.  The overall begin and end buffer
-positions of the returned content are included at the top as a
-header line.
+buffer name and line number.  The percentages through the buffer
+of the returned content's beginning and end are included at the
+top as a header line.
 
 BEGIN and END restrict the output to a range.  RANGE-TYPE is
 either \"line_number\" or \"identifier\" and indicates how to
@@ -1671,13 +1671,25 @@ are truncated without storing the omitted lines elsewhere."
                           (goto-char (point-min))
                           (forward-line (1- finish))
                           (line-end-position)))
+               (buffer-span (- (point-max) (point-min)))
+               (begin-percent (if (zerop buffer-span)
+                                  0.0
+                                (* 100.0
+                                   (/ (- begin-pos (point-min))
+                                      (float buffer-span)))))
+               (end-percent (if (zerop buffer-span)
+                                0.0
+                              (* 100.0
+                                 (/ (- end-pos (point-min))
+                                    (float buffer-span)))))
                (selected (cl-loop for i from start to finish
                                   for line in (nthcdr (1- start) lines)
                                   collect (format "%s: %s"
                                                   (ekg-agent--buffer-line-id buffer-name i)
                                                   line))))
-          (format "begin_pos: %d  end_pos: %d\n%s%s"
-                  begin-pos end-pos
+          (format (concat "begin_percent: %.1f%%  end_percent: %.1f%%\n"
+                          "%s%s")
+                  begin-percent end-percent
                   (if truncated
                       (format "[read_buffer output truncated: showing lines %d-%d of requested lines %d-%d (%d of %d lines). Use begin/end to read another range.]\n"
                               start finish start requested-finish
@@ -1748,7 +1760,7 @@ how many surrounding lines to include."
   (make-llm-tool
    :function #'ekg-agent--read-buffer-tool
    :name "read_buffer"
-   :description "Read an Emacs buffer and return its contents. Each line is prefixed with a unique 3-character identifier. The first line reports the begin_pos and end_pos buffer positions. Optionally restrict to a range by line number or identifier. Large results are truncated to `ekg-agent-read-buffer-max-lines' lines; use begin/end to read additional ranges."
+   :description "Read an Emacs buffer and return its contents. Each line is prefixed with a unique 3-character identifier. The first line reports the beginning and ending percentages through the buffer. Optionally restrict to a range by line number or identifier. Large results are truncated to `ekg-agent-read-buffer-max-lines' lines; use begin/end to read additional ranges."
    :args '((:name "buffer_name" :type string :description "The name of the buffer to read.")
            (:name "begin" :type string :description "Start of range: a line number or a line identifier.  Omit to start from the beginning." :optional t)
            (:name "end" :type string :description "End of range: a line number or a line identifier.  Omit to read to the end." :optional t)
@@ -1823,7 +1835,7 @@ identifiers."
   (make-llm-tool
    :function #'ekg-agent--edit-buffer
    :name "edit_buffer"
-   :description "Edit a buffer by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context, including begin_pos and end_pos."
+   :description "Edit a buffer by replacing the inclusive region between two line identifiers and matching boundary strings. Returns the edited region with surrounding context, including its beginning and ending percentages through the buffer."
    :args '((:name "buffer_name" :type string :description "The name of the buffer to edit.")
            (:name "begin_id" :type string :description "The 3-character line identifier where the replacement region starts.")
            (:name "begin_text" :type string :description "The text on the begin line that marks the start of the region to replace.")
@@ -1866,7 +1878,8 @@ TEXT on that line.  If both POINT and LINE-ID are given, POINT takes
 precedence.
 
 Returns the buffer content around the position after the command
-executes, including begin_pos/end_pos."
+executes, including its beginning and ending percentages through
+the buffer."
   (ekg-agent--with-error-as-text
     (let ((buf (get-buffer buffer-name)))
       (unless buf
