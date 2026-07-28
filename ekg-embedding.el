@@ -188,8 +188,8 @@ wait for the embedding to return and be set."
             (collection (cdr ekg-vecdb-provider)))
         (vecdb-upsert-items provider collection items))
     (cl-loop for item in items do
-             (triples-set-type ekg-db (plist-get item :id) 'embedding
-                               :embedding (plist-get item :vector)))))
+             (triples-set-type ekg-db (vecdb-item-id item) 'embedding
+                               :embedding (vecdb-item-vector item)))))
 
 (defun ekg-embedding-generate-batch-async (notes success-callback error-callback)
   "Generate embeddings for NOTES in a batch.
