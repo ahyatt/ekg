@@ -182,14 +182,17 @@ wait for the embedding to return and be set."
              (ekg-note-id note) embedding))))
 
 (defun ekg-embedding-batch-store (items)
+  "Store a batch of ITEMS in the sqlite database.
+ITEMS is a list of conses of the form (NOTE-ID . EMBEDDING)."
+  (cl-loop for item in items do
+           (triples-set-type ekg-db (car item) 'embedding
+                             :embedding (cdr item))))
+
+(defun ekg-embedding-batch-store-vecdb (items)
   "Store a batch of ITEMS in the embedding database."
-  (if ekg-vecdb-provider
-      (let ((provider (car ekg-vecdb-provider))
-            (collection (cdr ekg-vecdb-provider)))
-        (vecdb-upsert-items provider collection items))
-    (cl-loop for item in items do
-             (triples-set-type ekg-db (vecdb-item-id item) 'embedding
-                               :embedding (vecdb-item-vector item)))))
+  (let ((provider (car ekg-vecdb-provider))
+        (collection (cdr ekg-vecdb-provider)))
+    (vecdb-upsert-items provider collection items)))
 
 (defun ekg-embedding-generate-batch-async (notes success-callback error-callback)
   "Generate embeddings for NOTES in a batch.
@@ -206,12 +209,19 @@ ERROR-CALLBACK is called with ERROR-TYPE and message on errors."
      texts
      (lambda (embeddings)
        (ekg-connect)
-       (cl-loop for note in notes
-                for embedding in embeddings
-                collect (ekg-embedding--note-to-embed-item note embedding) into items
-                finally
-                (ekg-embedding-batch-store items)
-                (when success-callback (funcall success-callback (length notes)))))
+       (if ekg-vecdb-provider
+           (cl-loop for note in notes
+                    for embedding in embeddings
+                    collect (ekg-embedding--note-to-embed-item note embedding) into items
+                    finally
+                    (ekg-embedding-batch-store-vecdb items)
+                    (when success-callback (funcall success-callback (length notes))))
+         (cl-loop for note in notes
+                  for embedding in embeddings
+                  collect (cons (ekg-note-id note) embedding) into items
+                  finally
+                  (ekg-embedding-batch-store items)
+                  (when success-callback (funcall success-callback (length notes))))))
      error-callback)))
 
 (defun ekg-embedding-generate-for-note-tags-delayed (note)
