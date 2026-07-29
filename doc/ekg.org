@@ -73,6 +73,8 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.9.2
+- Fix issue computing batch embeddings without =vecdb=.
 ** Version 0.9.1
 - Improve =ekg-agent= quality and token use
 - Allow the user to change the provider for agent commands

@@ -69,6 +69,7 @@ Installation
 
 Changelog
 
+* Version 0.9.2: Version 092. 
 * Version 0.9.1: Version 091. 
 * Version 0.9.0: Version 090. 
 * Version 0.8.0: Version 080. 
@@ -241,6 +242,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.9.2: Version 092. 
 * Version 0.9.1: Version 091. 
 * Version 0.9.0: Version 090. 
 * Version 0.8.0: Version 080. 
@@ -264,6 +266,14 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 092
+@section Version 0.9.2
+
+@itemize
+@item
+Fix issue computing batch embeddings without @samp{vecdb}.
+@end itemize
 
 @node Version 091
 @section Version 0.9.1
