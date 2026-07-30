@@ -156,7 +156,9 @@ If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
    (lambda (embedding)
      (ekg-connect)
      (ekg-embedding-batch-store
-      (list (ekg-embedding--note-to-embed-item note embedding)))
+      (if ekg-vecdb-provider
+          (list (ekg-embedding--note-to-embed-item note embedding))
+        (list (cons (ekg-note-id note) embedding))))
      (when success-callback (funcall success-callback note)))
    (or error-callback
        (lambda (error-type msg)
