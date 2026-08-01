@@ -221,6 +221,13 @@ By default, ekg uses the default triple database, which is set in the variable
 database to not be shared with any other user of the triple package, by
 customizing the variable ~ekg-db-file~.  When this is ~nil~, it leaves the
 filename up to the triples package.
+
+EKG note buffers use the directory containing the database as their
+~default-directory~. Customize ~ekg-notes-default-directory~ to use another
+directory instead. Its value can be the symbol ~database~, meaning the directory
+containing the database, or a directory name. This normally is only used when
+notes want to refer to files by relative filenames, for example for image
+display.
 * Concepts and data model in ekg
 The ekg package is built on a flexible database scheme called "triples", where
 everything is stored as a graph structure: a subject, a predicate, and an

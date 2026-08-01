@@ -105,6 +105,15 @@ named by `ekg-db-file-obsolete' exists, that is used instead."
   :type 'file
   :group 'ekg)
 
+(defcustom ekg-notes-default-directory 'database
+  "Default directory for EKG note buffers.
+When this is the symbol `database', use the directory containing
+the EKG database.  Otherwise, this must be a string naming an
+existing directory."
+  :type '(choice (const :tag "Directory containing the database" database)
+                 (directory :tag "Other directory"))
+  :group 'ekg)
+
 (defcustom ekg-template-tag "template"
   "Special tag marking notes acting as templates for other tags.
 See `ekg-on-add-tag-insert-template' for details on how this works."
@@ -350,10 +359,23 @@ non-nil, it will be used as the filename, otherwise
 
 (defun ekg--notes-directory ()
   "Return the directory ekg notes buffers have as the default directory.
-This will be the location of the database file."
-  (file-name-directory
-   (or (ekg-db-file)
-       triples-default-database-filename)))
+Use `ekg-notes-default-directory' to determine the directory."
+  (let ((directory
+         (cond
+          ((eq ekg-notes-default-directory 'database)
+           (let ((database-file
+                  (or (ekg-db-file) triples-default-database-filename)))
+             (unless database-file
+               (error "No EKG database file is configured"))
+             (file-name-directory (expand-file-name database-file))))
+          ((stringp ekg-notes-default-directory)
+           (expand-file-name ekg-notes-default-directory))
+          (t
+           (error "Invalid `ekg-notes-default-directory': %S"
+                  ekg-notes-default-directory)))))
+    (unless (file-directory-p directory)
+      (error "EKG notes default directory does not exist: %s" directory))
+    (file-name-as-directory directory)))
 
 (defun ekg--upgrade-check-key ()
   "Return the automatic upgrade cache key."
@@ -1101,6 +1123,7 @@ ARG is the prefix argument, if used it opens in another window."
 (defun ekg--set-local-variables ()
   "Set some common local variables."
   (setq-local
+   default-directory (ekg--notes-directory)
    completion-at-point-functions
    (append (list #'ekg--transclude-titled-note-completion
                  #'ekg--inline-tag-completion)
@@ -1198,6 +1221,7 @@ This is needed to identify references to refresh when the subject is changed.")
 
 (define-derived-mode ekg-notes-mode vui-mode "ekg-notes"
   "Major mode for showing a list of notes that can be interacted with."
+  (setq-local default-directory (ekg--notes-directory))
   (setq truncate-lines t)
   (visual-line-mode 1)
   (if (eq ekg-capture-default-mode 'org-mode)
@@ -2246,8 +2270,7 @@ notes are created with additional tags TAGS."
   (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
-    (switch-to-buffer buf)
-    (setq-local default-directory (ekg--notes-directory))))
+    (switch-to-buffer buf)))
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."

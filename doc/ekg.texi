@@ -645,6 +645,13 @@ database to not be shared with any other user of the triple package@comma{} by
 customizing the variable @code{ekg-db-file}.  When this is @code{nil}@comma{} it leaves the
 filename up to the triples package.
 
+EKG note buffers use the directory containing the database as their
+@code{default-directory}. Customize @code{ekg-notes-default-directory} to use another
+directory instead. Its value can be the symbol @code{database}@comma{} meaning the directory
+containing the database@comma{} or a directory name. This normally is only used when
+notes want to refer to files by relative filenames@comma{} for example for image
+display.
+
 @node Concepts and data model in ekg
 @chapter Concepts and data model in ekg
 

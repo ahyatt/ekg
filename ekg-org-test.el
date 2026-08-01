@@ -309,6 +309,19 @@ Returns the note ID."
       (should (equal headings
                      '((1 "Parent") (2 "Child A") (2 "Child B")))))))
 
+(ekg-deftest-with-db ekg-org-test-view-default-directory ()
+  "Test that task views use `ekg-notes-default-directory'."
+  (let* ((ekg-notes-default-directory
+          (file-name-directory (directory-file-name ekg-db-dir)))
+         (expected-directory
+          (file-name-as-directory
+           (expand-file-name ekg-notes-default-directory))))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (should (equal default-directory expected-directory)))
+    (ekg-org-view-task (ekg-org-test--add-task "Focused"))
+    (should (equal default-directory expected-directory))))
+
 (ekg-deftest-with-db ekg-org-test-view-body-fontified ()
   "Test that org body text in the view is fontified, not raw text."
   (ekg-org-add-schema)

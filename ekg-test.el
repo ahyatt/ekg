@@ -60,6 +60,23 @@
              (should (equal (ekg-tags-including "b") '("b")))
              (should (string= (ekg-tags-display '("a" "b")) "a, b")))
 
+(ekg-deftest-with-db ekg-test-notes-default-directory ()
+  (let ((database-directory (file-name-as-directory ekg-db-dir)))
+    (should (equal (ekg--notes-directory) database-directory))
+    (let* ((ekg-notes-default-directory
+            (file-name-directory (directory-file-name ekg-db-dir)))
+           (expected-directory
+            (file-name-as-directory
+             (expand-file-name ekg-notes-default-directory))))
+      (dolist (mode-function '(ekg-capture-mode ekg-edit-mode ekg-notes-mode))
+        (with-temp-buffer
+          (funcall mode-function)
+          (should (equal default-directory expected-directory))))))
+  (let ((ekg-notes-default-directory
+         (expand-file-name "missing-directory" ekg-db-dir)))
+    (should-error (ekg--notes-directory)
+                  :type 'error)))
+
 (ekg-deftest-with-db ekg-test-org-link-to-id ()
              (require 'ol)
              (let* ((note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))

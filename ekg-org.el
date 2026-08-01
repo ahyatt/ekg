@@ -1499,6 +1499,7 @@ Accepts and ignores arguments so it can be used directly on
   "Major mode for viewing ekg org tasks in a hierarchical view.
 
 \\{ekg-org-view-mode-map}"
+  (setq-local default-directory (ekg--notes-directory))
   (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
   (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)
   (add-hook 'kill-buffer-hook
