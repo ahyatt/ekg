@@ -155,10 +155,9 @@ If ERROR-CALLBACK is non-nil use it on error, otherwise log a message."
              (ekg-display-note-text note ekg-embedding-max-words 'plaintext)))
    (lambda (embedding)
      (ekg-connect)
-     (ekg-embedding-batch-store
-      (if ekg-vecdb-provider
-          (list (ekg-embedding--note-to-embed-item note embedding))
-        (list (cons (ekg-note-id note) embedding))))
+     (if ekg-vecdb-provider
+         (ekg-embedding-batch-store-vecdb (list (ekg-embedding--note-to-embed-item note embedding)))
+       (ekg-embedding-batch-store (list (cons (ekg-note-id note) embedding))))
      (when success-callback (funcall success-callback note)))
    (or error-callback
        (lambda (error-type msg)
