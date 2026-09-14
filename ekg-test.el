@@ -647,5 +647,124 @@
                                           note1-id))))))
                  (kill-buffer buf))))
 
+(ekg-deftest-with-db ekg-test-note-hierarchy ()
+  (let ((root (ekg-note-create :id "root" :text "Root"))
+        (child (ekg-note-create :id "child" :text "Child"))
+        (grandchild (ekg-note-create :id "grandchild" :text "Grandchild")))
+    (ekg-save-note root)
+    (ekg-note-set-parent child root)
+    (ekg-save-note child)
+    (ekg-note-set-parent grandchild child)
+    (ekg-save-note grandchild)
+    (should (equal (ekg-note-parent-id (ekg-get-note-with-id "child"))
+                   "root"))
+    (should (equal (mapcar #'ekg-note-id (ekg-note-child-notes root))
+                   '("child")))
+    (should (equal (mapcar #'ekg-note-id
+                           (ekg-note-ancestors grandchild))
+                   '("root" "child")))
+    (should-error (ekg-note-set-parent root grandchild))))
+
+(ekg-deftest-with-db ekg-test-edit-hierarchy-overlays ()
+  (let ((root (ekg-note-create :text "Root"))
+        (child (ekg-note-create :text "Child" :mode 'markdown-mode)))
+    (ekg-save-note root)
+    (ekg-note-set-parent child root)
+    (ekg-save-note child)
+    (ekg-edit child)
+    (should (string-match-p
+             "Root"
+             (overlay-get ekg--hierarchy-before-overlay 'before-string)))
+    (should (equal (buffer-substring-no-properties
+                    (ekg--note-text-beginning) (point-max))
+                   "Child"))
+    (kill-buffer (current-buffer))
+    (ekg-edit root)
+    (should (string-match-p
+             "Child"
+             (overlay-get ekg--hierarchy-after-overlay 'after-string)))
+    (should (equal (buffer-substring-no-properties
+                    (ekg--note-text-beginning) (point-max))
+                   "Root"))))
+
+(ekg-deftest-with-db ekg-test-respond-to-note-captures-markdown-child ()
+  (let ((parent (ekg-note-create :text "Parent")))
+    (ekg-save-note parent)
+    (ekg-respond-to-note parent)
+    (should ekg-capture-mode)
+    (should (eq major-mode 'markdown-mode))
+    (should (equal (ekg-note-parent-id ekg-note)
+                   (ekg-note-id parent)))
+    (should (overlayp ekg--hierarchy-before-overlay))
+    (should (string-match-p
+             "Parent"
+             (overlay-get ekg--hierarchy-before-overlay 'before-string)))
+    (should (= (ekg--note-text-beginning) (1+ (point-min))))
+    (should (= (point) (ekg--note-text-beginning)))
+    (should (overlay-get ekg--hierarchy-before-overlay 'read-only))
+    (should cursor-intangible-mode)
+    (let ((window (get-buffer-window (current-buffer) t)))
+      (should window)
+      (set-window-parameter window 'cursor-intangible--last-point
+                            (ekg--note-text-beginning))
+      (should (= (cursor-sensor-tangible-pos (point-min) window)
+                 (ekg--note-text-beginning))))
+    ;; The displayed parent is not part of the response text.
+    (should (string-empty-p
+             (ekg-edit-note-display-text)))
+    ;; Fontification must not make the sentinel's trailing boundary
+    ;; read-only; this happens asynchronously in a live Markdown buffer.
+    (font-lock-ensure)
+    (insert "Response")
+    (ekg-note-update-from-buffer)
+    (should (equal (ekg-note-text ekg-note) "Response"))))
+
+(ekg-deftest-with-db ekg-test-notes-view-renders-child-hierarchy ()
+  (let ((parent (ekg-note-create :text "Parent" :tags '("thread")))
+        (child (ekg-note-create :text "Child")))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (ekg-show-notes-with-tag "thread")
+    (with-current-buffer "*ekg tag: thread*"
+      (should (string-match-p "Parent" (buffer-string)))
+      (should (string-match-p "  Child" (buffer-string))))))
+
+(ekg-deftest-with-db ekg-test-upgrade-org-parent-to-hierarchy ()
+  (triples-add-schema ekg-db 'org
+                      '(parent :base/type integer :base/unique t))
+  (let ((parent (ekg-note-create :text "Parent"))
+        (child (ekg-note-create :text "Child")))
+    (ekg-save-note parent)
+    (ekg-save-note child)
+    (triples-set-type ekg-db (ekg-note-id child) 'org
+                      :parent (ekg-note-id parent))
+    (ekg-upgrade-db '(0 9 2))
+    (should-not (triples-db-select ekg-db (ekg-note-id child)
+                                   'org/parent nil))
+    (should (equal (ekg-note-parent-id
+                    (ekg-get-note-with-id (ekg-note-id child)))
+                   (ekg-note-id parent)))
+    ;; The migration is safe to repeat.
+    (ekg-upgrade-db '(0 9 2))
+    (should (= (length (triples-db-select
+                        ekg-db (ekg-note-id child)
+                        'hierarchy/parent nil))
+               1))))
+
+(ekg-deftest-with-db ekg-test-trash-and-delete-hierarchy-subtree ()
+  (let ((parent (ekg-note-create :text "Parent"))
+        (child (ekg-note-create :text "Child")))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (ekg-note-trash parent)
+    (should (member ekg-trash-tag
+                    (ekg-note-tags
+                     (ekg-get-note-with-id (ekg-note-id child)))))
+    (ekg-note-trash parent)
+    (should-not (ekg-get-note-with-id (ekg-note-id parent)))
+    (should-not (ekg-get-note-with-id (ekg-note-id child)))))
+
 (provide 'ekg-test)
 ;;; ekg-test.el ends here

@@ -103,7 +103,7 @@
     ;; Verify child has correct parent-id property
     (let* ((child-note (ekg-get-note-with-id child-id))
            (child-props (ekg-note-properties child-note)))
-      (should (= (plist-get child-props :org/parent) parent-id)))
+      (should (= (plist-get child-props :hierarchy/parent) parent-id)))
     ;; Verify parent task can be rendered
     (let* ((parent-note (ekg-get-note-with-id parent-id))
            (rendered (ekg-org-task-to-string parent-note)))
@@ -111,8 +111,8 @@
       (should (string-match-p "Parent content" rendered)))))
 
 (ekg-deftest-with-db ekg-org-test-save-with-virtual-reversed ()
-  "Test that saving a parent note with org/children doesn't error.
-When a note has children, reading it populates :org/children as a
+  "Test that saving a parent note with hierarchy/children doesn't error.
+When a note has children, reading it populates :hierarchy/children as a
 virtual-reversed property.  Saving it back must not attempt to
 write that property."
   (ekg-org-add-schema)
@@ -124,12 +124,14 @@ write that property."
                      "Child" "child content" nil parent-id "TODO" nil nil)))
          (parent-note (ekg-get-note-with-id parent-id)))
     ;; Verify the virtual-reversed property is present when reading.
-    (should (plist-get (ekg-note-properties parent-note) :org/children))
+    (should (plist-get (ekg-note-properties parent-note)
+                       :hierarchy/children))
     ;; Saving the parent should not error.
     (ekg-save-note parent-note)
     ;; Verify the child relationship is still intact after save.
     (let ((reloaded (ekg-get-note-with-id child-id)))
-      (should (= (plist-get (ekg-note-properties reloaded) :org/parent)
+      (should (= (plist-get (ekg-note-properties reloaded)
+                            :hierarchy/parent)
                  parent-id)))))
 
 (ekg-deftest-with-db ekg-org-test-generate-content ()

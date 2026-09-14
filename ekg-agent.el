@@ -579,11 +579,8 @@ types, but we'll only get strings from the LLM."
                                (let ((note (ekg-agent--get-note-with-id id)))
                                  (unless note
                                    (error "Note with ID %s not found" id))
-                                 (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                        (new-text (concat (ekg-note-text note) "\n"
-                                                          (car enclosure) "\n"
-                                                          content "\n"
-                                                          (cdr enclosure))))
+                                 (let ((new-text (concat (ekg-note-text note)
+                                                         "\n" content)))
                                    (setf (ekg-note-text note) new-text)
                                    (ekg-save-note note)
                                    (format "Appended content to note ID %s" id)))))
@@ -598,11 +595,8 @@ types, but we'll only get strings from the LLM."
                                (let ((note (ekg-agent--get-note-with-id id)))
                                  (unless note
                                    (error "Note with ID %s not found" id))
-                                 (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                        (new-text (concat (car enclosure) "\n"
-                                                          content "\n"
-                                                          (cdr enclosure))))
-                                   (setf (ekg-note-text note) new-text)
+                                 (progn
+                                   (setf (ekg-note-text note) content)
                                    (ekg-save-note note)
                                    (format "Replaced content of note ID %s" id)))))
                  :name "replace_note"
@@ -3595,8 +3589,8 @@ If already scheduled, cancel the existing timer and create a new one."
 
 (defun ekg-agent-note-response (&optional arg)
   "Respond to the current note using the agent.
-This is similar to `ekg-llm-send-and-append-note', but runs an
-agent loop with tools, instead of just appending text.
+This is similar to `ekg-llm-respond-to-note', but runs an agent
+loop with tools before saving a Markdown response note.
 
 The agent is given the context of the last 10 notes with similar
 tags.
@@ -3605,57 +3599,49 @@ ARG, if non-nil, allows editing the instructions."
   (interactive "P")
   (unless ekg-note
     (error "No note in current buffer"))
+  (when (buffer-modified-p)
+    (if ekg-edit-mode
+        (ekg-edit-save)
+      (user-error "Save the note before requesting an agent response")))
+  (unless (ekg-note-with-id-exists-p (ekg-note-id ekg-note))
+    (user-error "Save the note before requesting an agent response"))
   (ekg-note-update-from-buffer)
   (save-excursion
-    (let* ((ekg-agent-tool-append-response
+    (let* ((parent-note (copy-ekg-note ekg-note))
+           (ekg-agent-tool-save-response
             (make-llm-tool
              :function (lambda (content)
-                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                (new-text (concat
-                                           (car enclosure) "\n"
-                                           content "\n"
-                                           (cdr enclosure))))
-                           (save-excursion
-                             (goto-char (point-max))
-                             (insert new-text))))
-             :name "append_to_current_note"
-             :description "Append content to the current note."
-             :args '((:name "content" :type string :description "The content to append to the current note."))))
-           (ekg-agent-tool-replace-response
-            (make-llm-tool
-             :function (lambda (content)
-                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                (new-text (concat
-                                           (car enclosure) "\n"
-                                           content "\n"
-                                           (cdr enclosure))))
-                           (erase-buffer)
-                           (insert new-text)))
-             :name "replace_current_note"
-             :description "Replace the content of the current note."
-             :args '((:name "content" :type string :description "The new content for the current note."))))
+                         (let ((response
+                                (ekg-llm-save-response
+                                 parent-note content
+                                 (list ekg-agent-author-tag))))
+                           (format "Saved response note %s"
+                                   (ekg-note-id response))))
+             :name "respond_to_current_note"
+             :description "Save a Markdown response to the current note."
+             :args '((:name "content" :type string
+                      :description "The response to save."))))
            (instructions (ekg-llm-instructions-for-note ekg-note))
            (instructions-for-use (if arg
                                      (read-string "Instructions: " instructions)
                                    instructions))
+           (context-tags (ekg-llm--context-tags ekg-note))
            (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id ekg-note)))
                                                 (ekg-get-notes-with-any-tags
                                                  (append
-                                                  (ekg-note-tags ekg-note)
+                                                  context-tags
                                                   (list ekg-agent-self-info-tag))))
                                     10))
            (context-notes-json (let ((ekg-llm-note-numwords 100))
                                  (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
            (current-note-json (let ((ekg-llm-note-numwords 10000))
                                 (ekg-llm-note-to-text ekg-note)))
+           (hierarchy-json (let ((ekg-llm-note-numwords 10000))
+                             (ekg-llm-note-hierarchy-context ekg-note)))
            (prompt (concat "You are a note-response agent for ekg, an Emacs knowledge base.
-Your job is to respond to the user's current note by appending or
-replacing its content.  You have tools to search existing notes for
-context if needed, but your primary goal is to produce a response
-for the current note.
-
-Do NOT create separate notes (via `create_note`) unless there is a
-compelling reason — your response belongs in the current note.
+Your job is to respond to the user's current note.  You have tools to
+search existing notes for context if needed, but your primary goal is
+to produce a response for the current note.
 
 Your instructions:\n"
                            instructions-for-use
@@ -3663,34 +3649,32 @@ Your instructions:\n"
 for context.  After each tool call you will be given a chance to make
 more tool calls.
 
-IMPORTANT: You MUST end your session by calling one of these two tools:
-- `append_to_current_note`: Appends your response to the current note.
-- `replace_current_note`: Replaces the current note content entirely.
-
-Calling either of these tools will end your session.  There is no other
-way to end the session.  Prefer `append_to_current_note` by default,
-unless the user is explicitly asking for a rewrite or replacement.
+IMPORTANT: You MUST end your session by calling
+`respond_to_current_note`, which saves your response as a separate
+Markdown child note.  There is no other way to end the session.
 
 The user input will be the note they are currently editing.\n\n"
                            (format "The current date and time is %s.\n"
                                    (format-time-string "%F %R"))
                            (format "Some notes matching the tags or context: %s\n"
-                                   context-notes-json))))
+                                   context-notes-json)
+                           (format
+                            "The note hierarchy around the current note: %s\n"
+                            hierarchy-json))))
       (let ((overlay (make-overlay (point-max) (point-max) nil t t)))
         (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
         (ekg-agent--iterate (llm-make-chat-prompt
                              current-note-json
                              :context prompt
                              :tools
-                             (ekg-agent--tools (list
-                                                ekg-agent-tool-append-response
-                                                ekg-agent-tool-replace-response))
+                             (ekg-agent--tools
+                              (list ekg-agent-tool-save-response))
                              :tool-options (make-llm-tool-options :tool-choice 'any))
                             0
                             (ekg-agent--make-status-callback
                              (lambda (_status)
                                (delete-overlay overlay)))
-                            '("append_to_current_note" "replace_current_note")
+                            '("respond_to_current_note")
                             nil)))))
 
 (defvar ekg-agent-minor-mode-map
@@ -3730,20 +3714,15 @@ ID on success, signals an error on failure.
 This function automatically:
 - Adds the `ekg-agent-author-tag' to the tags
 - Applies all functions from `ekg-capture-auto-tag-funcs' (e.g., date tags)
-- Wraps the text in the appropriate LLM output format based on MODE
 
 This is intended to be used from the command-line so agents can easily
-add properly formatted notes to ekg."
+add notes to ekg."
   (ekg-connect)
   (let* ((mode-sym (if (stringp mode) (intern mode) mode))
-         (enclosure (assoc-default mode-sym ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-         (formatted-text (concat (car enclosure) "\n"
-                                 text "\n"
-                                 (cdr enclosure)))
          ;; Apply auto-tag functions (e.g., date tags)
          (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
          (all-tags (seq-uniq (append tags auto-tags (list ekg-agent-author-tag))))
-         (note (ekg-note-create :text formatted-text
+         (note (ekg-note-create :text text
                                 :mode mode-sym
                                 :tags all-tags)))
     (ekg-save-note note)
@@ -3906,8 +3885,7 @@ notes from ekg."
                        :test #'string=)
                 :properties (list :titled/title (list title)))))
     (when has-parent
-      (setf (ekg-note-properties note)
-            (plist-put (ekg-note-properties note) :org/parent parent-id)))
+      (ekg-note-set-parent note parent-id))
     ;; Assign sort-order at the end of existing siblings.
     (let* ((siblings (if has-parent
                          (ekg-org-view--sorted-children parent-id)

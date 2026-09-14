@@ -73,6 +73,14 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.10.0
+- Add generic parent-child relationships between notes.  Note lists display
+  these relationships hierarchically, and edit buffers show parent notes and
+  responses outside the editable text.
+- Store LLM output as separate Markdown response notes tagged
+  =llm-generated= instead of inserting mode-specific output blocks.
+- Move Org task parent relationships to the generic hierarchy schema while
+  retaining Org-specific sibling ordering.
 ** Version 0.9.2
 - Fix issue computing batch embeddings without =vecdb=.
 ** Version 0.9.1
@@ -292,7 +300,13 @@ For the common cases, there are special commands, available under the =C-c /= pr
 
   When altering properties, nothing is saved until the note is saved.
 
-The buffer has the text of the note.
+The buffer has the editable text of the note.  Notes may also be related in a
+parent-child hierarchy.  When editing or capturing a child note, its ancestor
+chain is shown before the editable text.  Its child notes, or responses, are
+shown after the editable text.  These displays use overlays and are never saved
+as part of the note.  Use =C-c C-r= to capture a Markdown response to the note
+being edited.
+Trashing or permanently deleting a note applies to its descendant subtree too.
 
 There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=.
 More can be added by customizing the variable ~ekg-acceptable-modes~, just make
@@ -585,6 +599,9 @@ also given):
 tags of current note.
 
 =ekg-notes-open= (=o=), edit the currently selected note.
+
+=ekg-notes-respond= (=r=), capture a Markdown response to the currently
+selected note.  Responses can themselves have responses.
 
 =ekg-notes-delete= (=d=), trash the current note (or, if this is the trash list,
 truly delete it).
@@ -1123,23 +1140,25 @@ functionality depends on having embeddings.
 
 The variable ~ekg-llm-provider~, can be a single provider, similar to
 ~ekg-embedding-provider~, or a list.  If it is a list, the first element will be
-used by default. However, when the user invokes =ekg-llm-send-and-append-note= or
-=ekg-llm-send-and-replace-note= with a prefix argument (normally via =C-u M-x=), the
-user can select among the different providers.
+used by default. However, when the user invokes =ekg-llm-respond-to-note= with a
+prefix argument (normally via =C-u M-x=), the user can select among the
+different providers.
 
 *** Augmenting notes with LLM output
 To send a note to an LLM and capture its response, call
-=ekg-llm-send-and-append-note=, which is by default bound to =[C-c .]=.  A prefix
+=ekg-llm-respond-to-note=, which is by default bound to =[C-c .]=.  A prefix
 argument (=[C-u C-c .]=) will let you edit the prompt, temperature, and possibly
-the provider used before it is sent.  The output from the LLM is appended at the
-end of the note, in a special section.
+the provider used before it is sent.  The output is saved as a separate
+Markdown note that is a response to the current note.  The response is tagged
+with the value of ~ekg-llm-generated-tag~, which defaults to =llm-generated= and
+can be customized or set to nil.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM.  The prompt consists of context about previous notes that contain the
 tags of your note, and similar notes, which is what will generate high-quality
 content that is appropriate in the context of your notes.  It also contains
-instructions to the LLM to how to generate the note text to be added or
-replaced. The default instructions are a fixed string you can configure in
+instructions telling the LLM how to respond. The default instructions are a
+fixed string you can configure in
 ~ekg-llm-default-instructions~.  But alternatively, you can create alternative
 prompts for different ekg tags in the same way that [[#templates][templates]] work, by creating
 a note tagged with "prompt" and any other tag (the special "prompt" tag can be
@@ -1153,33 +1172,24 @@ cooking and provide you helpful tips to improve your recipes.  You then create a
 note with a child tag of =recipe=, let's say =recipe/monkfish=, with some details of
 your attempt to cook monkfish, and then hit =[C-c .]=.  Because =recipe= is a parent
 of =recipe/monkfish=, ekg-llm will use these instructions instead of the default
-one, and will also append your note, and place the LLM's response in a special
-section at the end of your note.  For example:
+one, and will create a Markdown response note.  When editing the original note,
+the response is displayed after the editable text without becoming part of
+that text.  For example, the relationship is:
 
 #+begin_example
-Making monkfish again.  It is thick but tends to be wet and hard to get a good
-sear on.  Maybe I should sous vide it and then blast it with the searzall torch?
-
-#+BEGIN_LLM_OUTPUT
-Monkfish can indeed be challenging to sear properly due to its high water
-content.  Sous-vide cooking followed by searing with a torch can be a great
-technique to achieve the desired result.  The sous-vide process will help to cook
-the fish evenly and retain moisture, while the searzall torch can give it a
-beautiful caramelized crust.  Just be sure to pat the fish dry before searing for
-better browning and use high heat to quickly sear the exterior without
-overcooking the inside.  Happy cooking!
-#+END_LLM_OUTPUT
+Making monkfish again ...
+  -> [llm-generated] Monkfish can indeed be challenging to sear properly ...
 #+end_example
 
-Instead of appending, the note can be replaced with the output of the LLM by
-using =ekg-llm-send-and-replace-note= which is bound to =[C-c ,]=.  As with the
-append command, using a prefix argument will let you edit the instructions
-before sending it.
-
-All prompts sent from a note in org or markdown modes have a prelude that notes
-the format of the input and expected output.  However, LLMs typically will
-produce markdown regardless of what you ask it to do, so if you want to use
-LLMs, you may want to use markdown as a default note format.
+When a response note is being edited, its ancestor chain is displayed before
+the editable text and its responses are displayed afterward.  Calling
+=ekg-llm-respond-to-note= from a response creates another response in the same
+thread.  The LLM receives an explicit JSON representation of the hierarchy
+around the current note: the ancestor chain from root to immediate parent, the
+current note, and all of its recursive descendants.  Each entry identifies its
+relationship, signed depth, note ID, and parent ID.  Descendant arrays have a
+deterministic representation, but their sibling order has no meaning.  Other
+branches descending from an ancestor are not included.
 *** Using ekg notes as prompts
 ekg notes are especially well suited for LLM prompting, both because of the
 ability to create prompts for different tags, and the ability to transclude one
@@ -1425,9 +1435,10 @@ Tasks in =ekg-org= are ordinary ekg notes with special tags and properties:
 - *Title*: Each task must have a title (stored in the =:titled/title= property),
   which becomes the org headline when rendered.
 
-- *Hierarchy*: Tasks can have parent-child relationships via the =:org/parent=
-  property (an integer note ID).  Children are discovered through a virtual
-  reversed property =:org/children=.  There is no limit to nesting depth.
+- *Hierarchy*: Tasks use EKG's generic =:hierarchy/parent= relationship.
+  Children are discovered through the virtual reversed property
+  =:hierarchy/children=.  Org tasks add =:org/sort-order= so their children can
+  be ordered.  There is no limit to nesting depth.
 
 - *Scheduling*: Tasks can have =:org/deadline= and =:org/scheduled= properties
   (stored as unix timestamps), which appear as standard org timestamps.
@@ -1602,10 +1613,11 @@ assistance.  It can create notes to you, or to itself, to help it work.
 You can also ask the agent to help you with a specific note you are writing or
 editing. The command =ekg-agent-note-response= (bound to =C-c .= by default,
 overriding the =ekg-llm= binding) will start an agent loop focused on your
-current note. This is an agentic version of =ekg-llm-send-and-append-note=. The
-agent can use tools to research your other notes and decide whether to append
-information to your note or replace it entirely. As with other LLM commands, a
-prefix argument allows you to edit the instructions sent to the agent.
+current note. This is an agentic version of =ekg-llm-respond-to-note=. The
+agent can use tools to research your other notes before saving a separate
+Markdown response tagged with both ~ekg-llm-generated-tag~ and
+~ekg-agent-author-tag~. As with other LLM commands, a prefix argument allows you
+to edit the instructions sent to the agent.
 
 You can also ask the agent a direct question at any time with the command
 =ekg-agent-ask=. This will prompt you for a question, which is then sent to the

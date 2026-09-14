@@ -66,9 +66,6 @@ Bind this around batch operations that save multiple notes; call
   (triples-add-schema ekg-db 'org
                       '(deadline :base/type integer :base/unique t)
                       '(scheduled :base/type integer :base/unique t)
-                      ;; We assume here that all org notes have the standard int ids.
-                      '(parent :base/type integer :base/unique t)
-                      '(children :base/virtual-reversed org/parent)
                       '(sort-order :base/type integer :base/unique t)
                       ;; Generic org properties, stored as readable cons
                       ;; cells "(KEY . VALUE)" following org property
@@ -82,8 +79,6 @@ Bind this around batch operations that save multiple notes; call
 
 ;; These are set at load time rather than in the schema hook, which
 ;; only runs on database version changes.
-(add-to-list 'ekg-header-hidden-properties :org/parent)
-(add-to-list 'ekg-header-hidden-properties :org/children)
 (add-to-list 'ekg-header-hidden-properties :org/sort-order)
 (add-to-list 'ekg-header-hidden-properties :org/property)
 
@@ -144,7 +139,8 @@ active, unarchived, tasks."
          ;; want top-level tasks.  This avoids loading child notes from
          ;; the database just to discard them.
          (child-id-set (make-hash-table :test 'equal))
-         (_ (dolist (row (triples-db-select ekg-db nil 'org/parent nil))
+         (_ (dolist (row (triples-db-select ekg-db nil
+                                             'hierarchy/parent nil))
               (puthash (car row) t child-id-set)))
          (top-ids (seq-remove (lambda (id) (gethash id child-id-set))
                               all-ids)))
@@ -163,9 +159,7 @@ active, unarchived, tasks."
 
 (defun ekg-org-get-child-notes-of-id (id)
   "Fetch child notes of a given note ID."
-  (seq-filter #'ekg-note-active-p
-              (delq nil (mapcar (lambda (row) (ekg-get-note-with-id (car row)))
-                                (triples-db-select ekg-db nil 'org/parent id)))))
+  (ekg-note-child-notes id t))
 
 (defun ekg-org--format-timestamp (timestamp)
   "Parse TIMESTAMP integer into an Org timestamp string."
@@ -288,7 +282,7 @@ traversal depth to avoid infinite loops; defaults to 10."
         (depth (or max-depth 10))
         (current note))
     (while (and (> depth 0)
-                (let ((parent-id (plist-get (ekg-note-properties current) :org/parent)))
+                (let ((parent-id (ekg-note-parent-id current)))
                   (when parent-id
                     (let ((parent (ekg-get-note-with-id parent-id)))
                       (when parent
@@ -892,15 +886,6 @@ trashed, they are permanently deleted."
               (note (ekg-get-note-with-id id)))
     (ekg-edit note)))
 
-(defun ekg-org-view--plist-delete (plist key)
-  "Return a copy of PLIST with KEY and its value removed."
-  (let ((result nil))
-    (while plist
-      (unless (eq (car plist) key)
-        (setq result (cons (cadr plist) (cons (car plist) result))))
-      (setq plist (cddr plist)))
-    (nreverse result)))
-
 (defun ekg-org-view-promote ()
   "Promote the task at point, making it a sibling of its current parent.
 The promoted task is placed immediately after its former parent
@@ -909,22 +894,18 @@ among the new siblings."
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id))
               (props (ekg-note-properties note))
-              (parent-id (plist-get props :org/parent)))
+              (parent-id (ekg-note-parent-id note)))
     (let* ((parent-note (ekg-get-note-with-id parent-id))
            (grandparent-id (when parent-note
-                             (plist-get (ekg-note-properties parent-note)
-                                        :org/parent)))
+                             (ekg-note-parent-id parent-note)))
            (ekg-org--inhibit-view-refresh t))
       (triples-with-transaction
         ekg-db
         (if grandparent-id
-            (setf (ekg-note-properties note)
-                  (plist-put props :org/parent grandparent-id))
+            (ekg-note-set-parent note grandparent-id)
           ;; Promoting to top-level: remove the parent property and the
-          ;; org/parent triple directly.
-          (setf (ekg-note-properties note)
-                (ekg-org-view--plist-delete props :org/parent))
-          (triples-db-delete ekg-db id 'org/parent))
+          ;; hierarchy/parent triple.
+          (ekg-note-set-parent note nil))
         ;; Place right after the former parent among new siblings.
         (let* ((new-siblings (if grandparent-id
                                  (ekg-org-view--sorted-children grandparent-id)
@@ -987,14 +968,9 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
            (ekg-org--inhibit-view-refresh t))
       (triples-with-transaction ekg-db
                                 (if target-id
-                                    (setf (ekg-note-properties note)
-                                          (plist-put (ekg-note-properties note)
-                                                     :org/parent target-id))
+                                    (ekg-note-set-parent note target-id)
                                   ;; Moving to top level: remove parent.
-                                  (setf (ekg-note-properties note)
-                                        (ekg-org-view--plist-delete (ekg-note-properties note)
-                                                                    :org/parent))
-                                  (triples-db-delete ekg-db id 'org/parent))
+                                  (ekg-note-set-parent note nil))
                                 ;; Place at the end of the new siblings.
                                 (let* ((new-siblings (if target-id
                                                          (ekg-org-view--sorted-children target-id)
@@ -1018,7 +994,7 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
   (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
-    (let* ((parent-id (plist-get (ekg-note-properties note) :org/parent))
+    (let* ((parent-id (ekg-note-parent-id note))
            (siblings (if parent-id
                          (ekg-org-view--sorted-children parent-id)
                        (ekg-org-view--sorted-top-level)))
@@ -1042,7 +1018,7 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
   (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
-    (let* ((parent-id (plist-get (ekg-note-properties note) :org/parent))
+    (let* ((parent-id (ekg-note-parent-id note))
            (siblings (if parent-id
                          (ekg-org-view--sorted-children parent-id)
                        (ekg-org-view--sorted-top-level)))
@@ -1067,7 +1043,7 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id))
               (props (ekg-note-properties note)))
-    (let* ((parent-id (plist-get props :org/parent))
+    (let* ((parent-id (ekg-note-parent-id note))
            (siblings (if parent-id
                          (ekg-org-view--sorted-children parent-id)
                        (ekg-org-view--sorted-top-level)))
@@ -1078,8 +1054,7 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                              (setq prev sib)))))
       (when prev-sibling
         (let ((ekg-org--inhibit-view-refresh t))
-          (setf (ekg-note-properties note)
-                (plist-put props :org/parent (ekg-note-id prev-sibling)))
+          (ekg-note-set-parent note (ekg-note-id prev-sibling))
           (ekg-save-note note))
         (ekg-org-view--refresh)))))
 
@@ -1102,8 +1077,7 @@ skipped."
               (push id seen-ids)
               (push (list (point) id level
                           (when-let* ((note (and id (ekg-get-note-with-id id))))
-                            (plist-get (ekg-note-properties note)
-                                       :org/parent)))
+                            (ekg-note-parent-id note)))
                     headings))))
         (forward-line 1)))
     (nreverse headings)))
@@ -1300,8 +1274,7 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
     (when (and parent-id (> level 1))
       (let* ((parent-note (ekg-get-note-with-id parent-id))
              (grandparent-id (when parent-note
-                               (plist-get (ekg-note-properties parent-note)
-                                          :org/parent)))
+                               (ekg-note-parent-id parent-note)))
              (new-slot (list :buffer-pos (plist-get slot :buffer-pos)
                              :level (1- level)
                              :parent-id grandparent-id
@@ -1355,7 +1328,7 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                              (list :titled/title (list title)
                                    :org/sort-order sort-order)
                              (when parent-id
-                               (list :org/parent parent-id))))))
+                               (list :hierarchy/parent parent-id))))))
     (ekg-save-note note)
     (ekg-org-view--refresh (ekg-note-id note))))
 
