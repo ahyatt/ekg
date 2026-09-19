@@ -81,6 +81,8 @@ triples library is already installed.
   =llm-generated= instead of inserting mode-specific output blocks.
 - Move Org task parent relationships to the generic hierarchy schema while
   retaining Org-specific sibling ordering.
+- Preserve note identity and parent relationships in flat Logseq, Denote, and
+  Apple Notes exports.
 ** Version 0.9.2
 - Fix issue computing batch embeddings without =vecdb=.
 ** Version 0.9.1
@@ -306,6 +308,11 @@ chain is shown before the editable text.  Its child notes, or responses, are
 shown after the editable text.  These displays use overlays and are never saved
 as part of the note.  Use =C-c C-r= to capture a Markdown response to the note
 being edited.
+Responses inherit topical tags from the note and its ancestor chain, so the
+thread remains discoverable through the same subjects.  Date, lifecycle, and
+module-specific control or provenance tags are not inherited; the new response
+still receives its own automatic tags.  Modules can extend this filtering with
+~ekg-response-tag-filter-functions~.
 Trashing or permanently deleting a note applies to its descendant subtree too.
 
 There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=.
@@ -601,7 +608,8 @@ tags of current note.
 =ekg-notes-open= (=o=), edit the currently selected note.
 
 =ekg-notes-respond= (=r=), capture a Markdown response to the currently
-selected note.  Responses can themselves have responses.
+selected note.  Responses can themselves have responses and inherit the
+thread's topical tags.
 
 =ekg-notes-delete= (=d=), trash the current note (or, if this is the trash list,
 truly delete it).
@@ -1054,6 +1062,7 @@ This will be exported into "pages/ekg.org":
 :PROPERTIES:
 :ID: 33134561605
 :EKG_HASH: 89471eadbd7cc56b088f5513c11f68cb1d11d045
+:EKG_ID: integer:33134561605
 :END:
 #[[2023-04-05]] #[[logseq]]
 ekg can export into logseq
@@ -1066,6 +1075,16 @@ of the exported data.  This is to keep track of what was exported, so we do not
 re-import it unless it has changed.  For now, even if the data is changed, it is
 not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will
 also be created, although they won't have any content from this note.
+
+EKG note hierarchies remain flat on these tag pages.  Each exported item has an
+=EKG_ID= property and child items also have an =EKG_PARENT= property.  These
+properties preserve the relationship without requiring a parent and child to
+live on the same Logseq page.  IDs use a typed, escaped representation, so a
+numeric ID such as =integer:123= remains distinct from the string ID
+=string:123=.  During import,
+all notes are saved before their parent relationships are applied; the order of
+items and files therefore does not matter.  An unresolved parent is reported
+but is not implicitly imported, so export filters are not broadened.
 
 #+texinfo: @noindent
 When exporting, inline commands (see [[#inlines][inlines]] section), are evaluated before
@@ -1151,7 +1170,8 @@ argument (=[C-u C-c .]=) will let you edit the prompt, temperature, and possibly
 the provider used before it is sent.  The output is saved as a separate
 Markdown note that is a response to the current note.  The response is tagged
 with the value of ~ekg-llm-generated-tag~, which defaults to =llm-generated= and
-can be customized or set to nil.
+can be customized or set to nil.  It also inherits the thread's topical tags;
+LLM provenance, prompt, date, and other control tags are excluded.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM.  The prompt consists of context about previous notes that contain the
@@ -1256,6 +1276,7 @@ from ekg in MELPA.
   (use-package ekg-denote
     :init
     (setq ekg-denote-export-add-front-matter nil)
+    (setq ekg-denote-export-add-ekg-metadata t)
     (setq ekg-denote-export-backup-on-conflict t)
     (setq ekg-denote-export-title-max-len 50)
     (setq ekg-denote-export-combined-keywords-len 150))
@@ -1265,6 +1286,12 @@ To export, call =ekg-denote-export= which will export any modified
 note after the last export as a denote in the =denote-directory=
 defined by =denote= package. If it is your first time exporting, all
 the notes will be exported to the =denote-directory=.
+
+By default, every Denote file includes =ekg_id= metadata and child notes also
+include =ekg_parent= metadata.  Org files use =#+ekg_id= and =#+ekg_parent=
+keywords; Markdown files use HTML comments.  This keeps the exported files
+independent while making a flat backup sufficient to reconstruct the EKG
+hierarchy.  Set =ekg-denote-export-add-ekg-metadata= to nil to omit it.
 
 =ekg-denote= keeps record of the last export time in the ekg db and
 use that to find the notes changed since last export. This way the
@@ -1287,6 +1314,8 @@ are made available:
 - =ekg-denote-export-backup-on-conflict= to backup the denote if both
   ekg and denote are found to be updated after last export. Default is
   =t=.
+- =ekg-denote-export-add-ekg-metadata= to preserve EKG note IDs and parent
+  relationships in the exported files.  Default is =t=.
 
 It is user responsibility to backup the denotes before and after
 export to protect against accidental deletes. This can be easily done
@@ -1375,6 +1404,16 @@ These tags don't function as native Apple Notes hashtags, but they are visible
 in the note body and can be found via Apple Notes search on any device.
 
 Hidden tags (such as "trash" and "draft") are not synced.
+
+*** Hierarchies
+Apple Notes remain one-to-one with EKG notes rather than being combined into a
+single conversation document.  Each exported Apple Note contains an =EKG ID:=
+metadata line, and a response or other child note also contains an =EKG Parent:=
+line.  This preserves the hierarchy while leaving every note independently
+editable.  During import, EKG first creates or updates all notes in the batch
+and then restores their parent relationships, so children may appear before
+their parents.  Missing parents are reported and do not cause notes outside the
+configured export filters to be synchronized.
 
 *** Content conversion
 Note content is converted between org-mode or markdown and HTML using =pandoc=.

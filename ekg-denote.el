@@ -59,6 +59,13 @@ This is used for trimming keywords when converting tags."
   :type 'boolean
   :group 'ekg-denote-export)
 
+(defcustom ekg-denote-export-add-ekg-metadata t
+  "Whether to add EKG identity and hierarchy metadata to exports.
+This metadata makes a flat Denote backup sufficient to reconstruct
+the EKG hierarchy."
+  :type 'boolean
+  :group 'ekg-denote-export)
+
 (defcustom ekg-denote-export-backup-on-conflict t
   "Whether to backup denotes on conflict during export.
 Uses `backup-buffer' to create the backup.  You can choose not
@@ -109,7 +116,7 @@ COMBINED-LENGTH."
 
 (cl-defstruct ekg-denote
   "Representation of denote file."
-  id note-id text kws title path)
+  id note-id text kws title path hierarchy)
 
 (defun ekg-denote-create (note)
   "Create a new `ekg-denote' from given NOTE."
@@ -128,13 +135,33 @@ COMBINED-LENGTH."
 	     (ekg-title (or ekg-title ""))
 	     (title (string-limit (denote-sluggify 'title ekg-title) ekg-denote-export-title-max-len))
 	     (signature-slug "")
-	     (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext signature-slug)))
+	     (path (denote-format-file-name (file-name-as-directory denote-directory) id kws title ext signature-slug))
+         (hierarchy (ekg-note-export-metadata note)))
     (make-ekg-denote :id id
 		             :note-id note-id
 		             :text text
 		             :kws kws
 		             :title title
-		             :path path)))
+		             :path path
+                     :hierarchy hierarchy)))
+
+(defun ekg-denote--ekg-metadata-text (denote)
+  "Return format-appropriate EKG metadata for DENOTE."
+  (let* ((metadata (ekg-denote-hierarchy denote))
+         (fields
+          (append
+           `(("id" . ,(ekg-export-encode-id (plist-get metadata :id))))
+           (when-let ((parent-id (plist-get metadata :parent-id)))
+             `(("parent" . ,(ekg-export-encode-id parent-id)))))))
+    (concat
+     (mapconcat
+      (lambda (field)
+        (if (string-equal (file-name-extension (ekg-denote-path denote))
+                          "org")
+            (format "#+ekg_%s: %s" (car field) (cdr field))
+          (format "<!-- ekg-%s: %s -->" (car field) (cdr field))))
+      fields "\n")
+     "\n\n")))
 
 (defun ekg-denote--backup (denote)
   "Backup given DENOTE."
@@ -163,7 +190,10 @@ Optionally add front-matter."
 	    (title (ekg-denote-title denote))
 	    (kws (ekg-denote-kws denote))
 	    (id (ekg-denote-id denote)))
-    (with-temp-file path (insert text))
+    (with-temp-file path
+      (when ekg-denote-export-add-ekg-metadata
+        (insert (ekg-denote--ekg-metadata-text denote)))
+      (insert text))
     (when ekg-denote-export-add-front-matter
       (denote-prepend-front-matter path title kws ""
 				                   (date-to-time id)

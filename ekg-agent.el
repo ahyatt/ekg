@@ -77,6 +77,14 @@
   :type 'string
   :group 'ekg-agent)
 
+(defun ekg-agent--response-inheritable-tag-p (tag _note)
+  "Return non-nil when TAG is not agent provenance or control data."
+  (not (member tag (delq nil (list ekg-agent-author-tag
+                                   ekg-agent-self-info-tag)))))
+
+(add-hook 'ekg-response-tag-filter-functions
+          #'ekg-agent--response-inheritable-tag-p)
+
 (add-to-list 'ekg-hidden-tags ekg-agent-self-info-tag)
 
 (defcustom ekg-agent-daily-time "09:00"

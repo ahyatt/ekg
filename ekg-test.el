@@ -99,6 +99,29 @@
                        (should (eq note-buf (current-buffer)))))
                  (kill-buffer note-buf))))
 
+(ekg-deftest ekg-test-export-id-round-trip ()
+  (dolist (id '(123 "123" "https://example.com/note" "café" file-id))
+    (should (equal id
+                   (ekg-export-decode-id
+                    (ekg-export-encode-id id)))))
+  (should (equal "string:a%0Ab%3Cc%26d"
+                 (ekg-export-encode-id "a\nb<c&d")))
+  (should-error (ekg-export-decode-id "123 trailing")))
+
+(ekg-deftest-with-db ekg-test-note-export-metadata ()
+  (let ((root (ekg-note-create :id "root" :text "Root" :mode 'text-mode))
+        (parent (ekg-note-create :id 2 :text "Parent" :mode 'text-mode))
+        (child (ekg-note-create :id "3" :text "Child" :mode 'text-mode)))
+    (ekg-save-note root)
+    (ekg-note-set-parent parent root)
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (should (equal '(:id "root" :parent-id nil :root-id "root" :depth 0)
+                   (ekg-note-export-metadata root)))
+    (should (equal '(:id "3" :parent-id 2 :root-id "root" :depth 2)
+                   (ekg-note-export-metadata child)))))
+
 (ekg-deftest-with-db ekg-test-org-link-to-tags ()
              (require 'ol)
              (ekg-save-note (ekg-note-create :text "" :mode 'text-mode :tags '("a" "b")))
@@ -687,12 +710,27 @@
                     (ekg--note-text-beginning) (point-max))
                    "Root"))))
 
+(ekg-deftest-with-db ekg-test-response-inherited-tags ()
+  (let ((root (ekg-note-create
+               :text "Root"
+               :tags '("topic" "date/2000-01-01" "template")))
+        (parent (ekg-note-create :text "Parent" :tags '("specific"))))
+    (ekg-save-note root)
+    (ekg-note-set-parent parent root)
+    (ekg-save-note parent)
+    (should (equal (ekg-response-inherited-tags parent)
+                   '("topic" "specific")))))
+
 (ekg-deftest-with-db ekg-test-respond-to-note-captures-markdown-child ()
-  (let ((parent (ekg-note-create :text "Parent")))
+  (let ((parent (ekg-note-create
+                 :text "Parent"
+                 :tags '("topic" "date/2000-01-01"))))
     (ekg-save-note parent)
     (ekg-respond-to-note parent)
     (should ekg-capture-mode)
     (should (eq major-mode 'markdown-mode))
+    (should (member "topic" (ekg-note-tags ekg-note)))
+    (should-not (member "date/2000-01-01" (ekg-note-tags ekg-note)))
     (should (equal (ekg-note-parent-id ekg-note)
                    (ekg-note-id parent)))
     (should (overlayp ekg--hierarchy-before-overlay))

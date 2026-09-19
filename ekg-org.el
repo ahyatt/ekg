@@ -52,6 +52,14 @@ Bind this around batch operations that save multiple notes; call
 (defconst ekg-org-archive-tag "org/archive"
   "Tag used to identify EKG notes that should be treated as archived Org tasks.")
 
+(defun ekg-org--response-inheritable-tag-p (tag _note)
+  "Return non-nil when TAG is not Org task control data."
+  (and (not (string-prefix-p ekg-org-state-tag-prefix tag))
+       (not (member tag (list ekg-org-task-tag ekg-org-archive-tag)))))
+
+(add-hook 'ekg-response-tag-filter-functions
+          #'ekg-org--response-inheritable-tag-p)
+
 (defface ekg-org-view-body
   '((t :inherit shadow))
   "Face used for task body text in `ekg-org-view-mode'."

@@ -31,12 +31,14 @@
 
 (ekg-deftest-with-db ekg-llm-test-save-response ()
   (let ((parent (ekg-note-create :text "Question" :mode 'org-mode
-                                 :tags '("topic"))))
+                                 :tags '("topic" "prompt"))))
     (ekg-save-note parent)
     (let* ((response (ekg-llm-save-response parent "**Answer**"))
            (reloaded (ekg-get-note-with-id (ekg-note-id response))))
       (should (equal (ekg-note-text reloaded) "**Answer**"))
       (should (eq (ekg-note-mode reloaded) 'markdown-mode))
+      (should (member "topic" (ekg-note-tags reloaded)))
+      (should-not (member "prompt" (ekg-note-tags reloaded)))
       (should (member ekg-llm-generated-tag (ekg-note-tags reloaded)))
       (should (equal (ekg-note-parent-id reloaded) (ekg-note-id parent)))
       (should (equal (mapcar #'ekg-note-id

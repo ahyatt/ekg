@@ -69,6 +69,7 @@ Installation
 
 Changelog
 
+* Version 0.10.0: Version 0100. 
 * Version 0.9.2: Version 092. 
 * Version 0.9.1: Version 091. 
 * Version 0.9.0: Version 090. 
@@ -142,6 +143,7 @@ Apple Notes
 * Setup::
 * Syncing::
 * Tags::
+* Hierarchies::
 * Content conversion::
 * Limitations::
 
@@ -242,6 +244,7 @@ triples library is already installed.
 @chapter Changelog
 
 @menu
+* Version 0.10.0: Version 0100. 
 * Version 0.9.2: Version 092. 
 * Version 0.9.1: Version 091. 
 * Version 0.9.0: Version 090. 
@@ -266,6 +269,25 @@ triples library is already installed.
 * Version 0.2.1: Version 021. 
 * Version 0.2: Version 02. 
 @end menu
+
+@node Version 0100
+@section Version 0.10.0
+
+@itemize
+@item
+Add generic parent-child relationships between notes.  Note lists display
+these relationships hierarchically@comma{} and edit buffers show parent notes and
+responses outside the editable text.
+@item
+Store LLM output as separate Markdown response notes tagged
+@samp{llm-generated} instead of inserting mode-specific output blocks.
+@item
+Move Org task parent relationships to the generic hierarchy schema while
+retaining Org-specific sibling ordering.
+@item
+Preserve note identity and parent relationships in flat Logseq@comma{} Denote@comma{} and
+Apple Notes exports.
+@end itemize
 
 @node Version 092
 @section Version 0.9.2
@@ -732,7 +754,18 @@ For the common cases@comma{} there are special commands@comma{} available under 
 When altering properties@comma{} nothing is saved until the note is saved.
 @end itemize
 
-The buffer has the text of the note.
+The buffer has the editable text of the note.  Notes may also be related in a
+parent-child hierarchy.  When editing or capturing a child note@comma{} its ancestor
+chain is shown before the editable text.  Its child notes@comma{} or responses@comma{} are
+shown after the editable text.  These displays use overlays and are never saved
+as part of the note.  Use @samp{C-c C-r} to capture a Markdown response to the note
+being edited.
+Responses inherit topical tags from the note and its ancestor chain@comma{} so the
+thread remains discoverable through the same subjects.  Date@comma{} lifecycle@comma{} and
+module-specific control or provenance tags are not inherited; the new response
+still receives its own automatic tags.  Modules can extend this filtering with
+@code{ekg-response-tag-filter-functions}.
+Trashing or permanently deleting a note applies to its descendant subtree too.
 
 There are three modes for the note text: @samp{text-mode}@comma{} @samp{markdown-mode}@comma{} and @samp{org-mode}.
 More can be added by customizing the variable @code{ekg-acceptable-modes}@comma{} just make
@@ -1078,6 +1111,10 @@ also given):
 tags of current note.
 
 @samp{ekg-notes-open} (@samp{o})@comma{} edit the currently selected note.
+
+@samp{ekg-notes-respond} (@samp{r})@comma{} capture a Markdown response to the currently
+selected note.  Responses can themselves have responses and inherit the
+thread's topical tags.
 
 @samp{ekg-notes-delete} (@samp{d})@comma{} trash the current note (or@comma{} if this is the trash list@comma{}
 truly delete it).
@@ -1595,6 +1632,7 @@ This will be exported into "pages/ekg.org":
 :PROPERTIES:
 :ID: 33134561605
 :EKG_HASH: 89471eadbd7cc56b088f5513c11f68cb1d11d045
+:EKG_ID: integer:33134561605
 :END:
 #[[2023-04-05]] #[[logseq]]
 ekg can export into logseq
@@ -1607,6 +1645,16 @@ of the exported data.  This is to keep track of what was exported@comma{} so we 
 re-import it unless it has changed.  For now@comma{} even if the data is changed@comma{} it is
 not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will
 also be created@comma{} although they won't have any content from this note.
+
+EKG note hierarchies remain flat on these tag pages.  Each exported item has an
+@samp{EKG_ID} property and child items also have an @samp{EKG_PARENT} property.  These
+properties preserve the relationship without requiring a parent and child to
+live on the same Logseq page.  IDs use a typed@comma{} escaped representation@comma{} so a
+numeric ID such as @samp{integer:123} remains distinct from the string ID
+@samp{string:123}.  During import@comma{}
+all notes are saved before their parent relationships are applied; the order of
+items and files therefore does not matter.  An unresolved parent is reported
+but is not implicitly imported@comma{} so export filters are not broadened.
 
 @noindent
 When exporting@comma{} inline commands (see @ref{Inline commands, , inlines} section)@comma{} are evaluated before
@@ -1684,9 +1732,9 @@ functionality depends on having embeddings.
 
 The variable @code{ekg-llm-provider}@comma{} can be a single provider@comma{} similar to
 @code{ekg-embedding-provider}@comma{} or a list.  If it is a list@comma{} the first element will be
-used by default. However@comma{} when the user invokes @samp{ekg-llm-send-and-append-note} or
-@samp{ekg-llm-send-and-replace-note} with a prefix argument (normally via @samp{C-u M-x})@comma{} the
-user can select among the different providers.
+used by default. However@comma{} when the user invokes @samp{ekg-llm-respond-to-note} with a
+prefix argument (normally via @samp{C-u M-x})@comma{} the user can select among the
+different providers.
 
 @menu
 * Augmenting notes with LLM output::
@@ -1698,17 +1746,20 @@ user can select among the different providers.
 @subsection Augmenting notes with LLM output
 
 To send a note to an LLM and capture its response@comma{} call
-@samp{ekg-llm-send-and-append-note}@comma{} which is by default bound to @samp{[C-c .]}.  A prefix
+@samp{ekg-llm-respond-to-note}@comma{} which is by default bound to @samp{[C-c .]}.  A prefix
 argument (@samp{[C-u C-c .]}) will let you edit the prompt@comma{} temperature@comma{} and possibly
-the provider used before it is sent.  The output from the LLM is appended at the
-end of the note@comma{} in a special section.
+the provider used before it is sent.  The output is saved as a separate
+Markdown note that is a response to the current note.  The response is tagged
+with the value of @code{ekg-llm-generated-tag}@comma{} which defaults to @samp{llm-generated} and
+can be customized or set to nil.  It also inherits the thread's topical tags;
+LLM provenance@comma{} prompt@comma{} date@comma{} and other control tags are excluded.
 
 In addition to the contents of the note@comma{} ekg will construct a larger prompt for
 the LLM@.  The prompt consists of context about previous notes that contain the
 tags of your note@comma{} and similar notes@comma{} which is what will generate high-quality
 content that is appropriate in the context of your notes.  It also contains
-instructions to the LLM to how to generate the note text to be added or
-replaced. The default instructions are a fixed string you can configure in
+instructions telling the LLM how to respond. The default instructions are a
+fixed string you can configure in
 @code{ekg-llm-default-instructions}.  But alternatively@comma{} you can create alternative
 prompts for different ekg tags in the same way that @ref{Templates, , templates} work@comma{} by creating
 a note tagged with "prompt" and any other tag (the special "prompt" tag can be
@@ -1722,33 +1773,24 @@ cooking and provide you helpful tips to improve your recipes.  You then create a
 note with a child tag of @samp{recipe}@comma{} let's say @samp{recipe/monkfish}@comma{} with some details of
 your attempt to cook monkfish@comma{} and then hit @samp{[C-c .]}.  Because @samp{recipe} is a parent
 of @samp{recipe/monkfish}@comma{} ekg-llm will use these instructions instead of the default
-one@comma{} and will also append your note@comma{} and place the LLM's response in a special
-section at the end of your note.  For example:
+one@comma{} and will create a Markdown response note.  When editing the original note@comma{}
+the response is displayed after the editable text without becoming part of
+that text.  For example@comma{} the relationship is:
 
 @example
-Making monkfish again.  It is thick but tends to be wet and hard to get a good
-sear on.  Maybe I should sous vide it and then blast it with the searzall torch?
-
-#+BEGIN_LLM_OUTPUT
-Monkfish can indeed be challenging to sear properly due to its high water
-content.  Sous-vide cooking followed by searing with a torch can be a great
-technique to achieve the desired result.  The sous-vide process will help to cook
-the fish evenly and retain moisture@comma{} while the searzall torch can give it a
-beautiful caramelized crust.  Just be sure to pat the fish dry before searing for
-better browning and use high heat to quickly sear the exterior without
-overcooking the inside.  Happy cooking!
-#+END_LLM_OUTPUT
+Making monkfish again ...
+  -> [llm-generated] Monkfish can indeed be challenging to sear properly ...
 @end example
 
-Instead of appending@comma{} the note can be replaced with the output of the LLM by
-using @samp{ekg-llm-send-and-replace-note} which is bound to @samp{[C-c @comma{}]}.  As with the
-append command@comma{} using a prefix argument will let you edit the instructions
-before sending it.
-
-All prompts sent from a note in org or markdown modes have a prelude that notes
-the format of the input and expected output.  However@comma{} LLMs typically will
-produce markdown regardless of what you ask it to do@comma{} so if you want to use
-LLMs@comma{} you may want to use markdown as a default note format.
+When a response note is being edited@comma{} its ancestor chain is displayed before
+the editable text and its responses are displayed afterward.  Calling
+@samp{ekg-llm-respond-to-note} from a response creates another response in the same
+thread.  The LLM receives an explicit JSON representation of the hierarchy
+around the current note: the ancestor chain from root to immediate parent@comma{} the
+current note@comma{} and all of its recursive descendants.  Each entry identifies its
+relationship@comma{} signed depth@comma{} note ID@comma{} and parent ID@.  Descendant arrays have a
+deterministic representation@comma{} but their sibling order has no meaning.  Other
+branches descending from an ancestor are not included.
 
 @node Using ekg notes as prompts
 @subsection Using ekg notes as prompts
@@ -1821,6 +1863,7 @@ from ekg in MELPA@.
 (use-package ekg-denote
   :init
   (setq ekg-denote-export-add-front-matter nil)
+  (setq ekg-denote-export-add-ekg-metadata t)
   (setq ekg-denote-export-backup-on-conflict t)
   (setq ekg-denote-export-title-max-len 50)
   (setq ekg-denote-export-combined-keywords-len 150))
@@ -1830,6 +1873,12 @@ To export@comma{} call @samp{ekg-denote-export} which will export any modified
 note after the last export as a denote in the @samp{denote-directory}
 defined by @samp{denote} package. If it is your first time exporting@comma{} all
 the notes will be exported to the @samp{denote-directory}.
+
+By default@comma{} every Denote file includes @samp{ekg_id} metadata and child notes also
+include @samp{ekg_parent} metadata.  Org files use @samp{#+ekg_id} and @samp{#+ekg_parent}
+keywords; Markdown files use HTML comments.  This keeps the exported files
+independent while making a flat backup sufficient to reconstruct the EKG
+hierarchy.  Set @samp{ekg-denote-export-add-ekg-metadata} to nil to omit it.
 
 @samp{ekg-denote} keeps record of the last export time in the ekg db and
 use that to find the notes changed since last export. This way the
@@ -1856,6 +1905,9 @@ keywords. Default is 150 characters.
 @samp{ekg-denote-export-backup-on-conflict} to backup the denote if both
 ekg and denote are found to be updated after last export. Default is
 @samp{t}.
+@item
+@samp{ekg-denote-export-add-ekg-metadata} to preserve EKG note IDs and parent
+relationships in the exported files.  Default is @samp{t}.
 @end itemize
 
 It is user responsibility to backup the denotes before and after
@@ -1887,6 +1939,7 @@ org-mode/markdown and HTML (Apple Notes stores content as HTML).
 * Setup::
 * Syncing::
 * Tags::
+* Hierarchies::
 * Content conversion::
 * Limitations::
 @end menu
@@ -1959,6 +2012,18 @@ These tags don't function as native Apple Notes hashtags@comma{} but they are vi
 in the note body and can be found via Apple Notes search on any device.
 
 Hidden tags (such as "trash" and "draft") are not synced.
+
+@node Hierarchies
+@subsection Hierarchies
+
+Apple Notes remain one-to-one with EKG notes rather than being combined into a
+single conversation document.  Each exported Apple Note contains an @samp{EKG ID:}
+metadata line@comma{} and a response or other child note also contains an @samp{EKG Parent:}
+line.  This preserves the hierarchy while leaving every note independently
+editable.  During import@comma{} EKG first creates or updates all notes in the batch
+and then restores their parent relationships@comma{} so children may appear before
+their parents.  Missing parents are reported and do not cause notes outside the
+configured export filters to be synchronized.
 
 @node Content conversion
 @subsection Content conversion
@@ -2047,9 +2112,10 @@ preserved as regular ekg tags.
 which becomes the org headline when rendered.
 
 @item
-@strong{Hierarchy}: Tasks can have parent-child relationships via the @samp{:org/parent}
-property (an integer note ID).  Children are discovered through a virtual
-reversed property @samp{:org/children}.  There is no limit to nesting depth.
+@strong{Hierarchy}: Tasks use EKG's generic @samp{:hierarchy/parent} relationship.
+Children are discovered through the virtual reversed property
+@samp{:hierarchy/children}.  Org tasks add @samp{:org/sort-order} so their children can
+be ordered.  There is no limit to nesting depth.
 
 @item
 @strong{Scheduling}: Tasks can have @samp{:org/deadline} and @samp{:org/scheduled} properties
@@ -2296,10 +2362,11 @@ assistance.  It can create notes to you@comma{} or to itself@comma{} to help it 
 You can also ask the agent to help you with a specific note you are writing or
 editing. The command @samp{ekg-agent-note-response} (bound to @samp{C-c .} by default@comma{}
 overriding the @samp{ekg-llm} binding) will start an agent loop focused on your
-current note. This is an agentic version of @samp{ekg-llm-send-and-append-note}. The
-agent can use tools to research your other notes and decide whether to append
-information to your note or replace it entirely. As with other LLM commands@comma{} a
-prefix argument allows you to edit the instructions sent to the agent.
+current note. This is an agentic version of @samp{ekg-llm-respond-to-note}. The
+agent can use tools to research your other notes before saving a separate
+Markdown response tagged with both @code{ekg-llm-generated-tag} and
+@code{ekg-agent-author-tag}. As with other LLM commands@comma{} a prefix argument allows you
+to edit the instructions sent to the agent.
 
 You can also ask the agent a direct question at any time with the command
 @samp{ekg-agent-ask}. This will prompt you for a question@comma{} which is then sent to the

@@ -39,6 +39,7 @@
 (require 'hl-line)
 (require 'iso8601)
 (require 'url-parse)
+(require 'url-util)
 (require 'warnings)
 
 (declare-function org-open-at-point "org")
@@ -149,6 +150,15 @@ specifically requested.
 
 Modules can add to this list to hide their internal tags."
   :type '(repeat string)
+  :group 'ekg)
+
+(defcustom ekg-response-tag-filter-functions nil
+  "Functions deciding whether a tag is inherited by responses.
+Each function is called with TAG and the note being responded to,
+and must return non-nil for TAG to be inherited.  Core control and
+date tags are excluded before these functions are called.  Modules
+can add filters for their own provenance or control tags."
+  :type 'hook
   :group 'ekg)
 
 (defcustom ekg-note-inline-max-words 500
@@ -781,6 +791,55 @@ Signal an error if the stored hierarchy contains a cycle."
         (setq parent-id (ekg-note-parent-id parent))))
     result))
 
+(defun ekg-export-encode-id (id)
+  "Return a lossless, printable representation of EKG note ID ID.
+The representation preserves the distinction between numeric and
+string IDs and is suitable for single-line exporter metadata."
+  (cond
+   ((integerp id) (format "integer:%d" id))
+   ((stringp id) (concat "string:" (url-hexify-string id)))
+   (t (concat "lisp:"
+              (url-hexify-string (prin1-to-string id))))))
+
+(defun ekg-export-decode-id (text)
+  "Decode an EKG note ID previously encoded in TEXT.
+Signal an error when TEXT has an unknown type prefix or contains an
+invalid value."
+  (cond
+   ((string-prefix-p "integer:" text)
+    (let ((value (substring text (length "integer:"))))
+      (unless (string-match-p (rx string-start (? "-") (+ digit) string-end)
+                              value)
+        (error "Invalid encoded integer EKG ID: %s" text))
+      (string-to-number value)))
+   ((string-prefix-p "string:" text)
+    (decode-coding-string
+     (url-unhex-string (substring text (length "string:"))) 'utf-8))
+   ((string-prefix-p "lisp:" text)
+    (let* ((decoded (decode-coding-string
+                     (url-unhex-string
+                      (substring text (length "lisp:"))) 'utf-8)))
+      (pcase-let ((`(,value . ,position) (read-from-string decoded)))
+        (unless (string-empty-p
+                 (string-trim (substring decoded position)))
+          (error "Invalid trailing data in encoded EKG ID: %s" text))
+        value)))
+   (t (error "Unknown encoded EKG ID format: %s" text))))
+
+(defun ekg-note-export-metadata (note)
+  "Return hierarchy metadata for exporting NOTE.
+The result is a plist containing `:id', `:parent-id', `:root-id',
+and `:depth'.  Only `:parent-id' is a canonical relationship;
+root and depth are derived conveniences for flat export formats."
+  (let* ((ancestors (ekg-note-ancestors note))
+         (parent-id (ekg-note-parent-id note)))
+    (list :id (ekg-note-id note)
+          :parent-id parent-id
+          :root-id (if ancestors
+                       (ekg-note-id (car ancestors))
+                     (ekg-note-id note))
+          :depth (length ancestors))))
+
 (defun ekg-note-set-parent (note parent)
   "Make NOTE a child of PARENT and return NOTE.
 PARENT may be an `ekg-note', a note ID, or nil to detach NOTE.
@@ -869,6 +928,24 @@ This is opposed to tags that are used for internal purposes."
   (not (member tag
                (append (list ekg-template-tag ekg-function-tag)
                        ekg-hidden-tags))))
+
+(defun ekg-response-inheritable-tag-p (tag note)
+  "Return non-nil when TAG should be inherited in a response to NOTE."
+  (and (ekg-content-tag-p tag)
+       (not (ekg-date-tag-p tag))
+       (seq-every-p (lambda (function)
+                      (funcall function tag note))
+                    ekg-response-tag-filter-functions)))
+
+(defun ekg-response-inherited-tags (note)
+  "Return topical tags inherited by a response to NOTE.
+Tags are collected from NOTE and its ancestor chain, allowing new
+responses in an older thread to recover the thread's topical tags."
+  (seq-uniq
+   (seq-filter
+    (lambda (tag) (ekg-response-inheritable-tag-p tag note))
+    (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
+            (append (ekg-note-ancestors note) (list note))))))
 
 (defun ekg-note-active-p (note)
   "Return non-nil if NOTE is active.
@@ -2284,6 +2361,7 @@ are saved before opening the response buffer."
     (unless (ekg-note-with-id-exists-p (ekg-note-id parent))
       (user-error "Save the note before responding to it"))
     (ekg-capture :mode 'markdown-mode
+                 :tags (ekg-response-inherited-tags parent)
                  :properties (list :hierarchy/parent
                                    (ekg-note-id parent)))))
 

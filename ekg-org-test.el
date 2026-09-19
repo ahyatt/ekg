@@ -32,6 +32,16 @@
   (when (string-match "\\([0-9]+\\)" result-string)
     (string-to-number (match-string 1 result-string))))
 
+(ekg-deftest-with-db ekg-org-test-response-tags-exclude-task-control ()
+  (let ((task (ekg-note-create
+               :text "Task"
+               :tags (list "project"
+                           ekg-org-task-tag
+                           ekg-org-archive-tag
+                           (concat ekg-org-state-tag-prefix "todo")))))
+    (ekg-save-note task)
+    (should (equal (ekg-response-inherited-tags task) '("project")))))
+
 (ekg-deftest-with-db ekg-org-test-basic-rendering ()
   "Test that a basic task is rendered correctly."
   (ekg-org-add-schema)

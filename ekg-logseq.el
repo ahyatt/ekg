@@ -129,6 +129,23 @@ transclusion, it uses the logseq equivalent."
          (format "{{embed ((%s))}}" (cadr (ekg-inline-command i)))
        (ekg-inline-to-result i note)))))
 
+(defun ekg-logseq--hierarchy-properties (note org-mode-p)
+  "Return export metadata properties for NOTE.
+Use Logseq Org syntax when ORG-MODE-P is non-nil and Markdown
+property syntax otherwise."
+  (let* ((metadata (ekg-note-export-metadata note))
+         (prefix (if org-mode-p ":" "  "))
+         (separator (if org-mode-p ": " ":: "))
+         (suffix "\n"))
+    (mapconcat
+     (lambda (entry)
+       (concat prefix (car entry) separator (cdr entry) suffix))
+     (append
+      `(("EKG_ID" . ,(ekg-export-encode-id (plist-get metadata :id))))
+      (when-let ((parent-id (plist-get metadata :parent-id)))
+        `(("EKG_PARENT" . ,(ekg-export-encode-id parent-id)))))
+     "")))
+
 (defun ekg-logseq-note-to-logseq-org (note tag)
   "Return logseq text to store for NOTE in TAG.
 This will store the note text as `org-mode', regardless of the mode
@@ -159,8 +176,9 @@ of the note."
                                (seq-difference
                                 (ekg-note-active-tags note) (list tag))
                                " ")))
-      (insert (format ":PROPERTIES:\n:ID: %s\n:EKG_HASH: %s\n:END:\n%s%s"
+      (insert (format ":PROPERTIES:\n:ID: %s\n:EKG_HASH: %s\n%s:END:\n%s%s"
                       (ekg-note-id note) (ekg-logseq-hash (ekg-note-text note))
+                      (ekg-logseq--hierarchy-properties note t)
                       tag-text (if (> (length tag-text) 0) "\n" ""))))
     (buffer-substring-no-properties (point-min) (point-max))))
 
@@ -173,8 +191,9 @@ of the note."
             (or (car (plist-get (ekg-note-properties note) :titled/title))
                 "Untitled Note")
             "\n  "
-            (format "id:: %s\n  ekg_hash:: %s\n  "
-                    (ekg-note-id note) (ekg-logseq-hash (ekg-note-text note)))
+            (format "id:: %s\n  ekg_hash:: %s\n%s  "
+                    (ekg-note-id note) (ekg-logseq-hash (ekg-note-text note))
+                    (ekg-logseq--hierarchy-properties note nil))
             (mapconcat (lambda (tag)
                          (format "#[[%s]]"
                                  (ekg-logseq-convert-ekg-tag tag)))
@@ -354,6 +373,25 @@ We look for strings of the format #tag and #[[tag]]."
          (org-element-property :ID headline))
        nil nil 'headline))))
 
+(defun ekg-logseq--metadata-value (text name)
+  "Return hierarchy metadata NAME from Logseq item TEXT.
+Recognize both Org property drawer and Markdown property syntax."
+  (let ((case-fold-search t)
+        (regexp (format "^[ \t]*:?%s\\(?::[ \t]+\\|::[ \t]+\\)\\(.*\\)$"
+                        (regexp-quote name))))
+    (when (string-match regexp text)
+      (string-trim (match-string-no-properties 1 text)))))
+
+(defun ekg-logseq--hierarchy-metadata-from-text (text)
+  "Return exported hierarchy metadata parsed from Logseq TEXT.
+Return nil for text not containing the versioned EKG_ID property."
+  (when-let ((encoded-id (ekg-logseq--metadata-value text "EKG_ID")))
+    (list :id (ekg-export-decode-id encoded-id)
+          :parent-id
+          (when-let ((encoded-parent
+                      (ekg-logseq--metadata-value text "EKG_PARENT")))
+            (ekg-export-decode-id encoded-parent)))))
+
 (defun ekg-logseq--text-to-note (tag text)
   "Return the note to import from logseq TEXT.
 TAG is the current tag being imported in logseq."
@@ -376,11 +414,31 @@ TAG is the current tag being imported in logseq."
                           (setf (ekg-inline-command i)
                                 (list 'transclude-note (read (nth 1 (ekg-inline-command i)))))
                           i) i)) (cdr in-cons)))
-    (when-let (id (if (eq major-mode 'org-mode)
-                      (ekg-logseq--to-import-org-id text)
-                    (ekg-logseq--to-import-md-id text)))
-      (setf (ekg-note-id note) (if (ekg-note-with-id-exists-p (read id)) (read id) id)))
+    (if-let ((metadata (ekg-logseq--hierarchy-metadata-from-text text)))
+        (setf (ekg-note-id note) (plist-get metadata :id))
+      (when-let (id (if (eq major-mode 'org-mode)
+                        (ekg-logseq--to-import-org-id text)
+                      (ekg-logseq--to-import-md-id text)))
+        (setf (ekg-note-id note)
+              (if (ekg-note-with-id-exists-p (read id)) (read id) id))))
     note))
+
+(defun ekg-logseq--apply-imported-hierarchy (relations)
+  "Apply imported child-parent RELATIONS after all notes are saved.
+RELATIONS is a list of cons cells whose cars are child IDs and
+whose cdrs are parent IDs or nil.  Missing parents are retained in
+the exported files and reported rather than implicitly imported."
+  (dolist (relation relations)
+    (let ((note (ekg-get-note-with-id (car relation)))
+          (parent-id (cdr relation)))
+      (cond
+       ((null note))
+       ((and parent-id (not (ekg-note-with-id-exists-p parent-id)))
+        (warn "Cannot restore parent %S for imported Logseq note %S"
+              parent-id (car relation)))
+       (t
+        (ekg-note-set-parent note parent-id)
+        (ekg-save-note note))))))
 
 (defun ekg-logseq-import ()
   "Import from the current logseq directory.
@@ -399,6 +457,7 @@ which will import and re-export back to logseq."
   ;; Force a backup pre-import.
   (triples-backup ekg-db ekg-db-file most-positive-fixnum)
   (let ((count 0)
+        (relations nil)
         (last-import (ekg-logseq-get-last-import))
         (start-time (current-time)))
     (message "ekg-logseq-import: importing logseq files changed since %s"
@@ -431,10 +490,18 @@ which will import and re-export back to logseq."
                                        (when (> (length text) 0)
                                          (message "ekg-logseq-import: saving note from file %s" file)
                                          (cl-incf count)
-                                         (let ((note (ekg-logseq--text-to-note tag text)))
+                                         (let* ((metadata
+                                                 (ekg-logseq--hierarchy-metadata-from-text
+                                                  text))
+                                                (note (ekg-logseq--text-to-note tag text)))
                                            (setf (ekg-note-tags note)
                                                  (seq-uniq (append (ekg-note-tags note) filetags) 'equal))
-                                           (ekg-save-note note))))))))))
+                                           (ekg-save-note note)
+                                           (when metadata
+                                             (push (cons (ekg-note-id note)
+                                                         (plist-get metadata :parent-id))
+                                                   relations)))))))))))
+    (ekg-logseq--apply-imported-hierarchy (nreverse relations))
     (message "ekg-logseq-import: imported %d notes" count)
     (ekg-logseq-set-last-import start-time)))
 

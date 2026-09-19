@@ -68,6 +68,14 @@ those other tags."
   :type 'string
   :group 'ekg-llm)
 
+(defun ekg-llm--response-inheritable-tag-p (tag _note)
+  "Return non-nil when TAG is topical rather than LLM provenance."
+  (not (member tag (delq nil (list ekg-llm-generated-tag
+                                   ekg-llm-prompt-tag)))))
+
+(add-hook 'ekg-response-tag-filter-functions
+          #'ekg-llm--response-inheritable-tag-p)
+
 (defconst ekg-llm-provider nil
   "The provider of the embedding.
 This is a struct representing a provider in the `llm' package.
@@ -446,6 +454,7 @@ response note."
                :mode 'markdown-mode
                :tags (seq-uniq
                       (append
+                       (ekg-response-inherited-tags parent)
                        tags
                        (when (and ekg-llm-generated-tag
                                   (not (string-empty-p
