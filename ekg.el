@@ -1342,7 +1342,7 @@ non-nil."
       (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max))))))
 
 (defun ekg--populate-inline-tags (note)
-  "Populae tags found in text of NOTE.
+  "Populate tags found in text of NOTE.
 Tags are prefixed by a hash symbol or a symbol in
 `ekg-inline-custom-tag-completion-symbols', and are enclosed in brackets
 if they have more than one word.  They aso can be org or markdown links,
@@ -1475,16 +1475,9 @@ rather than an auto-generated number."
   (not (numberp id)))
 
 (defun ekg--org-redisplay-inline-images ()
-  "Redisplay Org inline images, suppressing Org parser warnings.
-This avoids warnings when not in an `org-mode' buffer"
-  (if (derived-mode-p 'org-mode)
-      (org-redisplay-inline-images)
-    (let ((warning-suppress-types
-           (cons '(org-element org-element-parser) warning-suppress-types))
-          (warning-suppress-log-types
-           (cons '(org-element org-element-parser)
-                 warning-suppress-log-types)))
-      (org-redisplay-inline-images))))
+  "Redisplay Org inline images, suppressing Org parser warnings."
+  (when (derived-mode-p 'org-mode)
+    (org-redisplay-inline-images)))
 
 ;;;###autoload
 (cl-defun ekg-capture (&key text mode tags properties id)

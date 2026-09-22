@@ -273,6 +273,10 @@ triples library is already installed.
 @itemize
 @item
 Fix issue computing batch embeddings without @samp{vecdb}.
+@item
+Fix image redisplay
+@item
+Ensure @samp{ekg-org-view} setup establishes the database connection.
 @end itemize
 
 @node Version 091

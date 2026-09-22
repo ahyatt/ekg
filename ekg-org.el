@@ -1343,8 +1343,8 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                                (cl-incf order)))))
                        0))
          (parent-tags (when parent-id
-                       (ekg-org-view--visible-tags
-                        (ekg-get-note-with-id parent-id))))
+                        (ekg-org-view--visible-tags
+                         (ekg-get-note-with-id parent-id))))
          (note (ekg-note-create
                 :text ""
                 :mode 'org-mode
@@ -1615,6 +1615,7 @@ If ARCHIVE is non-nil, show archived tasks."
 
 This adds the necessary schema and, if `ekg-agent' is available,
 registers tools for interacting with org tasks."
+  (ekg-connect)
   (ekg-org-add-schema)
   (setf (alist-get :org/scheduled ekg-property-format-functions)
         #'ekg-org--format-epoch-as-date)
