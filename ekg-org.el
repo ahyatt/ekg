@@ -184,9 +184,9 @@ PARENT is the parent org-element node."
          (id (format "%s" (ekg-note-id note)))
          (state (ekg-org--state note))
          (deadline (let ((d (plist-get props :org/deadline)))
-                     (when d (org-timestamp-from-time (time-convert d t)))))
+                     (when d (org-timestamp-from-time (time-convert d t) t))))
          (scheduled (let ((s (plist-get props :org/scheduled)))
-                      (when s (org-timestamp-from-time (time-convert s t))))))
+                      (when s (org-timestamp-from-time (time-convert s t) t)))))
     (let ((element (org-element-create
                     'headline
                     `(:level ,(+ 1 (or (org-element-property :level parent) 0))
