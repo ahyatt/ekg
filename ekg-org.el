@@ -52,6 +52,9 @@ Bind this around batch operations that save multiple notes; call
 (defconst ekg-org-archive-tag "org/archive"
   "Tag used to identify EKG notes that should be treated as archived Org tasks.")
 
+(defconst ekg-org-dependency-types '(sequential parallel)
+  "Supported dependency modes for the children of an Org task.")
+
 (defun ekg-org--response-inheritable-tag-p (tag _note)
   "Return non-nil when TAG is not Org task control data."
   (and (not (string-prefix-p ekg-org-state-tag-prefix tag))
@@ -135,6 +138,53 @@ KEY is case-insensitive.  The note is not saved."
     (setf (ekg-note-properties note)
           (plist-put clean-props :org/property filtered))))
 
+(defun ekg-org-dependency-type (note)
+  "Return the dependency mode for NOTE's children.
+The return value is `parallel' when NOTE has an explicitly false
+ORDERED Org property and `sequential' otherwise."
+  (let ((ordered (ekg-org-get-property note "ORDERED")))
+    (if (and ordered
+             (member (downcase ordered) '("" "nil" "no" "false")))
+        'parallel
+      'sequential)))
+
+(defun ekg-org-set-dependency-type (note dependency-type)
+  "Set how NOTE's children depend on one another.
+DEPENDENCY-TYPE must be `sequential' or `parallel'.  Sequential
+children use Org's ORDERED property.  Parallel children store an
+explicit false value so they remain distinguishable from the
+sequential default.  The note is not saved."
+  (unless (memq dependency-type ekg-org-dependency-types)
+    (error "Invalid Org dependency type: %s" dependency-type))
+  (if (eq dependency-type 'sequential)
+      (ekg-org-set-property note "ORDERED" "t")
+    (ekg-org-set-property note "ORDERED" "nil"))
+  note)
+
+(defun ekg-org--property-drawer (note)
+  "Return an Org property drawer element for NOTE."
+  (let* ((properties
+          ;; EKG_ID is generated from the actual note ID.  ORDERED is
+          ;; normalized below from the dependency mode.
+          (seq-remove (lambda (property)
+                        (member (car property) '("EKG_ID" "ORDERED")))
+                      (ekg-org-properties-alist note)))
+         (properties
+          (if (eq (ekg-org-dependency-type note) 'sequential)
+              (cons '("ORDERED" . "t") properties)
+            properties)))
+    (apply
+     #'org-element-create 'property-drawer nil
+     (org-element-create
+      'node-property
+      `(:key "EKG_ID" :value ,(format "%s" (ekg-note-id note))))
+     (mapcar
+      (lambda (property)
+        (org-element-create
+         'node-property
+         `(:key ,(car property) :value ,(cdr property))))
+      properties))))
+
 (defun ekg-org-get-tasks (&optional archive)
   "Fetch top-level tasks from ekg, as ekg-note structs.
 
@@ -212,8 +262,7 @@ PARENT is the parent org-element node."
              `(,@(when deadline `(:deadline ,deadline))
                ,@(when scheduled `(:scheduled ,scheduled))))))
          (list
-          (org-element-create 'property-drawer nil
-                              (org-element-create 'node-property `(:key "EKG_ID" :value ,id)))
+          (ekg-org--property-drawer note)
           (org-element-create 'paragraph `(:post-blank 1)
                               (format "EKG Entry: [[ekg-note:%s][View in EKG]]" id))))
         (let ((text (ekg-display-note-text note)))
@@ -587,12 +636,17 @@ Reuses a hidden buffer to avoid repeated `org-mode' initialization."
          (tags (ekg-org-view--visible-tags note))
          (stars (make-string level ?*))
          (state-face (if (string-equal state "DONE") 'org-done 'org-todo))
+         (dependency-str
+          (if (eq (ekg-org-dependency-type note) 'parallel)
+              " [parallel]"
+            ""))
          (tag-str (if tags (concat " :" (mapconcat #'identity tags ":") ":") "")))
     (concat (propertize stars 'face (ekg-org-view--heading-face level))
             " "
             (propertize state 'face state-face)
             " "
             (propertize title 'face (ekg-org-view--heading-face level))
+            (propertize dependency-str 'face 'shadow)
             (propertize tag-str 'face 'org-tag))))
 
 
@@ -847,6 +901,28 @@ mode is active, the refresh is deferred until insert mode ends."
                    (ekg-note-tags note))))
       (ekg-org-view--save-tags note))
     (ekg-org-view--refresh)))
+
+(defun ekg-org-view-set-dependency-type (dependency-type)
+  "Set the dependency mode of the task's children.
+DEPENDENCY-TYPE is either `sequential' or `parallel'.  Sequential
+children must be completed in sibling order when interpreted by Org;
+parallel children have no ordering dependency."
+  (interactive
+   (let* ((note (ekg-get-note-with-id (ekg-org-view--note-at-point)))
+          (current (and note (ekg-org-dependency-type note))))
+     (list
+      (intern
+       (completing-read "Child dependencies: "
+                        (mapcar #'symbol-name ekg-org-dependency-types)
+                        nil t nil nil (symbol-name current)))))
+   ekg-org-view-mode)
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (note (ekg-get-note-with-id id)))
+    (let ((ekg-org--inhibit-view-refresh t))
+      (ekg-org-set-dependency-type note dependency-type)
+      (ekg-save-note note))
+    (ekg-org-view--refresh id)
+    (message "Child tasks are now %s" dependency-type)))
 
 (defun ekg-org-view--archive-note (note)
   "Archive NOTE by adding the archive tag if not already present."
@@ -1462,6 +1538,11 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "C-c C-d") #'ekg-org-set-deadline)
     map)
   "Keymap for `ekg-org-view-mode'.")
+
+;; Keep this outside the `defvar' initializer so reloading ekg-org adds
+;; the command to an already existing mode map.
+(define-key ekg-org-view-mode-map (kbd "s")
+  #'ekg-org-view-set-dependency-type)
 
 (defun ekg-org-view--refresh-all (&rest _args)
   "Refresh all live `ekg-org-view-mode' buffers.

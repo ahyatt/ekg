@@ -1500,6 +1500,14 @@ Tasks in =ekg-org= are ordinary ekg notes with special tags and properties:
 - *Ordering*: Sibling tasks are ordered by the =:org/sort-order= property
   (defaulting to creation time when unset).
 
+- *Dependencies*: A parent's children are sequential by default, meaning that they
+  must be completed in sibling order.  They can instead be set to run in
+  parallel.  Sequential dependencies are emitted as the standard Org =ORDERED=t=
+  property on the parent, so generated Org content has native dependency
+  semantics without a separate EKG-only representation.  Use
+  =ekg-org-set-dependency-type= to set the dependency mode of a node, which
+  changes it for its children.
+
 - *Org properties*: Arbitrary org-style properties (uppercase key/value pairs
   following org property syntax) can be attached to tasks via the
   =:org/property= property, and manipulated with =ekg-org-get-property=,
@@ -1577,6 +1585,7 @@ The following keybindings are available in =ekg-org-view-mode=:
 | Key     | Command                          | Description                       |
 |---------+----------------------------------+-----------------------------------|
 | =t=     | =ekg-org-view-cycle-state=       | Change the TODO state             |
+| =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
 | =TAB=   | =ekg-org-view-toggle-collapse=   | Collapse or expand the subtree    |
 | =RET=   | =ekg-org-view-open-note=         | Open the note for editing in ekg  |
 | =c=     | =ekg-org-view-create-child=      | Create a child task under point   |

@@ -120,6 +120,43 @@
       (should (string-match-p "\\* TODO Parent Task" rendered))
       (should (string-match-p "Parent content" rendered)))))
 
+(ekg-deftest-with-db ekg-org-test-child-dependency-type ()
+  "Test parallel and sequential child dependency rendering."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test-parse-out-id
+                     (ekg-agent-org--tool-add-item
+                      "Parent Task" "Parent content"
+                      nil nil "TODO" nil nil)))
+         (_child-id (ekg-org-test-parse-out-id
+                     (ekg-agent-org--tool-add-item
+                      "Child Task" "Child content"
+                      nil parent-id "TODO" nil nil)))
+         (parent (ekg-get-note-with-id parent-id)))
+    (should (eq (ekg-org-dependency-type parent) 'sequential))
+    (should (string-match-p "^:ORDERED: *t$"
+                            (ekg-org-task-to-string parent)))
+    (ekg-org-set-property parent "OWNER" "Andrew")
+    (ekg-org-set-dependency-type parent 'parallel)
+    (ekg-save-note parent)
+    (setq parent (ekg-get-note-with-id parent-id))
+    (should (equal (ekg-org-get-property parent "ORDERED") "nil"))
+    (should (eq (ekg-org-dependency-type parent) 'parallel))
+    (let* ((rendered (ekg-org-task-to-string parent))
+           (parent-rendered
+            (substring rendered 0 (string-match "^\\*\\* " rendered))))
+      (should-not (string-match-p "^:ORDERED:" parent-rendered))
+      (should (string-match-p "^:OWNER: *Andrew$" parent-rendered)))
+    (should (string-match-p "\\[parallel\\]"
+                            (ekg-org-view--render-heading parent 1)))
+    (ekg-org-set-dependency-type parent 'sequential)
+    (ekg-save-note parent)
+    (setq parent (ekg-get-note-with-id parent-id))
+    (should (eq (ekg-org-dependency-type parent) 'sequential))
+    (should (string-match-p "^:ORDERED: *t$"
+                            (ekg-org-task-to-string parent)))
+    (should (eq (lookup-key ekg-org-view-mode-map (kbd "s"))
+                #'ekg-org-view-set-dependency-type))))
+
 (ekg-deftest-with-db ekg-org-test-save-with-virtual-reversed ()
   "Test that saving a parent note with hierarchy/children doesn't error.
 When a note has children, reading it populates :hierarchy/children as a

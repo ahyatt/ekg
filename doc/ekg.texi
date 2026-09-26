@@ -2141,6 +2141,15 @@ be ordered.  There is no limit to nesting depth.
 (defaulting to creation time when unset).
 
 @item
+@strong{Dependencies}: A parent's children are sequential by default@comma{} meaning that they
+must be completed in sibling order.  They can instead be set to run in
+parallel.  Sequential dependencies are emitted as the standard Org @samp{ORDERED=t}
+property on the parent@comma{} so generated Org content has native dependency
+semantics without a separate EKG-only representation.  Use
+@samp{ekg-org-set-dependency-type} to set the dependency mode of a node@comma{} which
+changes it for its children.
+
+@item
 @strong{Org properties}: Arbitrary org-style properties (uppercase key/value pairs
 following org property syntax) can be attached to tasks via the
 @samp{:org/property} property@comma{} and manipulated with @samp{ekg-org-get-property}@comma{}
@@ -2238,13 +2247,16 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @anchor{Actions}Actions
 
 
-@multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Key
 @tab Command
 @tab Description
 @item @samp{t}
 @tab @samp{ekg-org-view-cycle-state}
 @tab Change the TODO state
+@item @samp{s}
+@tab @samp{ekg-org-view-set-dependency-type}
+@tab Set children sequential or parallel
 @item @samp{TAB}
 @tab @samp{ekg-org-view-toggle-collapse}
 @tab Collapse or expand the subtree
