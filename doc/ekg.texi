@@ -1116,6 +1116,12 @@ tags of current note.
 selected note.  Responses can themselves have responses and inherit the
 thread's topical tags.
 
+@samp{ekg-llm-notes-respond} (@samp{.}@comma{} when @samp{ekg-llm} is loaded)@comma{} ask the configured
+LLM to respond to the currently selected note.  The command always prompts for
+the request@comma{} initially @samp{Create a response to this note}@comma{} and lets you select
+reusable prompt tags.  A prefix argument additionally lets you select the
+provider when multiple providers are configured.
+
 @samp{ekg-notes-delete} (@samp{d})@comma{} trash the current note (or@comma{} if this is the trash list@comma{}
 truly delete it).
 
@@ -1747,12 +1753,21 @@ different providers.
 
 To send a note to an LLM and capture its response@comma{} call
 @samp{ekg-llm-respond-to-note}@comma{} which is by default bound to @samp{[C-c .]}.  A prefix
-argument (@samp{[C-u C-c .]}) will let you edit the prompt@comma{} temperature@comma{} and possibly
-the provider used before it is sent.  The output is saved as a separate
-Markdown note that is a response to the current note.  The response is tagged
+argument (@samp{[C-u C-c .]}) will let you edit the prompt and@comma{} when multiple
+providers are configured@comma{} select the provider used before it is sent.  The
+output is saved as a separate Markdown note that is a response to the current
+note.  The response is tagged
 with the value of @code{ekg-llm-generated-tag}@comma{} which defaults to @samp{llm-generated} and
 can be customized or set to nil.  It also inherits the thread's topical tags;
 LLM provenance@comma{} prompt@comma{} date@comma{} and other control tags are excluded.
+
+In a notes list@comma{} press @samp{.} to run the operation on the note at point.  It first
+offers an editable request@comma{} defaulting to @samp{Create a response to this note}@comma{} then
+offers completion over the tags found on notes co-tagged with
+@code{ekg-llm-prompt-tag}.  Prompt tags already applicable to the current response
+thread are prefilled and can be removed.  The selected prompt notes provide reusable
+instructions@comma{} while the first prompt describes this particular response.  The
+manual-response command remains available on @samp{r}.
 
 In addition to the contents of the note@comma{} ekg will construct a larger prompt for
 the LLM@.  The prompt consists of context about previous notes that contain the

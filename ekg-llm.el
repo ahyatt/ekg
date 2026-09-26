@@ -68,6 +68,11 @@ those other tags."
   :type 'string
   :group 'ekg-llm)
 
+(defcustom ekg-llm-default-response-request "Create a response to this note"
+  "Default request offered by `ekg-llm-notes-respond'."
+  :type 'string
+  :group 'ekg-llm)
+
 (defun ekg-llm--response-inheritable-tag-p (tag _note)
   "Return non-nil when TAG is topical rather than LLM provenance."
   (not (member tag (delq nil (list ekg-llm-generated-tag
@@ -142,17 +147,20 @@ Your instructions on what content to add to the note:
 This is a safeguard against sending too much data to the LLM, however,
 we want to try to include as much information as possible.")
 
-(defun ekg-llm-prompt-prelude ()
-  "Output a prelude describing the input and output formats."
+(defun ekg-llm-prompt-prelude (&optional mode)
+  "Output a prelude describing the input and output formats.
+MODE is the major mode used by the note, defaulting to the current
+buffer's `major-mode'."
   ;; Text mode doesn't really need anything.
-  (concat
-   (unless (eq major-mode 'text-mode)
-     (format "All input in this prompt is in %s. "
-             (pcase major-mode
-               ('org-mode "emacs org-mode")
-               ('markdown-mode "markdown")
-               (_ (format "emacs %s" (symbol-name major-mode))))))
-   "Return only the response to the note, formatted as Markdown."))
+  (let ((mode (or mode major-mode)))
+    (concat
+     (unless (eq mode 'text-mode)
+       (format "All input in this prompt is in %s. "
+               (pcase mode
+                 ('org-mode "emacs org-mode")
+                 ('markdown-mode "markdown")
+                 (_ (format "emacs %s" (symbol-name mode))))))
+     "Return only the response to the note, formatted as Markdown.")))
 
 (defun ekg-llm--context-tags (note)
   "Return the tags relevant to prompting from NOTE and its ancestors."
@@ -161,6 +169,44 @@ we want to try to include as much information as possible.")
     (lambda (tag) (equal tag ekg-llm-generated-tag))
     (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
             (append (ekg-note-ancestors note) (list note))))))
+
+(defun ekg-llm-prompt-tags ()
+  "Return tags that occur on notes tagged with `ekg-llm-prompt-tag'."
+  (sort
+   (seq-uniq
+    (mapcan
+     (lambda (note)
+       (seq-remove
+        (lambda (tag) (equal tag ekg-llm-prompt-tag))
+        (copy-sequence (ekg-note-tags note))))
+     (ekg-get-notes-with-tag ekg-llm-prompt-tag)))
+   #'string<))
+
+(defun ekg-llm--default-prompt-tags (note)
+  "Return prompt tags that apply to NOTE and its ancestors."
+  (let ((context-tag-hierarchy
+         (seq-uniq
+          (mapcan #'ekg-tag-to-hierarchy
+                  (ekg-llm--context-tags note)))))
+    (seq-filter (lambda (tag) (member tag context-tag-hierarchy))
+                (ekg-llm-prompt-tags))))
+
+(defun ekg-llm-instructions-for-tags (tags)
+  "Return prompt-note instructions associated with TAGS.
+When TAGS has no associated prompt notes, return
+`ekg-llm-default-instructions'."
+  (let ((prompt-notes
+         (seq-uniq
+          (ekg-get-notes-cotagged-with-tags tags ekg-llm-prompt-tag)
+          (lambda (a b) (equal (ekg-note-id a) (ekg-note-id b))))))
+    (if prompt-notes
+        (mapconcat
+         (lambda (prompt-note)
+           (string-trim
+            (substring-no-properties
+             (ekg-display-note-text prompt-note ekg-llm-note-numwords))))
+         prompt-notes "\n")
+      ekg-llm-default-instructions)))
 
 (defun ekg-llm-instructions-for-note (note)
   "Return the prompt for NOTE, using the tags on the note.
@@ -172,22 +218,19 @@ note.
 
 If there are no prompts on any of the note tags, use
 `ekg-llm-default-instructions'."
-  (let ((prompt-notes (ekg-get-notes-cotagged-with-tags
-                       (ekg-llm--context-tags note)
-                       ekg-llm-prompt-tag)))
-    (if prompt-notes
-        (mapconcat
-         (lambda (prompt-note)
-           (string-trim
-            (substring-no-properties (ekg-display-note-text prompt-note ekg-llm-note-numwords))))
-         prompt-notes "\n")
-      ekg-llm-default-instructions)))
+  (ekg-llm-instructions-for-tags (ekg-llm--context-tags note)))
 
-(defun ekg-llm--send-and-process-note (arg)
+(defun ekg-llm--instructions-with-request (instructions request)
+  "Append the per-response REQUEST to general INSTRUCTIONS."
+  (if (string-empty-p (string-trim (or request "")))
+      instructions
+    (concat instructions "\n\nRequest for this response:\n" request)))
+
+(defun ekg-llm--send-and-process-note (arg note)
   "Resolve note instructions and create an LLM response note.
-ARG comes from the calling function's prefix argument."
-  (interactive)
-  (let* ((instructions-initial (ekg-llm-instructions-for-note ekg-note))
+ARG comes from the calling function's prefix argument.  NOTE is the
+note to which the LLM should respond."
+  (let* ((instructions-initial (ekg-llm-instructions-for-note note))
          (instructions-for-use (if arg
                                    ;; The documentation is clear this isn't correct -
                                    ;; the INITIAL-CONTENTS variable is deprecated.
@@ -198,9 +241,6 @@ ARG comes from the calling function's prefix argument."
                                    (read-string "Prompt: " instructions-initial 'ekg-llm-prompt-history instructions-initial t)
                                  instructions-initial)))
     (ekg-llm-send-and-use instructions-for-use
-                          (if arg
-                              (read-number "Temperature: " 0.5)
-                            0.5)
                           (when (and arg (listp ekg-llm-provider))
                             (let ((provider-alist (mapcar (lambda (provider)
                                                             (cons (llm-name provider)
@@ -208,7 +248,8 @@ ARG comes from the calling function's prefix argument."
                                                           ekg-llm-provider)))
                               (assoc-default (completing-read "Provider: "
                                                               provider-alist
-                                                              nil t) provider-alist))))))
+                                                              nil t) provider-alist)))
+                          note)))
 
 (defun ekg-llm-respond-to-note (&optional arg)
   "Send the note text to the LLM and store its response as a child note.
@@ -221,13 +262,57 @@ sent before it goes to the LLM.
 The response is stored as Markdown and tagged with
 `ekg-llm-generated-tag'."
   (interactive "P")
-  (when (buffer-modified-p)
-    (if ekg-edit-mode
-        (ekg-edit-save)
-      (user-error "Save the note before requesting an LLM response")))
-  (unless (ekg-note-with-id-exists-p (ekg-note-id ekg-note))
-    (user-error "Save the note before requesting an LLM response"))
-  (ekg-llm--send-and-process-note arg))
+  (let ((note (if (derived-mode-p 'ekg-notes-mode)
+                  (ekg-current-note-or-error)
+                ekg-note)))
+    (when (buffer-modified-p)
+      (if ekg-edit-mode
+          (progn
+            (ekg-edit-save)
+            (setq note ekg-note))
+        (user-error "Save the note before requesting an LLM response")))
+    (unless (and note (ekg-note-with-id-exists-p (ekg-note-id note)))
+      (user-error "Save the note before requesting an LLM response"))
+    (ekg-llm--send-and-process-note arg note)))
+
+(defun ekg-llm-notes-respond (request prompt-tags &optional arg)
+  "Ask the LLM to respond to the note at point.
+REQUEST describes the response to create.  PROMPT-TAGS select reusable
+instructions from notes tagged with `ekg-llm-prompt-tag'.  With prefix
+ARG, also let the user select the provider when multiple providers are
+configured."
+  (interactive
+   (let* ((note (ekg-current-note-or-error))
+          (available-tags (ekg-llm-prompt-tags))
+          (default-tags (ekg-llm--default-prompt-tags note)))
+     (list
+      (read-string "Response prompt: "
+                   ekg-llm-default-response-request
+                   'ekg-llm-prompt-history
+                   ekg-llm-default-response-request t)
+      (when available-tags
+        (completing-read-multiple "Prompt tags: " available-tags
+                                  nil t
+                                  (when default-tags
+                                    (concat (string-join default-tags ", ")
+                                            ", "))))
+      current-prefix-arg))
+   ekg-notes-mode)
+  (let ((note (ekg-current-note-or-error)))
+    (ekg-llm-send-and-use
+     (ekg-llm--instructions-with-request
+      (ekg-llm-instructions-for-tags prompt-tags)
+      request)
+     (when (and arg (listp ekg-llm-provider))
+       (let ((provider-alist
+              (mapcar (lambda (provider)
+                        (cons (llm-name provider) provider))
+                      ekg-llm-provider)))
+         (assoc-default (completing-read "Provider: " provider-alist nil t)
+                        provider-alist)))
+     note)))
+
+(define-key ekg-notes-mode-map (kbd ".") #'ekg-llm-notes-respond)
 
 (define-obsolete-function-alias 'ekg-llm-send-and-append-note
   #'ekg-llm-respond-to-note "0.10.0")
@@ -298,14 +383,21 @@ This is for debugging purposes."
 (add-hook 'ekg-capture-mode-hook #'ekg-llm-minor-mode)
 (add-hook 'ekg-edit-mode-hook #'ekg-llm-minor-mode)
 
-(defun ekg-llm-note-interactions ()
-  "From an ekg note buffer, create the prompt for the LLM.
+(defun ekg-llm-note-interactions (&optional note)
+  "Create the user interaction for the LLM.
+When NOTE is non-nil, use its stored text.  Otherwise, read the text
+from the current EKG edit or capture buffer.
 The return value is a list of `ekg-llm-prompt-interaction'
 structs."
   (list
    (make-llm-chat-prompt-interaction
     :role 'user
-    :content (substring-no-properties (ekg-edit-note-display-text)))))
+    :content
+    (substring-no-properties
+     (if note
+         (ekg-insert-inlines-results
+          (or (ekg-note-text note) "") (ekg-note-inlines note) note)
+       (ekg-edit-note-display-text))))))
 
 (defun ekg-llm--note-id-less-p (a b)
   "Return non-nil when note A's ID should sort before note B's ID."
@@ -425,7 +517,7 @@ NUMWORDS specifies the maximum number of words to include."
       (push (cons "mode" (symbol-name (ekg-note-mode note))) result))
     (map-do
      (lambda (prop value)
-       (when-let ((label (ekg-property-name-for prop)))
+       (when-let* ((label (ekg-property-name-for prop)))
          (unless (member prop ekg-llm-ignored-props-for-json)
            (push (cons (downcase label) value) result))))
      (ekg-note-properties note))
@@ -475,17 +567,18 @@ response note."
                'face 'ekg-hierarchy-heading)
    text))
 
-(defun ekg-llm-send-and-use (instructions &optional temperature provider)
+(defun ekg-llm-send-and-use (instructions &optional provider parent)
   "Run the LLM and save its output as a response note.
-TEMPERATURE is a float between 0 and 1 controlling creativity.
 INSTRUCTIONS tells the LLM what to generate.  PROVIDER overrides
-the configured default provider."
+the configured default provider.  PARENT is the note to respond to;
+it defaults to the current `ekg-note'."
   (let* ((provider (or provider (ekg-llm--provider)))
-         (parent (copy-ekg-note ekg-note))
+         (parent (copy-ekg-note (or parent ekg-note)))
          (context-tags (ekg-llm--context-tags parent))
          (prompt (make-llm-chat-prompt
-                  :temperature temperature
-                  :context (concat (ekg-llm-prompt-prelude) "\n"
+                  :context (concat (ekg-llm-prompt-prelude
+                                    (ekg-note-mode parent))
+                                   "\n"
                                    (llm-prompt-fill
                                     'ekg-llm-fill-prompt
                                     provider
@@ -497,9 +590,14 @@ the configured default provider."
                                     :similar-notes (ekg-llm-make-similar-note-generator parent)
                                     :note-hierarchy
                                     (ekg-llm-note-hierarchy-context parent)))
-                  :interactions (ekg-llm-note-interactions)))
+                  :interactions (ekg-llm-note-interactions parent)))
          (origin-buffer (current-buffer))
-         (pending-overlay (make-overlay (point-max) (point-max)
+         (pending-position
+          (if (derived-mode-p 'ekg-notes-mode)
+              (cdr (or (ekg--note-region-at-point)
+                       (cons (point-max) (point-max))))
+            (point-max)))
+         (pending-overlay (make-overlay pending-position pending-position
                                         (current-buffer) nil t)))
     (overlay-put pending-overlay 'priority 200)
     (overlay-put pending-overlay 'after-string
@@ -516,7 +614,8 @@ the configured default provider."
            (let ((response (ekg-llm-save-response parent text)))
              (when (buffer-live-p origin-buffer)
                (with-current-buffer origin-buffer
-                 (ekg--refresh-hierarchy-overlays-in-current-buffer)))
+                 (when (or ekg-edit-mode ekg-capture-mode)
+                   (ekg--refresh-hierarchy-overlays-in-current-buffer))))
              (message "Saved LLM response note %s"
                       (ekg-note-id response))))
          (lambda (_type msg)

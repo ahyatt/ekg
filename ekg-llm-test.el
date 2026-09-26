@@ -70,6 +70,56 @@
       (should (member ekg-llm-generated-tag
                       (ekg-note-tags (car responses)))))))
 
+(ekg-deftest-with-db ekg-llm-test-notes-view-creates-response-note ()
+  (let* ((parent (ekg-note-create :text "Question" :tags '("topic")))
+         (provider
+          (make-llm-fake :chat-action-func (lambda () "Generated answer")))
+         (ekg-llm-provider provider)
+         (ekg-embedding-provider provider))
+    (ekg-save-note parent)
+    (ekg-show-notes-with-tag "topic")
+    (should (eq (lookup-key ekg-notes-mode-map (kbd "."))
+                #'ekg-llm-notes-respond))
+    (ekg-llm-notes-respond "Create a response to this note" nil)
+    (let ((responses (ekg-note-child-notes parent)))
+      (should (= (length responses) 1))
+      (should (equal (ekg-note-text (car responses)) "Generated answer"))
+      (should (eq major-mode 'ekg-notes-mode)))))
+
+(ekg-deftest-with-db ekg-llm-test-notes-view-prompts-for-request-and-tags ()
+  (let ((parent (ekg-note-create :text "Question" :tags '("topic")))
+        (prompt-note (ekg-note-create :text "Be concise"
+                                      :tags '("prompt" "style/concise")))
+        (topic-prompt (ekg-note-create :text "Use topic expertise"
+                                       :tags '("prompt" "topic")))
+        read-default tag-candidates tag-initial
+        sent-instructions sent-parent)
+    (ekg-save-note parent)
+    (ekg-save-note prompt-note)
+    (ekg-save-note topic-prompt)
+    (ekg-show-notes-with-tag "topic")
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (_prompt initial &rest _)
+                 (setq read-default initial)
+                 "Answer as a checklist"))
+              ((symbol-function 'completing-read-multiple)
+               (lambda (_prompt collection &optional _predicate _require-match
+                                initial-input &rest _)
+                 (setq tag-candidates collection
+                       tag-initial initial-input)
+                 '("style/concise")))
+              ((symbol-function 'ekg-llm-send-and-use)
+               (lambda (instructions &optional _provider note)
+                 (setq sent-instructions instructions
+                       sent-parent note))))
+      (call-interactively #'ekg-llm-notes-respond))
+    (should (equal read-default ekg-llm-default-response-request))
+    (should (equal tag-candidates '("style/concise" "topic")))
+    (should (equal tag-initial "topic, "))
+    (should (string-match-p "Be concise" sent-instructions))
+    (should (string-match-p "Answer as a checklist" sent-instructions))
+    (should (equal (ekg-note-id sent-parent) (ekg-note-id parent)))))
+
 (ekg-deftest-with-db ekg-llm-test-streaming-error-creates-no-response ()
   (let* ((parent (ekg-note-create :text "Question" :tags '("topic")))
          (provider

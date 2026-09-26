@@ -611,6 +611,12 @@ tags of current note.
 selected note.  Responses can themselves have responses and inherit the
 thread's topical tags.
 
+=ekg-llm-notes-respond= (=.=, when =ekg-llm= is loaded), ask the configured
+LLM to respond to the currently selected note.  The command always prompts for
+the request, initially =Create a response to this note=, and lets you select
+reusable prompt tags.  A prefix argument additionally lets you select the
+provider when multiple providers are configured.
+
 =ekg-notes-delete= (=d=), trash the current note (or, if this is the trash list,
 truly delete it).
 
@@ -1166,12 +1172,21 @@ different providers.
 *** Augmenting notes with LLM output
 To send a note to an LLM and capture its response, call
 =ekg-llm-respond-to-note=, which is by default bound to =[C-c .]=.  A prefix
-argument (=[C-u C-c .]=) will let you edit the prompt, temperature, and possibly
-the provider used before it is sent.  The output is saved as a separate
-Markdown note that is a response to the current note.  The response is tagged
+argument (=[C-u C-c .]=) will let you edit the prompt and, when multiple
+providers are configured, select the provider used before it is sent.  The
+output is saved as a separate Markdown note that is a response to the current
+note.  The response is tagged
 with the value of ~ekg-llm-generated-tag~, which defaults to =llm-generated= and
 can be customized or set to nil.  It also inherits the thread's topical tags;
 LLM provenance, prompt, date, and other control tags are excluded.
+
+In a notes list, press =.= to run the operation on the note at point.  It first
+offers an editable request, defaulting to =Create a response to this note=, then
+offers completion over the tags found on notes co-tagged with
+~ekg-llm-prompt-tag~.  Prompt tags already applicable to the current response
+thread are prefilled and can be removed.  The selected prompt notes provide reusable
+instructions, while the first prompt describes this particular response.  The
+manual-response command remains available on =r=.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM.  The prompt consists of context about previous notes that contain the
