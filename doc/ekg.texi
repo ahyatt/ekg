@@ -155,6 +155,7 @@ Org Tasks
 * Changing task state::
 * The ekg-org-view::
 * Agent integration::
+* Creating complete plans::
 * Command-line tools::
 
 Agent
@@ -755,11 +756,9 @@ When altering properties@comma{} nothing is saved until the note is saved.
 @end itemize
 
 The buffer has the editable text of the note.  Notes may also be related in a
-parent-child hierarchy.  When editing or capturing a child note@comma{} its ancestor
-chain is shown before the editable text.  Its child notes@comma{} or responses@comma{} are
-shown after the editable text.  These displays use overlays and are never saved
-as part of the note.  Use @samp{C-c C-r} to capture a Markdown response to the note
-being edited.
+parent-child hierarchy.  Editing and capture buffers show only the current
+note's text.  Use @samp{C-c C-r} to capture a Markdown response to the note being
+edited.
 Responses inherit topical tags from the note and its ancestor chain@comma{} so the
 thread remains discoverable through the same subjects.  Date@comma{} lifecycle@comma{} and
 module-specific control or provenance tags are not inherited; the new response
@@ -2107,6 +2106,7 @@ separately@comma{} but it does need to be required:
 * Changing task state::
 * The ekg-org-view::
 * Agent integration::
+* Creating complete plans::
 * Command-line tools::
 @end menu
 
@@ -2337,6 +2337,85 @@ These tools are registered automatically by @samp{ekg-org-initialize} when
 @samp{ekg-agent} is available.  This allows the agent to create sub-tasks@comma{} mark
 items done@comma{} and review your task list as part of its autonomous operation.
 
+@node Creating complete plans
+@subsection Creating complete plans
+
+The @samp{create_org_plan} agent tool takes @samp{description} (the goal and its
+constraints) and @samp{tags} (topic tags applied to every created task).  It first
+runs a research agent with note/file/web read tools@comma{} but no @samp{ask_user} tool.
+Tasks requiring user action receive @code{ekg-agent-org-user-response-tag}
+(default @samp{org/needs-user-response}).  The user can answer question tasks with
+a child response note.  When questions exist@comma{}
+the plan includes a follow-up task to incorporate those responses@comma{} revise the
+plan@comma{} and update the original task note.  This follow-up is a task to execute@comma{}
+not an automatic revision triggered by saving a response.  After
+@samp{finish_plan_research}@comma{} a separate structured-output call produces the plan.
+Configure a strong provider explicitly:
+
+@lisp
+(setq ekg-agent-org-plan-provider my-strong-provider
+      ekg-agent-org-plan-reasoning 'maximum)
+;; Optional: use a different provider for the research agent.
+;; (setq ekg-agent-plan-provider my-research-provider)
+;; Optional provider-specific arguments:
+;; (setq ekg-agent-org-plan-parameters '((parameter . value)))
+@end lisp
+
+When @samp{ekg-agent-plan-provider} is nil@comma{} research uses the normal provider
+from @samp{ekg-llm-provider}.  @samp{maximum} is the llm library's highest thinking
+setting for the structured-output stage.  The final stage has no tools.  The
+existing @samp{add_org_item} tool remains available for individual tasks.
+
+Both stages use the shared contract @samp{ekg-org-plan-schema} and importer
+@samp{ekg-org-plan-import}.  External agents can bypass the LLM stages:
+
+@example
+agent_tools/ekg-org-import-plan plan.json --tag my-project
+# Or: cat plan.json | agent_tools/ekg-org-import-plan - --tag my-project
+@end example
+
+The script supports @samp{--daemon NAME} and prints a JSON mapping of document IDs
+to note IDs.  It requires Python 3 and a running Emacs with EKG installed.
+
+Version 1 JSON has exactly the following fields:
+
+@example
+@{"version":1@comma{}"tasks":[
+  @{"id":"plan"@comma{}"parent":null@comma{}"title":"Release"@comma{}
+   "content":"Release acceptance criteria"@comma{}"execution":"parallel"@comma{}
+   "depends_on":[]@comma{}"tags":[]@}@comma{}
+  @{"id":"build"@comma{}"parent":"plan"@comma{}"title":"Build"@comma{}
+   "content":"Produce the release artifact"@comma{}"execution":"sequential"@comma{}
+   "depends_on":[]@comma{}"tags":[]@}@comma{}
+  @{"id":"publish"@comma{}"parent":"plan"@comma{}"title":"Publish"@comma{}
+   "content":"Publish the validated artifact"@comma{}"execution":"parallel"@comma{}
+   "depends_on":["build"]@comma{}"tags":[]@}
+]@}
+@end example
+
+Exactly one task has a null parent.  IDs are nonempty unique strings local to
+the document; forward references are allowed.  @samp{content} is Org text.
+@samp{execution} controls a task's children@comma{} using the existing @samp{ORDERED} Org
+property.  Array order determines sibling order.  @samp{depends_on} adds explicit
+prerequisites@comma{} stored as multi-valued @samp{:org/depends-on} note IDs.  Thus each
+task has one display parent but may have multiple execution prerequisites.
+The per-task @samp{tags} array is required in newly generated plans but optional
+when importing older version 1 JSON@.  It adds task-specific topic tags; the
+only allowed internal tag is @code{ekg-agent-org-user-response-tag} (default
+@samp{org/needs-user-response}).  Use it for any task requiring user action.  For a
+question@comma{} ask the user to add a child response note@comma{} and make work that
+requires the answer depend on that task.
+The importer rejects cycles@comma{} including those implied by sequential groups and
+parent/child completion.  Explicit prerequisite edges are stored for consumers;
+they do not automatically prevent manual TODO state changes in Org.
+
+All tasks start as TODO and receive the supplied topic tags and
+@code{ekg-agent-author-tag}; other internal
+@samp{org/} tags cannot be overridden.  Validation happens before note creation.  Notes
+and relationships are saved in one triples transaction; a failed write rolls
+back the plan.  Save notifications run after commit.  Version 1 deliberately
+does not accept deadlines or arbitrary properties; unknown fields are rejected.
+
 @node Command-line tools
 @subsection Command-line tools
 
@@ -2447,6 +2526,8 @@ The agent uses specific tags to organize its work:
 @itemize
 @item
 @code{ekg-agent-author-tag} (default "agent"): All notes created by the agent will have this tag.
+@item
+@code{ekg-agent-org-user-response-tag} (default "org/needs-user-response"): Org tasks requiring user action have this tag.
 @item
 @code{ekg-agent-self-info-tag} (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
 @end itemize

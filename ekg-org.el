@@ -35,6 +35,7 @@
 ;; Forward declarations for variables defined in ekg-agent.el.
 (defvar ekg-agent-extra-tools)
 (defvar ekg-agent-org-tool-add-task)
+(defvar ekg-agent-org-tool-create-plan)
 (defvar ekg-agent-org-tool-set-status)
 (defvar ekg-agent-org-tool-list-items)
 
@@ -78,6 +79,7 @@ Bind this around batch operations that save multiple notes; call
                       '(deadline :base/type integer :base/unique t)
                       '(scheduled :base/type integer :base/unique t)
                       '(sort-order :base/type integer :base/unique t)
+                      '(depends-on :base/type integer)
                       ;; Generic org properties, stored as readable cons
                       ;; cells "(KEY . VALUE)" following org property
                       ;; syntax: keys are uppercase strings,
@@ -1688,6 +1690,7 @@ registers tools for interacting with org tasks."
   (define-key ekg-edit-mode-map "\C-c\C-d" #'ekg-org-set-deadline)
   (when (featurep 'ekg-agent)
     (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-add-task)
+    (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-create-plan)
     (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-set-status)
     (add-to-list 'ekg-agent-extra-tools ekg-agent-org-tool-list-items)))
 

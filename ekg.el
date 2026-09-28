@@ -882,19 +882,19 @@ hierarchy cycles are validated."
   (let ((seen (make-hash-table :test #'equal)))
     (cl-labels
         ((delete-subtree
-          (note-id)
-          (unless (gethash note-id seen)
-            (puthash note-id t seen)
-            (dolist (child (ekg-note-child-notes note-id))
-              (delete-subtree (ekg-note-id child)))
-            (run-hook-with-args 'ekg-note-pre-delete-hook note-id)
-            (cl-loop for type in (ekg-note-cotypes) do
-                     (triples-remove-type ekg-db note-id type))
-            (cl-loop for inline-id in
-                     (triples-subjects-with-predicate-object
-                      ekg-db 'inline/for-text note-id)
-                     do (triples-remove-type ekg-db inline-id 'inline))
-            (run-hook-with-args 'ekg-note-delete-hook note-id))))
+           (note-id)
+           (unless (gethash note-id seen)
+             (puthash note-id t seen)
+             (dolist (child (ekg-note-child-notes note-id))
+               (delete-subtree (ekg-note-id child)))
+             (run-hook-with-args 'ekg-note-pre-delete-hook note-id)
+             (cl-loop for type in (ekg-note-cotypes) do
+                      (triples-remove-type ekg-db note-id type))
+             (cl-loop for inline-id in
+                      (triples-subjects-with-predicate-object
+                       ekg-db 'inline/for-text note-id)
+                      do (triples-remove-type ekg-db inline-id 'inline))
+             (run-hook-with-args 'ekg-note-delete-hook note-id))))
       (triples-with-transaction ekg-db (delete-subtree id)))))
 
 (defun ekg-tag-delete (tag)
@@ -911,14 +911,14 @@ If NOTE is already trashed, permanently delete its subtree."
     (let ((seen (make-hash-table :test #'equal)))
       (cl-labels
           ((trash-subtree
-            (entry)
-            (unless (gethash (ekg-note-id entry) seen)
-              (puthash (ekg-note-id entry) t seen)
-              (dolist (child (ekg-note-child-notes entry))
-                (trash-subtree child))
-              (unless (member ekg-trash-tag (ekg-note-tags entry))
-                (push ekg-trash-tag (ekg-note-tags entry))
-                (ekg-save-note entry)))))
+             (entry)
+             (unless (gethash (ekg-note-id entry) seen)
+               (puthash (ekg-note-id entry) t seen)
+               (dolist (child (ekg-note-child-notes entry))
+                 (trash-subtree child))
+               (unless (member ekg-trash-tag (ekg-note-tags entry))
+                 (push ekg-trash-tag (ekg-note-tags entry))
+                 (ekg-save-note entry)))))
         (triples-with-transaction ekg-db (trash-subtree note)))))
   (ekg-backup))
 
@@ -1375,52 +1375,6 @@ This is used when editing existing notes.")
   "Holds the original ID (subject) for this note.
 This is needed to identify references to refresh when the subject is changed.")
 
-(defvar-local ekg--hierarchy-before-overlay nil
-  "Overlay displaying ancestor notes before an EKG note buffer.")
-
-(defvar-local ekg--hierarchy-after-overlay nil
-  "Overlay displaying child notes after an EKG note buffer.")
-
-(defvar-local ekg--hierarchy-enabled-cursor-intangible nil
-  "Non-nil when hierarchy display enabled `cursor-intangible-mode'.")
-
-(defface ekg-hierarchy-heading
-  '((t :inherit shadow :weight bold))
-  "Face used for hierarchy labels around an edited note."
-  :group 'ekg)
-
-(defun ekg--note-text-beginning ()
-  "Return the beginning of editable note text in the current buffer."
-  (if (get-text-property (point-min) 'ekg-hierarchy-sentinel)
-      (1+ (point-min))
-    (point-min)))
-
-(defun ekg--set-hierarchy-sentinel (needed)
-  "Ensure the hierarchy display sentinel exists exactly when NEEDED.
-The hidden sentinel gives editable note text a buffer position distinct
-from the ancestor overlay.  It is excluded when note text is read."
-  (let ((modified (buffer-modified-p))
-        (inhibit-read-only t)
-        (old-point (point)))
-    (cond
-     ((and needed
-           (not (get-text-property (point-min) 'ekg-hierarchy-sentinel)))
-      (goto-char (point-min))
-      (insert (propertize "\n"
-                          'ekg-hierarchy-sentinel t))
-      (goto-char (min (point-max) (1+ old-point))))
-     ((and (not needed)
-           (get-text-property (point-min) 'ekg-hierarchy-sentinel))
-      (delete-region (point-min) (1+ (point-min)))
-      (goto-char (max (point-min) (1- old-point)))))
-    ;; Clear properties used by the earlier text-property implementation,
-    ;; including in buffers that were already open when this code reloaded.
-    (when (get-text-property (point-min) 'ekg-hierarchy-sentinel)
-      (remove-text-properties
-       (point-min) (1+ (point-min))
-       '(display nil read-only nil cursor-intangible nil rear-nonsticky nil)))
-    (set-buffer-modified-p modified)))
-
 (defun ekg--hierarchy-note-less-p (a b)
   "Return non-nil when note A should display before note B."
   (let ((ta (or (ekg-note-creation-time a) 0))
@@ -1429,6 +1383,12 @@ from the ancestor overlay.  It is excluded when note text is read."
         (string< (format "%s" (ekg-note-id a))
                  (format "%s" (ekg-note-id b)))
       (< ta tb))))
+
+(defun ekg--note-text-beginning ()
+  "Return the beginning of editable note text in the current buffer."
+  (if (get-text-property (point-min) 'ekg-hierarchy-sentinel)
+      (1+ (point-min))
+    (point-min)))
 
 (defun ekg--indent-displayed-note (note depth)
   "Return NOTE formatted for display and indented to DEPTH."
@@ -1442,95 +1402,6 @@ from the ancestor overlay.  It is excluded when note text is read."
                                          rear-nonsticky t)
                            text)
       text)))
-
-(defun ekg--hierarchy-descendants-string (note)
-  "Return the active descendant hierarchy below NOTE as a string."
-  (let ((visited (make-hash-table :test #'equal)))
-    (puthash (ekg-note-id note) t visited)
-    (cl-labels
-        ((render
-          (parent depth)
-          (mapconcat
-           (lambda (child)
-             (let ((id (ekg-note-id child)))
-               (if (gethash id visited)
-                   (propertize
-                    (format "%s[Hierarchy cycle at note %s]\n"
-                            (make-string (* depth 2) ?\s) id)
-                    'face 'error)
-                 (puthash id t visited)
-                 (concat (ekg--indent-displayed-note child depth)
-                         (render child (1+ depth))))))
-           (sort (ekg-note-child-notes parent t)
-                 #'ekg--hierarchy-note-less-p)
-           "\n")))
-      (render note 1))))
-
-(defun ekg--refresh-hierarchy-overlays-in-current-buffer ()
-  "Refresh hierarchy overlays in the current EKG note buffer."
-  (when (and (or ekg-edit-mode ekg-capture-mode) ekg-note)
-    (let ((ancestors (condition-case err
-                         (ekg-note-ancestors ekg-note)
-                       (error
-                        (message "Could not display note ancestors: %s"
-                                 (error-message-string err))
-                        nil)))
-          (descendants (ekg--hierarchy-descendants-string ekg-note)))
-      (ekg--set-hierarchy-sentinel ancestors)
-      (when (and ancestors (not (bound-and-true-p cursor-intangible-mode)))
-        (cursor-intangible-mode 1)
-        (setq-local ekg--hierarchy-enabled-cursor-intangible t))
-      (when (and (not ancestors)
-                 ekg--hierarchy-enabled-cursor-intangible)
-        (cursor-intangible-mode -1)
-        (setq-local ekg--hierarchy-enabled-cursor-intangible nil))
-      (unless (overlayp ekg--hierarchy-before-overlay)
-        (setq-local ekg--hierarchy-before-overlay
-                    (make-overlay (point-min)
-                                  (ekg--note-text-beginning))))
-      (unless (overlayp ekg--hierarchy-after-overlay)
-        (setq-local ekg--hierarchy-after-overlay
-                    (make-overlay (point-max) (point-max) nil nil t)))
-      (move-overlay ekg--hierarchy-before-overlay
-                    (point-min) (ekg--note-text-beginning))
-      (move-overlay ekg--hierarchy-after-overlay (point-max) (point-max))
-      ;; Keep the sentinel protected and hidden using overlay properties.
-      ;; Unlike text properties, these are not removed by fontification.
-      ;; The overlay ends before editable text, so insertion there remains
-      ;; writable.
-      (overlay-put ekg--hierarchy-before-overlay 'display "")
-      (overlay-put ekg--hierarchy-before-overlay 'read-only t)
-      (overlay-put ekg--hierarchy-before-overlay 'cursor-intangible t)
-      (overlay-put
-       ekg--hierarchy-before-overlay 'before-string
-       (when ancestors
-         (concat
-          (propertize "Parent notes\n" 'face 'ekg-hierarchy-heading)
-          (mapconcat
-           (lambda (entry)
-             (ekg--indent-displayed-note (cdr entry) (car entry)))
-           (cl-loop for ancestor in ancestors
-                    for depth from 0
-                    collect (cons depth ancestor))
-           "\n")
-          (propertize "\nCurrent note\n" 'face 'ekg-hierarchy-heading))))
-      (overlay-put
-       ekg--hierarchy-after-overlay 'after-string
-       (unless (string-empty-p descendants)
-         (concat
-          (propertize "\nResponses\n" 'face 'ekg-hierarchy-heading)
-          descendants))))))
-
-(defun ekg--refresh-hierarchy-overlays (&rest _)
-  "Refresh hierarchy overlays in all live EKG note buffers."
-  (dolist (buffer (buffer-list))
-    (when (buffer-live-p buffer)
-      (with-current-buffer buffer
-        (when (or ekg-edit-mode ekg-capture-mode)
-          (ekg--refresh-hierarchy-overlays-in-current-buffer))))))
-
-(add-hook 'ekg-note-save-hook #'ekg--refresh-hierarchy-overlays)
-(add-hook 'ekg-note-delete-hook #'ekg--refresh-hierarchy-overlays)
 
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))
@@ -1844,7 +1715,6 @@ If ID is given, force the triple subject to be that value."
     (goto-char (point-max))
     (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
     (insert text)
-    (ekg--refresh-hierarchy-overlays-in-current-buffer)
     (if (and (eq mode 'org-mode)
              ekg-notes-display-images)
         (condition-case nil
@@ -2069,10 +1939,9 @@ it.  If there are multiple titles, select which one to change."
       (ekg--set-local-variables)
       (goto-char (point-min))
       (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
-      (if (and (eq (ekg-note-mode note) 'org-mode)
-               ekg-notes-display-images)
-          (ekg--org-redisplay-inline-images))
-      (ekg--refresh-hierarchy-overlays-in-current-buffer))
+      (when (and (eq (ekg-note-mode note) 'org-mode)
+                 ekg-notes-display-images)
+        (ekg--org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -2445,28 +2314,28 @@ TITLE is the title of the URL to browse to."
       (puthash (ekg-note-id note) t fetched-ids))
     (cl-labels
         ((ancestor-fetched-p
-          (note)
-          (condition-case nil
-              (seq-some (lambda (ancestor)
-                          (gethash (ekg-note-id ancestor) fetched-ids))
-                        (ekg-note-ancestors note))
-            (error nil)))
+           (note)
+           (condition-case nil
+               (seq-some (lambda (ancestor)
+                           (gethash (ekg-note-id ancestor) fetched-ids))
+                         (ekg-note-ancestors note))
+             (error nil)))
          (render
-          (note depth)
-          (let ((id (ekg-note-id note)))
-            (unless (gethash id visited)
-              (puthash id t visited)
-              (apply
-               #'vui-vstack
-               :key (intern (format "note-%s" id))
-               (vui-text (ekg--indent-displayed-note note depth)
-                 :key (intern (format "note-text-%s" id))
-                 :ekg-note-id id)
-               (delq nil
-                     (mapcar
-                      (lambda (child) (render child (1+ depth)))
-                      (sort (ekg-note-child-notes note t)
-                            #'ekg--hierarchy-note-less-p))))))))
+           (note depth)
+           (let ((id (ekg-note-id note)))
+             (unless (gethash id visited)
+               (puthash id t visited)
+               (apply
+                #'vui-vstack
+                :key (intern (format "note-%s" id))
+                (vui-text (ekg--indent-displayed-note note depth)
+                  :key (intern (format "note-text-%s" id))
+                  :ekg-note-id id)
+                (delq nil
+                      (mapcar
+                       (lambda (child) (render child (1+ depth)))
+                       (sort (ekg-note-child-notes note t)
+                             #'ekg--hierarchy-note-less-p))))))))
       (apply #'vui-vstack
              :spacing 1
              (delq nil

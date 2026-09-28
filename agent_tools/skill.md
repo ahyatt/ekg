@@ -309,3 +309,23 @@ Key properties for org tasks:
 5. **Always search first:** Before creating notes, check if relevant ones
    already exist with `ekg-read`.  Before doing an action, check to see if
    any notes co-tagged with the `prompt` tag works.
+# Import a complete Org plan
+
+Use `ekg-org-import-plan plan.json --tag PROJECT` (or `-` for stdin).
+Optional `--daemon NAME` selects an Emacs server. The result is a JSON map
+from document-local task IDs to created EKG note IDs.
+
+The canonical contract is `ekg-org-plan-schema` in `ekg-agent.el`.
+JSON is `{"version":1,"tasks":[...]}`. Each task has `id`, `parent`
+(another local ID or null for the single root), `title`, `content` (Org text),
+`execution` (`sequential` or `parallel`, governing its children), `depends_on`
+(array of prerequisite local IDs), and `tags` (task-specific tags; use `[]`
+when none). Older version 1 plans without `tags` remain importable. The only
+per-task internal tag allowed is `ekg-agent-org-user-response-tag` (default
+`org/needs-user-response`); use it for any task requiring user action. For a
+question, ask the user to add a child response note. Array order
+sets sibling order. All tasks begin as TODO. All supplied tags apply to all
+tasks. Imported tasks also receive `ekg-agent-author-tag`.
+Unknown fields, references and cycles are rejected before writing notes.
+Creation is atomic; dependencies across branches are stored in
+`:org/depends-on`, while sequential/parallel groups use Org `ORDERED`.

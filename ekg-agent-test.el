@@ -185,7 +185,9 @@
 (ekg-deftest ekg-agent-test-status-reminder-adds-prompt-when-overdue ()
              "An overdue session gets a prompt reminder to summarize state."
              (let ((buf (get-buffer-create "*ekg-agent-test-reminder*"))
-                   (prompt (llm-make-chat-prompt "Work on the task."))
+                   (prompt (llm-make-chat-prompt
+                            "Work on the task."
+                            :tools (list ekg-agent-tool-summarize-state)))
                    (ekg-agent-status-reminder-seconds 60)
                    (ekg-agent--current-log-buffer nil))
                (unwind-protect
@@ -226,10 +228,31 @@
                        (should-not ekg-agent--last-status-reminder-time)))
                  (kill-buffer buf))))
 
+(ekg-deftest ekg-agent-test-status-reminder-skips-unavailable-tool ()
+             "A restricted agent is not told to call a missing status tool."
+             (let ((buf (get-buffer-create "*ekg-agent-test-restricted-reminder*"))
+                   (prompt (llm-make-chat-prompt "Research a plan."))
+                   (ekg-agent-status-reminder-seconds 60))
+               (unwind-protect
+                   (let ((ekg-agent--current-log-buffer buf))
+                     (with-current-buffer buf
+                       (setq ekg-agent--running-p t
+                             ekg-agent--last-status-update-time 100.0
+                             ekg-agent--last-status-reminder-time nil))
+                     (cl-letf (((symbol-function 'float-time)
+                                (lambda (&optional _time) 161.0)))
+                       (should-not (ekg-agent--maybe-remind-status-update
+                                    prompt)))
+                     (should (= 1 (length
+                                   (llm-chat-prompt-interactions prompt)))))
+                 (kill-buffer buf))))
+
 (ekg-deftest ekg-agent-test-status-reminder-repeats-if-ignored ()
              "If the model ignores a reminder, another one is sent later."
              (let ((buf (get-buffer-create "*ekg-agent-test-repeat-reminder*"))
-                   (prompt (llm-make-chat-prompt "Work on the task."))
+                   (prompt (llm-make-chat-prompt
+                            "Work on the task."
+                            :tools (list ekg-agent-tool-summarize-state)))
                    (ekg-agent-status-reminder-seconds 60)
                    (ekg-agent--current-log-buffer nil))
                (unwind-protect
@@ -674,8 +697,9 @@ result when the agent finishes."
                           #'ignore))
                  (ekg-agent--iterate prompt
                                      0
+                                     :status-callback
                                      (lambda (status) (setq done-flag status))
-                                     '("end")))
+                                     :end-tools '("end")))
                (should (equal "recovered" done-flag))
                (should (= 2 calls))
                (let* ((interactions (llm-chat-prompt-interactions prompt))
@@ -728,10 +752,8 @@ result when the agent finishes."
                           ekg-agent-tool-end)
                   :tool-options (make-llm-tool-options :tool-choice 'any))
                  0
-                 (lambda (status) (setq done-flag status))
-                 '("end")
-                 nil
-                 nil)
+                 :status-callback (lambda (status) (setq done-flag status))
+                 :end-tools '("end"))
                 (setq status done-flag))
                (should (= run-elisp-calls 1))
                (should (equal status "done"))))
@@ -767,8 +789,8 @@ result when the agent finishes."
                                          (list ekg-agent-tool-end))
                           :tool-options (make-llm-tool-options :tool-choice 'any))
                          0
-                         (lambda (status) (setq done-flag status))
-                         '("end")))
+                         :status-callback (lambda (status) (setq done-flag status))
+                         :end-tools '("end")))
                        ;; Verify the edit happened
                        (with-temp-buffer
                          (insert-file-contents path)
@@ -793,8 +815,8 @@ result when the agent finishes."
                                        (list ekg-agent-tool-end))
                         :tool-options (make-llm-tool-options :tool-choice 'any))
                        0
-                       (lambda (status) (setq done-flag status))
-                       '("end")))
+                       :status-callback (lambda (status) (setq done-flag status))
+                       :end-tools '("end")))
                      (let ((notes (ekg-get-notes-with-tags '("test-tag"))))
                        (should (= 1 (length notes)))
                        (should (string-match-p "Test note content" (ekg-note-text (car notes))))))
@@ -823,8 +845,8 @@ result when the agent finishes."
                                          (list ekg-agent-tool-end))
                           :tool-options (make-llm-tool-options :tool-choice 'any))
                          0
-                         (lambda (status) (setq done-flag status))
-                         '("end")))
+                         :status-callback (lambda (status) (setq done-flag status))
+                         :end-tools '("end")))
                        (let* ((updated (ekg-get-note-with-id (ekg-note-id note)))
                               (text (ekg-note-text updated)))
                          (should (string-match-p "Original content" text))
@@ -1283,8 +1305,8 @@ result when the agent finishes."
                                          (list ekg-agent-tool-end))
                           :tool-options (make-llm-tool-options :tool-choice 'any))
                          0
-                         (lambda (status) (setq done-flag status))
-                         '("end")))
+                         :status-callback (lambda (status) (setq done-flag status))
+                         :end-tools '("end")))
                        (with-current-buffer buf
                          (should (string-match-p "goodbye" (buffer-string)))
                          (should-not (string-match-p "\"hello\"" (buffer-string)))
@@ -1295,7 +1317,8 @@ result when the agent finishes."
              "A non-initial iteration logs to the bound log buffer, not current buffer."
              (let ((origin-buf (get-buffer-create "*ekg-agent-test-origin*"))
                    (log-buf (get-buffer-create "*ekg-agent-test-log*"))
-                   (done-flag nil))
+                   (done-flag nil)
+                   provider-seen)
                (unwind-protect
                    (progn
                      (with-current-buffer origin-buf
@@ -1308,8 +1331,9 @@ result when the agent finishes."
                      (let ((ekg-llm-provider (make-llm-fake))
                            (ekg-agent--current-log-buffer log-buf))
                        (cl-letf (((symbol-function 'llm-chat-async)
-                                  (lambda (_provider _prompt response-callback
+                                  (lambda (provider _prompt response-callback
                                                      _error-callback &optional _multi-output)
+                                    (setq provider-seen provider)
                                     (funcall response-callback
                                              (list :tool-results
                                                    (list (cons "end" "ok"))))
@@ -1321,9 +1345,11 @@ result when the agent finishes."
                              :tools (list ekg-agent-tool-end)
                              :tool-options (make-llm-tool-options :tool-choice 'any))
                             1
-                            (lambda (status) (setq done-flag status))
-                            '("end")))))
+                            :status-callback (lambda (status) (setq done-flag status))
+                            :end-tools '("end")
+                            :provider 'explicit-provider))))
                      (should (equal done-flag "ok"))
+                     (should (eq provider-seen 'explicit-provider))
                      (with-current-buffer origin-buf
                        (should-not (string-match-p "Waiting for LLM response"
                                                    (buffer-string))))
@@ -1488,6 +1514,220 @@ result when the agent finishes."
                                "emacs_info_node"
                                "emacs_info_search"))
                  (should (member name names)))))
+
+;; Complete Org plan import and agent stages.
+
+(defconst ekg-agent-test-plan--json
+  "{\"version\":1,\"tasks\":[
+{\"id\":\"root\",\"parent\":null,\"title\":\"Plan\",\"content\":\"Goal\",\"execution\":\"parallel\",\"depends_on\":[]},
+{\"id\":\"a\",\"parent\":\"root\",\"title\":\"A\",\"content\":\"First\",\"execution\":\"sequential\",\"depends_on\":[]},
+{\"id\":\"b\",\"parent\":\"root\",\"title\":\"B\",\"content\":\"Second\",\"execution\":\"parallel\",\"depends_on\":[\"a\"]}]}"
+  "Plan containing an explicit dependency between parallel children.")
+
+(defconst ekg-agent-test-plan-with-question--json
+  "{\"version\":1,\"tasks\":[
+{\"id\":\"root\",\"parent\":null,\"title\":\"Plan\",\"content\":\"Goal\",\"execution\":\"parallel\",\"depends_on\":[],\"tags\":[]},
+{\"id\":\"question\",\"parent\":\"root\",\"title\":\"Choose approach\",\"content\":\"Please respond with a child note\",\"execution\":\"parallel\",\"depends_on\":[],\"tags\":[\"org/needs-user-response\"]},
+{\"id\":\"revise\",\"parent\":\"root\",\"title\":\"Revise plan\",\"content\":\"Update original note\",\"execution\":\"parallel\",\"depends_on\":[\"question\"],\"tags\":[]}] }"
+  "Plan with a task requiring a response before revision.")
+
+(ekg-deftest-with-db ekg-agent-test-plan-import ()
+  (let* ((ids (ekg-org-plan-import ekg-agent-test-plan--json
+                                    '("project" "org/task")))
+         (root (ekg-get-note-with-id (cdr (assoc "root" ids))))
+         (a (ekg-get-note-with-id (cdr (assoc "a" ids))))
+         (b (ekg-get-note-with-id (cdr (assoc "b" ids)))))
+    (should (= (length ids) 3))
+    (should (eq (ekg-org-dependency-type root) 'parallel))
+    (should (eq (ekg-org-dependency-type a) 'sequential))
+    (should (equal (ekg-note-parent-id b) (ekg-note-id root)))
+    (should (equal (plist-get (ekg-note-properties b) :org/depends-on)
+                   (list (ekg-note-id a))))
+    (should (member "project" (ekg-note-tags b)))
+    (dolist (note (list root a b))
+      (should (member ekg-agent-author-tag (ekg-note-tags note))))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-import-under-task ()
+  (let* ((parent (ekg-note-create
+                  :text "Existing work" :mode 'org-mode
+                  :tags '("org/task" "org/state/todo")
+                  :properties '(:titled/title ("Parent task")))))
+    (ekg-save-note parent)
+    (let* ((ids (ekg-org-plan-import ekg-agent-test-plan--json nil
+                                     (ekg-note-id parent)))
+           (root (ekg-get-note-with-id (cdr (assoc "root" ids)))))
+      (should (equal (ekg-note-parent-id root) (ekg-note-id parent)))
+      (should (= (length (ekg-org-get-child-notes-of-id
+                          (ekg-note-id parent))) 1)))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-question-tag ()
+  (let* ((ids (ekg-org-plan-import ekg-agent-test-plan-with-question--json
+                                    '("project")))
+         (question (ekg-get-note-with-id (cdr (assoc "question" ids))))
+         (revision (ekg-get-note-with-id (cdr (assoc "revise" ids)))))
+    (should (member "org/needs-user-response" (ekg-note-tags question)))
+    (should (member "project" (ekg-note-tags question)))
+    (should-not (member "org/needs-user-response" (ekg-note-tags revision)))
+    (should (equal (plist-get (ekg-note-properties revision)
+                              :org/depends-on)
+                   (list (ekg-note-id question))))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-custom-user-response-tag ()
+  (let* ((ekg-agent-author-tag "made-by-agent")
+         (ekg-agent-org-user-response-tag "org/ask-me")
+         (json (string-replace "org/needs-user-response" "org/ask-me"
+                               ekg-agent-test-plan-with-question--json))
+         (ids (ekg-org-plan-import json nil))
+         (question (ekg-get-note-with-id (cdr (assoc "question" ids)))))
+    (should (member ekg-agent-org-user-response-tag
+                    (ekg-note-tags question)))
+    (should (member ekg-agent-author-tag (ekg-note-tags question)))
+    (should-not (ekg-agent--response-inheritable-tag-p
+                 ekg-agent-org-user-response-tag question))
+    (should-error
+     (ekg-org-plan-import ekg-agent-test-plan-with-question--json nil))))
+
+(ekg-deftest-with-db ekg-agent-test-org-item-has-author-tag ()
+  (ekg-org-add-schema)
+  (let* ((ekg-agent-author-tag "made-by-agent")
+         (id (ekg-agent-org--save-item "Review" "Check this" nil
+                                        nil nil nil nil))
+         (note (ekg-get-note-with-id id)))
+    (should (member ekg-agent-author-tag (ekg-note-tags note)))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-rejects-reserved-task-tags ()
+  (should-error
+   (ekg-org-plan-import
+    (string-replace "org/needs-user-response" "org/state/done"
+                    ekg-agent-test-plan-with-question--json)
+    nil))
+  (should-not (triples-subjects-of-type ekg-db 'text)))
+
+(ekg-deftest-with-db ekg-agent-test-plan-task-binds-parent ()
+  (let ((parent (ekg-note-create
+                 :text "Work" :mode 'org-mode
+                 :tags '("org/task" "org/state/todo")
+                 :properties '(:titled/title ("Parent task"))))
+        captured-parent)
+    (ekg-save-note parent)
+    (with-temp-buffer
+      (setq major-mode 'ekg-note-mode)
+      (setq-local ekg-note parent)
+      (cl-letf (((symbol-function 'ekg-agent-ask-with-note)
+                 (lambda (_question _id extra-tools)
+                   (let ((tool (seq-find
+                                (lambda (item)
+                                  (equal (llm-tool-name item)
+                                         "create_org_plan"))
+                                (ekg-agent--tools extra-tools))))
+                     (should-not (member "ask_user"
+                                         (mapcar #'llm-tool-name
+                                                 (ekg-agent--tools extra-tools))))
+                     (funcall (llm-tool-function tool)
+                              #'ignore "Plan" ["project"]))))
+                ((symbol-function 'ekg-agent-org--create-plan)
+                 (lambda (_callback _description _tags parent-id)
+                   (setq captured-parent parent-id))))
+        (ekg-agent-org-plan-task)))
+    (should (equal captured-parent (ekg-note-id parent)))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-invalid-and-rollback ()
+  (dolist (replacement '("root" "b" "missing"))
+    (should-error
+     (ekg-org-plan-import
+      (string-replace "[\"a\"]" (format "[\"%s\"]" replacement)
+                      ekg-agent-test-plan--json) nil)))
+  (should-not (triples-subjects-of-type ekg-db 'text))
+  (let* ((save (symbol-function 'ekg-save-note)) (count 0) (notified nil)
+        (ekg-note-save-hook (list (lambda (_) (setq notified t)))))
+    (cl-letf (((symbol-function 'ekg-save-note)
+               (lambda (note)
+                 (funcall save note)
+                 (when (= (cl-incf count) 2) (error "Injected failure")))))
+      (should-error (ekg-org-plan-import ekg-agent-test-plan--json nil)))
+    (should-not notified)
+    (should-not (triples-subjects-of-type ekg-db 'text))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-stages ()
+  (let ((ekg-agent-org-plan-provider 'strong-provider)
+        (ekg-agent-plan-provider 'research-provider)
+        (ekg-agent--current-log-buffer nil)
+        (calls 0) result)
+    (cl-letf
+        (((symbol-function 'ekg-agent--iterate)
+          (lambda (prompt _iteration &rest options)
+            (should (eq (plist-get options :provider) 'research-provider))
+            (let ((names (mapcar #'llm-tool-name
+                                 (llm-chat-prompt-tools prompt))))
+              (should-not (member "ask_user" names))
+              (should-not (member "add_org_item" names))
+              (should-not (member "run_elisp" names))
+              (should (string-match-p
+                       "unresolved questions"
+                       (llm-chat-prompt-context prompt))))
+            (funcall (llm-tool-function
+                      (car (last (llm-chat-prompt-tools prompt))))
+                     "Research complete")
+            (funcall (plist-get options :status-callback)
+                     "Research complete")))
+         ((symbol-function 'llm-chat-async)
+          (lambda (provider prompt success _error &rest _)
+            (cl-incf calls)
+            (should (eq provider 'strong-provider))
+            (should (eq (llm-chat-prompt-reasoning prompt) 'maximum))
+            (should (equal (llm-chat-prompt-response-format prompt)
+                           ekg-org-plan-schema))
+            (should-not (llm-chat-prompt-tools prompt))
+            (should (string-match-p
+                     "org/needs-user-response"
+                     (llm-chat-prompt-context prompt)))
+            (should (string-match-p
+                     "update the original EKG"
+                     (llm-chat-prompt-context prompt)))
+            (funcall success ekg-agent-test-plan--json))))
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Make a plan" ["project"]))
+    (should (= calls 1))
+    (should (string-match-p "root" result))
+    (should (= (length (triples-subjects-of-type ekg-db 'text)) 3))))
+
+(ekg-deftest ekg-agent-test-plan-provider-fallback ()
+             "Research uses the normal agent provider when none is configured."
+             (let ((ekg-agent-plan-provider nil)
+                   (ekg-agent-org-plan-provider 'strong-provider)
+                   used result)
+               (cl-letf (((symbol-function 'ekg-agent--provider)
+                          (lambda () 'ordinary-provider))
+                         ((symbol-function 'ekg-agent--iterate)
+                          (lambda (_prompt _iteration &rest options)
+                            (setq used (plist-get options :provider))
+                            (funcall (plist-get options :status-callback)
+                                     'error))))
+                 (ekg-agent-org--create-plan
+                  (lambda (value) (setq result value)) "Plan" []))
+               (should (eq used 'ordinary-provider))
+               (should (string-match-p "research stopped" result))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-no-import-after-cancel ()
+  (let* ((owner (generate-new-buffer " *plan-test-owner*"))
+         (ekg-agent--current-log-buffer owner)
+         (ekg-agent-org-plan-provider 'strong-provider)
+         success result)
+    (cl-letf
+        (((symbol-function 'ekg-agent--iterate)
+          (lambda (prompt _ &rest options)
+            (funcall (llm-tool-function
+                      (car (last (llm-chat-prompt-tools prompt)))) "Done")
+            (funcall (plist-get options :status-callback) "Done")))
+         ((symbol-function 'llm-chat-async)
+          (lambda (_provider _prompt callback _error &rest _)
+            (setq success callback))))
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Task" nil)
+      (with-current-buffer owner (setq ekg-agent--cancelled-p t))
+      (funcall success ekg-agent-test-plan--json)
+      (should (string-match-p "cancelled" result))
+      (should-not (triples-subjects-of-type ekg-db 'text)))))
 
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here

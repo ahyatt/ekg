@@ -303,11 +303,9 @@ For the common cases, there are special commands, available under the =C-c /= pr
   When altering properties, nothing is saved until the note is saved.
 
 The buffer has the editable text of the note.  Notes may also be related in a
-parent-child hierarchy.  When editing or capturing a child note, its ancestor
-chain is shown before the editable text.  Its child notes, or responses, are
-shown after the editable text.  These displays use overlays and are never saved
-as part of the note.  Use =C-c C-r= to capture a Markdown response to the note
-being edited.
+parent-child hierarchy.  Editing and capture buffers show only the current
+note's text.  Use =C-c C-r= to capture a Markdown response to the note being
+edited.
 Responses inherit topical tags from the note and its ancestor chain, so the
 thread remains discoverable through the same subjects.  Date, lifecycle, and
 module-specific control or provenance tags are not inherited; the new response
@@ -1628,6 +1626,84 @@ These tools are registered automatically by =ekg-org-initialize= when
 =ekg-agent= is available.  This allows the agent to create sub-tasks, mark
 items done, and review your task list as part of its autonomous operation.
 
+*** Creating complete plans
+
+The =create_org_plan= agent tool takes =description= (the goal and its
+constraints) and =tags= (topic tags applied to every created task).  It first
+runs a research agent with note/file/web read tools, but no =ask_user= tool.
+Tasks requiring user action receive ~ekg-agent-org-user-response-tag~
+(default =org/needs-user-response=).  The user can answer question tasks with
+a child response note.  When questions exist,
+the plan includes a follow-up task to incorporate those responses, revise the
+plan, and update the original task note.  This follow-up is a task to execute,
+not an automatic revision triggered by saving a response.  After
+=finish_plan_research=, a separate structured-output call produces the plan.
+Configure a strong provider explicitly:
+
+#+begin_src emacs-lisp
+(setq ekg-agent-org-plan-provider my-strong-provider
+      ekg-agent-org-plan-reasoning 'maximum)
+;; Optional: use a different provider for the research agent.
+;; (setq ekg-agent-plan-provider my-research-provider)
+;; Optional provider-specific arguments:
+;; (setq ekg-agent-org-plan-parameters '((parameter . value)))
+#+end_src
+
+When =ekg-agent-plan-provider= is nil, research uses the normal provider
+from =ekg-llm-provider=.  =maximum= is the llm library's highest thinking
+setting for the structured-output stage.  The final stage has no tools.  The
+existing =add_org_item= tool remains available for individual tasks.
+
+Both stages use the shared contract =ekg-org-plan-schema= and importer
+=ekg-org-plan-import=.  External agents can bypass the LLM stages:
+
+#+begin_src sh
+agent_tools/ekg-org-import-plan plan.json --tag my-project
+# Or: cat plan.json | agent_tools/ekg-org-import-plan - --tag my-project
+#+end_src
+
+The script supports =--daemon NAME= and prints a JSON mapping of document IDs
+to note IDs.  It requires Python 3 and a running Emacs with EKG installed.
+
+Version 1 JSON has exactly the following fields:
+
+#+begin_src json
+{"version":1,"tasks":[
+  {"id":"plan","parent":null,"title":"Release",
+   "content":"Release acceptance criteria","execution":"parallel",
+   "depends_on":[],"tags":[]},
+  {"id":"build","parent":"plan","title":"Build",
+   "content":"Produce the release artifact","execution":"sequential",
+   "depends_on":[],"tags":[]},
+  {"id":"publish","parent":"plan","title":"Publish",
+   "content":"Publish the validated artifact","execution":"parallel",
+   "depends_on":["build"],"tags":[]}
+]}
+#+end_src
+
+Exactly one task has a null parent.  IDs are nonempty unique strings local to
+the document; forward references are allowed.  =content= is Org text.
+=execution= controls a task's children, using the existing =ORDERED= Org
+property.  Array order determines sibling order.  =depends_on= adds explicit
+prerequisites, stored as multi-valued =:org/depends-on= note IDs.  Thus each
+task has one display parent but may have multiple execution prerequisites.
+The per-task =tags= array is required in newly generated plans but optional
+when importing older version 1 JSON.  It adds task-specific topic tags; the
+only allowed internal tag is ~ekg-agent-org-user-response-tag~ (default
+=org/needs-user-response=).  Use it for any task requiring user action.  For a
+question, ask the user to add a child response note, and make work that
+requires the answer depend on that task.
+The importer rejects cycles, including those implied by sequential groups and
+parent/child completion.  Explicit prerequisite edges are stored for consumers;
+they do not automatically prevent manual TODO state changes in Org.
+
+All tasks start as TODO and receive the supplied topic tags and
+~ekg-agent-author-tag~; other internal
+=org/= tags cannot be overridden.  Validation happens before note creation.  Notes
+and relationships are saved in one triples transaction; a failed write rolls
+back the plan.  Save notifications run after commit.  Version 1 deliberately
+does not accept deadlines or arbitrary properties; unknown fields are rejected.
+
 *** Command-line tools
 
 Two command-line scripts are provided in =agent_tools/= for use by external
@@ -1732,6 +1808,7 @@ with =ekg-agent-cancel-daily=.
 
 The agent uses specific tags to organize its work:
 - ~ekg-agent-author-tag~ (default "agent"): All notes created by the agent will have this tag.
+- ~ekg-agent-org-user-response-tag~ (default "org/needs-user-response"): Org tasks requiring user action have this tag.
 - ~ekg-agent-self-info-tag~ (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
 
 You can customize these tags if you prefer different names.
