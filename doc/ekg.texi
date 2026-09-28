@@ -273,6 +273,8 @@ triples library is already installed.
 @itemize
 @item
 Fix issue computing batch embeddings without @samp{vecdb}.
+@item
+Fix lack of inline tag normalization
 @end itemize
 
 @node Version 091
