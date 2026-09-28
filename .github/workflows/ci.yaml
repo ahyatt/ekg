@@ -60,7 +60,7 @@ jobs:
 
       - name: Set up Emacs
         env:
-          EMACS_VERSION: 31.1
+          EMACS_VERSION: 31-1
           NIX_EMACS_CI_REV: 868482a78575138aebb1b5c16a9266b95c800f2e
         run: |
           nix profile install --accept-flake-config \
