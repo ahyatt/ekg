@@ -1379,7 +1379,10 @@ list."
             (push (if (and use-links (eq (ekg-note-mode note) 'org-mode)) tag
                     (ekg--add-prefix-to-inline-tag tag symbol))
                   tags)))
-        (setf (ekg-note-tags note) (seq-uniq (append (ekg-note-tags note) (nreverse tags))))))))
+        (setf (ekg-note-tags note)
+              (seq-uniq
+               (append (ekg-note-tags note)
+                       (nreverse (mapcar #'ekg--normalize-tag tags)))))))))
 
 (defun ekg--inline-tag-completion ()
   "Completion function for tags in notes.
