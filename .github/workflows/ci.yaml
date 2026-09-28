@@ -13,7 +13,8 @@ jobs:
     strategy:
       matrix:
         emacs_version:
-          - 31.1
+          - 29.1
+          - 29.2
     steps:
       - name: Set up Nix
         uses: cachix/install-nix-action@v31
@@ -60,8 +61,8 @@ jobs:
 
       - name: Set up Emacs
         env:
-          EMACS_VERSION: 31-1
-          NIX_EMACS_CI_REV: 868482a78575138aebb1b5c16a9266b95c800f2e
+          EMACS_VERSION: 31.1
+          NIX_EMACS_CI_REV: a859287610606cf070f4cbff0985b108e7194b17
         run: |
           nix profile install --accept-flake-config \
             "github:purcell/nix-emacs-ci/${NIX_EMACS_CI_REV}#emacs-${EMACS_VERSION//./-}"
