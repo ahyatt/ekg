@@ -1431,7 +1431,8 @@ Tasks in =ekg-org= are ordinary ekg notes with special tags and properties:
   reversed property =:org/children=.  There is no limit to nesting depth.
 
 - *Scheduling*: Tasks can have =:org/deadline= and =:org/scheduled= properties
-  (stored as unix timestamps), which appear as standard org timestamps.
+  (stored as unix timestamps), which appear as standard org timestamps.  A
+  non-midnight time appears with hours and minutes; midnight appears as a date.
 
 - *Ordering*: Sibling tasks are ordered by the =:org/sort-order= property
   (defaulting to creation time when unset).

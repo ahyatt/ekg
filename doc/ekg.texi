@@ -2055,7 +2055,8 @@ reversed property @samp{:org/children}.  There is no limit to nesting depth.
 
 @item
 @strong{Scheduling}: Tasks can have @samp{:org/deadline} and @samp{:org/scheduled} properties
-(stored as unix timestamps)@comma{} which appear as standard org timestamps.
+(stored as unix timestamps)@comma{} which appear as standard org timestamps.  A
+non-midnight time appears with hours and minutes; midnight appears as a date.
 
 @item
 @strong{Ordering}: Sibling tasks are ordered by the @samp{:org/sort-order} property
