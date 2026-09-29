@@ -598,7 +598,7 @@ Return a plist including iterations, tools, status-update data, and log text."
          (tools nil)
          (status-metrics (ekg-agent-bench--status-update-metrics content)))
     (dolist (line lines)
-      (when-let ((tool-line (ekg-agent-bench--parse-tool-log-line line)))
+      (when-let* ((tool-line (ekg-agent-bench--parse-tool-log-line line)))
         (cl-incf iterations)
         (push (cdr tool-line) tools)))
     (list :iterations iterations
@@ -1135,7 +1135,7 @@ Return a futur resolving to a plist."
            (tools nil)
            (status-metrics (ekg-agent-bench--status-update-metrics content)))
       (dolist (line lines)
-        (when-let ((tool-line (ekg-agent-bench--parse-tool-log-line line)))
+        (when-let* ((tool-line (ekg-agent-bench--parse-tool-log-line line)))
           (cl-incf iterations)
           (push (cdr tool-line) tools)))
       (ekg-agent-bench--resolved

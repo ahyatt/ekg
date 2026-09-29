@@ -376,9 +376,9 @@ TAG is the current tag being imported in logseq."
                           (setf (ekg-inline-command i)
                                 (list 'transclude-note (read (nth 1 (ekg-inline-command i)))))
                           i) i)) (cdr in-cons)))
-    (when-let* (id (if (eq major-mode 'org-mode)
-                       (ekg-logseq--to-import-org-id text)
-                     (ekg-logseq--to-import-md-id text)))
+    (when-let* ((id (if (eq major-mode 'org-mode)
+                        (ekg-logseq--to-import-org-id text)
+                      (ekg-logseq--to-import-md-id text))))
       (setf (ekg-note-id note) (if (ekg-note-with-id-exists-p (read id)) (read id) id)))
     note))
 

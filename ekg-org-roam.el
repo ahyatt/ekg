@@ -67,8 +67,8 @@ prefix on the title instead.")
   (if (iso8601-valid-p title)
       (format "date/%s" title)
     (let ((tags (append tags)))
-      (if-let (diff (seq-intersection tags
-                                      ekg-org-roam-import-tag-to-prefix))
+      (if-let* ((diff (seq-intersection tags
+                                        ekg-org-roam-import-tag-to-prefix)))
           (if (= 1 (length diff))
               (format "%s/%s" (car diff) title)
             (warn "Unexpectedly found more than one tag in `ekg-org-roam-import-tag-to-prefix' in tags for node %s.  Tags: %s."
@@ -91,7 +91,7 @@ However, we do pay attention to
                                                                             (cadr type-val))))))
             (cl-pushnew (ekg-org-roam-import-title-to-tag (org-roam-node-title node) (org-roam-node-tags node)) tags-from-links)))
         (when (string-equal (downcase (car type-val)) "id")
-          (when-let* (linked-node (org-roam-node-from-id (cadr type-val)))
+          (when-let* ((linked-node (org-roam-node-from-id (cadr type-val))))
             (cl-pushnew (ekg-org-roam-import-title-to-tag (org-roam-node-title linked-node) (org-roam-node-tags linked-node)) tags-from-links)))))
     tags-from-links))
 
