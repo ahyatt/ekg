@@ -601,8 +601,8 @@ result when the agent finishes."
                 #'ignore))
        ,@body)
      ;; Clean up log buffer
-     (when-let ((buf (get-buffer (format ekg-agent-log-buffer-name-format
-                                         "test-agent"))))
+     (when-let* ((buf (get-buffer (format ekg-agent-log-buffer-name-format
+                                          "test-agent"))))
        (kill-buffer buf))))
 
 (defun ekg-agent-test--dummy-tool (name)

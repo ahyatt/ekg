@@ -346,7 +346,7 @@ NUMWORDS specifies the maximum number of words to include."
       (push (cons "mode" (symbol-name (ekg-note-mode note))) result))
     (map-do
      (lambda (prop value)
-       (when-let ((label (ekg-property-name-for prop)))
+       (when-let* ((label (ekg-property-name-for prop)))
          (unless (member prop ekg-llm-ignored-props-for-json)
            (push (cons (downcase label) value) result))))
      (ekg-note-properties note))
