@@ -175,6 +175,15 @@ active, unarchived, tasks."
   "Convert TS-STRING to a unix timestamp integer."
   (time-convert (date-to-time ts-string) 'integer))
 
+(defun ekg-org--timestamp-from-epoch (epoch)
+  "Return an Org timestamp for EPOCH, including a non-midnight time."
+  (let* ((time (seconds-to-time epoch))
+         (decoded (decode-time time)))
+    (org-timestamp-from-time
+     time
+     (or (not (zerop (decoded-time-hour decoded)))
+         (not (zerop (decoded-time-minute decoded)))))))
+
 (defun ekg-org-task-to-element (note parent)
   "Convert an EKG NOTE to an org-element node.
 
@@ -184,9 +193,9 @@ PARENT is the parent org-element node."
          (id (format "%s" (ekg-note-id note)))
          (state (ekg-org--state note))
          (deadline (let ((d (plist-get props :org/deadline)))
-                     (when d (org-timestamp-from-time (time-convert d t)))))
+                     (when d (ekg-org--timestamp-from-epoch d))))
          (scheduled (let ((s (plist-get props :org/scheduled)))
-                      (when s (org-timestamp-from-time (time-convert s t))))))
+                      (when s (ekg-org--timestamp-from-epoch s)))))
     (let ((element (org-element-create
                     'headline
                     `(:level ,(+ 1 (or (org-element-property :level parent) 0))

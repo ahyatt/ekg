@@ -75,12 +75,26 @@
     ;; Verify basic structure
     (should (string-match-p "\\* TODO Timed Task" rendered))
     (should (string-match-p "Content" rendered))
-    (should (string-match-p "^DEADLINE: <2026-02-01 Sun>" rendered))
-    (should (string-match-p "SCHEDULED: <2026-01-31 Sat>" rendered))
+    (should (string-match-p "DEADLINE: <2026-02-01 Sun 10:00>" rendered))
+    (should (string-match-p "SCHEDULED: <2026-01-31 Sat 09:00>" rendered))
     ;; Verify the timestamps are stored as properties
     (let ((props (ekg-note-properties note)))
       (should (plist-get props :org/deadline))
       (should (plist-get props :org/scheduled)))))
+
+(ekg-deftest-with-db ekg-org-test-date-only-timestamps ()
+  "Keep midnight deadlines and schedules as date-only Org timestamps."
+  (ekg-org-add-schema)
+  (let* ((note-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "Date-only Task" nil nil nil "TODO"
+                    "2026-02-01" "2026-01-31")))
+         (rendered (ekg-org-task-to-string
+                    (ekg-get-note-with-id note-id))))
+    (should (string-match-p "DEADLINE: <2026-02-01 Sun>" rendered))
+    (should (string-match-p "SCHEDULED: <2026-01-31 Sat>" rendered))
+    (should-not (string-match-p "2026-02-01 Sun 00:00" rendered))
+    (should-not (string-match-p "2026-01-31 Sat 00:00" rendered))))
 
 (ekg-deftest-with-db ekg-org-test-hierarchy ()
   "Test that child tasks have correct parent relationship."
