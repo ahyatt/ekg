@@ -1779,7 +1779,8 @@ Return the latest `ekg-note' object."
           (mapc (lambda (type) (triples-remove-type ekg-db ekg-note-orig-id type))
                 conflicting-types))
         (triples-move-subject ekg-db ekg-note-orig-id (ekg-note-id ekg-note))))
-    (ekg-save-note ekg-note))
+    (ekg-save-note ekg-note)
+    (setq header-line-format (ekg--header-line-format)))
   ekg-note)
 
 (defun ekg-save-draft ()
