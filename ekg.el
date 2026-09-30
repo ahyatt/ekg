@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.6.1") (emacs "28.1") (llm "0.30.0") (vui "1.0.0"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.9.1
+;; Version: 0.9.2
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -328,7 +328,7 @@ editing the note.")
                                  ("text" . "text/text"))
   "Abbreviations for predicates in queries.")
 
-(defconst ekg-version "0.9.1"
+(defconst ekg-version "0.9.2"
   "The version of ekg.
 
 This is used to understand when the database needs upgrading.")
