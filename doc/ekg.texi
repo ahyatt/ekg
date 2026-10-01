@@ -761,6 +761,9 @@ The buffer has the editable text of the note.  Notes may also be related in a
 parent-child hierarchy.  Editing and capture buffers show only the current
 note's text.  Use @samp{C-c C-r} to capture a Markdown response to the note being
 edited.
+Note lists include active descendants of matching notes by default.  In a
+notes list@comma{} use @samp{C-u g} to toggle strict results containing only notes that
+match the list's query.
 Responses inherit topical tags from the note and its ancestor chain@comma{} so the
 thread remains discoverable through the same subjects.  Date@comma{} lifecycle@comma{} and
 module-specific control or provenance tags are not inherited; the new response
@@ -2205,6 +2208,9 @@ The command @samp{ekg-org-change-state} (available in note editing buffers and
 built with the @samp{vui} library.  It presents tasks as an indented outline that
 looks like an org buffer (with fontified headings@comma{} TODO keywords@comma{} and tags) but
 is backed entirely by the ekg database.
+Non-task responses to tasks also appear as headings without a TODO state;
+press @samp{RET} on one to open and edit its note.  Use @samp{C-c C-r} to capture a
+response to the note at point.
 
 To open the view@comma{} call @samp{ekg-org-view}.  For archived tasks@comma{} call
 @samp{ekg-org-archive-view}.  To focus on a single task and its subtree@comma{} call

@@ -294,7 +294,7 @@ emacsclient --eval '(ekg-org-generate-org-content)'
 Key properties for org tasks:
 
 - `:titled/title` — List containing the title string (e.g., `(list "My Task")`)
-- `:org/parent` — Parent task note ID (for subtasks)
+- `:hierarchy/parent` — Parent task note ID (for subtasks)
 - `:org/deadline` — Unix timestamp integer
 - `:org/scheduled` — Unix timestamp integer
 

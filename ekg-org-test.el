@@ -134,6 +134,31 @@
       (should (string-match-p "\\* TODO Parent Task" rendered))
       (should (string-match-p "Parent content" rendered)))))
 
+(ekg-deftest-with-db ekg-org-test-non-task-response-in-task-tree ()
+  "Keep response notes visible without treating them as Org tasks."
+  (ekg-org-add-schema)
+  (let* ((task-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "Task" "Task body" nil nil "TODO" nil nil)))
+         (task (ekg-get-note-with-id task-id))
+         (response (ekg-note-create :text "User answer"
+                                    :mode 'markdown-mode)))
+    (ekg-note-set-parent response task)
+    (ekg-save-note response)
+    (should (equal (mapcar #'ekg-note-id
+                           (ekg-org-get-child-tasks-of-id task-id))
+                   nil))
+    (let ((org-text (ekg-org-task-to-string task))
+          (view-heading (ekg-org-view--render-heading response 2)))
+      (should (string-match-p "\\*\\* Response" org-text))
+      (should (string-match-p "User answer" org-text))
+      (should-not (string-match-p "\\*\\* TODO Response" org-text))
+      (should (string-match-p "\\*\\* Response" view-heading))
+      (should-not (string-match-p "TODO" view-heading)))
+    (should (member (ekg-note-id response)
+                    (mapcar #'ekg-note-id
+                            (ekg-org-view--display-children task-id))))))
+
 (ekg-deftest-with-db ekg-org-test-child-dependency-type ()
   "Test parallel and sequential child dependency rendering."
   (ekg-org-add-schema)
@@ -371,6 +396,46 @@ Returns the note ID."
     (let ((headings (ekg-org-test--view-headings)))
       (should (equal headings
                      '((1 "Parent") (2 "Child A") (2 "Child B")))))))
+
+(ekg-deftest-with-db ekg-org-test-view-shows-user-response ()
+  "A task response is visible and remains a non-task note."
+  (ekg-org-add-schema)
+  (let* ((task-id (ekg-org-test--add-task "Question"))
+         (response (ekg-note-create :text "My answer"
+                                    :mode 'markdown-mode)))
+    (ekg-note-set-parent response task-id)
+    (ekg-save-note response)
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (should (string-match-p "\\*\\* Response" (buffer-string)))
+      (should (string-match-p "My answer" (buffer-string)))
+      (goto-char (point-min))
+      (search-forward "Response")
+      (beginning-of-line)
+      (should (equal (ekg-org-view--note-at-point)
+                     (ekg-note-id response)))
+      (should-error (ekg-org-view-cycle-state) :type 'user-error)
+      (should (equal (mapcar #'cadr (ekg-org-view--collect-headings))
+                     (list task-id)))
+      (goto-char (point-min))
+      (ekg-org-view-respond)
+      (should ekg-capture-mode)
+      (should (eq major-mode 'markdown-mode))
+      (should (equal (ekg-note-parent-id ekg-note) task-id)))))
+
+(ekg-deftest-with-db ekg-org-test-archive-view-keeps-response ()
+  "Archived task subtrees still display their response notes."
+  (ekg-org-add-schema)
+  (let* ((task-id (ekg-org-test--add-task "Archived question"))
+         (response (ekg-note-create :text "Archived answer"
+                                    :mode 'markdown-mode)))
+    (ekg-note-set-parent response task-id)
+    (ekg-save-note response)
+    (ekg-org-view--archive-note (ekg-get-note-with-id task-id))
+    (ekg-org-archive-view)
+    (with-current-buffer "*ekg-org-archive*"
+      (should (string-match-p "Archived question" (buffer-string)))
+      (should (string-match-p "Archived answer" (buffer-string))))))
 
 (ekg-deftest-with-db ekg-org-test-view-default-directory ()
   "Test that task views use `ekg-notes-default-directory'."

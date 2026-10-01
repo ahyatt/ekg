@@ -97,6 +97,13 @@ when saving notes."
   :type 'integer
   :group 'ekg)
 
+(defcustom ekg-notes-include-descendants t
+  "Whether note lists also show descendants of fetched notes.
+Use a prefix argument with `ekg-notes-refresh' to toggle this in
+the current notes buffer."
+  :type 'boolean
+  :group 'ekg)
+
 (defcustom ekg-db-file nil
   "The filename for the ekg database.
 Initially set as nil, which will mean that we use
@@ -1661,6 +1668,8 @@ displayed.")
 (defvar-local ekg-notes-tags nil
   "List of associated tags for creating and removing notes.")
 
+(make-variable-buffer-local 'ekg-notes-include-descendants)
+
 (cl-defun ekg-note-create (&key text mode tags properties id)
   "Create a new `ekg-note' with TEXT, MODE, TAGS, PROPERTIES and ID."
   (let* ((time (time-convert (current-time) 'integer))
@@ -2308,7 +2317,7 @@ TITLE is the title of the URL to browse to."
                          (ekg-notes--collect-all)))) ekg-notes-mode)
   (when title (ekg-browse-url title)))
 
-(vui-defcomponent ekg-notes-root (name notes-func)
+(vui-defcomponent ekg-notes-root (name notes-func include-descendants)
   "Root component for the notes list view."
   :render
   (let* ((notes (funcall notes-func))
@@ -2319,11 +2328,13 @@ TITLE is the title of the URL to browse to."
     (cl-labels
         ((ancestor-fetched-p
            (note)
-           (condition-case nil
-               (seq-some (lambda (ancestor)
-                           (gethash (ekg-note-id ancestor) fetched-ids))
-                         (ekg-note-ancestors note))
-             (error nil)))
+           (if include-descendants
+               (condition-case nil
+                   (seq-some (lambda (ancestor)
+                               (gethash (ekg-note-id ancestor) fetched-ids))
+                             (ekg-note-ancestors note))
+                 (error nil))
+             (gethash (ekg-note-parent-id note) fetched-ids)))
          (render
            (note depth)
            (let ((id (ekg-note-id note)))
@@ -2337,7 +2348,10 @@ TITLE is the title of the URL to browse to."
                   :ekg-note-id id)
                 (delq nil
                       (mapcar
-                       (lambda (child) (render child (1+ depth)))
+                       (lambda (child)
+                         (when (or include-descendants
+                                   (gethash (ekg-note-id child) fetched-ids))
+                           (render child (1+ depth))))
                        (sort (ekg-note-child-notes note t)
                              #'ekg--hierarchy-note-less-p))))))))
       (apply #'vui-vstack
@@ -2370,7 +2384,8 @@ cursor always lands on a note."
 (defun ekg--notes-mount (name notes-func)
   "Mount a vui notes view with NAME and NOTES-FUNC into the current buffer."
   (let* ((vnode (vui-component 'ekg-notes-root
-                  :name name :notes-func notes-func))
+                  :name name :notes-func notes-func
+                  :include-descendants ekg-notes-include-descendants))
          (instance (vui--create-instance vnode nil))
          (vui--pending-effects nil))
     (setf (vui-instance-buffer instance) (current-buffer))
@@ -2405,7 +2420,10 @@ NAME is displayed at the top of the buffer."
                                ekg-notes-hl
                              (make-overlay 1 1))
               ekg-notes-tags tags
-              header-line-format (propertize (concat " " name)
+              header-line-format (propertize
+                                  (concat " " name
+                                          (unless ekg-notes-include-descendants
+                                            " (strict)"))
                                              'face 'bold))
   (ekg--notes-mount name notes-func)
   (overlay-put ekg-notes-hl 'face hl-line-face)
@@ -2436,9 +2454,14 @@ NAME is displayed at the top of the buffer."
       (with-current-buffer buf
         (ekg-notes-refresh)))))
 
-(defun ekg-notes-refresh ()
-  "Refresh the current `ekg-notes' buffer."
-  (interactive nil ekg-notes-mode)
+(defun ekg-notes-refresh (&optional toggle-strict)
+  "Refresh the current `ekg-notes' buffer.
+With prefix TOGGLE-STRICT, toggle whether descendants outside the
+fetched results are shown."
+  (interactive "P" ekg-notes-mode)
+  (when toggle-strict
+    (setq-local ekg-notes-include-descendants
+                (not ekg-notes-include-descendants)))
   (unless (functionp ekg-notes-fetch-notes-function)
     (user-error
      "This EKG notes buffer is missing its refresh function; recreate it"))

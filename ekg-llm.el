@@ -591,7 +591,6 @@ it defaults to the current `ekg-note'."
                                     :note-hierarchy
                                     (ekg-llm-note-hierarchy-context parent)))
                   :interactions (ekg-llm-note-interactions parent)))
-         (origin-buffer (current-buffer))
          (pending-position
           (if (derived-mode-p 'ekg-notes-mode)
               (cdr (or (ekg--note-region-at-point)
@@ -612,10 +611,6 @@ it defaults to the current `ekg-note'."
          (lambda (text)
            (delete-overlay pending-overlay)
            (let ((response (ekg-llm-save-response parent text)))
-             (when (buffer-live-p origin-buffer)
-               (with-current-buffer origin-buffer
-                 (when (or ekg-edit-mode ekg-capture-mode)
-                   (ekg--refresh-hierarchy-overlays-in-current-buffer))))
              (message "Saved LLM response note %s"
                       (ekg-note-id response))))
          (lambda (_type msg)

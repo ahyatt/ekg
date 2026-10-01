@@ -199,6 +199,30 @@
                (eq (overlay-get overlay 'face) hl-line-face))
              (overlays-in (point-min) (point-max))))))))
 
+(ekg-deftest-with-db ekg-test-notes-strict-results-toggle ()
+  "Prefix refresh shows only fetched notes, and toggles back."
+  (let ((parent (ekg-note-create :text "Parent" :tags '("match")))
+        (child (ekg-note-create :text "Middle note" :tags '("other")))
+        (grandchild (ekg-note-create :text "Grandchild"
+                                          :tags '("match"))))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (ekg-note-set-parent grandchild child)
+    (ekg-save-note grandchild)
+    (ekg-show-notes-with-tag "match")
+    (let ((buf (get-buffer "*ekg tag: match*")))
+      (with-current-buffer buf
+        (should (string-match-p "Middle note" (buffer-string)))
+        (ekg-notes-refresh t)
+        (should-not ekg-notes-include-descendants)
+        (should-not (string-match-p "Middle note" (buffer-string)))
+        (should (string-match-p "Grandchild" (buffer-string)))
+        (should (string-match-p "(strict)" header-line-format))
+        (ekg-notes-refresh t)
+        (should ekg-notes-include-descendants)
+        (should (string-match-p "Middle note" (buffer-string)))))))
+
 (ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
   (with-temp-buffer
     (insert "[[attachment:foo.png]]\n")
