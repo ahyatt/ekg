@@ -490,6 +490,14 @@
     (assert-tag-population "foo #[bar]\n@[baz]\n#[quux]" '("bar" "person/baz" "quux"))
     (assert-tag-population "foo [[bar]]" nil)))
 
+(ekg-deftest ekg--populate-inline-tags-normalizes-before-deduplication ()
+  (let ((note (make-ekg-note
+               :text "#[ Mixed Case ] @[Alice] #[mixed case]"
+               :tags '("existing" "mixed case"))))
+    (ekg--populate-inline-tags note)
+    (should (equal (ekg-note-tags note)
+                   '("existing" "mixed case" "person/alice")))))
+
 (ekg-deftest ekg--populate-inline-tags-links-org ()
   (let ((note (make-ekg-note :text "link: #[[ekg-tag:foo][foo]]" :mode 'org-mode)))
     (ekg--populate-inline-tags note)

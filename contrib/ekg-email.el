@@ -82,7 +82,7 @@
   (interactive nil gnus-article-mode)
   (let* ((to (mapcar #'string-trim (split-string (gnus-fetch-field "To") ",")))
          (from (gnus-fetch-field "From"))
-         (cc (when-let ((cc (gnus-fetch-field "Cc")))
+         (cc (when-let* ((cc (gnus-fetch-field "Cc")))
                (mapcar #'string-trim (split-string cc ","))))
          (subject (gnus-fetch-field "Subject"))
          (prop-plist `(:email/to ,to :email/from ,from :titled/title ,subject)))

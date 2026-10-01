@@ -352,7 +352,7 @@ We look for strings of the format #tag and #[[tag]]."
       (while (re-search-forward
               (rx (or (seq "#" (group-n 1 (1+ alnum)))
                       (seq "#[[" (group-n 1 (1+ (or alnum space))) "]]"))) nil t)
-        (when-let ((tag (match-string-no-properties 1)))
+        (when-let* ((tag (match-string-no-properties 1)))
           (push tag tags)))
       (nreverse (seq-uniq tags)))))
 
