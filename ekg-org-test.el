@@ -32,6 +32,16 @@
   (when (string-match "\\([0-9]+\\)" result-string)
     (string-to-number (match-string 1 result-string))))
 
+(ekg-deftest-with-db ekg-org-test-response-tags-exclude-task-control ()
+  (let ((task (ekg-note-create
+               :text "Task"
+               :tags (list "project"
+                           ekg-org-task-tag
+                           ekg-org-archive-tag
+                           (concat ekg-org-state-tag-prefix "todo")))))
+    (ekg-save-note task)
+    (should (equal (ekg-response-inherited-tags task) '("project")))))
+
 (ekg-deftest-with-db ekg-org-test-basic-rendering ()
   "Test that a basic task is rendered correctly."
   (ekg-org-add-schema)
@@ -117,16 +127,78 @@
     ;; Verify child has correct parent-id property
     (let* ((child-note (ekg-get-note-with-id child-id))
            (child-props (ekg-note-properties child-note)))
-      (should (= (plist-get child-props :org/parent) parent-id)))
+      (should (= (plist-get child-props :hierarchy/parent) parent-id)))
     ;; Verify parent task can be rendered
     (let* ((parent-note (ekg-get-note-with-id parent-id))
            (rendered (ekg-org-task-to-string parent-note)))
       (should (string-match-p "\\* TODO Parent Task" rendered))
       (should (string-match-p "Parent content" rendered)))))
 
+(ekg-deftest-with-db ekg-org-test-non-task-response-in-task-tree ()
+  "Keep response notes visible without treating them as Org tasks."
+  (ekg-org-add-schema)
+  (let* ((task-id (ekg-org-test-parse-out-id
+                   (ekg-agent-org--tool-add-item
+                    "Task" "Task body" nil nil "TODO" nil nil)))
+         (task (ekg-get-note-with-id task-id))
+         (response (ekg-note-create :text "User answer"
+                                    :mode 'markdown-mode)))
+    (ekg-note-set-parent response task)
+    (ekg-save-note response)
+    (should (equal (mapcar #'ekg-note-id
+                           (ekg-org-get-child-tasks-of-id task-id))
+                   nil))
+    (let ((org-text (ekg-org-task-to-string task))
+          (view-heading (ekg-org-view--render-heading response 2)))
+      (should (string-match-p "\\*\\* Response" org-text))
+      (should (string-match-p "User answer" org-text))
+      (should-not (string-match-p "\\*\\* TODO Response" org-text))
+      (should (string-match-p "\\*\\* Response" view-heading))
+      (should-not (string-match-p "TODO" view-heading)))
+    (should (member (ekg-note-id response)
+                    (mapcar #'ekg-note-id
+                            (ekg-org-view--display-children task-id))))))
+
+(ekg-deftest-with-db ekg-org-test-child-dependency-type ()
+  "Test parallel and sequential child dependency rendering."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test-parse-out-id
+                     (ekg-agent-org--tool-add-item
+                      "Parent Task" "Parent content"
+                      nil nil "TODO" nil nil)))
+         (_child-id (ekg-org-test-parse-out-id
+                     (ekg-agent-org--tool-add-item
+                      "Child Task" "Child content"
+                      nil parent-id "TODO" nil nil)))
+         (parent (ekg-get-note-with-id parent-id)))
+    (should (eq (ekg-org-dependency-type parent) 'sequential))
+    (should (string-match-p "^:ORDERED: *t$"
+                            (ekg-org-task-to-string parent)))
+    (ekg-org-set-property parent "OWNER" "Andrew")
+    (ekg-org-set-dependency-type parent 'parallel)
+    (ekg-save-note parent)
+    (setq parent (ekg-get-note-with-id parent-id))
+    (should (equal (ekg-org-get-property parent "ORDERED") "nil"))
+    (should (eq (ekg-org-dependency-type parent) 'parallel))
+    (let* ((rendered (ekg-org-task-to-string parent))
+           (parent-rendered
+            (substring rendered 0 (string-match "^\\*\\* " rendered))))
+      (should-not (string-match-p "^:ORDERED:" parent-rendered))
+      (should (string-match-p "^:OWNER: *Andrew$" parent-rendered)))
+    (should (string-match-p "\\[parallel\\]"
+                            (ekg-org-view--render-heading parent 1)))
+    (ekg-org-set-dependency-type parent 'sequential)
+    (ekg-save-note parent)
+    (setq parent (ekg-get-note-with-id parent-id))
+    (should (eq (ekg-org-dependency-type parent) 'sequential))
+    (should (string-match-p "^:ORDERED: *t$"
+                            (ekg-org-task-to-string parent)))
+    (should (eq (lookup-key ekg-org-view-mode-map (kbd "s"))
+                #'ekg-org-view-set-dependency-type))))
+
 (ekg-deftest-with-db ekg-org-test-save-with-virtual-reversed ()
-  "Test that saving a parent note with org/children doesn't error.
-When a note has children, reading it populates :org/children as a
+  "Test that saving a parent note with hierarchy/children doesn't error.
+When a note has children, reading it populates :hierarchy/children as a
 virtual-reversed property.  Saving it back must not attempt to
 write that property."
   (ekg-org-add-schema)
@@ -138,12 +210,14 @@ write that property."
                      "Child" "child content" nil parent-id "TODO" nil nil)))
          (parent-note (ekg-get-note-with-id parent-id)))
     ;; Verify the virtual-reversed property is present when reading.
-    (should (plist-get (ekg-note-properties parent-note) :org/children))
+    (should (plist-get (ekg-note-properties parent-note)
+                       :hierarchy/children))
     ;; Saving the parent should not error.
     (ekg-save-note parent-note)
     ;; Verify the child relationship is still intact after save.
     (let ((reloaded (ekg-get-note-with-id child-id)))
-      (should (= (plist-get (ekg-note-properties reloaded) :org/parent)
+      (should (= (plist-get (ekg-note-properties reloaded)
+                            :hierarchy/parent)
                  parent-id)))))
 
 (ekg-deftest-with-db ekg-org-test-generate-content ()
@@ -322,6 +396,46 @@ Returns the note ID."
     (let ((headings (ekg-org-test--view-headings)))
       (should (equal headings
                      '((1 "Parent") (2 "Child A") (2 "Child B")))))))
+
+(ekg-deftest-with-db ekg-org-test-view-shows-user-response ()
+  "A task response is visible and remains a non-task note."
+  (ekg-org-add-schema)
+  (let* ((task-id (ekg-org-test--add-task "Question"))
+         (response (ekg-note-create :text "My answer"
+                                    :mode 'markdown-mode)))
+    (ekg-note-set-parent response task-id)
+    (ekg-save-note response)
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (should (string-match-p "\\*\\* Response" (buffer-string)))
+      (should (string-match-p "My answer" (buffer-string)))
+      (goto-char (point-min))
+      (search-forward "Response")
+      (beginning-of-line)
+      (should (equal (ekg-org-view--note-at-point)
+                     (ekg-note-id response)))
+      (should-error (ekg-org-view-cycle-state) :type 'user-error)
+      (should (equal (mapcar #'cadr (ekg-org-view--collect-headings))
+                     (list task-id)))
+      (goto-char (point-min))
+      (ekg-org-view-respond)
+      (should ekg-capture-mode)
+      (should (eq major-mode 'markdown-mode))
+      (should (equal (ekg-note-parent-id ekg-note) task-id)))))
+
+(ekg-deftest-with-db ekg-org-test-archive-view-keeps-response ()
+  "Archived task subtrees still display their response notes."
+  (ekg-org-add-schema)
+  (let* ((task-id (ekg-org-test--add-task "Archived question"))
+         (response (ekg-note-create :text "Archived answer"
+                                    :mode 'markdown-mode)))
+    (ekg-note-set-parent response task-id)
+    (ekg-save-note response)
+    (ekg-org-view--archive-note (ekg-get-note-with-id task-id))
+    (ekg-org-archive-view)
+    (with-current-buffer "*ekg-org-archive*"
+      (should (string-match-p "Archived question" (buffer-string)))
+      (should (string-match-p "Archived answer" (buffer-string))))))
 
 (ekg-deftest-with-db ekg-org-test-view-default-directory ()
   "Test that task views use `ekg-notes-default-directory'."

@@ -56,6 +56,7 @@
 ;; Forward declarations for variables defined later in this file.
 (defvar ekg-agent-base-tools)
 (defvar ekg-agent-extra-tools)
+(defvar ekg-agent-org-tool-list-items)
 
 ;; Forward declarations for optional external packages.
 (declare-function flycheck-mode "flycheck")
@@ -72,10 +73,24 @@
   :type 'string
   :group 'ekg-agent)
 
+(defcustom ekg-agent-org-user-response-tag "org/needs-user-response"
+  "Tag for Org tasks that require action or a response from the user."
+  :type 'string
+  :group 'ekg-agent)
+
 (defcustom ekg-agent-self-info-tag "agent/self-info"
   "The tag used to identify notes with agent information for itself."
   :type 'string
   :group 'ekg-agent)
+
+(defun ekg-agent--response-inheritable-tag-p (tag _note)
+  "Return non-nil when TAG is not agent provenance or control data."
+  (not (member tag (delq nil (list ekg-agent-author-tag
+                                   ekg-agent-self-info-tag
+                                   ekg-agent-org-user-response-tag)))))
+
+(add-hook 'ekg-response-tag-filter-functions
+          #'ekg-agent--response-inheritable-tag-p)
 
 (add-to-list 'ekg-hidden-tags ekg-agent-self-info-tag)
 
@@ -215,6 +230,9 @@ command-line argument for tools that require that interface."
 
 (defvar-local ekg-agent--end-tools nil
   "The end tools for the current agent run in this buffer.")
+
+(defvar-local ekg-agent--session-provider nil
+  "LLM provider selected for the current agent run, or nil for the default.")
 
 (defvar-local ekg-agent--running-p nil
   "Non-nil when the agent is actively running in this buffer.")
@@ -579,11 +597,8 @@ types, but we'll only get strings from the LLM."
                                (let ((note (ekg-agent--get-note-with-id id)))
                                  (unless note
                                    (error "Note with ID %s not found" id))
-                                 (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                        (new-text (concat (ekg-note-text note) "\n"
-                                                          (car enclosure) "\n"
-                                                          content "\n"
-                                                          (cdr enclosure))))
+                                 (let ((new-text (concat (ekg-note-text note)
+                                                         "\n" content)))
                                    (setf (ekg-note-text note) new-text)
                                    (ekg-save-note note)
                                    (format "Appended content to note ID %s" id)))))
@@ -598,11 +613,8 @@ types, but we'll only get strings from the LLM."
                                (let ((note (ekg-agent--get-note-with-id id)))
                                  (unless note
                                    (error "Note with ID %s not found" id))
-                                 (let* ((enclosure (assoc-default (ekg-note-mode note) ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                        (new-text (concat (car enclosure) "\n"
-                                                          content "\n"
-                                                          (cdr enclosure))))
-                                   (setf (ekg-note-text note) new-text)
+                                 (progn
+                                   (setf (ekg-note-text note) content)
                                    (ekg-save-note note)
                                    (format "Replaced content of note ID %s" id)))))
                  :name "replace_note"
@@ -837,13 +849,13 @@ EXTRA-TOOLS is a list of additional tools beyond
                                                 (format-time-string "%F %R")))
                               :tools (ekg-agent--tools (list ekg-agent-tool-subagent-end))
                               :tool-options (make-llm-tool-options :tool-choice 'any))))
-                 (ekg-agent--iterate prompt
-                                     0
-                                     (lambda (status)
-                                       (funcall callback
-                                                (format "Subagent result: %s" status)))
-                                     '("subagent_end")
-                                     (ekg-agent--timeout-deadline))))
+                 (ekg-agent--iterate
+                  prompt 0
+                  :status-callback
+                  (lambda (status)
+                    (funcall callback (format "Subagent result: %s" status)))
+                  :end-tools '("subagent_end")
+                  :deadline (ekg-agent--timeout-deadline))))
    :name "run_subagent"
    :description "Run a sub-agent with the given instructions and return its result."
    :args '((:name "instructions" :type string :description "Detailed instructions for the sub-agent to follow."))
@@ -1244,6 +1256,8 @@ Return non-nil if the agent loop should continue."
               (last ekg-agent--last-status-update-time)
               (now (float-time)))
           (when (and ekg-agent--running-p
+                     (member "summarize_state"
+                             (ekg-agent--available-tool-names prompt))
                      (numberp threshold)
                      (> threshold 0)
                      (numberp last)
@@ -2462,11 +2476,9 @@ agent will decide which is best."
                                             extra-tools))
                          :tool-options (make-llm-tool-options :tool-choice 'any))
                         0
-                        (ekg-agent--make-status-callback)
-                        '("display_result_in_popup" "end")
-                        nil
-                        nil
-                        provider)))
+                        :status-callback (ekg-agent--make-status-callback)
+                        :end-tools '("display_result_in_popup" "end")
+                        :provider provider)))
 
 (defun ekg-agent-ask (question &optional arg)
   "Ask the ekg agent a QUESTION and display the result.
@@ -2791,9 +2803,8 @@ to create new notes or perform other actions to help the user."
                        (ekg-agent--tools (list ekg-agent-tool-end))
                        :tool-options (make-llm-tool-options :tool-choice 'any))
                       0
-                      (ekg-agent--make-status-callback)
-                      '("end")
-                      nil))
+                      :status-callback (ekg-agent--make-status-callback)
+                      :end-tools '("end")))
 
 (defun ekg-agent--prompt-user-text (prompt)
   "Return the first user text from PROMPT."
@@ -3326,16 +3337,17 @@ PROVIDER are the active loop state."
                         ", ")))))
        (t
         (with-current-buffer log-buf
-          (ekg-agent--iterate prompt
-                              (+ 1 iteration-num)
-                              status-callback
-                              end-tools
-                              deadline
-                              timeout-final
-                              provider)))))))
+          (ekg-agent--iterate
+           prompt (+ 1 iteration-num)
+           :status-callback status-callback
+           :end-tools end-tools
+           :deadline deadline
+           :timeout-final timeout-final
+           :provider provider)))))))
 
-(defun ekg-agent--iterate (prompt iteration-num &optional status-callback
-                                  end-tools deadline timeout-final provider)
+(cl-defun ekg-agent--iterate (prompt iteration-num
+                                    &key status-callback end-tools deadline
+                                    timeout-final provider)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 
 PROMPT is the chat prompt for the LLM.
@@ -3377,6 +3389,7 @@ session.  At iteration 0 the log buffer is created and
           (insert (format "Agent session for: %s\n\n" id))
           (setq ekg-agent--prompt prompt)
           (setq ekg-agent--end-tools end-tools)
+          (setq ekg-agent--session-provider provider)
           (setq ekg-agent--running-p t)
           (setq ekg-agent--cancelled-p nil)
           (setq ekg-agent--current-request nil)
@@ -3392,12 +3405,13 @@ session.  At iteration 0 the log buffer is created and
                 '(:eval (ekg-agent--format-header-line)))
           (ekg-agent--wrap-prompt-tools prompt buf origin-buf)
           (goto-char (point-min))
-          (ekg-agent--iterate prompt 1
-                              status-callback
-                              end-tools
-                              deadline
-                              timeout-final
-                              provider)
+          (ekg-agent--iterate
+           prompt 1
+           :status-callback status-callback
+           :end-tools end-tools
+           :deadline deadline
+           :timeout-final timeout-final
+           :provider provider)
           (ekg-agent--schedule-prompt-id-async prompt buf provider)))
     ;; iteration > 0: run the agent loop.  Prefer the dynamically
     ;; bound log buffer when present; async tools such as sub-agents can
@@ -3464,13 +3478,13 @@ session.  At iteration 0 the log buffer is created and
                           (if (ekg-agent--recover-unknown-tool-error
                                err prompt log-buf)
                               (with-current-buffer log-buf
-                                (ekg-agent--iterate prompt
-                                                    (+ 1 iteration-num)
-                                                    status-callback
-                                                    end-tools
-                                                    deadline
-                                                    timeout-final
-                                                    provider))
+                                (ekg-agent--iterate
+                                 prompt (+ 1 iteration-num)
+                                 :status-callback status-callback
+                                 :end-tools end-tools
+                                 :deadline deadline
+                                 :timeout-final timeout-final
+                                 :provider provider))
                             (when (ekg-agent--set-stopped log-buf)
                               (ekg-agent--log "LLM error: %s" err)
                               (when status-callback
@@ -3513,11 +3527,12 @@ Prompts for a MESSAGE with additional instructions for the agent."
     (when (and message (not (string-empty-p message)))
       (ekg-agent--prompt-append-user-message ekg-agent--prompt message)
       (ekg-agent--log "User message: %s" message))
-    (ekg-agent--iterate ekg-agent--prompt
-                        1
-                        cb
-                        ekg-agent--end-tools
-                        (ekg-agent--timeout-deadline))))
+    (ekg-agent--iterate
+     ekg-agent--prompt 1
+     :status-callback cb
+     :end-tools ekg-agent--end-tools
+     :deadline (ekg-agent--timeout-deadline)
+     :provider ekg-agent--session-provider)))
 
 (defun ekg-agent-cancel ()
   "Cancel the current agent run, preserving the prompt for continuation.
@@ -3595,8 +3610,8 @@ If already scheduled, cancel the existing timer and create a new one."
 
 (defun ekg-agent-note-response (&optional arg)
   "Respond to the current note using the agent.
-This is similar to `ekg-llm-send-and-append-note', but runs an
-agent loop with tools, instead of just appending text.
+This is similar to `ekg-llm-respond-to-note', but runs an agent
+loop with tools before saving a Markdown response note.
 
 The agent is given the context of the last 10 notes with similar
 tags.
@@ -3605,57 +3620,49 @@ ARG, if non-nil, allows editing the instructions."
   (interactive "P")
   (unless ekg-note
     (error "No note in current buffer"))
+  (when (buffer-modified-p)
+    (if ekg-edit-mode
+        (ekg-edit-save)
+      (user-error "Save the note before requesting an agent response")))
+  (unless (ekg-note-with-id-exists-p (ekg-note-id ekg-note))
+    (user-error "Save the note before requesting an agent response"))
   (ekg-note-update-from-buffer)
   (save-excursion
-    (let* ((ekg-agent-tool-append-response
+    (let* ((parent-note (copy-ekg-note ekg-note))
+           (ekg-agent-tool-save-response
             (make-llm-tool
              :function (lambda (content)
-                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                (new-text (concat
-                                           (car enclosure) "\n"
-                                           content "\n"
-                                           (cdr enclosure))))
-                           (save-excursion
-                             (goto-char (point-max))
-                             (insert new-text))))
-             :name "append_to_current_note"
-             :description "Append content to the current note."
-             :args '((:name "content" :type string :description "The content to append to the current note."))))
-           (ekg-agent-tool-replace-response
-            (make-llm-tool
-             :function (lambda (content)
-                         (let* ((enclosure (assoc-default major-mode ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-                                (new-text (concat
-                                           (car enclosure) "\n"
-                                           content "\n"
-                                           (cdr enclosure))))
-                           (erase-buffer)
-                           (insert new-text)))
-             :name "replace_current_note"
-             :description "Replace the content of the current note."
-             :args '((:name "content" :type string :description "The new content for the current note."))))
+                         (let ((response
+                                (ekg-llm-save-response
+                                 parent-note content
+                                 (list ekg-agent-author-tag))))
+                           (format "Saved response note %s"
+                                   (ekg-note-id response))))
+             :name "respond_to_current_note"
+             :description "Save a Markdown response to the current note."
+             :args '((:name "content" :type string
+                            :description "The response to save."))))
            (instructions (ekg-llm-instructions-for-note ekg-note))
            (instructions-for-use (if arg
                                      (read-string "Instructions: " instructions)
                                    instructions))
+           (context-tags (ekg-llm--context-tags ekg-note))
            (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id ekg-note)))
                                                 (ekg-get-notes-with-any-tags
                                                  (append
-                                                  (ekg-note-tags ekg-note)
+                                                  context-tags
                                                   (list ekg-agent-self-info-tag))))
                                     10))
            (context-notes-json (let ((ekg-llm-note-numwords 100))
                                  (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
            (current-note-json (let ((ekg-llm-note-numwords 10000))
                                 (ekg-llm-note-to-text ekg-note)))
+           (hierarchy-json (let ((ekg-llm-note-numwords 10000))
+                             (ekg-llm-note-hierarchy-context ekg-note)))
            (prompt (concat "You are a note-response agent for ekg, an Emacs knowledge base.
-Your job is to respond to the user's current note by appending or
-replacing its content.  You have tools to search existing notes for
-context if needed, but your primary goal is to produce a response
-for the current note.
-
-Do NOT create separate notes (via `create_note`) unless there is a
-compelling reason — your response belongs in the current note.
+Your job is to respond to the user's current note.  You have tools to
+search existing notes for context if needed, but your primary goal is
+to produce a response for the current note.
 
 Your instructions:\n"
                            instructions-for-use
@@ -3663,35 +3670,33 @@ Your instructions:\n"
 for context.  After each tool call you will be given a chance to make
 more tool calls.
 
-IMPORTANT: You MUST end your session by calling one of these two tools:
-- `append_to_current_note`: Appends your response to the current note.
-- `replace_current_note`: Replaces the current note content entirely.
-
-Calling either of these tools will end your session.  There is no other
-way to end the session.  Prefer `append_to_current_note` by default,
-unless the user is explicitly asking for a rewrite or replacement.
+IMPORTANT: You MUST end your session by calling
+`respond_to_current_note`, which saves your response as a separate
+Markdown child note.  There is no other way to end the session.
 
 The user input will be the note they are currently editing.\n\n"
                            (format "The current date and time is %s.\n"
                                    (format-time-string "%F %R"))
                            (format "Some notes matching the tags or context: %s\n"
-                                   context-notes-json))))
+                                   context-notes-json)
+                           (format
+                            "The note hierarchy around the current note: %s\n"
+                            hierarchy-json))))
       (let ((overlay (make-overlay (point-max) (point-max) nil t t)))
         (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
         (ekg-agent--iterate (llm-make-chat-prompt
                              current-note-json
                              :context prompt
                              :tools
-                             (ekg-agent--tools (list
-                                                ekg-agent-tool-append-response
-                                                ekg-agent-tool-replace-response))
+                             (ekg-agent--tools
+                              (list ekg-agent-tool-save-response))
                              :tool-options (make-llm-tool-options :tool-choice 'any))
                             0
+                            :status-callback
                             (ekg-agent--make-status-callback
                              (lambda (_status)
                                (delete-overlay overlay)))
-                            '("append_to_current_note" "replace_current_note")
-                            nil)))))
+                            :end-tools '("respond_to_current_note"))))))
 
 (defvar ekg-agent-minor-mode-map
   (let ((map (make-sparse-keymap)))
@@ -3730,20 +3735,15 @@ ID on success, signals an error on failure.
 This function automatically:
 - Adds the `ekg-agent-author-tag' to the tags
 - Applies all functions from `ekg-capture-auto-tag-funcs' (e.g., date tags)
-- Wraps the text in the appropriate LLM output format based on MODE
 
 This is intended to be used from the command-line so agents can easily
-add properly formatted notes to ekg."
+add notes to ekg."
   (ekg-connect)
   (let* ((mode-sym (if (stringp mode) (intern mode) mode))
-         (enclosure (assoc-default mode-sym ekg-llm-format-output nil '("_BEGIN_" . "_END_")))
-         (formatted-text (concat (car enclosure) "\n"
-                                 text "\n"
-                                 (cdr enclosure)))
          ;; Apply auto-tag functions (e.g., date tags)
          (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
          (all-tags (seq-uniq (append tags auto-tags (list ekg-agent-author-tag))))
-         (note (ekg-note-create :text formatted-text
+         (note (ekg-note-create :text text
                                 :mode mode-sym
                                 :tags all-tags)))
     (ekg-save-note note)
@@ -3899,15 +3899,14 @@ notes from ekg."
          (note (ekg-note-create
                 :text (or content "")
                 :tags (cl-remove-duplicates
-                       (append (list ekg-org-task-tag)
+                       (append (list ekg-org-task-tag ekg-agent-author-tag)
                                (ekg-agent-org--normalize-tool-tags tags)
                                (list (concat ekg-org-state-tag-prefix
                                              (downcase status))))
                        :test #'string=)
                 :properties (list :titled/title (list title)))))
     (when has-parent
-      (setf (ekg-note-properties note)
-            (plist-put (ekg-note-properties note) :org/parent parent-id)))
+      (ekg-note-set-parent note parent-id))
     ;; Assign sort-order at the end of existing siblings.
     (let* ((siblings (if has-parent
                          (ekg-org-view--sorted-children parent-id)
@@ -4062,6 +4061,342 @@ SCHEDULED is the scheduled timestamp string (ignored if empty)."
      (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format" :optional t)
      (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format" :optional t))))
 
+;; Shared plan contract and transactional importer for the agent and CLI.
+
+(defconst ekg-org-plan-schema
+  '(:type "object" :additionalProperties :json-false
+          :required ["version" "tasks"]
+          :properties
+          (:version (:type "integer" :enum [1])
+                    :tasks
+                    (:type "array" :minItems 1 :items
+                           (:type "object" :additionalProperties :json-false
+                                  :required ["id" "parent" "title" "content" "execution" "depends_on" "tags"]
+                                  :properties
+                                  (:id (:type "string" :minLength 1)
+                                       :parent (:type ["string" "null"])
+                                       :title (:type "string" :minLength 1)
+                                       :content (:type "string")
+                                       :execution (:type "string" :enum ["sequential" "parallel"])
+                                       :depends_on (:type "array" :items (:type "string"))
+                                       :tags (:type "array" :items (:type "string")))))))
+  "JSON Schema for version 1 plans.
+Exactly one task has a null parent.  IDs are local to this document.
+Array order defines sibling order; execution describes a node's children.
+Dependencies name tasks that must finish before this task starts.")
+
+(defun ekg-org-plan--validate (plan)
+  "Validate parsed PLAN and return its tasks, before any database writes."
+  (unless (and (hash-table-p plan) (equal (gethash "version" plan) 1)
+               (vectorp (gethash "tasks" plan))
+               (> (length (gethash "tasks" plan)) 0))
+    (error "Expected version 1 plan with a nonempty tasks array"))
+  (maphash (lambda (key _)
+             (unless (member key '("version" "tasks"))
+               (error "Unknown plan field %s" key))) plan)
+  (let ((tasks (append (gethash "tasks" plan) nil))
+        (by-id (make-hash-table :test #'equal))
+        (edges (make-hash-table :test #'equal))
+        (children (make-hash-table :test #'equal))
+        roots)
+    (dolist (task tasks)
+      (unless (hash-table-p task) (error "Task must be an object"))
+      (maphash (lambda (key _)
+                 (unless (member key '("id" "parent" "title" "content"
+                                       "execution" "depends_on" "tags"))
+                   (error "Unknown task field %s" key))) task)
+      (dolist (key '("id" "title" "content" "execution"))
+        (unless (stringp (gethash key task)) (error "Missing string %s" key)))
+      (let ((id (gethash "id" task)))
+        (when (or (string-empty-p id) (gethash id by-id)
+                  (string-empty-p (string-trim (gethash "title" task))))
+          (error "Empty or duplicate task ID/title: %s" id))
+        (unless (and (member (gethash "execution" task)
+                             '("sequential" "parallel"))
+                     (vectorp (gethash "depends_on" task))
+                     (vectorp (gethash "tags" task []))
+                     (seq-every-p #'stringp (gethash "tags" task []))
+                     (not (eq (gethash "parent" task 'missing) 'missing)))
+          (error "Invalid execution, parent, depends_on or tags for %s" id))
+        (puthash id task by-id)))
+    (dolist (task tasks)
+      (let ((id (gethash "id" task)) (parent (gethash "parent" task)))
+        (if (null parent) (push id roots)
+          (unless (gethash parent by-id) (error "Unknown parent %s" parent))
+          (puthash parent (append (gethash parent children) (list id)) children))
+        (dolist (dep (append (gethash "depends_on" task) nil))
+          (unless (and (stringp dep) (gethash dep by-id))
+            (error "Unknown dependency %s" dep)))))
+    (unless (= (length roots) 1) (error "Plan must have exactly one root"))
+    ;; Model start/finish events: a group finishes after all its children;
+    ;; children start after their group starts.  This catches dependency
+    ;; cycles involving ancestor groups as well as ordinary task cycles.
+    (cl-labels ((edge (a b) (puthash a (cons b (gethash a edges)) edges)))
+      (dolist (task tasks)
+        (let* ((id (gethash "id" task)) (kids (gethash id children)))
+          (edge (cons id 'start) (cons id 'finish))
+          (dolist (kid kids)
+            (edge (cons id 'start) (cons kid 'start))
+            (edge (cons kid 'finish) (cons id 'finish)))
+          (when (equal (gethash "execution" task) "sequential")
+            (cl-loop for (a b) on kids while b
+                     do (edge (cons a 'finish) (cons b 'start))))
+          (dolist (dep (append (gethash "depends_on" task) nil))
+            (edge (cons dep 'finish) (cons id 'start))))))
+    (let ((colors (make-hash-table :test #'equal)))
+      (cl-labels ((visit (node)
+                    (when (eq (gethash node colors) 'gray)
+                      (error "Cycle in plan at %s" (car node)))
+                    (unless (gethash node colors)
+                      (puthash node 'gray colors)
+                      (mapc #'visit (gethash node edges))
+                      (puthash node 'black colors))))
+        (maphash (lambda (node _) (visit node)) edges)))
+    tasks))
+
+(defun ekg-org-plan-import (json tags &optional parent-id)
+  "Import version 1 plan JSON with TAGS under optional PARENT-ID.
+Return an alist mapping document task IDs to created note IDs.  All
+notes start as TODO.  Validate the whole graph before creating notes."
+  (let* ((plan (json-parse-string json :null-object nil :false-object :json-false))
+         (tasks (ekg-org-plan--validate plan))
+         (notes (make-hash-table :test #'equal))
+         result)
+    (unless (and (listp tags) (seq-every-p #'stringp tags))
+      (error "Tags must be a list of strings"))
+    (setq tags (delete "org/task" (mapcar #'ekg--normalize-tag tags)))
+    (when (seq-some (lambda (tag) (string-prefix-p "org/" tag)) tags)
+      (error "Plan tags must not override internal org tags"))
+    (ekg-connect)
+    (ekg-org-add-schema)
+    (when parent-id
+      (let ((parent (ekg-get-note-with-id parent-id)))
+        (unless (and parent (ekg-org--org-note-p parent))
+          (error "Parent %s is not an Org task" parent-id))))
+    (dolist (task tasks)
+      (let* ((task-tags (mapcar #'ekg--normalize-tag
+                                (append (gethash "tags" task []) nil)))
+             (_ (when (seq-some
+                       (lambda (tag)
+                         (and (string-prefix-p "org/" tag)
+                              (not (equal tag
+                                          ekg-agent-org-user-response-tag))))
+                       task-tags)
+                  (error "Task %s has a reserved org tag"
+                         (gethash "id" task))))
+             (note (ekg-note-create
+                    :text (gethash "content" task) :mode 'org-mode
+                    :tags (seq-uniq
+                           (append '("org/task" "org/state/todo")
+                                   (list ekg-agent-author-tag)
+                                   tags task-tags))
+                    :properties (list :titled/title
+                                      (list (gethash "title" task))))))
+        ;; Allocate IDs before resolving forward references.
+        (while (or (ekg-note-with-id-exists-p (ekg-note-id note))
+                   (rassoc (ekg-note-id note) result))
+          (setf (ekg-note-id note) (ekg--generate-id)))
+        (puthash (gethash "id" task) note notes)
+        (push (cons (gethash "id" task) (ekg-note-id note)) result)))
+    (cl-loop for task in tasks for order from 0
+             for note = (gethash (gethash "id" task) notes)
+             do
+             (setf (ekg-note-properties note)
+                   (append (ekg-note-properties note)
+                           (list :org/sort-order order
+                                 :org/depends-on
+                                 (mapcar (lambda (id) (cdr (assoc id result)))
+                                         (append (gethash "depends_on" task) nil)))
+                           (when (or (gethash "parent" task) parent-id)
+                             (list :hierarchy/parent
+                                   (if-let* ((local-parent
+                                              (gethash "parent" task)))
+                                       (cdr (assoc local-parent result))
+                                     parent-id)))))
+             (ekg-org-set-dependency-type
+              note (intern (gethash "execution" task))))
+    (let ((save-hooks ekg-note-save-hook)
+          (embedding-hook
+           (memq 'ekg-embedding-generate-for-note-async ekg-note-pre-save-hook))
+          (ekg-note-pre-save-hook
+           (remq 'ekg-embedding-generate-for-note-async ekg-note-pre-save-hook))
+          (ekg-note-save-hook nil)
+          (ekg-org--inhibit-view-refresh t))
+      ;; Avoid backups and externally observable save hooks before commit.
+      (cl-letf (((symbol-function 'ekg-backup) #'ignore))
+        (with-temp-buffer
+          (triples-with-transaction ekg-db
+                                    ;; triples' builtin backend does not nest transactions: an
+                                    ;; inner commit otherwise commits the outer transaction too.
+                                    ;; Join nested saves on this connection to our transaction.
+                                    (let ((transaction (symbol-function 'triples--with-transaction)))
+                                      (cl-letf (((symbol-function 'triples--with-transaction)
+                                                 (lambda (db body)
+                                                   (if (eq db ekg-db) (funcall body)
+                                                     (funcall transaction db body)))))
+                                        (dolist (task tasks)
+                                          (ekg-save-note (gethash (gethash "id" task) notes))))))))
+      (dolist (task tasks)
+        (dolist (hook (append (when embedding-hook
+                                '(ekg-embedding-generate-for-note-async))
+                              save-hooks))
+          (condition-case err
+              (funcall hook (gethash (gethash "id" task) notes))
+            (error (warn "Plan committed; save hook failed: %s" err))))))
+    (dolist (action '(ekg-backup ekg-org-view--refresh-all))
+      (condition-case err
+          (funcall action)
+        (error (warn "Plan committed; %s failed: %s" action err))))
+    (nreverse result)))
+
+(defvar ekg-agent-plan-provider nil
+  "Provider for researching Org plans.
+When nil, use the normal agent provider selected from `ekg-llm-provider'.")
+
+(defcustom ekg-agent-org-plan-provider nil
+  "Strong LLM provider for structured task-plan generation.
+Configure explicitly before using `create_org_plan'.  Research uses the
+ordinary agent provider; this provider makes the final planning decision."
+  :type 'sexp
+  :group 'ekg)
+
+(defcustom ekg-agent-org-plan-reasoning 'maximum
+  "Reasoning effort for structured task-plan generation."
+  :type '(choice (const nil) (const none) (const light)
+                 (const medium) (const maximum))
+  :group 'ekg)
+
+(defcustom ekg-agent-org-plan-parameters nil
+  "Provider-specific parameters for structured task-plan generation."
+  :type '(alist :key-type symbol :value-type sexp)
+  :group 'ekg)
+
+(defun ekg-agent-org--create-plan (callback description tags &optional parent-id)
+  "Research DESCRIPTION, synthesize a plan, and import it with TAGS.
+When PARENT-ID is non-nil, attach the plan root to that Org task.
+Call CALLBACK once with the created ID mapping or an error message."
+  (if (null ekg-agent-org-plan-provider)
+      (funcall callback "Error: Configure ekg-agent-org-plan-provider first")
+    (let* ((provider ekg-agent-org-plan-provider)
+           (reasoning ekg-agent-org-plan-reasoning)
+           (parameters (copy-tree ekg-agent-org-plan-parameters))
+           (owner ekg-agent--current-log-buffer)
+           (finished nil)
+           (ended nil)
+           (finish (lambda (value)
+                     (unless finished
+                       (setq finished t)
+                       (funcall callback value))))
+           (end-tool
+            (make-llm-tool
+             :name "finish_plan_research"
+             :description "Finish research with requirements and decisions."
+             :args '((:name "summary" :type string
+                            :description "Requirements, answers and decisions."))
+             :function (lambda (summary) (setq ended t) summary)))
+           (prompt
+            (llm-make-chat-prompt
+             description
+             :context
+             (concat "Research a task plan. Read relevant context, but do not "
+                     "ask the user questions directly, execute tasks, or create "
+                     "notes. Identify unresolved questions and other actions "
+                     "requiring the user in your research summary. The final "
+                     "plan will turn them into tasks "
+                     (format "tagged %s, so the user can act or answer "
+                             ekg-agent-org-user-response-tag)
+                     "with a response note. Finish by calling "
+                     "finish_plan_research with requirements, decisions, and "
+                     "unresolved questions.")
+             :tools (list ekg-agent-tool-all-tags ekg-agent-tool-any-tags
+                          ekg-agent-tool-get-note-by-id
+                          ekg-agent-tool-search-notes ekg-agent-tool-list-tags
+                          ekg-agent-tool-read-file ekg-agent-tool-web-search
+                          ekg-agent-tool-web-browse
+                          ekg-agent-org-tool-list-items end-tool))))
+      (condition-case err
+          (ekg-agent--iterate
+           prompt 0
+           :status-callback
+           (lambda (status)
+             (if (or (eq status 'error) (not ended)
+                     (and owner
+                          (or (not (buffer-live-p owner))
+                              (buffer-local-value
+                               'ekg-agent--cancelled-p owner))))
+                 (funcall finish "Error: Plan research stopped without completion")
+               (condition-case err
+                   (let ((request
+                           (llm-chat-async
+                            provider
+                            (llm-make-chat-prompt
+                             (format "Original EKG task ID: %s\nTask: %s\nResearch: %s\nConversation: %S"
+                                     (or parent-id "none") description status
+                                     (llm-chat-prompt-interactions prompt))
+                             :context
+                             (concat
+                              "Produce a complete executable Org task plan. "
+                              "Use one root and document-local string IDs. "
+                              "parent is null only for the root. Array order "
+                              "sets sibling order. execution sets how children "
+                              "run: sequential or parallel. depends_on lists "
+                              "prerequisite task IDs; avoid cycles including "
+                              "those implied by sequential groups. content is "
+                              "Org text with actionable acceptance criteria. "
+                              "Every task has a tags array; use [] when there "
+                              "are no task-specific tags. Do not ask the user "
+                              "questions now or invent missing answers. For "
+                              "each decision or action that needs the user, "
+                              "create a task tagged "
+                              (format "%s. For a question, its content must "
+                                      ekg-agent-org-user-response-tag)
+                              "state the question and ask the user to add a "
+                              "child response note. Make dependent work wait "
+                              "for the answer. When such questions exist, "
+                              "include a follow-up task to review the responses, "
+                              "revise the plan, and update the original EKG "
+                              "task note with the new information and revised "
+                              "plan; give its note ID in that task's content "
+                              "when available. "
+                              "Return only JSON conforming to the supplied schema.")
+                             :response-format ekg-org-plan-schema
+                             :reasoning reasoning :non-standard-params parameters)
+                            (lambda (json)
+                              (unless finished
+                                (if (and owner
+                                         (or (not (buffer-live-p owner))
+                                             (buffer-local-value
+                                              'ekg-agent--cancelled-p owner)))
+                                    (funcall finish "Error: Plan cancelled")
+                                  (condition-case err
+                                      (funcall finish
+                                               (json-encode
+                                                (ekg-org-plan-import
+                                                 json (append tags nil)
+                                                 parent-id)))
+                                    (error (funcall finish
+                                                    (format "Error: %s" err)))))))
+                            (lambda (_ message)
+                              (funcall finish (format "Error: %s" message))))))
+                     (when (buffer-live-p owner)
+                       (with-current-buffer owner
+                         (push request ekg-agent--tool-processes))))
+                 (error (funcall finish (format "Error: %s" err))))))
+           :end-tools '("finish_plan_research")
+           :provider (or ekg-agent-plan-provider
+                         (ekg-agent--provider)))
+        (error (funcall finish (format "Error: %s" err)))))))
+
+(defconst ekg-agent-org-tool-create-plan
+  (make-llm-tool
+   :name "create_org_plan" :async t
+   :function #'ekg-agent-org--create-plan
+   :description "Research and create a complete Org task DAG atomically."
+   :args '((:name "description" :type string
+                  :description "Goal, requirements and constraints to plan.")
+           (:name "tags" :type array :items (:type string)
+                  :description "Topic tags to apply to every task."))))
+
 (defun ekg-agent-org--tool-set-status (id status)
   "Set the status of an org task item.
 
@@ -4122,10 +4457,18 @@ Returns text in Org format, as if they were in an Org file."
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (parent-id (ekg-note-id ekg-note))
          (parent-note (ekg-get-note-with-id parent-id))
-         (question (format "Given the task '%s', create a plan to accomplish it by creating subtasks using the tool to add ekg org tasks or add information to existing ekg note tasks. The parent ekg note id is '%s'."
+         (plan-tool (copy-llm-tool ekg-agent-org-tool-create-plan))
+         ;; The outer agent only delegates to the plan tool.  In particular,
+         ;; neither stage should interrupt the user with `ask_user'.
+         (ekg-agent-base-tools nil)
+         (ekg-agent-extra-tools nil)
+         (question (format "Given the task '%s', call create_org_plan to plan how to accomplish it. Include relevant topic tags. The plan will be attached under this task (EKG note %s)."
                            (ekg-org--note-title parent-note)
                            parent-id)))
-    (ekg-agent-ask-with-note question parent-id (list ekg-agent-org-tool-add-task))))
+    (setf (llm-tool-function plan-tool)
+          (lambda (callback description tags)
+            (ekg-agent-org--create-plan callback description tags parent-id)))
+    (ekg-agent-ask-with-note question parent-id (list plan-tool))))
 
 (defun ekg-agent-org-run-task ()
   "Execute the current org task autonomously using the agent.
@@ -4185,9 +4528,8 @@ which ends the agent session.  No human input is required."
                                        ekg-agent-org-tool-list-items))
                          :tool-options (make-llm-tool-options :tool-choice 'any))
                         0
-                        (ekg-agent--make-status-callback)
-                        '("set_org_item_status")
-                        nil)))
+                        :status-callback (ekg-agent--make-status-callback)
+                        :end-tools '("set_org_item_status"))))
 
 (provide 'ekg-agent)
 

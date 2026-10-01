@@ -83,10 +83,12 @@
 			                  :tags '("date/20230101" "portfolio" "tag2")))
 	     (denote (make-ekg-denote :id denote-id
 				                  :note-id "ID1"
-				                  :title ""
-				                  :text ""
-				                  :path (format "/tmp/%s__portfolio_tag2.org" denote-id )
-				                  :kws '("portfolio" "tag2"))))
+			             :title ""
+			             :text ""
+			             :path (format "/tmp/%s__portfolio_tag2.org" denote-id )
+			             :kws '("portfolio" "tag2")
+                              :hierarchy '(:id "ID1" :parent-id nil
+                                           :root-id "ID1" :depth 0))))
     (should (equal denote (ekg-denote-create note))))
 
   ;; scalar title values shall work
@@ -101,10 +103,12 @@
 			                  :tags '("date/20230101" "portfolio")))
 	     (denote (make-ekg-denote :id denote-id
 				                  :note-id "ID1"
-				                  :title "mytitle"
-				                  :text "Text"
-				                  :path (format "/tmp/%s--mytitle__portfolio.org" denote-id )
-				                  :kws '("portfolio"))))
+			             :title "mytitle"
+			             :text "Text"
+			             :path (format "/tmp/%s--mytitle__portfolio.org" denote-id )
+			             :kws '("portfolio")
+                              :hierarchy '(:id "ID1" :parent-id nil
+                                           :root-id "ID1" :depth 0))))
     (should (equal denote (ekg-denote-create note))))
 
   ;; text is copied as it is
@@ -121,10 +125,12 @@
 			                  :tags '("date/20230101" "portfolio")))
 	     (denote (make-ekg-denote :id denote-id
 				                  :note-id "ID1"
-				                  :title "title-1234"
-				                  :text "Text"
-				                  :path (format "/tmp/%s--title-1234__portfolio.org" denote-id )
-				                  :kws '("portfolio"))))
+			             :title "title-1234"
+			             :text "Text"
+			             :path (format "/tmp/%s--title-1234__portfolio.org" denote-id )
+			             :kws '("portfolio")
+                              :hierarchy '(:id "ID1" :parent-id nil
+                                           :root-id "ID1" :depth 0))))
     (should (equal denote (ekg-denote-create note)))))
 
 
@@ -165,7 +171,12 @@ Enforces single match."
     (sleep-for 1)
     (ekg-denote-export)
     (setq denote-file (ekg-test--matching-denote "__portfolio"))
-    (should (equal "text1" (ekg-test--denote-text denote-file)))
+    (should (equal (concat "#+ekg_id: "
+                           (ekg-export-encode-id (ekg-note-id
+                                                  (ekg-test--denote-ekg
+                                                   denote-file)))
+                           "\n\ntext1")
+                   (ekg-test--denote-text denote-file)))
     ;; ekg note updates are exported
     (setq note (ekg-test--denote-ekg denote-file))
     (setf (ekg-note-text note) "text2")
@@ -173,7 +184,8 @@ Enforces single match."
     (sleep-for 1)
     (ekg-denote-export)
     (setq denote-file (ekg-test--matching-denote "__portfolio"))
-    (should (equal "text2" (ekg-test--denote-text denote-file)))
+    (should (string-suffix-p "\n\ntext2"
+                             (ekg-test--denote-text denote-file)))
     ;; ekg note tag update cause denote file rename
     (setq note (ekg-test--denote-ekg denote-file))
     (setf (ekg-note-tags note) '("updatedtag"))
@@ -205,5 +217,22 @@ Enforces single match."
                                   :title ""
                                   :text ""
                                   :path (format "/tmp/%s__visible.org" denote-id)
-                                  :kws '("visible"))))
+                                  :kws '("visible")
+                                  :hierarchy '(:id "ID1" :parent-id nil
+                                               :root-id "ID1" :depth 0))))
     (should (equal denote (ekg-denote-create note)))))
+
+(ekg-deftest-with-db ekg-denote-test-hierarchy-metadata ()
+  (let* ((denote-directory "/tmp")
+         (ekg-capture-default-mode 'markdown-mode)
+         (parent (ekg-note-create :id "parent" :text "Parent"
+                                  :mode 'markdown-mode))
+         (child (ekg-note-create :id 2 :text "Child"
+                                 :mode 'markdown-mode)))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (should (equal (concat "<!-- ekg-id: integer:2 -->\n"
+                           "<!-- ekg-parent: string:parent -->\n\n")
+                   (ekg-denote--ekg-metadata-text
+                    (ekg-denote-create child))))))

@@ -57,6 +57,58 @@
                  (ekg-apple-notes--remove-tags-line
                   "some content\nTag: food\nTag: recipes"))))
 
+(ekg-deftest ekg-apple-notes-test-hierarchy-metadata ()
+  (let ((body (concat "<div>content</div>\n<div><br></div>\n"
+                      "<div>EKG ID: string:child</div>\n"
+                      "<div>EKG Parent: integer:42</div>")))
+    (should (equal '(:id "child" :parent-id 42)
+                   (ekg-apple-notes--hierarchy-from-body body)))
+    (should (equal "<div>content</div>"
+                   (string-trim
+                    (ekg-apple-notes--remove-hierarchy-html body))))))
+
+(ekg-deftest-with-db ekg-apple-notes-test-export-and-restore-hierarchy ()
+  (let ((parent (ekg-note-create :id "parent" :text "Parent"
+                                 :mode 'markdown-mode))
+        (child (ekg-note-create :id 2 :text "Child"
+                                :mode 'markdown-mode)))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (should (equal "EKG ID: integer:2\nEKG Parent: string:parent"
+                   (ekg-apple-notes--hierarchy-to-metadata child)))
+    (ekg-note-set-parent child nil)
+    (ekg-save-note child)
+    (ekg-apple-notes--apply-imported-hierarchy '((2 . "parent")))
+    (should (equal "parent"
+                   (ekg-note-parent-id (ekg-get-note-with-id 2))))))
+
+(ekg-deftest-with-db ekg-apple-notes-test-import-hierarchy-child-first ()
+  "A child may be encountered before its parent during import."
+  (ekg-apple-notes-add-schema)
+  (let ((notes
+         (list
+          (make-ekg-apple-notes--note
+           :id "apple-child" :name "Child"
+           :creation-date "2026-09-19T12:00:00"
+           :modification-date "2026-09-19T12:00:00"
+           :body (concat "<div>Child</div>\n"
+                         "<div>EKG ID: integer:2</div>\n"
+                         "<div>EKG Parent: string:parent</div>"))
+          (make-ekg-apple-notes--note
+           :id "apple-parent" :name "Parent"
+           :creation-date "2026-09-19T11:00:00"
+           :modification-date "2026-09-19T11:00:00"
+           :body (concat "<div>Parent</div>\n"
+                         "<div>EKG ID: string:parent</div>")))))
+    (cl-letf (((symbol-function 'ekg-apple-notes--list-notes)
+               (lambda (&rest _args) notes))
+              ((symbol-function 'ekg-apple-notes--from-html)
+               (lambda (body _mode) body)))
+      (should (equal '(2 "parent") (ekg-apple-notes-import t))))
+    (should (equal "parent"
+                   (ekg-note-parent-id (ekg-get-note-with-id 2))))))
+
 ;;; ---- HTML Tag Removal Tests ----
 
 (ekg-deftest ekg-apple-notes-test-remove-tags-html ()

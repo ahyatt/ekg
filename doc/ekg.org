@@ -73,6 +73,16 @@ triples library is already installed.
 (require 'ekg)
 #+end_src
 * Changelog
+** Version 0.10.0
+- Add generic parent-child relationships between notes.  Note lists display
+  these relationships hierarchically, and edit buffers show parent notes and
+  responses outside the editable text.
+- Store LLM output as separate Markdown response notes tagged
+  =llm-generated= instead of inserting mode-specific output blocks.
+- Move Org task parent relationships to the generic hierarchy schema while
+  retaining Org-specific sibling ordering.
+- Preserve note identity and parent relationships in flat Logseq, Denote, and
+  Apple Notes exports.
 ** Version 0.9.2
 - Fix issue computing batch embeddings without =vecdb=.
 - Fix lack of inline tag normalization
@@ -293,7 +303,19 @@ For the common cases, there are special commands, available under the =C-c /= pr
 
   When altering properties, nothing is saved until the note is saved.
 
-The buffer has the text of the note.
+The buffer has the editable text of the note.  Notes may also be related in a
+parent-child hierarchy.  Editing and capture buffers show only the current
+note's text.  Use =C-c C-r= to capture a Markdown response to the note being
+edited.
+Note lists include active descendants of matching notes by default.  In a
+notes list, use =C-u g= to toggle strict results containing only notes that
+match the list's query.
+Responses inherit topical tags from the note and its ancestor chain, so the
+thread remains discoverable through the same subjects.  Date, lifecycle, and
+module-specific control or provenance tags are not inherited; the new response
+still receives its own automatic tags.  Modules can extend this filtering with
+~ekg-response-tag-filter-functions~.
+Trashing or permanently deleting a note applies to its descendant subtree too.
 
 There are three modes for the note text: =text-mode=, =markdown-mode=, and =org-mode=.
 More can be added by customizing the variable ~ekg-acceptable-modes~, just make
@@ -586,6 +608,16 @@ also given):
 tags of current note.
 
 =ekg-notes-open= (=o=), edit the currently selected note.
+
+=ekg-notes-respond= (=r=), capture a Markdown response to the currently
+selected note.  Responses can themselves have responses and inherit the
+thread's topical tags.
+
+=ekg-llm-notes-respond= (=.=, when =ekg-llm= is loaded), ask the configured
+LLM to respond to the currently selected note.  The command always prompts for
+the request, initially =Create a response to this note=, and lets you select
+reusable prompt tags.  A prefix argument additionally lets you select the
+provider when multiple providers are configured.
 
 =ekg-notes-delete= (=d=), trash the current note (or, if this is the trash list,
 truly delete it).
@@ -1038,6 +1070,7 @@ This will be exported into "pages/ekg.org":
 :PROPERTIES:
 :ID: 33134561605
 :EKG_HASH: 89471eadbd7cc56b088f5513c11f68cb1d11d045
+:EKG_ID: integer:33134561605
 :END:
 #[[2023-04-05]] #[[logseq]]
 ekg can export into logseq
@@ -1050,6 +1083,16 @@ of the exported data.  This is to keep track of what was exported, so we do not
 re-import it unless it has changed.  For now, even if the data is changed, it is
 not re-imported.  Files for "pages/logseq.org" and "journals/2023-04-05" will
 also be created, although they won't have any content from this note.
+
+EKG note hierarchies remain flat on these tag pages.  Each exported item has an
+=EKG_ID= property and child items also have an =EKG_PARENT= property.  These
+properties preserve the relationship without requiring a parent and child to
+live on the same Logseq page.  IDs use a typed, escaped representation, so a
+numeric ID such as =integer:123= remains distinct from the string ID
+=string:123=.  During import,
+all notes are saved before their parent relationships are applied; the order of
+items and files therefore does not matter.  An unresolved parent is reported
+but is not implicitly imported, so export filters are not broadened.
 
 #+texinfo: @noindent
 When exporting, inline commands (see [[#inlines][inlines]] section), are evaluated before
@@ -1124,23 +1167,35 @@ functionality depends on having embeddings.
 
 The variable ~ekg-llm-provider~, can be a single provider, similar to
 ~ekg-embedding-provider~, or a list.  If it is a list, the first element will be
-used by default. However, when the user invokes =ekg-llm-send-and-append-note= or
-=ekg-llm-send-and-replace-note= with a prefix argument (normally via =C-u M-x=), the
-user can select among the different providers.
+used by default. However, when the user invokes =ekg-llm-respond-to-note= with a
+prefix argument (normally via =C-u M-x=), the user can select among the
+different providers.
 
 *** Augmenting notes with LLM output
 To send a note to an LLM and capture its response, call
-=ekg-llm-send-and-append-note=, which is by default bound to =[C-c .]=.  A prefix
-argument (=[C-u C-c .]=) will let you edit the prompt, temperature, and possibly
-the provider used before it is sent.  The output from the LLM is appended at the
-end of the note, in a special section.
+=ekg-llm-respond-to-note=, which is by default bound to =[C-c .]=.  A prefix
+argument (=[C-u C-c .]=) will let you edit the prompt and, when multiple
+providers are configured, select the provider used before it is sent.  The
+output is saved as a separate Markdown note that is a response to the current
+note.  The response is tagged
+with the value of ~ekg-llm-generated-tag~, which defaults to =llm-generated= and
+can be customized or set to nil.  It also inherits the thread's topical tags;
+LLM provenance, prompt, date, and other control tags are excluded.
+
+In a notes list, press =.= to run the operation on the note at point.  It first
+offers an editable request, defaulting to =Create a response to this note=, then
+offers completion over the tags found on notes co-tagged with
+~ekg-llm-prompt-tag~.  Prompt tags already applicable to the current response
+thread are prefilled and can be removed.  The selected prompt notes provide reusable
+instructions, while the first prompt describes this particular response.  The
+manual-response command remains available on =r=.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM.  The prompt consists of context about previous notes that contain the
 tags of your note, and similar notes, which is what will generate high-quality
 content that is appropriate in the context of your notes.  It also contains
-instructions to the LLM to how to generate the note text to be added or
-replaced. The default instructions are a fixed string you can configure in
+instructions telling the LLM how to respond. The default instructions are a
+fixed string you can configure in
 ~ekg-llm-default-instructions~.  But alternatively, you can create alternative
 prompts for different ekg tags in the same way that [[#templates][templates]] work, by creating
 a note tagged with "prompt" and any other tag (the special "prompt" tag can be
@@ -1154,33 +1209,24 @@ cooking and provide you helpful tips to improve your recipes.  You then create a
 note with a child tag of =recipe=, let's say =recipe/monkfish=, with some details of
 your attempt to cook monkfish, and then hit =[C-c .]=.  Because =recipe= is a parent
 of =recipe/monkfish=, ekg-llm will use these instructions instead of the default
-one, and will also append your note, and place the LLM's response in a special
-section at the end of your note.  For example:
+one, and will create a Markdown response note.  When editing the original note,
+the response is displayed after the editable text without becoming part of
+that text.  For example, the relationship is:
 
 #+begin_example
-Making monkfish again.  It is thick but tends to be wet and hard to get a good
-sear on.  Maybe I should sous vide it and then blast it with the searzall torch?
-
-#+BEGIN_LLM_OUTPUT
-Monkfish can indeed be challenging to sear properly due to its high water
-content.  Sous-vide cooking followed by searing with a torch can be a great
-technique to achieve the desired result.  The sous-vide process will help to cook
-the fish evenly and retain moisture, while the searzall torch can give it a
-beautiful caramelized crust.  Just be sure to pat the fish dry before searing for
-better browning and use high heat to quickly sear the exterior without
-overcooking the inside.  Happy cooking!
-#+END_LLM_OUTPUT
+Making monkfish again ...
+  -> [llm-generated] Monkfish can indeed be challenging to sear properly ...
 #+end_example
 
-Instead of appending, the note can be replaced with the output of the LLM by
-using =ekg-llm-send-and-replace-note= which is bound to =[C-c ,]=.  As with the
-append command, using a prefix argument will let you edit the instructions
-before sending it.
-
-All prompts sent from a note in org or markdown modes have a prelude that notes
-the format of the input and expected output.  However, LLMs typically will
-produce markdown regardless of what you ask it to do, so if you want to use
-LLMs, you may want to use markdown as a default note format.
+When a response note is being edited, its ancestor chain is displayed before
+the editable text and its responses are displayed afterward.  Calling
+=ekg-llm-respond-to-note= from a response creates another response in the same
+thread.  The LLM receives an explicit JSON representation of the hierarchy
+around the current note: the ancestor chain from root to immediate parent, the
+current note, and all of its recursive descendants.  Each entry identifies its
+relationship, signed depth, note ID, and parent ID.  Descendant arrays have a
+deterministic representation, but their sibling order has no meaning.  Other
+branches descending from an ancestor are not included.
 *** Using ekg notes as prompts
 ekg notes are especially well suited for LLM prompting, both because of the
 ability to create prompts for different tags, and the ability to transclude one
@@ -1247,6 +1293,7 @@ from ekg in MELPA.
   (use-package ekg-denote
     :init
     (setq ekg-denote-export-add-front-matter nil)
+    (setq ekg-denote-export-add-ekg-metadata t)
     (setq ekg-denote-export-backup-on-conflict t)
     (setq ekg-denote-export-title-max-len 50)
     (setq ekg-denote-export-combined-keywords-len 150))
@@ -1256,6 +1303,12 @@ To export, call =ekg-denote-export= which will export any modified
 note after the last export as a denote in the =denote-directory=
 defined by =denote= package. If it is your first time exporting, all
 the notes will be exported to the =denote-directory=.
+
+By default, every Denote file includes =ekg_id= metadata and child notes also
+include =ekg_parent= metadata.  Org files use =#+ekg_id= and =#+ekg_parent=
+keywords; Markdown files use HTML comments.  This keeps the exported files
+independent while making a flat backup sufficient to reconstruct the EKG
+hierarchy.  Set =ekg-denote-export-add-ekg-metadata= to nil to omit it.
 
 =ekg-denote= keeps record of the last export time in the ekg db and
 use that to find the notes changed since last export. This way the
@@ -1278,6 +1331,8 @@ are made available:
 - =ekg-denote-export-backup-on-conflict= to backup the denote if both
   ekg and denote are found to be updated after last export. Default is
   =t=.
+- =ekg-denote-export-add-ekg-metadata= to preserve EKG note IDs and parent
+  relationships in the exported files.  Default is =t=.
 
 It is user responsibility to backup the denotes before and after
 export to protect against accidental deletes. This can be easily done
@@ -1367,6 +1422,16 @@ in the note body and can be found via Apple Notes search on any device.
 
 Hidden tags (such as "trash" and "draft") are not synced.
 
+*** Hierarchies
+Apple Notes remain one-to-one with EKG notes rather than being combined into a
+single conversation document.  Each exported Apple Note contains an =EKG ID:=
+metadata line, and a response or other child note also contains an =EKG Parent:=
+line.  This preserves the hierarchy while leaving every note independently
+editable.  During import, EKG first creates or updates all notes in the batch
+and then restores their parent relationships, so children may appear before
+their parents.  Missing parents are reported and do not cause notes outside the
+configured export filters to be synchronized.
+
 *** Content conversion
 Note content is converted between org-mode or markdown and HTML using =pandoc=.
 The path to pandoc can be customized with ~ekg-apple-notes-pandoc-executable~.
@@ -1426,9 +1491,10 @@ Tasks in =ekg-org= are ordinary ekg notes with special tags and properties:
 - *Title*: Each task must have a title (stored in the =:titled/title= property),
   which becomes the org headline when rendered.
 
-- *Hierarchy*: Tasks can have parent-child relationships via the =:org/parent=
-  property (an integer note ID).  Children are discovered through a virtual
-  reversed property =:org/children=.  There is no limit to nesting depth.
+- *Hierarchy*: Tasks use EKG's generic =:hierarchy/parent= relationship.
+  Children are discovered through the virtual reversed property
+  =:hierarchy/children=.  Org tasks add =:org/sort-order= so their children can
+  be ordered.  There is no limit to nesting depth.
 
 - *Scheduling*: Tasks can have =:org/deadline= and =:org/scheduled= properties
   (stored as unix timestamps), which appear as standard org timestamps.  A
@@ -1436,6 +1502,14 @@ Tasks in =ekg-org= are ordinary ekg notes with special tags and properties:
 
 - *Ordering*: Sibling tasks are ordered by the =:org/sort-order= property
   (defaulting to creation time when unset).
+
+- *Dependencies*: A parent's children are sequential by default, meaning that they
+  must be completed in sibling order.  They can instead be set to run in
+  parallel.  Sequential dependencies are emitted as the standard Org =ORDERED=t=
+  property on the parent, so generated Org content has native dependency
+  semantics without a separate EKG-only representation.  Use
+  =ekg-org-set-dependency-type= to set the dependency mode of a node, which
+  changes it for its children.
 
 - *Org properties*: Arbitrary org-style properties (uppercase key/value pairs
   following org property syntax) can be attached to tasks via the
@@ -1484,6 +1558,9 @@ The command =ekg-org-change-state= (available in note editing buffers and
 built with the =vui= library.  It presents tasks as an indented outline that
 looks like an org buffer (with fontified headings, TODO keywords, and tags) but
 is backed entirely by the ekg database.
+Non-task responses to tasks also appear as headings without a TODO state;
+press =RET= on one to open and edit its note.  Use =C-c C-r= to capture a
+response to the note at point.
 
 To open the view, call =ekg-org-view=.  For archived tasks, call
 =ekg-org-archive-view=.  To focus on a single task and its subtree, call
@@ -1514,6 +1591,7 @@ The following keybindings are available in =ekg-org-view-mode=:
 | Key     | Command                          | Description                       |
 |---------+----------------------------------+-----------------------------------|
 | =t=     | =ekg-org-view-cycle-state=       | Change the TODO state             |
+| =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
 | =TAB=   | =ekg-org-view-toggle-collapse=   | Collapse or expand the subtree    |
 | =RET=   | =ekg-org-view-open-note=         | Open the note for editing in ekg  |
 | =c=     | =ekg-org-view-create-child=      | Create a child task under point   |
@@ -1555,6 +1633,84 @@ working with org tasks:
 These tools are registered automatically by =ekg-org-initialize= when
 =ekg-agent= is available.  This allows the agent to create sub-tasks, mark
 items done, and review your task list as part of its autonomous operation.
+
+*** Creating complete plans
+
+The =create_org_plan= agent tool takes =description= (the goal and its
+constraints) and =tags= (topic tags applied to every created task).  It first
+runs a research agent with note/file/web read tools, but no =ask_user= tool.
+Tasks requiring user action receive ~ekg-agent-org-user-response-tag~
+(default =org/needs-user-response=).  The user can answer question tasks with
+a child response note.  When questions exist,
+the plan includes a follow-up task to incorporate those responses, revise the
+plan, and update the original task note.  This follow-up is a task to execute,
+not an automatic revision triggered by saving a response.  After
+=finish_plan_research=, a separate structured-output call produces the plan.
+Configure a strong provider explicitly:
+
+#+begin_src emacs-lisp
+(setq ekg-agent-org-plan-provider my-strong-provider
+      ekg-agent-org-plan-reasoning 'maximum)
+;; Optional: use a different provider for the research agent.
+;; (setq ekg-agent-plan-provider my-research-provider)
+;; Optional provider-specific arguments:
+;; (setq ekg-agent-org-plan-parameters '((parameter . value)))
+#+end_src
+
+When =ekg-agent-plan-provider= is nil, research uses the normal provider
+from =ekg-llm-provider=.  =maximum= is the llm library's highest thinking
+setting for the structured-output stage.  The final stage has no tools.  The
+existing =add_org_item= tool remains available for individual tasks.
+
+Both stages use the shared contract =ekg-org-plan-schema= and importer
+=ekg-org-plan-import=.  External agents can bypass the LLM stages:
+
+#+begin_src sh
+agent_tools/ekg-org-import-plan plan.json --tag my-project
+# Or: cat plan.json | agent_tools/ekg-org-import-plan - --tag my-project
+#+end_src
+
+The script supports =--daemon NAME= and prints a JSON mapping of document IDs
+to note IDs.  It requires Python 3 and a running Emacs with EKG installed.
+
+Version 1 JSON has exactly the following fields:
+
+#+begin_src json
+{"version":1,"tasks":[
+  {"id":"plan","parent":null,"title":"Release",
+   "content":"Release acceptance criteria","execution":"parallel",
+   "depends_on":[],"tags":[]},
+  {"id":"build","parent":"plan","title":"Build",
+   "content":"Produce the release artifact","execution":"sequential",
+   "depends_on":[],"tags":[]},
+  {"id":"publish","parent":"plan","title":"Publish",
+   "content":"Publish the validated artifact","execution":"parallel",
+   "depends_on":["build"],"tags":[]}
+]}
+#+end_src
+
+Exactly one task has a null parent.  IDs are nonempty unique strings local to
+the document; forward references are allowed.  =content= is Org text.
+=execution= controls a task's children, using the existing =ORDERED= Org
+property.  Array order determines sibling order.  =depends_on= adds explicit
+prerequisites, stored as multi-valued =:org/depends-on= note IDs.  Thus each
+task has one display parent but may have multiple execution prerequisites.
+The per-task =tags= array is required in newly generated plans but optional
+when importing older version 1 JSON.  It adds task-specific topic tags; the
+only allowed internal tag is ~ekg-agent-org-user-response-tag~ (default
+=org/needs-user-response=).  Use it for any task requiring user action.  For a
+question, ask the user to add a child response note, and make work that
+requires the answer depend on that task.
+The importer rejects cycles, including those implied by sequential groups and
+parent/child completion.  Explicit prerequisite edges are stored for consumers;
+they do not automatically prevent manual TODO state changes in Org.
+
+All tasks start as TODO and receive the supplied topic tags and
+~ekg-agent-author-tag~; other internal
+=org/= tags cannot be overridden.  Validation happens before note creation.  Notes
+and relationships are saved in one triples transaction; a failed write rolls
+back the plan.  Save notifications run after commit.  Version 1 deliberately
+does not accept deadlines or arbitrary properties; unknown fields are rejected.
 
 *** Command-line tools
 
@@ -1604,10 +1760,11 @@ assistance.  It can create notes to you, or to itself, to help it work.
 You can also ask the agent to help you with a specific note you are writing or
 editing. The command =ekg-agent-note-response= (bound to =C-c .= by default,
 overriding the =ekg-llm= binding) will start an agent loop focused on your
-current note. This is an agentic version of =ekg-llm-send-and-append-note=. The
-agent can use tools to research your other notes and decide whether to append
-information to your note or replace it entirely. As with other LLM commands, a
-prefix argument allows you to edit the instructions sent to the agent.
+current note. This is an agentic version of =ekg-llm-respond-to-note=. The
+agent can use tools to research your other notes before saving a separate
+Markdown response tagged with both ~ekg-llm-generated-tag~ and
+~ekg-agent-author-tag~. As with other LLM commands, a prefix argument allows you
+to edit the instructions sent to the agent.
 
 You can also ask the agent a direct question at any time with the command
 =ekg-agent-ask=. This will prompt you for a question, which is then sent to the
@@ -1659,6 +1816,7 @@ with =ekg-agent-cancel-daily=.
 
 The agent uses specific tags to organize its work:
 - ~ekg-agent-author-tag~ (default "agent"): All notes created by the agent will have this tag.
+- ~ekg-agent-org-user-response-tag~ (default "org/needs-user-response"): Org tasks requiring user action have this tag.
 - ~ekg-agent-self-info-tag~ (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
 
 You can customize these tags if you prefer different names.

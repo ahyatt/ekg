@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Import an EKG Org plan from a JSON file (or stdin with -).
+
+Copyright (c) 2026 Andrew Hyatt <ahyatt@gmail.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+def lisp_string(value):
+    """Quote a Unicode string for the Emacs Lisp reader."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("file", help="Plan JSON file, or - for stdin")
+    parser.add_argument("--tag", action="append", default=[])
+    parser.add_argument("--daemon")
+    args = parser.parse_args()
+    if args.file == "-":
+        plan = json.load(sys.stdin)
+    else:
+        with open(args.file, encoding="utf-8") as stream:
+            plan = json.load(stream)
+    encoded = lisp_string(json.dumps(plan, ensure_ascii=False))
+    tags = "(list " + " ".join(map(lisp_string, args.tag)) + ")"
+    expression = (
+        "(progn (require 'ekg-agent) "
+        f"(json-encode (ekg-org-plan-import {encoded} {tags})))"
+    )
+    command = [os.environ.get("EMACSCLIENT", "emacsclient")]
+    if args.daemon:
+        command += ["-s", args.daemon]
+    result = subprocess.run(command + ["--eval", expression],
+                            text=True, capture_output=True)
+    if result.returncode or result.stdout.startswith("*ERROR*"):
+        print(result.stderr or result.stdout, file=sys.stderr)
+        return 1
+    print(json.loads(result.stdout))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

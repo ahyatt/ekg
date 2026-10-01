@@ -39,6 +39,7 @@
 (require 'hl-line)
 (require 'iso8601)
 (require 'url-parse)
+(require 'url-util)
 (require 'warnings)
 
 (declare-function org-open-at-point "org")
@@ -96,6 +97,13 @@ when saving notes."
   :type 'integer
   :group 'ekg)
 
+(defcustom ekg-notes-include-descendants t
+  "Whether note lists also show descendants of fetched notes.
+Use a prefix argument with `ekg-notes-refresh' to toggle this in
+the current notes buffer."
+  :type 'boolean
+  :group 'ekg)
+
 (defcustom ekg-db-file nil
   "The filename for the ekg database.
 Initially set as nil, which will mean that we use
@@ -149,6 +157,15 @@ specifically requested.
 
 Modules can add to this list to hide their internal tags."
   :type '(repeat string)
+  :group 'ekg)
+
+(defcustom ekg-response-tag-filter-functions nil
+  "Functions deciding whether a tag is inherited by responses.
+Each function is called with TAG and the note being responded to,
+and must return non-nil for TAG to be inherited.  Core control and
+date tags are excluded before these functions are called.  Modules
+can add filters for their own provenance or control tags."
+  :type 'hook
   :group 'ekg)
 
 (defcustom ekg-note-inline-max-words 500
@@ -205,6 +222,9 @@ Packages that add properties unsuitable for display (such as
 large vectors or internal IDs) should add entries via `add-to-list'."
   :type '(repeat symbol)
   :group 'ekg)
+
+(add-to-list 'ekg-header-hidden-properties :hierarchy/parent)
+(add-to-list 'ekg-header-hidden-properties :hierarchy/children)
 
 (defvar ekg-property-format-functions nil
   "Alist mapping property keywords to formatting functions.
@@ -328,7 +348,8 @@ editing the note.")
                                  ("text" . "text/text"))
   "Abbreviations for predicates in queries.")
 
-(defconst ekg-version "0.9.2"
+(defconst ekg-version "0.10.0"
+
   "The version of ekg.
 
 This is used to understand when the database needs upgrading.")
@@ -462,6 +483,13 @@ callers have already called this function")
   ;; something that can be used to select the subject via completion.
   (triples-add-schema ekg-db 'titled '(title :base/type string))
 
+  ;; A hierarchy is a generic relationship between notes.  The parent is
+  ;; intentionally untyped because EKG note IDs may be integers, strings,
+  ;; URLs, or file resources.
+  (triples-add-schema ekg-db 'hierarchy
+                      '(parent :base/unique t)
+                      '(children :base/virtual-reversed hierarchy/parent))
+
   (triples-add-schema ekg-db 'ekg-property '(name :base/type string :base/unique t))
   (triples-set-type ekg-db 'tagged/tag 'ekg-property :name "Tags")
   (triples-set-type ekg-db 'titled/title 'ekg-property :name "Title")
@@ -469,7 +497,7 @@ callers have already called this function")
   ;; The `ekg-note-type' type is a signifier that the type is safe to delete
   ;; when a note is deleted.
   (triples-add-schema ekg-db 'ekg-note-type)
-  (dolist (type '(text time-tracked inline titled tagged))
+  (dolist (type '(text time-tracked inline titled tagged hierarchy))
     (triples-set-type ekg-db type 'ekg-note-type))
 
   (triples-add-schema ekg-db 'ekg '(version :base/type cons :base/unique t))
@@ -692,7 +720,7 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                             (plist-get v :text/inlines)))
            ;; Query extension types not already returned by
            ;; triples-get-subject, to pick up virtual reversed
-           ;; properties like org/children.
+           ;; properties like hierarchy/children.
            (extra-props
             (mapcan (lambda (type)
                       (unless (or (memq type stored-types)
@@ -725,6 +753,124 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                                    'plist)
                                   extra-props)))))
 
+(defun ekg-note-parent-id (note)
+  "Return the parent ID of NOTE, or nil when NOTE has no parent.
+The `:org/parent' fallback supports databases and in-memory notes
+created before the generic hierarchy schema was introduced."
+  (or (plist-get (ekg-note-properties note) :hierarchy/parent)
+      (plist-get (ekg-note-properties note) :org/parent)))
+
+(defun ekg-note-child-notes (note-or-id &optional active-only)
+  "Return the child notes of NOTE-OR-ID.
+NOTE-OR-ID may be an `ekg-note' or a note ID.  When ACTIVE-ONLY is
+non-nil, omit trashed and draft notes."
+  (ekg-connect)
+  (let* ((id (if (ekg-note-p note-or-id)
+                 (ekg-note-id note-or-id)
+               note-or-id))
+         (ids (seq-uniq
+               (append
+                (mapcar #'car
+                        (triples-db-select ekg-db nil
+                                           'hierarchy/parent id))
+                ;; Transitional fallback for an old Org hierarchy.
+                (mapcar #'car
+                        (triples-db-select ekg-db nil 'org/parent id)))))
+         (notes (delq nil (mapcar #'ekg-get-note-with-id ids))))
+    (if active-only
+        (seq-filter #'ekg-note-active-p notes)
+      notes)))
+
+(defun ekg-note-ancestors (note)
+  "Return NOTE's ancestors in root-to-parent order.
+Signal an error if the stored hierarchy contains a cycle."
+  (let ((result nil)
+        (seen (list (ekg-note-id note)))
+        (parent-id (ekg-note-parent-id note)))
+    (while parent-id
+      (when (member parent-id seen)
+        (error "Cycle in note hierarchy involving ID %s" parent-id))
+      (push parent-id seen)
+      (let ((parent (ekg-get-note-with-id parent-id)))
+        (unless parent
+          (setq parent-id nil)
+          (error "Parent note with ID %s does not exist" (car seen)))
+        (push parent result)
+        (setq parent-id (ekg-note-parent-id parent))))
+    result))
+
+(defun ekg-export-encode-id (id)
+  "Return a lossless, printable representation of EKG note ID ID.
+The representation preserves the distinction between numeric and
+string IDs and is suitable for single-line exporter metadata."
+  (cond
+   ((integerp id) (format "integer:%d" id))
+   ((stringp id) (concat "string:" (url-hexify-string id)))
+   (t (concat "lisp:"
+              (url-hexify-string (prin1-to-string id))))))
+
+(defun ekg-export-decode-id (text)
+  "Decode an EKG note ID previously encoded in TEXT.
+Signal an error when TEXT has an unknown type prefix or contains an
+invalid value."
+  (cond
+   ((string-prefix-p "integer:" text)
+    (let ((value (substring text (length "integer:"))))
+      (unless (string-match-p (rx string-start (? "-") (+ digit) string-end)
+                              value)
+        (error "Invalid encoded integer EKG ID: %s" text))
+      (string-to-number value)))
+   ((string-prefix-p "string:" text)
+    (decode-coding-string
+     (url-unhex-string (substring text (length "string:"))) 'utf-8))
+   ((string-prefix-p "lisp:" text)
+    (let* ((decoded (decode-coding-string
+                     (url-unhex-string
+                      (substring text (length "lisp:"))) 'utf-8)))
+      (pcase-let ((`(,value . ,position) (read-from-string decoded)))
+        (unless (string-empty-p
+                 (string-trim (substring decoded position)))
+          (error "Invalid trailing data in encoded EKG ID: %s" text))
+        value)))
+   (t (error "Unknown encoded EKG ID format: %s" text))))
+
+(defun ekg-note-export-metadata (note)
+  "Return hierarchy metadata for exporting NOTE.
+The result is a plist containing `:id', `:parent-id', `:root-id',
+and `:depth'.  Only `:parent-id' is a canonical relationship;
+root and depth are derived conveniences for flat export formats."
+  (let* ((ancestors (ekg-note-ancestors note))
+         (parent-id (ekg-note-parent-id note)))
+    (list :id (ekg-note-id note)
+          :parent-id parent-id
+          :root-id (if ancestors
+                       (ekg-note-id (car ancestors))
+                     (ekg-note-id note))
+          :depth (length ancestors))))
+
+(defun ekg-note-set-parent (note parent)
+  "Make NOTE a child of PARENT and return NOTE.
+PARENT may be an `ekg-note', a note ID, or nil to detach NOTE.
+This mutates NOTE but does not save it.  Parent existence and
+hierarchy cycles are validated."
+  (let ((parent-id (if (ekg-note-p parent) (ekg-note-id parent) parent)))
+    (when parent-id
+      (when (equal parent-id (ekg-note-id note))
+        (error "A note cannot be its own parent"))
+      (let ((parent-note (ekg-get-note-with-id parent-id)))
+        (unless parent-note
+          (error "Parent note with ID %s does not exist" parent-id))
+        (when (member (ekg-note-id note)
+                      (mapcar #'ekg-note-id
+                              (cons parent-note
+                                    (ekg-note-ancestors parent-note))))
+          (error "Setting parent to %s would create a cycle" parent-id))))
+    (setf (ekg-note-properties note)
+          (plist-put (ekg--plist-without-key
+                      (ekg-note-properties note) :org/parent)
+                     :hierarchy/parent parent-id))
+    note))
+
 (defun ekg-get-notes-with-title (title)
   "Get a list of note structs with TITLE."
   (ekg-connect)
@@ -739,17 +885,25 @@ Draft notes are not returned, unless TAGS contains the draft tag."
   (triples-subjects-of-type ekg-db 'ekg-note-type))
 
 (defun ekg-note-delete-by-id (id)
-  "Delete all note data associated with ID."
+  "Delete all note data associated with ID and its descendants."
   (ekg-connect)
-  (run-hook-with-args 'ekg-note-pre-delete-hook id)
-  (triples-with-transaction
-    ekg-db
-    (cl-loop for type in (ekg-note-cotypes) do
-             (triples-remove-type ekg-db id type))
-    (cl-loop for inline-id in (triples-subjects-with-predicate-object
-                               ekg-db 'inline/for-text id)
-             do (triples-remove-type ekg-db inline-id 'inline))
-    (run-hook-with-args 'ekg-note-delete-hook id)))
+  (let ((seen (make-hash-table :test #'equal)))
+    (cl-labels
+        ((delete-subtree
+           (note-id)
+           (unless (gethash note-id seen)
+             (puthash note-id t seen)
+             (dolist (child (ekg-note-child-notes note-id))
+               (delete-subtree (ekg-note-id child)))
+             (run-hook-with-args 'ekg-note-pre-delete-hook note-id)
+             (cl-loop for type in (ekg-note-cotypes) do
+                      (triples-remove-type ekg-db note-id type))
+             (cl-loop for inline-id in
+                      (triples-subjects-with-predicate-object
+                       ekg-db 'inline/for-text note-id)
+                      do (triples-remove-type ekg-db inline-id 'inline))
+             (run-hook-with-args 'ekg-note-delete-hook note-id))))
+      (triples-with-transaction ekg-db (delete-subtree id)))))
 
 (defun ekg-tag-delete (tag)
   "Delete all tag data associated with TAG."
@@ -757,14 +911,23 @@ Draft notes are not returned, unless TAGS contains the draft tag."
   (triples-remove-type ekg-db tag 'tag))
 
 (defun ekg-note-trash (note)
-  "Add the trash tag to NOTE."
+  "Add the trash tag to NOTE and its descendants.
+If NOTE is already trashed, permanently delete its subtree."
   (ekg-connect)
   (if (member ekg-trash-tag (ekg-note-tags note))
       (ekg-note-delete note)
-    (triples-with-transaction
-      ekg-db
-      (push ekg-trash-tag (ekg-note-tags note))
-      (ekg-save-note note)))
+    (let ((seen (make-hash-table :test #'equal)))
+      (cl-labels
+          ((trash-subtree
+             (entry)
+             (unless (gethash (ekg-note-id entry) seen)
+               (puthash (ekg-note-id entry) t seen)
+               (dolist (child (ekg-note-child-notes entry))
+                 (trash-subtree child))
+               (unless (member ekg-trash-tag (ekg-note-tags entry))
+                 (push ekg-trash-tag (ekg-note-tags entry))
+                 (ekg-save-note entry)))))
+        (triples-with-transaction ekg-db (trash-subtree note)))))
   (ekg-backup))
 
 (defun ekg-content-tag-p (tag)
@@ -773,6 +936,24 @@ This is opposed to tags that are used for internal purposes."
   (not (member tag
                (append (list ekg-template-tag ekg-function-tag)
                        ekg-hidden-tags))))
+
+(defun ekg-response-inheritable-tag-p (tag note)
+  "Return non-nil when TAG should be inherited in a response to NOTE."
+  (and (ekg-content-tag-p tag)
+       (not (ekg-date-tag-p tag))
+       (seq-every-p (lambda (function)
+                      (funcall function tag note))
+                    ekg-response-tag-filter-functions)))
+
+(defun ekg-response-inherited-tags (note)
+  "Return topical tags inherited by a response to NOTE.
+Tags are collected from NOTE and its ancestor chain, allowing new
+responses in an older thread to recover the thread's topical tags."
+  (seq-uniq
+   (seq-filter
+    (lambda (tag) (ekg-response-inheritable-tag-p tag note))
+    (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
+            (append (ekg-note-ancestors note) (list note))))))
 
 (defun ekg-note-active-p (note)
   "Return non-nil if NOTE is active.
@@ -1178,6 +1359,7 @@ This is used when capturing new notes.")
 (defvar ekg-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" #'ekg-edit-finalize)
+    (define-key map "\C-c\C-r" #'ekg-respond-to-note)
     (define-key map "\C-c/" ekg-edit-commands-map)
     (substitute-key-definition #'save-buffer #'ekg-edit-save map global-map)
     map)
@@ -1201,6 +1383,34 @@ This is used when editing existing notes.")
   "Holds the original ID (subject) for this note.
 This is needed to identify references to refresh when the subject is changed.")
 
+(defun ekg--hierarchy-note-less-p (a b)
+  "Return non-nil when note A should display before note B."
+  (let ((ta (or (ekg-note-creation-time a) 0))
+        (tb (or (ekg-note-creation-time b) 0)))
+    (if (= ta tb)
+        (string< (format "%s" (ekg-note-id a))
+                 (format "%s" (ekg-note-id b)))
+      (< ta tb))))
+
+(defun ekg--note-text-beginning ()
+  "Return the beginning of editable note text in the current buffer."
+  (if (get-text-property (point-min) 'ekg-hierarchy-sentinel)
+      (1+ (point-min))
+    (point-min)))
+
+(defun ekg--indent-displayed-note (note depth)
+  "Return NOTE formatted for display and indented to DEPTH."
+  (with-temp-buffer
+    (insert (ekg-display-note note ekg-display-note-template))
+    (indent-rigidly (point-min) (point-max) (* depth 2))
+    (let ((text (buffer-string)))
+      (add-text-properties 0 (length text)
+                           `(ekg-note-id ,(ekg-note-id note)
+                                         read-only t
+                                         rear-nonsticky t)
+                           text)
+      text)))
+
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))
     (suppress-keymap map t)
@@ -1214,6 +1424,7 @@ This is needed to identify references to refresh when the subject is changed.")
     (define-key map "b" #'ekg-notes-browse)
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
+    (define-key map "r" #'ekg-notes-respond)
     (define-key map "t" #'ekg-notes-tag)
     (define-key map "q" #'kill-current-buffer)
     (define-key map "k" #'ekg-notes-kill)
@@ -1456,6 +1667,8 @@ displayed.")
 
 (defvar-local ekg-notes-tags nil
   "List of associated tags for creating and removing notes.")
+
+(make-variable-buffer-local 'ekg-notes-include-descendants)
 
 (cl-defun ekg-note-create (&key text mode tags properties id)
   "Create a new `ekg-note' with TEXT, MODE, TAGS, PROPERTIES and ID."
@@ -1739,9 +1952,9 @@ it.  If there are multiple titles, select which one to change."
       (ekg--set-local-variables)
       (goto-char (point-min))
       (mapc #'ekg-maybe-function-tag (ekg-note-tags ekg-note))
-      (if (and (eq (ekg-note-mode note) 'org-mode)
-               ekg-notes-display-images)
-          (ekg--org-redisplay-inline-images)))
+      (when (and (eq (ekg-note-mode note) 'org-mode)
+                 ekg-notes-display-images)
+        (ekg--org-redisplay-inline-images)))
     (set-buffer-modified-p nil)
     (pop-to-buffer buf)))
 
@@ -1749,7 +1962,8 @@ it.  If there are multiple titles, select which one to change."
   "Update `ekg-note' from the current buffer contents.
 This sets the text, inlines, mode, and tags fields of `ekg-note'
 to reflect the current state of the buffer."
-  (let* ((text (buffer-substring-no-properties (point-min) (point-max)))
+  (let* ((text (buffer-substring-no-properties
+                (ekg--note-text-beginning) (point-max)))
          (ticons (ekg-extract-inlines text)))
     (setf (ekg-note-text ekg-note) (car ticons)
           (ekg-note-inlines ekg-note) (cdr ticons)
@@ -2012,6 +2226,33 @@ intended to be used in any context where a note might be available."
                (error "No task at point"))))
       (error "No current note found in context")))
 
+(defun ekg-respond-to-note (&optional note)
+  "Capture a Markdown response to NOTE.
+When NOTE is nil, use the note being edited or the note at point
+in an `ekg-notes-mode' buffer.  Unsaved edits to an existing note
+are saved before opening the response buffer."
+  (interactive)
+  (let ((parent
+         (or note
+             (and ekg-edit-mode ekg-note)
+             (and (derived-mode-p 'ekg-notes-mode)
+                  (ekg-current-note-or-error))
+             (error "No note is available to respond to"))))
+    (when (and ekg-edit-mode (buffer-modified-p))
+      (ekg-edit-save)
+      (setq parent ekg-note))
+    (unless (ekg-note-with-id-exists-p (ekg-note-id parent))
+      (user-error "Save the note before responding to it"))
+    (ekg-capture :mode 'markdown-mode
+                 :tags (ekg-response-inherited-tags parent)
+                 :properties (list :hierarchy/parent
+                                   (ekg-note-id parent)))))
+
+(defun ekg-notes-respond ()
+  "Capture a Markdown response to the note at point."
+  (interactive nil ekg-notes-mode)
+  (ekg-respond-to-note (ekg-current-note-or-error)))
+
 (defun ekg-notes-tag (&optional tag)
   "Show notes associated with TAG.
 If TAG is nil, it will be read, selecting from the list of the current note's
@@ -2077,17 +2318,48 @@ TITLE is the title of the URL to browse to."
                          (ekg-notes--collect-all)))) ekg-notes-mode)
   (when title (ekg-browse-url title)))
 
-(vui-defcomponent ekg-notes-root (name notes-func)
+(vui-defcomponent ekg-notes-root (name notes-func include-descendants)
   "Root component for the notes list view."
   :render
-  (let ((notes (funcall notes-func)))
-    (apply #'vui-vstack
-           :spacing 1
-           (mapcar (lambda (note)
-                     (vui-text (ekg-display-note note ekg-display-note-template)
-                       :key (intern (format "note-%s" (ekg-note-id note)))
-                       :ekg-note-id (ekg-note-id note)))
-                   notes))))
+  (let* ((notes (funcall notes-func))
+         (fetched-ids (make-hash-table :test #'equal))
+         (visited (make-hash-table :test #'equal)))
+    (dolist (note notes)
+      (puthash (ekg-note-id note) t fetched-ids))
+    (cl-labels
+        ((ancestor-fetched-p
+           (note)
+           (if include-descendants
+               (condition-case nil
+                   (seq-some (lambda (ancestor)
+                               (gethash (ekg-note-id ancestor) fetched-ids))
+                             (ekg-note-ancestors note))
+                 (error nil))
+             (gethash (ekg-note-parent-id note) fetched-ids)))
+         (render
+           (note depth)
+           (let ((id (ekg-note-id note)))
+             (unless (gethash id visited)
+               (puthash id t visited)
+               (apply
+                #'vui-vstack
+                :key (intern (format "note-%s" id))
+                (vui-text (ekg--indent-displayed-note note depth)
+                  :key (intern (format "note-text-%s" id))
+                  :ekg-note-id id)
+                (delq nil
+                      (mapcar
+                       (lambda (child)
+                         (when (or include-descendants
+                                   (gethash (ekg-note-id child) fetched-ids))
+                           (render child (1+ depth))))
+                       (sort (ekg-note-child-notes note t)
+                             #'ekg--hierarchy-note-less-p))))))))
+      (apply #'vui-vstack
+             :spacing 1
+             (delq nil
+                   (mapcar (lambda (note) (render note 0))
+                           (seq-remove #'ancestor-fetched-p notes)))))))
 
 (defun ekg--notes-fill-id-gaps ()
   "Extend `:ekg-note-id' properties to cover gaps between notes.
@@ -2113,7 +2385,8 @@ cursor always lands on a note."
 (defun ekg--notes-mount (name notes-func)
   "Mount a vui notes view with NAME and NOTES-FUNC into the current buffer."
   (let* ((vnode (vui-component 'ekg-notes-root
-                  :name name :notes-func notes-func))
+                  :name name :notes-func notes-func
+                  :include-descendants ekg-notes-include-descendants))
          (instance (vui--create-instance vnode nil))
          (vui--pending-effects nil))
     (setf (vui-instance-buffer instance) (current-buffer))
@@ -2148,7 +2421,10 @@ NAME is displayed at the top of the buffer."
                                ekg-notes-hl
                              (make-overlay 1 1))
               ekg-notes-tags tags
-              header-line-format (propertize (concat " " name)
+              header-line-format (propertize
+                                  (concat " " name
+                                          (unless ekg-notes-include-descendants
+                                            " (strict)"))
                                              'face 'bold))
   (ekg--notes-mount name notes-func)
   (overlay-put ekg-notes-hl 'face hl-line-face)
@@ -2179,9 +2455,14 @@ NAME is displayed at the top of the buffer."
       (with-current-buffer buf
         (ekg-notes-refresh)))))
 
-(defun ekg-notes-refresh ()
-  "Refresh the current `ekg-notes' buffer."
-  (interactive nil ekg-notes-mode)
+(defun ekg-notes-refresh (&optional toggle-strict)
+  "Refresh the current `ekg-notes' buffer.
+With prefix TOGGLE-STRICT, toggle whether descendants outside the
+fetched results are shown."
+  (interactive "P" ekg-notes-mode)
+  (when toggle-strict
+    (setq-local ekg-notes-include-descendants
+                (not ekg-notes-include-descendants)))
   (unless (functionp ekg-notes-fetch-notes-function)
     (user-error
      "This EKG notes buffer is missing its refresh function; recreate it"))
@@ -2621,7 +2902,10 @@ the database after the upgrade, in list form."
              (version-list-< from-version '(0 3 2))))
         (need-type-removal-upgrade
          (or (null from-version)
-             (version-list-< from-version '(0 6 3)))))
+             (version-list-< from-version '(0 6 3))))
+        (need-hierarchy-upgrade
+         (or (null from-version)
+             (version-list-< from-version '(0 10 0)))))
     (ekg-connect)
     (when (and (eq 'builtin triples-sqlite-interface) need-fts-upgrade)
       (triples-fts-setup ekg-db))
@@ -2632,6 +2916,16 @@ the database after the upgrade, in list form."
       (ekg-backup t)
       (triples-remove-schema-type ekg-db 'person)
       (triples-remove-schema-type ekg-db 'email))
+    (when (or need-hierarchy-upgrade
+              (triples-db-select ekg-db nil 'org/parent nil))
+      (ekg-backup t)
+      (triples-with-transaction
+        ekg-db
+        (dolist (row (triples-db-select ekg-db nil 'org/parent nil))
+          (let ((child (nth 0 row))
+                (parent (nth 2 row)))
+            (triples-set-type ekg-db child 'hierarchy :parent parent)
+            (triples-db-delete ekg-db child 'org/parent)))))
     (when need-triple-0.3-upgrade
       (ekg-backup t)
       ;; This converts all string integers in subjects and objects to real integers.
@@ -2673,7 +2967,7 @@ the database after the upgrade, in list form."
   ;; Always ensure core note types are registered.  These can be
   ;; lost when the develop branch changes without incrementing the
   ;; version number.
-  (dolist (type '(text time-tracked inline titled tagged))
+  (dolist (type '(text time-tracked inline titled tagged hierarchy))
     (triples-set-type ekg-db type 'ekg-note-type)))
 
 (defun ekg-tag-used-p (tag)
@@ -2773,7 +3067,8 @@ as long as those notes aren't on resources that are interesting.
 (defun ekg-edit-note-display-text ()
   "From an edit or capture mode buffer, return display text.
 The display text is the text with all inlines executed."
-  (let* ((text (buffer-substring-no-properties (point-min) (point-max)))
+  (let* ((text (buffer-substring-no-properties
+                (ekg--note-text-beginning) (point-max)))
          (ticons (ekg-extract-inlines text)))
     (ekg-insert-inlines-results (car ticons) (cdr ticons) nil)))
 

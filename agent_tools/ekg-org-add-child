@@ -165,7 +165,7 @@ ELISP_EXPR="(progn
                                        (concat ekg-org-state-tag-prefix \"$STATUS_LOWER\"))
                                  '$TAGS_ELISP)
                    :properties (list :titled/title (list \"$TITLE_ELISP\")
-                                     :org/parent $PARENT_ID))))$PROP_EXPRS
+                                     :hierarchy/parent $PARENT_ID))))$PROP_EXPRS
         (ekg-save-note note)
         (format \"%s\" (ekg-note-id note))))))"
 
