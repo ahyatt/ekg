@@ -55,20 +55,12 @@
     (should-not (ekg-note-tags
                  (ekg-llm-save-response parent "Answer")))))
 
-(ekg-deftest-with-db ekg-llm-test-streaming-creates-response-note ()
-  (let* ((parent (ekg-note-create :text "Question" :tags '("topic")))
-         (provider
-          (make-llm-fake :chat-action-func (lambda () "Generated answer")))
-         (ekg-llm-provider provider)
-         (ekg-embedding-provider provider))
+(ekg-deftest-with-db ekg-llm-test-response-requires-notes-buffer ()
+  (let ((parent (ekg-note-create :text "Question" :tags '("topic"))))
     (ekg-save-note parent)
     (ekg-edit parent)
-    (ekg-llm-respond-to-note)
-    (let ((responses (ekg-note-child-notes parent)))
-      (should (= (length responses) 1))
-      (should (equal (ekg-note-text (car responses)) "Generated answer"))
-      (should (member ekg-llm-generated-tag
-                      (ekg-note-tags (car responses)))))))
+    (should-error (ekg-llm-respond-to-note) :type 'user-error)
+    (should-not (ekg-note-child-notes parent))))
 
 (ekg-deftest-with-db ekg-llm-test-notes-view-creates-response-note ()
   (let* ((parent (ekg-note-create :text "Question" :tags '("topic")))
@@ -78,8 +70,9 @@
          (ekg-embedding-provider provider))
     (ekg-save-note parent)
     (ekg-show-notes-with-tag "topic")
-    (should (eq (lookup-key ekg-notes-mode-map (kbd "."))
-                #'ekg-llm-notes-respond))
+    (unless (featurep 'ekg-agent)
+      (should (eq (lookup-key ekg-notes-mode-map (kbd "."))
+                  #'ekg-llm-notes-respond)))
     (ekg-llm-notes-respond "Create a response to this note" nil)
     (let ((responses (ekg-note-child-notes parent)))
       (should (= (length responses) 1))
@@ -92,8 +85,9 @@
                                       :tags '("prompt" "style/concise")))
         (topic-prompt (ekg-note-create :text "Use topic expertise"
                                        :tags '("prompt" "topic")))
-        read-default tag-candidates tag-initial
-        sent-instructions sent-parent)
+        (ekg-llm-provider '(first-provider second-provider))
+        read-default tag-candidates tag-initial provider-prompt
+        sent-instructions sent-parent sent-provider)
     (ekg-save-note parent)
     (ekg-save-note prompt-note)
     (ekg-save-note topic-prompt)
@@ -108,16 +102,26 @@
                  (setq tag-candidates collection
                        tag-initial initial-input)
                  '("style/concise")))
+              ((symbol-function 'llm-name)
+               (lambda (provider) (symbol-name provider)))
+              ((symbol-function 'completing-read)
+               (lambda (prompt &rest _)
+                 (setq provider-prompt prompt)
+                 "second-provider"))
               ((symbol-function 'ekg-llm-send-and-use)
-               (lambda (instructions &optional _provider note)
+               (lambda (instructions &optional provider note)
                  (setq sent-instructions instructions
-                       sent-parent note))))
-      (call-interactively #'ekg-llm-notes-respond))
+                       sent-parent note
+                       sent-provider provider))))
+      (let ((current-prefix-arg '(4)))
+        (call-interactively #'ekg-llm-notes-respond)))
     (should (equal read-default ekg-llm-default-response-request))
     (should (equal tag-candidates '("style/concise" "topic")))
     (should (equal tag-initial "topic, "))
     (should (string-match-p "Be concise" sent-instructions))
     (should (string-match-p "Answer as a checklist" sent-instructions))
+    (should (equal provider-prompt "Provider: "))
+    (should (eq sent-provider 'second-provider))
     (should (equal (ekg-note-id sent-parent) (ekg-note-id parent)))))
 
 (ekg-deftest-with-db ekg-llm-test-streaming-error-creates-no-response ()
@@ -128,8 +132,9 @@
          (ekg-llm-provider provider)
          (ekg-embedding-provider provider))
     (ekg-save-note parent)
-    (ekg-edit parent)
-    (should-error (ekg-llm-respond-to-note))
+    (ekg-show-notes-with-tag "topic")
+    (should-error
+     (ekg-llm-notes-respond "Create a response to this note" nil))
     (should-not (ekg-note-child-notes parent))
     (should-not
      (seq-some

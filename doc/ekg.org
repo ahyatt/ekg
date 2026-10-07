@@ -617,7 +617,9 @@ thread's topical tags.
 LLM to respond to the currently selected note.  The command always prompts for
 the request, initially =Create a response to this note=, and lets you select
 reusable prompt tags.  A prefix argument additionally lets you select the
-provider when multiple providers are configured.
+provider when multiple providers are configured.  When =ekg-agent= is loaded,
+the same key runs =ekg-agent-notes-respond= so the agent can use tools before
+saving its response.
 
 =ekg-notes-delete= (=d=), trash the current note (or, if this is the trash list,
 truly delete it).
@@ -1142,7 +1144,7 @@ The ekg-llm module provides a second way to use large language models (LLMs)
 with ekg, separately from the ekg-embeddings integration.  While the
 ekg-embeddings module lets you find notes based on their meanings, the ekg-llm
 module lets you prompt an LLM with the contents of a note, and then capture the
-LLM's response in the note.
+LLM's output as a separate response note.
 
 As with ekg-embeddings, this is based on the =llm= package, which allows the
 user to define their preferred llm backends, which will be stored in
@@ -1167,28 +1169,27 @@ functionality depends on having embeddings.
 
 The variable ~ekg-llm-provider~, can be a single provider, similar to
 ~ekg-embedding-provider~, or a list.  If it is a list, the first element will be
-used by default. However, when the user invokes =ekg-llm-respond-to-note= with a
-prefix argument (normally via =C-u M-x=), the user can select among the
-different providers.
+used by default.  In a notes buffer, invoking =ekg-llm-notes-respond= with a
+prefix argument (normally via =C-u .=) lets the user select among the different
+providers.
 
 *** Augmenting notes with LLM output
-To send a note to an LLM and capture its response, call
-=ekg-llm-respond-to-note=, which is by default bound to =[C-c .]=.  A prefix
-argument (=[C-u C-c .]=) will let you edit the prompt and, when multiple
-providers are configured, select the provider used before it is sent.  The
-output is saved as a separate Markdown note that is a response to the current
-note.  The response is tagged
-with the value of ~ekg-llm-generated-tag~, which defaults to =llm-generated= and
-can be customized or set to nil.  It also inherits the thread's topical tags;
-LLM provenance, prompt, date, and other control tags are excluded.
-
-In a notes list, press =.= to run the operation on the note at point.  It first
-offers an editable request, defaulting to =Create a response to this note=, then
-offers completion over the tags found on notes co-tagged with
+To send a note to an LLM and capture its response, select the note in a notes
+buffer and call =ekg-llm-notes-respond=, which is bound to =.=.  The command
+first offers an editable request, initially =Create a response to this note=,
+then offers completion over the tags found on notes co-tagged with
 ~ekg-llm-prompt-tag~.  Prompt tags already applicable to the current response
-thread are prefilled and can be removed.  The selected prompt notes provide reusable
-instructions, while the first prompt describes this particular response.  The
-manual-response command remains available on =r=.
+thread are prefilled and can be removed.  The selected prompt notes provide
+reusable instructions, while the request describes this particular response.
+A prefix argument (=[C-u .]=) additionally lets you select the provider when
+multiple providers are configured.  The manual-response command remains
+available on =r=.
+
+The output is saved as a separate Markdown response beneath the selected note.
+It is tagged with the value of ~ekg-llm-generated-tag~, which defaults to
+=llm-generated= and can be customized or set to nil.  It also inherits the
+thread's topical tags; LLM provenance, prompt, date, and other control tags are
+excluded.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM.  The prompt consists of context about previous notes that contain the
@@ -1206,27 +1207,24 @@ tags can have prompts attached at any or all levels of the hierarchy.
 To take an example, imagine that you have a note tagged with =prompt= and =recipe=,
 containing instructions saying the LLM should imagine itself an authority on
 cooking and provide you helpful tips to improve your recipes.  You then create a
-note with a child tag of =recipe=, let's say =recipe/monkfish=, with some details of
-your attempt to cook monkfish, and then hit =[C-c .]=.  Because =recipe= is a parent
-of =recipe/monkfish=, ekg-llm will use these instructions instead of the default
-one, and will create a Markdown response note.  When editing the original note,
-the response is displayed after the editable text without becoming part of
-that text.  For example, the relationship is:
+note with a child tag of =recipe=, let's say =recipe/monkfish=, with some details
+of your attempt to cook monkfish.  Save it, select it in a notes buffer, and hit
+=.=.  Because =recipe= is a parent of =recipe/monkfish=, ekg-llm will offer the
+recipe prompt tag and create a Markdown response note beneath the selected
+note.  For example, the relationship is:
 
 #+begin_example
 Making monkfish again ...
   -> [llm-generated] Monkfish can indeed be challenging to sear properly ...
 #+end_example
 
-When a response note is being edited, its ancestor chain is displayed before
-the editable text and its responses are displayed afterward.  Calling
-=ekg-llm-respond-to-note= from a response creates another response in the same
-thread.  The LLM receives an explicit JSON representation of the hierarchy
-around the current note: the ancestor chain from root to immediate parent, the
-current note, and all of its recursive descendants.  Each entry identifies its
-relationship, signed depth, note ID, and parent ID.  Descendant arrays have a
-deterministic representation, but their sibling order has no meaning.  Other
-branches descending from an ancestor are not included.
+Selecting a response note in a notes buffer and pressing =.= creates another
+response in the same thread.  The LLM receives an explicit JSON representation
+of the hierarchy around the selected note: the ancestor chain from root to
+immediate parent, the current note, and all of its recursive descendants.  Each
+entry identifies its relationship, signed depth, note ID, and parent ID.
+Descendant arrays have a deterministic representation, but their sibling order
+has no meaning.  Other branches descending from an ancestor are not included.
 *** Using ekg notes as prompts
 ekg notes are especially well suited for LLM prompting, both because of the
 ability to create prompts for different tags, and the ability to transclude one
@@ -1757,14 +1755,14 @@ The primary command is =ekg-agent-evaluate-status=, which runs a single session
 where the agent reviews your recent activity and decides if it can be of
 assistance.  It can create notes to you, or to itself, to help it work.
 
-You can also ask the agent to help you with a specific note you are writing or
-editing. The command =ekg-agent-note-response= (bound to =C-c .= by default,
-overriding the =ekg-llm= binding) will start an agent loop focused on your
-current note. This is an agentic version of =ekg-llm-respond-to-note=. The
-agent can use tools to research your other notes before saving a separate
-Markdown response tagged with both ~ekg-llm-generated-tag~ and
-~ekg-agent-author-tag~. As with other LLM commands, a prefix argument allows you
-to edit the instructions sent to the agent.
+You can also ask the agent to help with a specific note.  Select it in a notes
+buffer and call =ekg-agent-notes-respond=, which is bound to =.= when
+=ekg-agent= is loaded.  This replaces the plain =ekg-llm-notes-respond= binding
+with an agent loop that can use tools to research your other notes before
+saving a separate Markdown response tagged with both ~ekg-llm-generated-tag~
+and ~ekg-agent-author-tag~.  The command prompts for a request and reusable
+prompt tags.  A prefix argument additionally lets you select the provider when
+multiple providers are configured.
 
 You can also ask the agent a direct question at any time with the command
 =ekg-agent-ask=. This will prompt you for a question, which is then sent to the
@@ -1791,14 +1789,13 @@ When called from an =ekg-notes-mode= buffer, it uses the note at point; when
 called from a note editing buffer, it uses that note.  You can also pass a note
 ID programmatically.
 
-When ~ekg-llm-provider~ is a list, the =ekg-agent-ask=,
-=ekg-agent-ask-with-note=, and =ekg-agent-ask-with-region= commands can be
-called with a prefix argument
-(normally via =C-u M-x=) to select the provider for that agent session.  Without
-a prefix argument, the agent chooses the first configured provider with tool
-calling support, falling back to the first provider in the list.  When
-~ekg-llm-provider~ is a single provider, the prefix argument does not prompt for
-a provider.
+When ~ekg-llm-provider~ is a list, the =ekg-agent-notes-respond=,
+=ekg-agent-ask=, =ekg-agent-ask-with-note=, and =ekg-agent-ask-with-region=
+commands can be called with a prefix argument to select the provider for that
+agent session.  Without a prefix argument, the agent chooses the first
+configured provider with tool calling support, falling back to the first
+provider in the list.  When ~ekg-llm-provider~ is a single provider, the prefix
+argument does not prompt for a provider.
 
 Internal agent notes (using the =agent/self-info= and =agent/instruct=
 tags) are hidden from normal view by being added to =ekg-hidden-tags=. You can

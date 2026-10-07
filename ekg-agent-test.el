@@ -27,6 +27,61 @@
 (require 'ekg-agent)
 (require 'ekg-test-utils)
 
+;; Note responses
+
+(ekg-deftest-with-db ekg-agent-test-response-requires-notes-buffer ()
+  (let ((note (ekg-note-create :text "Question" :tags '("topic"))))
+    (ekg-save-note note)
+    (ekg-edit note)
+    (should-error (ekg-agent-note-response) :type 'user-error)
+    (should-not (ekg-note-child-notes note))))
+
+(ekg-deftest-with-db ekg-agent-test-notes-response ()
+  (let ((note (ekg-note-create :text "Question" :tags '("topic")))
+        received-note received-instructions received-provider)
+    (ekg-save-note note)
+    (ekg-show-notes-with-tag "topic")
+    (should (eq (lookup-key ekg-notes-mode-map (kbd "."))
+                #'ekg-agent-notes-respond))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (&rest _) "Answer briefly"))
+              ((symbol-function 'ekg-agent--read-provider-for-prefix)
+               (lambda (arg)
+                 (and arg 'selected-provider)))
+              ((symbol-function 'ekg-agent--respond-to-note)
+               (lambda (parent instructions provider)
+                 (setq received-note parent
+                       received-instructions instructions
+                       received-provider provider))))
+      (let ((current-prefix-arg '(4)))
+        (call-interactively (lookup-key ekg-notes-mode-map (kbd ".")))))
+    (should (equal (ekg-note-id received-note) (ekg-note-id note)))
+    (should (string-match-p "Answer briefly" received-instructions))
+    (should (eq received-provider 'selected-provider))))
+
+(ekg-deftest-with-db ekg-agent-test-notes-response-saves-visible-child ()
+  (let ((note (ekg-note-create :text "Question" :tags '("topic"))))
+    (ekg-save-note note)
+    (ekg-show-notes-with-tag "topic")
+    (cl-letf (((symbol-function 'ekg-agent--iterate)
+               (lambda (prompt _iteration &rest options)
+                 (let ((tool
+                        (seq-find
+                         (lambda (candidate)
+                           (equal (llm-tool-name candidate)
+                                  "respond_to_current_note"))
+                         (llm-chat-prompt-tools prompt))))
+                   (funcall (llm-tool-function tool) "Agent answer")
+                   (funcall (plist-get options :status-callback) "Done")))))
+      (ekg-agent-notes-respond "Answer briefly" nil))
+    (let ((responses (ekg-note-child-notes note)))
+      (should (= (length responses) 1))
+      (should (equal (ekg-note-text (car responses)) "Agent answer"))
+      (should (member ekg-agent-author-tag
+                      (ekg-note-tags (car responses)))))
+    (should (eq major-mode 'ekg-notes-mode))
+    (should (string-match-p "Agent answer" (buffer-string)))))
+
 ;; Indentation adjustment
 
 (ekg-deftest ekg-agent-test-adjust-indentation-strip-extra ()

@@ -226,54 +226,38 @@ If there are no prompts on any of the note tags, use
       instructions
     (concat instructions "\n\nRequest for this response:\n" request)))
 
-(defun ekg-llm--send-and-process-note (arg note)
-  "Resolve note instructions and create an LLM response note.
-ARG comes from the calling function's prefix argument.  NOTE is the
-note to which the LLM should respond."
-  (let* ((instructions-initial (ekg-llm-instructions-for-note note))
-         (instructions-for-use (if arg
-                                   ;; The documentation is clear this isn't correct -
-                                   ;; the INITIAL-CONTENTS variable is deprecated.
-                                   ;; However, it's the only way I know to prepopulate
-                                   ;; the minibuffer, which is important because the
-                                   ;; whole idea is that the user can edit the
-                                   ;; instructions this way.
-                                   (read-string "Prompt: " instructions-initial 'ekg-llm-prompt-history instructions-initial t)
-                                 instructions-initial)))
-    (ekg-llm-send-and-use instructions-for-use
-                          (when (and arg (listp ekg-llm-provider))
-                            (let ((provider-alist (mapcar (lambda (provider)
-                                                            (cons (llm-name provider)
-                                                                  provider))
-                                                          ekg-llm-provider)))
-                              (assoc-default (completing-read "Provider: "
-                                                              provider-alist
-                                                              nil t) provider-alist)))
-                          note)))
-
 (defun ekg-llm-respond-to-note (&optional arg)
-  "Send the note text to the LLM and store its response as a child note.
-The prompt text is defined by the set of tags and their
-co-occurence with a prompt tag.
+  "Ask the LLM to respond to the note at point in a notes buffer.
+ARG is the prefix argument passed to `ekg-llm-notes-respond'.
 
-ARG, if nonzero and nonnil, will let the user edit the prompt
-sent before it goes to the LLM.
+This compatibility command now delegates to
+`ekg-llm-notes-respond'; responses can only be requested from an
+`ekg-notes-mode' buffer."
+  (interactive "P" ekg-notes-mode)
+  (unless (derived-mode-p 'ekg-notes-mode)
+    (user-error "Request LLM responses from an EKG notes buffer"))
+  (let ((current-prefix-arg arg))
+    (call-interactively #'ekg-llm-notes-respond)))
 
-The response is stored as Markdown and tagged with
-`ekg-llm-generated-tag'."
-  (interactive "P")
-  (let ((note (if (derived-mode-p 'ekg-notes-mode)
-                  (ekg-current-note-or-error)
-                ekg-note)))
-    (when (buffer-modified-p)
-      (if ekg-edit-mode
-          (progn
-            (ekg-edit-save)
-            (setq note ekg-note))
-        (user-error "Save the note before requesting an LLM response")))
-    (unless (and note (ekg-note-with-id-exists-p (ekg-note-id note)))
-      (user-error "Save the note before requesting an LLM response"))
-    (ekg-llm--send-and-process-note arg note)))
+(defun ekg-llm--read-response-arguments ()
+  "Read arguments for responding to the note at point.
+Return a list containing the request, selected prompt tags, and
+the current prefix argument."
+  (let* ((note (ekg-current-note-or-error))
+         (available-tags (ekg-llm-prompt-tags))
+         (default-tags (ekg-llm--default-prompt-tags note)))
+    (list
+     (read-string "Response prompt: "
+                  ekg-llm-default-response-request
+                  'ekg-llm-prompt-history
+                  ekg-llm-default-response-request t)
+     (when available-tags
+       (completing-read-multiple "Prompt tags: " available-tags
+                                 nil t
+                                 (when default-tags
+                                   (concat (string-join default-tags ", ")
+                                           ", "))))
+     current-prefix-arg)))
 
 (defun ekg-llm-notes-respond (request prompt-tags &optional arg)
   "Ask the LLM to respond to the note at point.
@@ -281,29 +265,13 @@ REQUEST describes the response to create.  PROMPT-TAGS select reusable
 instructions from notes tagged with `ekg-llm-prompt-tag'.  With prefix
 ARG, also let the user select the provider when multiple providers are
 configured."
-  (interactive
-   (let* ((note (ekg-current-note-or-error))
-          (available-tags (ekg-llm-prompt-tags))
-          (default-tags (ekg-llm--default-prompt-tags note)))
-     (list
-      (read-string "Response prompt: "
-                   ekg-llm-default-response-request
-                   'ekg-llm-prompt-history
-                   ekg-llm-default-response-request t)
-      (when available-tags
-        (completing-read-multiple "Prompt tags: " available-tags
-                                  nil t
-                                  (when default-tags
-                                    (concat (string-join default-tags ", ")
-                                            ", "))))
-      current-prefix-arg))
-   ekg-notes-mode)
+  (interactive (ekg-llm--read-response-arguments) ekg-notes-mode)
   (let ((note (ekg-current-note-or-error)))
     (ekg-llm-send-and-use
      (ekg-llm--instructions-with-request
       (ekg-llm-instructions-for-tags prompt-tags)
       request)
-     (when (and arg (listp ekg-llm-provider))
+     (when (and arg (consp (cdr-safe ekg-llm-provider)))
        (let ((provider-alist
               (mapcar (lambda (provider)
                         (cons (llm-name provider) provider))
@@ -322,7 +290,7 @@ configured."
 ARG is retained for compatibility and ignored."
   (interactive "P")
   (ignore arg)
-  (user-error "LLM output is now stored as a response; use `ekg-llm-respond-to-note'"))
+  (user-error "LLM output is now stored as a response; use `ekg-llm-notes-respond'"))
 
 (defun ekg-llm-preview-prompt (&optional arg)
   "Preview the complete prompt that would be sent to the LLM.
@@ -367,21 +335,6 @@ This is for debugging purposes."
       (goto-char (point-min))
       (text-mode))
     (pop-to-buffer buf)))
-
-(defvar ekg-llm-capture-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c .") #'ekg-llm-respond-to-note)
-    (define-key map (kbd "C-c ?") #'ekg-llm-preview-prompt)
-    map)
-  "Keymap for ekg-llm bindings in capture and edit modes.")
-
-(define-minor-mode ekg-llm-minor-mode
-  "Minor mode providing LLM keybindings in ekg capture/edit buffers."
-  :lighter nil
-  :keymap ekg-llm-capture-mode-map)
-
-(add-hook 'ekg-capture-mode-hook #'ekg-llm-minor-mode)
-(add-hook 'ekg-edit-mode-hook #'ekg-llm-minor-mode)
 
 (defun ekg-llm-note-interactions (&optional note)
   "Create the user interaction for the LLM.

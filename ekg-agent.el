@@ -417,9 +417,10 @@ calling, or if none have tool calling, just return the first provider."
     ekg-llm-provider))
 
 (defun ekg-agent--read-provider-for-prefix (arg)
-  "Read an LLM provider when ARG is non-nil and providers are configured.
-Return nil when ARG is nil or `ekg-llm-provider' is not a non-empty list."
-  (when (and arg (consp ekg-llm-provider))
+  "Read an LLM provider when ARG is non-nil and several are configured.
+Return nil when ARG is nil or `ekg-llm-provider' does not contain
+more than one provider."
+  (when (and arg (consp (cdr-safe ekg-llm-provider)))
     (let ((provider-alist (mapcar (lambda (provider)
                                     (cons (llm-name provider)
                                           provider))
@@ -2385,7 +2386,7 @@ These tools are necessary for basic agent functionality.")
 (defcustom ekg-agent-extra-tools nil
   "List of additional tools available to the agent.
 These tools are used in addition to `ekg-agent-base-tools' in
-`ekg-agent-evaluate-status' and `ekg-agent-note-response'.
+`ekg-agent-evaluate-status' and `ekg-agent-notes-respond'.
 
 This is the place to opt into tools like `ekg-agent-tool-run-elisp',
 or `ekg-agent-tool-code'."
@@ -3346,8 +3347,8 @@ PROVIDER are the active loop state."
            :provider provider)))))))
 
 (cl-defun ekg-agent--iterate (prompt iteration-num
-                                    &key status-callback end-tools deadline
-                                    timeout-final provider)
+                                     &key status-callback end-tools deadline
+                                     timeout-final provider)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 
 PROMPT is the chat prompt for the LLM.
@@ -3608,27 +3609,10 @@ If already scheduled, cancel the existing timer and create a new one."
     (setq ekg-agent--daily-timer nil)
     (message "EKG agent daily schedule cancelled")))
 
-(defun ekg-agent-note-response (&optional arg)
-  "Respond to the current note using the agent.
-This is similar to `ekg-llm-respond-to-note', but runs an agent
-loop with tools before saving a Markdown response note.
-
-The agent is given the context of the last 10 notes with similar
-tags.
-
-ARG, if non-nil, allows editing the instructions."
-  (interactive "P")
-  (unless ekg-note
-    (error "No note in current buffer"))
-  (when (buffer-modified-p)
-    (if ekg-edit-mode
-        (ekg-edit-save)
-      (user-error "Save the note before requesting an agent response")))
-  (unless (ekg-note-with-id-exists-p (ekg-note-id ekg-note))
-    (user-error "Save the note before requesting an agent response"))
-  (ekg-note-update-from-buffer)
+(defun ekg-agent--respond-to-note (note instructions provider)
+  "Start an agent response to NOTE using INSTRUCTIONS and PROVIDER."
   (save-excursion
-    (let* ((parent-note (copy-ekg-note ekg-note))
+    (let* ((parent-note (copy-ekg-note note))
            (ekg-agent-tool-save-response
             (make-llm-tool
              :function (lambda (content)
@@ -3642,12 +3626,8 @@ ARG, if non-nil, allows editing the instructions."
              :description "Save a Markdown response to the current note."
              :args '((:name "content" :type string
                             :description "The response to save."))))
-           (instructions (ekg-llm-instructions-for-note ekg-note))
-           (instructions-for-use (if arg
-                                     (read-string "Instructions: " instructions)
-                                   instructions))
-           (context-tags (ekg-llm--context-tags ekg-note))
-           (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id ekg-note)))
+           (context-tags (ekg-llm--context-tags note))
+           (context-notes (seq-take (seq-remove (lambda (n) (equal (ekg-note-id n) (ekg-note-id note)))
                                                 (ekg-get-notes-with-any-tags
                                                  (append
                                                   context-tags
@@ -3656,16 +3636,16 @@ ARG, if non-nil, allows editing the instructions."
            (context-notes-json (let ((ekg-llm-note-numwords 100))
                                  (mapconcat #'ekg-llm-note-to-text context-notes "\n\n")))
            (current-note-json (let ((ekg-llm-note-numwords 10000))
-                                (ekg-llm-note-to-text ekg-note)))
+                                (ekg-llm-note-to-text note)))
            (hierarchy-json (let ((ekg-llm-note-numwords 10000))
-                             (ekg-llm-note-hierarchy-context ekg-note)))
+                             (ekg-llm-note-hierarchy-context note)))
            (prompt (concat "You are a note-response agent for ekg, an Emacs knowledge base.
 Your job is to respond to the user's current note.  You have tools to
 search existing notes for context if needed, but your primary goal is
 to produce a response for the current note.
 
 Your instructions:\n"
-                           instructions-for-use
+                           instructions
                            "\n\nYou have access to tools to search and read existing notes
 for context.  After each tool call you will be given a chance to make
 more tool calls.
@@ -3674,7 +3654,7 @@ IMPORTANT: You MUST end your session by calling
 `respond_to_current_note`, which saves your response as a separate
 Markdown child note.  There is no other way to end the session.
 
-The user input will be the note they are currently editing.\n\n"
+The user input will be the selected note.\n\n"
                            (format "The current date and time is %s.\n"
                                    (format-time-string "%F %R"))
                            (format "Some notes matching the tags or context: %s\n"
@@ -3682,7 +3662,10 @@ The user input will be the note they are currently editing.\n\n"
                            (format
                             "The note hierarchy around the current note: %s\n"
                             hierarchy-json))))
-      (let ((overlay (make-overlay (point-max) (point-max) nil t t)))
+      (let* ((pending-position
+              (cdr (or (ekg--note-region-at-point)
+                       (cons (point-max) (point-max)))))
+             (overlay (make-overlay pending-position pending-position nil t t)))
         (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
         (ekg-agent--iterate (llm-make-chat-prompt
                              current-note-json
@@ -3696,28 +3679,38 @@ The user input will be the note they are currently editing.\n\n"
                             (ekg-agent--make-status-callback
                              (lambda (_status)
                                (delete-overlay overlay)))
-                            :end-tools '("respond_to_current_note"))))))
+                            :end-tools '("respond_to_current_note")
+                            :provider provider)))))
 
-(defvar ekg-agent-minor-mode-map
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map ekg-llm-capture-mode-map)
-    (define-key map (kbd "C-c .") #'ekg-agent-note-response)
-    map)
-  "Keymap for ekg-agent bindings in capture and edit modes.
-Inherits from `ekg-llm-capture-mode-map' but overrides
-\\[ekg-agent-note-response] to use the agent instead of the plain LLM.")
+(defun ekg-agent-notes-respond (request prompt-tags &optional arg)
+  "Ask the agent to respond to the note at point.
+REQUEST describes the response to create.  PROMPT-TAGS select reusable
+instructions from notes tagged with `ekg-llm-prompt-tag'.  With prefix
+ARG, also let the user select the provider when multiple providers are
+configured."
+  (interactive (ekg-llm--read-response-arguments) ekg-notes-mode)
+  (let ((note (ekg-current-note-or-error)))
+    (ekg-agent--respond-to-note
+     note
+     (ekg-llm--instructions-with-request
+      (ekg-llm-instructions-for-tags prompt-tags)
+      request)
+     (ekg-agent--read-provider-for-prefix arg))))
 
-(define-minor-mode ekg-agent-minor-mode
-  "Minor mode providing agent keybindings in ekg capture/edit buffers.
-This replaces `ekg-llm-minor-mode' when `ekg-agent' is loaded."
-  :lighter nil
-  :keymap ekg-agent-minor-mode-map)
+(defun ekg-agent-note-response (&optional arg)
+  "Ask the agent to respond to the note at point in a notes buffer.
+ARG is the prefix argument passed to `ekg-agent-notes-respond'.
 
-;; Replace ekg-llm-minor-mode with ekg-agent-minor-mode on the hooks.
-(remove-hook 'ekg-capture-mode-hook #'ekg-llm-minor-mode)
-(remove-hook 'ekg-edit-mode-hook #'ekg-llm-minor-mode)
-(add-hook 'ekg-capture-mode-hook #'ekg-agent-minor-mode)
-(add-hook 'ekg-edit-mode-hook #'ekg-agent-minor-mode)
+This compatibility command now delegates to
+`ekg-agent-notes-respond'; responses can only be requested from an
+`ekg-notes-mode' buffer."
+  (interactive "P" ekg-notes-mode)
+  (unless (derived-mode-p 'ekg-notes-mode)
+    (user-error "Request agent responses from an EKG notes buffer"))
+  (let ((current-prefix-arg arg))
+    (call-interactively #'ekg-agent-notes-respond)))
+
+(define-key ekg-notes-mode-map (kbd ".") #'ekg-agent-notes-respond)
 
 (defun ekg-agent-show-internal-notes ()
   "Show notes with agent internal tags."

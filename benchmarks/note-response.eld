@@ -3,8 +3,8 @@
  :tasks
  (
   (
-   :name "note-response-append-elaboration"
-   :description "Create a note with a factual statement, then trigger the note-response agent.  The agent should append an elaboration using append_to_current_note.  Verifies the agent terminates and the buffer contains the appended response.
+   :name "note-response-elaboration"
+   :description "Create a note with a factual statement, then trigger the note-response agent from a notes buffer.  The agent should save an elaboration as a child response note.
 "
    :setup
    (progn
@@ -16,34 +16,27 @@
    (progn
 (let* ((notes (ekg-get-notes-with-tags '("history" "computer-science")))
        (note (car notes)))
-  (ekg-edit note)
-  ;; Wait for the buffer to be ready.
-  (sit-for 0.5)
-  (ekg-agent-note-response))
+  (ekg-show-notes-with-all-tags (ekg-note-tags note))
+  (ekg-agent-notes-respond "Elaborate on this note" nil))
 )
    :verify-task
    (progn
-;; The edit buffer should contain appended content beyond the
-;; original note text (~55 chars).
-(let ((buf (car (seq-filter
-                  (lambda (b)
-                    (string-match-p "\\*EKG Edit:" (buffer-name b)))
-                  (buffer-list)))))
-  (and buf
-       (with-current-buffer buf
-         (let ((content (buffer-string)))
-           (and
-             ;; Original content still present.
-             (string-match-p "Turing" content)
-             ;; Buffer has meaningful appended content.
-             (> (length content) 150))))))
+(let* ((note (seq-find
+              (lambda (candidate)
+                (string-match-p "Turing machine"
+                                (ekg-note-text candidate)))
+              (ekg-get-notes-with-tags
+               '("history" "computer-science"))))
+       (response (car (ekg-note-child-notes note))))
+  (and response
+       (> (length (ekg-note-text response)) 50)))
 )
    :max-iterations 10
    :timeout 120
   )
   (
-   :name "note-response-append-with-context"
-   :description "Create notes with related context, then trigger note-response on a note that asks a question.  The agent should search for context and append a response that incorporates information from related notes.
+   :name "note-response-with-context"
+   :description "Create notes with related context, then trigger note-response on a selected question in a notes buffer.  The agent should save a response that incorporates information from related notes.
 "
    :setup
    (progn
@@ -63,36 +56,30 @@
                :mode 'org-mode
                :tags '("computer-science" "question"))))
   (ekg-save-note note)
-  (ekg-edit (ekg-get-note-with-id (ekg-note-id note)))
-  (sit-for 0.5)
-  (ekg-agent-note-response))
+  (ekg-show-notes-with-all-tags '("computer-science" "question"))
+  (ekg-agent-notes-respond "Answer the question" nil))
 )
    :verify-task
    (progn
-;; The edit buffer should have the question plus an appended answer.
-(let ((buf (car (seq-filter
-                  (lambda (b)
-                    (string-match-p "\\*EKG Edit:" (buffer-name b)))
-                  (buffer-list)))))
-  (and buf
-       (with-current-buffer buf
-         (let ((content (downcase (buffer-string))))
-           (and
-             ;; Original question present.
-             (string-match-p "lambda calculus" content)
-             ;; Response mentions something relevant.
-             (or (string-match-p "church" content)
-                 (string-match-p "functional" content)
-                 (string-match-p "haskell" content))
-             ;; Buffer grew beyond just the question.
-             (> (length content) 100))))))
+(let* ((note (seq-find
+              (lambda (candidate)
+                (string-match-p "connection between lambda calculus"
+                                (ekg-note-text candidate)))
+              (ekg-get-notes-with-tags
+               '("computer-science" "question"))))
+       (response (car (ekg-note-child-notes note)))
+       (content (and response (downcase (ekg-note-text response)))))
+  (and content
+       (or (string-match-p "church" content)
+           (string-match-p "functional" content)
+           (string-match-p "haskell" content))))
 )
    :max-iterations 10
    :timeout 120
   )
   (
-   :name "note-response-replace"
-   :description "Create a note with a draft and instructions asking for a rewrite. The agent should use replace_current_note to rewrite the content.
+   :name "note-response-rewrite"
+   :description "Create a note with a draft and ask for a rewrite from a notes buffer. The agent should save the rewrite as a child response note.
 "
    :trigger
    (progn
@@ -101,26 +88,22 @@
                :mode 'org-mode
                :tags '("writing" "draft"))))
   (ekg-save-note note)
-  (ekg-edit (ekg-get-note-with-id (ekg-note-id note)))
-  (sit-for 0.5)
-  (ekg-agent-note-response))
+  (ekg-show-notes-with-all-tags '("writing" "draft"))
+  (ekg-agent-notes-respond "Rewrite this sentence correctly" nil))
 )
    :verify-task
    (progn
-;; The buffer should have rewritten content without the errors.
-(let ((buf (car (seq-filter
-                  (lambda (b)
-                    (string-match-p "\\*EKG Edit:" (buffer-name b)))
-                  (buffer-list)))))
-  (and buf
-       (with-current-buffer buf
-         (let ((content (downcase (buffer-string))))
-           (and
-             ;; Should NOT contain the original errors.
-             (not (string-match-p "sitted" content))
-             (not (string-match-p "eated" content))
-             ;; Should contain corrected version with cat.
-             (string-match-p "cat" content))))))
+(let* ((note (seq-find
+              (lambda (candidate)
+                (string-match-p "the cat sitted"
+                                (ekg-note-text candidate)))
+              (ekg-get-notes-with-tags '("writing" "draft"))))
+       (response (car (ekg-note-child-notes note)))
+       (content (and response (downcase (ekg-note-text response)))))
+  (and content
+       (not (string-match-p "sitted" content))
+       (not (string-match-p "eated" content))
+       (string-match-p "cat" content)))
 )
    :max-iterations 10
    :timeout 120

@@ -1124,7 +1124,9 @@ thread's topical tags.
 LLM to respond to the currently selected note.  The command always prompts for
 the request@comma{} initially @samp{Create a response to this note}@comma{} and lets you select
 reusable prompt tags.  A prefix argument additionally lets you select the
-provider when multiple providers are configured.
+provider when multiple providers are configured.  When @samp{ekg-agent} is loaded@comma{}
+the same key runs @samp{ekg-agent-notes-respond} so the agent can use tools before
+saving its response.
 
 @samp{ekg-notes-delete} (@samp{d})@comma{} trash the current note (or@comma{} if this is the trash list@comma{}
 truly delete it).
@@ -1717,7 +1719,7 @@ The ekg-llm module provides a second way to use large language models (LLMs)
 with ekg@comma{} separately from the ekg-embeddings integration.  While the
 ekg-embeddings module lets you find notes based on their meanings@comma{} the ekg-llm
 module lets you prompt an LLM with the contents of a note@comma{} and then capture the
-LLM's response in the note.
+LLM's output as a separate response note.
 
 As with ekg-embeddings@comma{} this is based on the @samp{llm} package@comma{} which allows the
 user to define their preferred llm backends@comma{} which will be stored in
@@ -1742,9 +1744,9 @@ functionality depends on having embeddings.
 
 The variable @code{ekg-llm-provider}@comma{} can be a single provider@comma{} similar to
 @code{ekg-embedding-provider}@comma{} or a list.  If it is a list@comma{} the first element will be
-used by default. However@comma{} when the user invokes @samp{ekg-llm-respond-to-note} with a
-prefix argument (normally via @samp{C-u M-x})@comma{} the user can select among the
-different providers.
+used by default.  In a notes buffer@comma{} invoking @samp{ekg-llm-notes-respond} with a
+prefix argument (normally via @samp{C-u .}) lets the user select among the different
+providers.
 
 @menu
 * Augmenting notes with LLM output::
@@ -1755,23 +1757,22 @@ different providers.
 @node Augmenting notes with LLM output
 @subsection Augmenting notes with LLM output
 
-To send a note to an LLM and capture its response@comma{} call
-@samp{ekg-llm-respond-to-note}@comma{} which is by default bound to @samp{[C-c .]}.  A prefix
-argument (@samp{[C-u C-c .]}) will let you edit the prompt and@comma{} when multiple
-providers are configured@comma{} select the provider used before it is sent.  The
-output is saved as a separate Markdown note that is a response to the current
-note.  The response is tagged
-with the value of @code{ekg-llm-generated-tag}@comma{} which defaults to @samp{llm-generated} and
-can be customized or set to nil.  It also inherits the thread's topical tags;
-LLM provenance@comma{} prompt@comma{} date@comma{} and other control tags are excluded.
-
-In a notes list@comma{} press @samp{.} to run the operation on the note at point.  It first
-offers an editable request@comma{} defaulting to @samp{Create a response to this note}@comma{} then
-offers completion over the tags found on notes co-tagged with
+To send a note to an LLM and capture its response@comma{} select the note in a notes
+buffer and call @samp{ekg-llm-notes-respond}@comma{} which is bound to @samp{.}.  The command
+first offers an editable request@comma{} initially @samp{Create a response to this note}@comma{}
+then offers completion over the tags found on notes co-tagged with
 @code{ekg-llm-prompt-tag}.  Prompt tags already applicable to the current response
-thread are prefilled and can be removed.  The selected prompt notes provide reusable
-instructions@comma{} while the first prompt describes this particular response.  The
-manual-response command remains available on @samp{r}.
+thread are prefilled and can be removed.  The selected prompt notes provide
+reusable instructions@comma{} while the request describes this particular response.
+A prefix argument (@samp{[C-u .]}) additionally lets you select the provider when
+multiple providers are configured.  The manual-response command remains
+available on @samp{r}.
+
+The output is saved as a separate Markdown response beneath the selected note.
+It is tagged with the value of @code{ekg-llm-generated-tag}@comma{} which defaults to
+@samp{llm-generated} and can be customized or set to nil.  It also inherits the
+thread's topical tags; LLM provenance@comma{} prompt@comma{} date@comma{} and other control tags are
+excluded.
 
 In addition to the contents of the note@comma{} ekg will construct a larger prompt for
 the LLM@.  The prompt consists of context about previous notes that contain the
@@ -1789,27 +1790,24 @@ tags can have prompts attached at any or all levels of the hierarchy.
 To take an example@comma{} imagine that you have a note tagged with @samp{prompt} and @samp{recipe}@comma{}
 containing instructions saying the LLM should imagine itself an authority on
 cooking and provide you helpful tips to improve your recipes.  You then create a
-note with a child tag of @samp{recipe}@comma{} let's say @samp{recipe/monkfish}@comma{} with some details of
-your attempt to cook monkfish@comma{} and then hit @samp{[C-c .]}.  Because @samp{recipe} is a parent
-of @samp{recipe/monkfish}@comma{} ekg-llm will use these instructions instead of the default
-one@comma{} and will create a Markdown response note.  When editing the original note@comma{}
-the response is displayed after the editable text without becoming part of
-that text.  For example@comma{} the relationship is:
+note with a child tag of @samp{recipe}@comma{} let's say @samp{recipe/monkfish}@comma{} with some details
+of your attempt to cook monkfish.  Save it@comma{} select it in a notes buffer@comma{} and hit
+@samp{.}.  Because @samp{recipe} is a parent of @samp{recipe/monkfish}@comma{} ekg-llm will offer the
+recipe prompt tag and create a Markdown response note beneath the selected
+note.  For example@comma{} the relationship is:
 
 @example
 Making monkfish again ...
   -> [llm-generated] Monkfish can indeed be challenging to sear properly ...
 @end example
 
-When a response note is being edited@comma{} its ancestor chain is displayed before
-the editable text and its responses are displayed afterward.  Calling
-@samp{ekg-llm-respond-to-note} from a response creates another response in the same
-thread.  The LLM receives an explicit JSON representation of the hierarchy
-around the current note: the ancestor chain from root to immediate parent@comma{} the
-current note@comma{} and all of its recursive descendants.  Each entry identifies its
-relationship@comma{} signed depth@comma{} note ID@comma{} and parent ID@.  Descendant arrays have a
-deterministic representation@comma{} but their sibling order has no meaning.  Other
-branches descending from an ancestor are not included.
+Selecting a response note in a notes buffer and pressing @samp{.} creates another
+response in the same thread.  The LLM receives an explicit JSON representation
+of the hierarchy around the selected note: the ancestor chain from root to
+immediate parent@comma{} the current note@comma{} and all of its recursive descendants.  Each
+entry identifies its relationship@comma{} signed depth@comma{} note ID@comma{} and parent ID@.
+Descendant arrays have a deterministic representation@comma{} but their sibling order
+has no meaning.  Other branches descending from an ancestor are not included.
 
 @node Using ekg notes as prompts
 @subsection Using ekg notes as prompts
@@ -2474,14 +2472,14 @@ The primary command is @samp{ekg-agent-evaluate-status}@comma{} which runs a sin
 where the agent reviews your recent activity and decides if it can be of
 assistance.  It can create notes to you@comma{} or to itself@comma{} to help it work.
 
-You can also ask the agent to help you with a specific note you are writing or
-editing. The command @samp{ekg-agent-note-response} (bound to @samp{C-c .} by default@comma{}
-overriding the @samp{ekg-llm} binding) will start an agent loop focused on your
-current note. This is an agentic version of @samp{ekg-llm-respond-to-note}. The
-agent can use tools to research your other notes before saving a separate
-Markdown response tagged with both @code{ekg-llm-generated-tag} and
-@code{ekg-agent-author-tag}. As with other LLM commands@comma{} a prefix argument allows you
-to edit the instructions sent to the agent.
+You can also ask the agent to help with a specific note.  Select it in a notes
+buffer and call @samp{ekg-agent-notes-respond}@comma{} which is bound to @samp{.} when
+@samp{ekg-agent} is loaded.  This replaces the plain @samp{ekg-llm-notes-respond} binding
+with an agent loop that can use tools to research your other notes before
+saving a separate Markdown response tagged with both @code{ekg-llm-generated-tag}
+and @code{ekg-agent-author-tag}.  The command prompts for a request and reusable
+prompt tags.  A prefix argument additionally lets you select the provider when
+multiple providers are configured.
 
 You can also ask the agent a direct question at any time with the command
 @samp{ekg-agent-ask}. This will prompt you for a question@comma{} which is then sent to the
@@ -2508,14 +2506,13 @@ When called from an @samp{ekg-notes-mode} buffer@comma{} it uses the note at poi
 called from a note editing buffer@comma{} it uses that note.  You can also pass a note
 ID programmatically.
 
-When @code{ekg-llm-provider} is a list@comma{} the @samp{ekg-agent-ask}@comma{}
-@samp{ekg-agent-ask-with-note}@comma{} and @samp{ekg-agent-ask-with-region} commands can be
-called with a prefix argument
-(normally via @samp{C-u M-x}) to select the provider for that agent session.  Without
-a prefix argument@comma{} the agent chooses the first configured provider with tool
-calling support@comma{} falling back to the first provider in the list.  When
-@code{ekg-llm-provider} is a single provider@comma{} the prefix argument does not prompt for
-a provider.
+When @code{ekg-llm-provider} is a list@comma{} the @samp{ekg-agent-notes-respond}@comma{}
+@samp{ekg-agent-ask}@comma{} @samp{ekg-agent-ask-with-note}@comma{} and @samp{ekg-agent-ask-with-region}
+commands can be called with a prefix argument to select the provider for that
+agent session.  Without a prefix argument@comma{} the agent chooses the first
+configured provider with tool calling support@comma{} falling back to the first
+provider in the list.  When @code{ekg-llm-provider} is a single provider@comma{} the prefix
+argument does not prompt for a provider.
 
 Internal agent notes (using the @samp{agent/self-info} and @samp{agent/instruct}
 tags) are hidden from normal view by being added to @samp{ekg-hidden-tags}. You can
