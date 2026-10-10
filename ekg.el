@@ -1464,22 +1464,25 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
                                     "")))
             ('inset (concat prefix (if (> depth 0) "│ " "")))
             (_ prefix)))
-         (label (if (= depth 0) "Note" "Child note"))
+         (label (cond ((= depth 0) "Note")
+                      ((eq ekg-notes-hierarchy-style 'inset) nil)
+                      (t "Child note")))
          (heading
-          (concat (propertize (if (eq ekg-notes-hierarchy-style 'inset)
-                                   body-prefix prefix) 'face guide-face)
-                  (propertize
-                   (pcase ekg-notes-hierarchy-style
-                     ('outline (concat (make-string (1+ depth) ?*) " " label))
-                     (_ label))
-                   'face heading-face)
-                  (when (and children (> children 0))
-                    (propertize (format "  ·  %d %s" children
-                                        (if (= children 1) "child" "children"))
-                                'face guide-face))
-                  "\n")))
+          (when (or label (and children (> children 0)))
+            (concat (propertize (if (eq ekg-notes-hierarchy-style 'inset)
+                                    body-prefix prefix) 'face guide-face)
+                    (propertize
+                     (pcase ekg-notes-hierarchy-style
+                       ('outline (concat (make-string (1+ depth) ?*) " " label))
+                       (_ (or label "")))
+                     'face heading-face)
+                    (when (and children (> children 0))
+                      (propertize (format "%s%d %s" (if label "  ·  " "") children
+                                          (if (= children 1) "child" "children"))
+                                  'face guide-face))
+                    "\n"))))
     (with-temp-buffer
-      (insert heading)
+      (when heading (insert heading))
       (let ((start (point)))
         (insert (ekg-display-note note ekg-display-note-template))
         (let ((pos start))
