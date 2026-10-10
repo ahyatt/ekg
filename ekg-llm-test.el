@@ -126,22 +126,45 @@
 
 (ekg-deftest-with-db ekg-llm-test-streaming-error-creates-no-response ()
   (let* ((parent (ekg-note-create :text "Question" :tags '("topic")))
-         (provider
-          (make-llm-fake :chat-action-func
-                         (lambda () '(error "Generation failed"))))
+         (provider (make-llm-fake))
          (ekg-llm-provider provider)
-         (ekg-embedding-provider provider))
+         (ekg-embedding-provider provider)
+         failure-kind failure-message)
     (ekg-save-note parent)
     (ekg-show-notes-with-tag "topic")
-    (should-error
-     (ekg-llm-notes-respond "Create a response to this note" nil))
+    (cl-letf (((symbol-function 'llm-chat-streaming)
+               (lambda (_provider _prompt _partial-callback
+                        _response-callback error-callback &optional _multi-output)
+                 (funcall error-callback
+                          'llm-request-authentication-error "Bad API key")))
+              ((symbol-function 'ekg-llm--set-response-failure)
+               (lambda (_overlay kind message)
+                 (setq failure-kind kind
+                       failure-message message))))
+      (ekg-llm-notes-respond "Create a response to this note" nil))
     (should-not (ekg-note-child-notes parent))
-    (should-not
-     (seq-some
-      (lambda (overlay)
-        (string-match-p "LLM response (generating)"
-                        (or (overlay-get overlay 'after-string) "")))
-      (overlays-at (point-max))))))
+    (should (equal failure-kind "LLM"))
+    (should (equal failure-message
+                   "LLM request authentication failed: Bad API key"))))
+
+(ekg-deftest ekg-llm-test-response-failure-overlay ()
+  (with-temp-buffer
+    (insert "Question")
+    (let ((overlay (make-overlay (point-min) (point-max))))
+      (ekg-llm--set-response-failure overlay "LLM" "Provider failed")
+      (let ((status-text (overlay-get overlay 'after-string)))
+        (should (string-match-p "LLM response failed" status-text))
+        (should (string-match-p "Provider failed" status-text))
+        (should (eq (get-text-property
+                     (string-match "LLM response failed" status-text)
+                     'face status-text)
+                    'error))))))
+
+(ekg-deftest ekg-llm-test-error-description-includes-type ()
+  (should
+   (equal (ekg-llm--error-description
+           'llm-request-authentication-error "Bad API key")
+          "LLM request authentication failed: Bad API key")))
 
 (ekg-deftest-with-db ekg-llm-test-note-to-text ()
   (let* ((time (current-time))

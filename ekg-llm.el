@@ -520,6 +520,25 @@ response note."
                'face 'ekg-hierarchy-heading)
    text))
 
+(defun ekg-llm--failed-response-string (kind message)
+  "Return overlay contents reporting a failed KIND response with MESSAGE."
+  (concat
+   "\n"
+   (propertize (format "%s response failed\n" kind) 'face 'error)
+   (format "%s" (or message "Unknown error"))))
+
+(defun ekg-llm--error-description (type message)
+  "Describe an LLM error of TYPE with MESSAGE."
+  (format "%s: %s"
+          (or (and (symbolp type) (get type 'error-message)) type)
+          (or message "Unknown error")))
+
+(defun ekg-llm--set-response-failure (overlay kind message)
+  "Show a failed KIND response with MESSAGE in OVERLAY."
+  (when (overlay-buffer overlay)
+    (overlay-put overlay 'after-string
+                 (ekg-llm--failed-response-string kind message))))
+
 (defun ekg-llm-send-and-use (instructions &optional provider parent)
   "Run the LLM and save its output as a response note.
 INSTRUCTIONS tells the LLM what to generate.  PROVIDER overrides
@@ -562,21 +581,35 @@ it defaults to the current `ekg-note'."
              (overlay-put pending-overlay 'after-string
                           (ekg-llm--pending-response-string text))))
          (lambda (text)
-           (delete-overlay pending-overlay)
-           (let ((response (ekg-llm-save-response parent text)))
-             (message "Saved LLM response note %s"
-                      (ekg-note-id response))))
-         (lambda (_type msg)
-           (delete-overlay pending-overlay)
-           (message "Could not call LLM: %s" msg)))
+           (condition-case err
+               (let ((response (ekg-llm-save-response parent text)))
+                 (delete-overlay pending-overlay)
+                 (message "Saved LLM response note %s"
+                          (ekg-note-id response)))
+             (error
+              (ekg-llm--set-response-failure
+               pending-overlay "LLM" (error-message-string err))
+              (message "Could not save LLM response: %s"
+                       (error-message-string err)))))
+         (lambda (type msg)
+           (let ((description (ekg-llm--error-description type msg)))
+             (ekg-llm--set-response-failure
+              pending-overlay "LLM" description)
+             (message "Could not call LLM: %s" description))))
       (not-implemented
-       (delete-overlay pending-overlay)
        (message "Streaming not supported; waiting for a synchronous response")
-       (let ((response (ekg-llm-save-response parent
-                                              (llm-chat provider prompt))))
-         (message "Saved LLM response note %s" (ekg-note-id response))))
+       (condition-case err
+           (let ((response (ekg-llm-save-response parent
+                                                  (llm-chat provider prompt))))
+             (delete-overlay pending-overlay)
+             (message "Saved LLM response note %s" (ekg-note-id response)))
+         (error
+          (ekg-llm--set-response-failure
+           pending-overlay "LLM" (error-message-string err))
+          (signal (car err) (cdr err)))))
       (error
-       (delete-overlay pending-overlay)
+       (ekg-llm--set-response-failure
+        pending-overlay "LLM" (error-message-string err))
        (signal (car err) (cdr err))))))
 
 (defun ekg-llm-note-metadata-for-input (note)

@@ -18,5 +18,6 @@ tests:
       note asking about the password is selected, and press `.` to trigger the
       agent response.  Wait for a response - in a minute there should be a
       response below the selected note that correctly says the secret password
-      is Orion.
+      is Orion.  If an agent response failure appears below the note, fail the
+      test immediately and report that message.
       

@@ -82,6 +82,26 @@
     (should (eq major-mode 'ekg-notes-mode))
     (should (string-match-p "Agent answer" (buffer-string)))))
 
+(ekg-deftest-with-db ekg-agent-test-notes-response-shows-failure ()
+  (let ((note (ekg-note-create :text "Question" :tags '("topic")))
+        failure-kind failure-message)
+    (ekg-save-note note)
+    (ekg-show-notes-with-tag "topic")
+    (cl-letf (((symbol-function 'ekg-agent--iterate)
+               (lambda (_prompt _iteration &rest options)
+                 (setq ekg-agent--last-error
+                       '(llm-request-authentication-error . "Bad API key"))
+                 (funcall (plist-get options :status-callback) 'error)))
+              ((symbol-function 'ekg-llm--set-response-failure)
+               (lambda (_overlay kind message)
+                 (setq failure-kind kind
+                       failure-message message))))
+      (ekg-agent-notes-respond "Answer briefly" nil))
+    (should-not (ekg-note-child-notes note))
+    (should (equal failure-kind "Agent"))
+    (should (equal failure-message
+                   "LLM request authentication failed: Bad API key"))))
+
 ;; Indentation adjustment
 
 (ekg-deftest ekg-agent-test-adjust-indentation-strip-extra ()

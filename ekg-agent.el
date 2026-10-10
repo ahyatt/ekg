@@ -257,6 +257,9 @@ Each entry is a plist with :name, :args, :result, and :time.")
   "The status callback for the current agent run.
 Stored so that `ekg-agent-force-cancel' can invoke it.")
 
+(defvar-local ekg-agent--last-error nil
+  "Most recent agent error as a cons of its type and message.")
+
 (defvar-local ekg-agent--current-activity nil
   "Short description of what the agent is currently doing.
 Shown in the header line; updated by tool wrappers and the iterate loop.")
@@ -3398,6 +3401,7 @@ session.  At iteration 0 the log buffer is created and
           (setq ekg-agent--tool-call-history nil)
           (setq ekg-agent--hidden-result-buffers nil)
           (setq ekg-agent--status-callback status-callback)
+          (setq ekg-agent--last-error nil)
           (setq ekg-agent--origin-buffer origin-buf)
           (setq ekg-agent--last-status-update-time (float-time))
           (setq ekg-agent--last-status-reminder-time nil)
@@ -3471,7 +3475,7 @@ session.  At iteration 0 the log buffer is created and
                                                (error-message-string err))
                                (when status-callback
                                  (funcall status-callback 'error)))))))
-                      (lambda (_ err)
+                      (lambda (type err)
                         (when deadline-timer
                           (cancel-timer deadline-timer)
                           (setq deadline-timer nil))
@@ -3487,9 +3491,11 @@ session.  At iteration 0 the log buffer is created and
                                  :timeout-final timeout-final
                                  :provider provider))
                             (when (ekg-agent--set-stopped log-buf)
-                              (ekg-agent--log "LLM error: %s" err)
-                              (when status-callback
-                                (funcall status-callback 'error))))))
+                              (with-current-buffer log-buf
+                                (setq ekg-agent--last-error (cons type err))
+                                (ekg-agent--log "LLM error (%s): %s" type err)
+                                (when status-callback
+                                  (funcall status-callback 'error)))))))
                       t
                       log-buf))))
             (when (buffer-live-p log-buf)
@@ -3665,7 +3671,7 @@ The user input will be the selected note.\n\n"
       (let* ((pending-position
               (cdr (or (ekg--note-region-at-point)
                        (cons (point-max) (point-max)))))
-             (overlay (make-overlay pending-position pending-position nil t t)))
+             (overlay (make-overlay pending-position pending-position nil nil t)))
         (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
         (ekg-agent--iterate (llm-make-chat-prompt
                              current-note-json
@@ -3677,8 +3683,22 @@ The user input will be the selected note.\n\n"
                             0
                             :status-callback
                             (ekg-agent--make-status-callback
-                             (lambda (_status)
-                               (delete-overlay overlay)))
+                             (lambda (status)
+                               (cond
+                                ((eq status 'error)
+                                 (ekg-llm--set-response-failure
+                                  overlay "Agent"
+                                  (if ekg-agent--last-error
+                                      (ekg-llm--error-description
+                                       (car ekg-agent--last-error)
+                                       (cdr ekg-agent--last-error))
+                                    "See the agent log for details.")))
+                                ((and (stringp status)
+                                      (string-prefix-p "stopped" status))
+                                 (ekg-llm--set-response-failure
+                                  overlay "Agent" status))
+                                (t
+                                 (delete-overlay overlay)))))
                             :end-tools '("respond_to_current_note")
                             :provider provider)))))
 

@@ -1189,7 +1189,8 @@ The output is saved as a separate Markdown response beneath the selected note.
 It is tagged with the value of ~ekg-llm-generated-tag~, which defaults to
 =llm-generated= and can be customized or set to nil.  It also inherits the
 thread's topical tags; LLM provenance, prompt, date, and other control tags are
-excluded.
+excluded.  If generation or saving fails, the temporary response display is
+replaced by an error beneath the selected note instead of disappearing.
 
 In addition to the contents of the note, ekg will construct a larger prompt for
 the LLM.  The prompt consists of context about previous notes that contain the
