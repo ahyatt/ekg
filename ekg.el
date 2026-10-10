@@ -1464,22 +1464,14 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
                                     "")))
             ('inset (concat prefix (if (> depth 0) "│ " "")))
             (_ prefix)))
-         (label (cond ((= depth 0) "Note")
-                      ((eq ekg-notes-hierarchy-style 'inset) nil)
-                      (t "Child note")))
          (heading
-          (when (or label (and children (> children 0)))
+          (when (and children (> children 0))
             (concat (propertize (if (eq ekg-notes-hierarchy-style 'inset)
                                     body-prefix prefix) 'face guide-face)
                     (propertize
-                     (pcase ekg-notes-hierarchy-style
-                       ('outline (concat (make-string (1+ depth) ?*) " " label))
-                       (_ (or label "")))
+                     (format "%d %s" children
+                             (if (= children 1) "child" "children"))
                      'face heading-face)
-                    (when (and children (> children 0))
-                      (propertize (format "%s%d %s" (if label "  ·  " "") children
-                                          (if (= children 1) "child" "children"))
-                                  'face guide-face))
                     "\n"))))
     (with-temp-buffer
       (when heading (insert heading))
@@ -1498,7 +1490,17 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
               (setq pos end))))
         (let ((guide (propertize body-prefix 'face guide-face)))
           (add-text-properties start (point-max)
-                               `(line-prefix ,guide wrap-prefix ,guide))))
+                               `(line-prefix ,guide wrap-prefix ,guide))
+          (when (and (not heading) (< start (point-max)))
+            (put-text-property
+             start (save-excursion (goto-char start) (line-beginning-position 2))
+             'line-prefix
+             (propertize
+              (pcase ekg-notes-hierarchy-style
+                ('guides prefix)
+                ('outline (concat prefix (make-string (1+ depth) ?*) " "))
+                (_ body-prefix))
+              'face guide-face)))))
       (let ((text (buffer-string)))
         (add-text-properties 0 (length text)
                              `(ekg-note-id ,(ekg-note-id note)
@@ -1549,6 +1551,7 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
   (setq-local default-directory (ekg--notes-directory)
               line-spacing 0.15)
   (add-hook 'window-size-change-functions #'ekg-notes--size-window nil t)
+  (add-hook 'post-command-hook #'ekg--note-highlight nil t)
   (setq truncate-lines t)
   (visual-line-mode 1)
   (if (eq ekg-capture-default-mode 'org-mode)
@@ -1780,6 +1783,12 @@ displayed.")
 
 (defvar-local ekg-notes-hl nil
   "Highlight for the notes buffer.")
+
+(defvar-local ekg-notes--selected-id nil
+  "ID of the note whose action-target label is cached.")
+
+(defvar-local ekg-notes--selected-label nil
+  "Cached title or text excerpt of the current note.")
 
 (defvar-local ekg-notes-tags nil
   "List of associated tags for creating and removing notes.")
@@ -2310,12 +2319,56 @@ tags)."
       (cons start end))))
 
 (defun ekg--note-highlight ()
-  "Highlight the header of the current note in the buffer."
-  (when-let* ((region (ekg--note-region-at-point)))
-    (move-overlay ekg-notes-hl (car region)
-                  (save-excursion
-                    (goto-char (car region))
-                    (min (cdr region) (line-beginning-position 2))))))
+  "Mark the entire current note and identify it in the header line."
+  (when (overlayp ekg-notes-hl)
+    (if-let* ((region (ekg--note-region-at-point)))
+        (let* ((id (get-text-property (point) :ekg-note-id))
+               ;; Gaps belong to a note for navigation, but should not be
+               ;; shaded.  The unprefixed property marks actual content.
+               (start (or (text-property-any (car region) (cdr region)
+                                             'ekg-note-id id)
+                          (car region)))
+               (end (min (cdr region)
+                         (or (next-single-property-change start 'ekg-note-id)
+                             (point-max)))))
+          (move-overlay ekg-notes-hl start end)
+          (overlay-put ekg-notes-hl 'before-string
+                       (propertize
+                        " " 'display
+                        (list '(margin left-margin)
+                              (propertize "▶" 'face 'font-lock-keyword-face))))
+          (unless (equal id ekg-notes--selected-id)
+            (setq ekg-notes--selected-id id
+                  ekg-notes--selected-label
+                  (when-let* ((note (ekg-get-note-with-id id)))
+                    (let ((title (mapconcat #'identity
+                                           (plist-get (ekg-note-properties note)
+                                                      :titled/title) ", ")))
+                      (truncate-string-to-width
+                       (string-trim
+                        (replace-regexp-in-string
+                         "[\n\t ]+" " "
+                         (if (string-empty-p title)
+                             (or (ekg-note-text note) "") title)))
+                       48 nil nil "…")))))
+          (setq header-line-format
+                (concat (propertize
+                         (concat " Current: "
+                                 (if (string-empty-p
+                                      (or ekg-notes--selected-label ""))
+                                     "Untitled" ekg-notes--selected-label))
+                         'face 'bold
+                         'help-echo "Note targeted by opening, trashing and other commands")
+                        "  |  " ekg-notes-name
+                        (unless ekg-notes-include-descendants " (strict)"))))
+      (move-overlay ekg-notes-hl (point-min) (point-min))
+      (overlay-put ekg-notes-hl 'before-string nil)
+      (setq ekg-notes--selected-id nil
+            ekg-notes--selected-label nil
+            header-line-format (concat " " ekg-notes-name
+                                       "  |  No current note"
+                                       (unless ekg-notes-include-descendants
+                                         " (strict)"))))))
 
 (defun ekg-current-note-or-error ()
   "Return the current `ekg-note'.
@@ -2538,6 +2591,8 @@ NAME is displayed at the top of the buffer."
     (ekg-notes-mode))
   (setq-local ekg-notes-fetch-notes-function notes-func
               ekg-notes-name name
+              ekg-notes--selected-id nil
+              ekg-notes--selected-label nil
               ekg-notes-hl (if (and (overlayp ekg-notes-hl)
                                     (eq (overlay-buffer ekg-notes-hl)
                                         (current-buffer)))
