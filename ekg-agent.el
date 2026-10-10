@@ -771,7 +771,8 @@ CALLBACK is called with the result string when the process finishes."
                                             (let* (e
                                                    (result
                                                     (condition-case err
-                                                        (eval (read ,elisp))
+                                                        (let ((inhibit-interaction t))
+                                                          (eval (read ,elisp)))
                                                       (error (setq e (format "%S" err))))))
                                               (or e
                                                   (if (equal ,return "result")
@@ -1908,9 +1909,10 @@ the buffer."
           (error "Not an interactive command: %s" command))
         (with-current-buffer buf
           (goto-char (min (point-max) (max (point-min) pos)))
-          (if (eq cmd 'eval-buffer)
-              (eval-buffer)
-            (call-interactively cmd))
+          (let ((inhibit-interaction t))
+            (if (eq cmd 'eval-buffer)
+                (eval-buffer)
+              (call-interactively cmd)))
           ;; Return context: ~10 lines around the post-command point,
           ;; since the command may have moved point.
           (let ((current-line (line-number-at-pos (point))))

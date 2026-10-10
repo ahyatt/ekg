@@ -21,11 +21,11 @@ tests:
       character you add will refine search and show you notes with the prompt
       text in it. Search for "Hello" and make sure you see your note.
   - description: |
-      Create a note with `ekg-capture` and write "Temporary text", and save it
+      Create a note with `ekg-capture` and type "Temporary text", and save it
       with `C-x C-s`. Kill the buffer with `C-x k`. Ensure you don't see the
       note in `ekg-show-notes-latest-captured`. Then run
       `ekg-show-notes-in-drafts` and make sure you can see the note you just
       wrote. Open the note with `o`, change it to say "Permanent note", and
       press `C-c C-c` to save the note and exit. You should now see it in
       `ekg-show-notes-latest-captured` and not in `ekg-show-notes-in-drafts`.
-
+      Once verified, pass the test.
