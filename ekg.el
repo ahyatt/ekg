@@ -184,7 +184,9 @@ selection for embeddings."
                  (const :tag "Character-based" character))
   :group 'ekg)
 
-(defcustom ekg-display-note-template "%n(id)%n(tagged)%n(titled)%n(text 500)%n(other)"
+(defcustom ekg-display-note-template
+  (concat "%n(titled)%n(tagged nil separated)%n(id)\n"
+          "%n(text 500)%n(other)")
   "Template for displaying notes in notes buffers.
 This follows normal templating rules, but it is most likely the
 user is interested in the various %n templates that correspond to
@@ -271,6 +273,45 @@ links out of them, as well as adding them to the note text."
 
 (defconst ekg-db-file-obsolete (file-name-concat user-emacs-directory "ekg.db")
   "The original database name that ekg started with.")
+
+(defcustom ekg-notes-hierarchy-style 'inset
+  "How parent and child notes are distinguished in note lists.
+`guides' draws connecting tree lines, `outline' labels each level,
+and `inset' uses a vertical bar beside indented child notes."
+  :type '(choice (const :tag "Tree guides" guides)
+                 (const :tag "Outline headings" outline)
+                 (const :tag "Inset blocks" inset))
+  :group 'ekg)
+
+(defcustom ekg-notes-max-width 88
+  "Maximum reading width of a notes window, in columns.
+Wider windows center the reading column.  Nil uses the full window.
+The note's hierarchy indentation occupies part of this width."
+  :type '(choice (const :tag "Full window" nil) (integer :tag "Columns"))
+  :group 'ekg)
+
+(defface ekg-notes-title
+  '((((type graphic)) :inherit default :weight bold :height 1.25)
+    (t :inherit default :weight bold))
+  "Face for titles in note lists."
+  :group 'ekg)
+
+(defface ekg-notes-tag
+  '((((type graphic)) :inherit shadow :height 0.85 :box nil :underline nil)
+    (t :inherit shadow :box nil :underline nil))
+  "Face for tags in note lists."
+  :group 'ekg)
+
+(defface ekg-notes-hierarchy-guide
+  '((t :inherit shadow))
+  "Face for connecting lines in note hierarchies."
+  :group 'ekg)
+
+(defface ekg-notes-hierarchy-heading
+  '((((type graphic)) :inherit shadow :height 0.85)
+    (t :inherit shadow))
+  "Face for hierarchy labels in note lists."
+  :group 'ekg)
 
 (defconst ekg-default-num-backups 5
   "The number of backups to set when first using the database.
@@ -1178,10 +1219,14 @@ NUMWORDS and FORMAT are standard options, see
 
 (defun ekg-display-note-tagged (note &optional numwords &rest format)
   "Return text of the tags of NOTE.
-NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
+NUMWORDS and FORMAT are as described in `ekg-display-note-template'.
+The additional format option `separated' puts dots between tags."
   (ekg-display--format
    (concat (mapconcat (lambda (tag) (propertize tag 'face 'ekg-tag))
-                      (ekg-note-tags note) " ") "\n")
+                      (ekg-note-tags note)
+                      (if (memq 'separated format)
+                          (propertize " · " 'face 'ekg-tag)
+                        " ")) "\n")
    numwords format))
 
 (defun ekg-display-note-time-tracked (note &optional format-str &rest format)
@@ -1201,12 +1246,11 @@ desired output properties as described in `ekg-display-note-template'."
 (defun ekg-display-note-titled (note &optional numwords &rest format)
   "Return text of the title of NOTE.
 NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
-  (ekg-display--format (if-let* ((titles (plist-get (ekg-note-properties note)
-                                                    :titled/title)))
-                           (propertize (concat (mapconcat #'identity titles ", ") "\n")
-                                       'face 'ekg-title)
-                         "")
-                       numwords format))
+  (if-let* ((titles (plist-get (ekg-note-properties note) :titled/title)))
+      (ekg-display--format
+       (propertize (mapconcat #'identity titles ", ") 'face 'ekg-title)
+       numwords format)
+    ""))
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID.
@@ -1398,18 +1442,67 @@ This is needed to identify references to refresh when the subject is changed.")
       (1+ (point-min))
     (point-min)))
 
-(defun ekg--indent-displayed-note (note depth)
-  "Return NOTE formatted for display and indented to DEPTH."
-  (with-temp-buffer
-    (insert (ekg-display-note note ekg-display-note-template))
-    (indent-rigidly (point-min) (point-max) (* depth 2))
-    (let ((text (buffer-string)))
-      (add-text-properties 0 (length text)
-                           `(ekg-note-id ,(ekg-note-id note)
-                                         read-only t
-                                         rear-nonsticky t)
-                           text)
-      text)))
+(defun ekg--indent-displayed-note (note depth &optional branches children)
+  "Return NOTE formatted at DEPTH in a hierarchy.
+BRANCHES lists whether each ancestor has following siblings, from
+root to NOTE.  CHILDREN is the number of displayed immediate children."
+  (let* ((guide-face 'ekg-notes-hierarchy-guide)
+         (heading-face 'ekg-notes-hierarchy-heading)
+         (stem (mapconcat (lambda (following)
+                            (if following "│  " "   "))
+                          (butlast branches) ""))
+         (prefix
+          (pcase ekg-notes-hierarchy-style
+            ('guides (concat stem (if (> depth 0)
+                                      (if (car (last branches)) "├─ " "└─ ")
+                                    "")))
+            (_ (make-string (* depth 3) ?\s))))
+         (body-prefix
+          (pcase ekg-notes-hierarchy-style
+            ('guides (concat stem (if (> depth 0)
+                                      (if (car (last branches)) "│  " "   ")
+                                    "")))
+            ('inset (concat prefix (if (> depth 0) "│ " "")))
+            (_ prefix)))
+         (label (if (= depth 0) "Note" "Child note"))
+         (heading
+          (concat (propertize (if (eq ekg-notes-hierarchy-style 'inset)
+                                   body-prefix prefix) 'face guide-face)
+                  (propertize
+                   (pcase ekg-notes-hierarchy-style
+                     ('outline (concat (make-string (1+ depth) ?*) " " label))
+                     (_ label))
+                   'face heading-face)
+                  (when (and children (> children 0))
+                    (propertize (format "  ·  %d %s" children
+                                        (if (= children 1) "child" "children"))
+                                'face guide-face))
+                  "\n")))
+    (with-temp-buffer
+      (insert heading)
+      (let ((start (point)))
+        (insert (ekg-display-note note ekg-display-note-template))
+        (let ((pos start))
+          (while (< pos (point-max))
+            (let* ((face (get-text-property pos 'face))
+                   (end (or (next-single-property-change pos 'face)
+                            (point-max)))
+                   (replacement (pcase face
+                                  ('ekg-title 'ekg-notes-title)
+                                  ('ekg-tag 'ekg-notes-tag))))
+              (when replacement
+                (put-text-property pos end 'face replacement))
+              (setq pos end))))
+        (let ((guide (propertize body-prefix 'face guide-face)))
+          (add-text-properties start (point-max)
+                               `(line-prefix ,guide wrap-prefix ,guide))))
+      (let ((text (buffer-string)))
+        (add-text-properties 0 (length text)
+                             `(ekg-note-id ,(ekg-note-id note)
+                                           read-only t
+                                           rear-nonsticky t)
+                             text)
+        text))))
 
 (defvar ekg-notes-mode-map
   (let ((map (make-keymap)))
@@ -1430,9 +1523,29 @@ This is needed to identify references to refresh when the subject is changed.")
     (define-key map "k" #'ekg-notes-kill)
     map))
 
+(defun ekg-notes--size-window (window)
+  "Give WINDOW a comfortable reading width for its notes buffer."
+  (when (eq (window-buffer window) (current-buffer))
+    (let* ((margins (window-margins window))
+           (available (+ (window-body-width window)
+                         (or (car margins) 0) (or (cdr margins) 0)))
+           (excess (if ekg-notes-max-width
+                       (max 0 (- available (max 20 ekg-notes-max-width)))
+                     0))
+           (left (if (> available 12) (max 2 (/ excess 2)) 0))
+           (right (if ekg-notes-max-width
+                      (max 0 (- available left
+                                (max 20 ekg-notes-max-width)))
+                    0)))
+      (unless (and (= left (or (car margins) 0))
+                   (= right (or (cdr margins) 0)))
+        (set-window-margins window left right)))))
+
 (define-derived-mode ekg-notes-mode vui-mode "ekg-notes"
   "Major mode for showing a list of notes that can be interacted with."
-  (setq-local default-directory (ekg--notes-directory))
+  (setq-local default-directory (ekg--notes-directory)
+              line-spacing 0.15)
+  (add-hook 'window-size-change-functions #'ekg-notes--size-window nil t)
   (setq truncate-lines t)
   (visual-line-mode 1)
   (if (eq ekg-capture-default-mode 'org-mode)
@@ -2194,9 +2307,12 @@ tags)."
       (cons start end))))
 
 (defun ekg--note-highlight ()
-  "In the buffer, highlight the current note."
+  "Highlight the header of the current note in the buffer."
   (when-let* ((region (ekg--note-region-at-point)))
-    (move-overlay ekg-notes-hl (car region) (cdr region))))
+    (move-overlay ekg-notes-hl (car region)
+                  (save-excursion
+                    (goto-char (car region))
+                    (min (cdr region) (line-beginning-position 2))))))
 
 (defun ekg-current-note-or-error ()
   "Return the current `ekg-note'.
@@ -2337,24 +2453,28 @@ TITLE is the title of the URL to browse to."
                  (error nil))
              (gethash (ekg-note-parent-id note) fetched-ids)))
          (render
-           (note depth)
-           (let ((id (ekg-note-id note)))
+           (note depth &optional branches)
+           (let* ((id (ekg-note-id note))
+                  (children
+                   (seq-filter
+                    (lambda (child)
+                      (or include-descendants
+                          (gethash (ekg-note-id child) fetched-ids)))
+                    (sort (ekg-note-child-notes note t)
+                          #'ekg--hierarchy-note-less-p))))
              (unless (gethash id visited)
                (puthash id t visited)
                (apply
                 #'vui-vstack
                 :key (intern (format "note-%s" id))
-                (vui-text (ekg--indent-displayed-note note depth)
-                  :key (intern (format "note-text-%s" id))
-                  :ekg-note-id id)
-                (delq nil
-                      (mapcar
-                       (lambda (child)
-                         (when (or include-descendants
-                                   (gethash (ekg-note-id child) fetched-ids))
-                           (render child (1+ depth))))
-                       (sort (ekg-note-child-notes note t)
-                             #'ekg--hierarchy-note-less-p))))))))
+                (vui-text (ekg--indent-displayed-note
+                           note depth branches (length children))
+                          :key (intern (format "note-text-%s" id))
+                          :ekg-note-id id)
+                (cl-loop for tail on children
+                         collect (render (car tail) (1+ depth)
+                                         (append branches
+                                                 (list (and (cdr tail) t))))))))))
       (apply #'vui-vstack
              :spacing 1
              (delq nil

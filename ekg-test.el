@@ -223,6 +223,100 @@
         (should ekg-notes-include-descendants)
         (should (string-match-p "Middle note" (buffer-string)))))))
 
+(ekg-deftest-with-db ekg-test-notes-hierarchy-guides ()
+		     "Tree branches, wrapping and navigation follow the displayed hierarchy."
+		     (let* ((root (ekg-note-create :text "Root body" :tags '("tree")))
+			    (first (ekg-note-create :text "First body" :tags '("tree")))
+			    (last (ekg-note-create :text "Last body" :tags '("other")))
+			    (nested (ekg-note-create :text "Nested body" :tags '("tree")))
+			    (ekg-display-note-template "%n(text)")
+			    (ekg-notes-hierarchy-style 'guides))
+		       (ekg-save-note root)
+		       (ekg-note-set-parent first root)
+		       (ekg-note-set-parent last root)
+		       (ekg-save-note first)
+		       (ekg-note-set-parent nested first)
+		       ;; Explicit times keep sibling order independent of generated IDs.
+		       (setf (ekg-note-creation-time first) 1
+			     (ekg-note-creation-time last) 2)
+		       (mapc #'ekg-save-note (list first last nested))
+		       (with-temp-buffer
+			 (ekg--show-notes "Tree" (lambda () (list root first nested)) nil)
+			 (should (string-match-p "Note  ·  2 children" (buffer-string)))
+			 (dolist (entry (list (cons root "Note") (cons first "├─ Child note")
+					      (cons nested "│  └─ Child note")
+					      (cons last "└─ Child note")))
+			   (should (looking-at-p (regexp-quote (cdr entry))))
+			   (should (equal (ekg-note-id (car entry))
+					  (get-text-property (point) :ekg-note-id)))
+			   (ekg-notes-next))
+			 (goto-char (point-min))
+			 (search-forward "Nested body")
+			 (should (equal "│     " (get-text-property (1- (point)) 'wrap-prefix)))
+			 (dolist (style '(outline inset guides))
+			   (setq ekg-notes-hierarchy-style style)
+			   (ekg-notes-refresh)
+			   (ekg-notes-next)
+			   (should (equal (ekg-note-id first)
+					  (get-text-property (point) :ekg-note-id)))
+			   (ekg-notes-previous)
+			   (should (equal (ekg-note-id root)
+					  (get-text-property (point) :ekg-note-id))))
+			 (ekg-notes-refresh t)
+			 (should (string-match-p "Note  ·  1 child" (buffer-string)))
+			 (should-not (string-match-p "Last body" (buffer-string)))
+			 (should-not (string-match-p "├─" (buffer-string))))))
+
+(ekg-deftest-with-db ekg-test-note-list-typography ()
+  "The default template separates title, tags and text in note lists."
+  (let* ((note (ekg-note-create :text "Readable body" :mode 'text-mode
+                                :tags '("one" "two")
+                                :properties '(:titled/title ("A title"))))
+         (ekg-display-note-template
+          "%n(titled)%n(tagged nil separated)%n(id)\n%n(text 500)%n(other)")
+         (ekg-notes-hierarchy-style 'inset))
+    (ekg-save-note note)
+    (should (equal (ekg-display-note note ekg-display-note-template)
+                   "A title\none · two\n\nReadable body\n"))
+    (with-temp-buffer
+      (ekg--show-notes "Typography" (lambda () (list note)) nil)
+      (search-forward "A title")
+      (should (eq (get-text-property (1- (point)) 'face) 'ekg-notes-title))
+      (search-forward "one")
+      (should (eq (get-text-property (1- (point)) 'face) 'ekg-notes-tag))
+      (search-forward "Readable body")
+      (should (equal (ekg-note-id note)
+                     (ekg-note-id (ekg-current-note-or-error))))
+      (ekg--note-highlight)
+      (should (= (overlay-start ekg-notes-hl) (point-min)))
+      (should (= (overlay-end ekg-notes-hl)
+                 (save-excursion
+                   (goto-char (point-min)) (line-beginning-position 2))))
+      (should (equal (ekg-display-note-titled
+                      (ekg-note-create :text "Untitled")) "")))))
+
+(ekg-deftest ekg-test-notes-reading-width ()
+  "Window margins adapt without shrinking again on every redisplay."
+  (save-window-excursion
+    (with-temp-buffer
+      (ekg-notes-mode)
+      (set-window-buffer (selected-window) (current-buffer))
+      (let ((ekg-notes-max-width 40)
+            (window (selected-window)))
+        (ekg-notes--size-window window)
+        (let ((margins (window-margins window)))
+          (should (<= (window-body-width window) 40))
+          (ekg-notes--size-window window)
+          (should (equal margins (window-margins window)))
+          ;; A departing buffer's hook must not resize another buffer.
+          (with-temp-buffer
+            (let ((ekg-notes-max-width 20))
+              (ekg-notes--size-window window)))
+          (should (equal margins (window-margins window))))
+        (setq ekg-notes-max-width nil)
+        (ekg-notes--size-window window)
+        (should (= 0 (or (cdr (window-margins window)) 0)))))))
+
 (ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
   (with-temp-buffer
     (insert "[[attachment:foo.png]]\n")
