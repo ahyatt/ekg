@@ -1768,7 +1768,9 @@ A prefix argument (@samp{[C-u .]}) additionally lets you select the provider whe
 multiple providers are configured.  The manual-response command remains
 available on @samp{r}.
 
-The output is saved as a separate Markdown response beneath the selected note.
+The output is saved as a separate response note beneath the selected note,
+using the major mode in @code{ekg-llm-response-mode} (which defaults to
+@samp{markdown-mode}@comma{} but can also be set to @samp{org-mode} or any other valid mode).
 It is tagged with the value of @code{ekg-llm-generated-tag}@comma{} which defaults to
 @samp{llm-generated} and can be customized or set to nil.  It also inherits the
 thread's topical tags; LLM provenance@comma{} prompt@comma{} date@comma{} and other control tags are

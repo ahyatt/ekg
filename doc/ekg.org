@@ -1185,7 +1185,9 @@ A prefix argument (=[C-u .]=) additionally lets you select the provider when
 multiple providers are configured.  The manual-response command remains
 available on =r=.
 
-The output is saved as a separate Markdown response beneath the selected note.
+The output is saved as a separate response note beneath the selected note,
+using the major mode in ~ekg-llm-response-mode~ (which defaults to
+=markdown-mode=, but can also be set to =org-mode= or any other valid mode).
 It is tagged with the value of ~ekg-llm-generated-tag~, which defaults to
 =llm-generated= and can be customized or set to nil.  It also inherits the
 thread's topical tags; LLM provenance, prompt, date, and other control tags are

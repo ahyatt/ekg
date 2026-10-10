@@ -5,8 +5,8 @@ setup: |
 tests:
   - description: |
       Create a note with the `ekg-capture` command. It should have a `date` tag
-      visible in the header. Write the text "Hello world" and save and finish
-      with `C-c C-c`.
+      visible in the header. Write the text "Hello world", then save and finish
+      with `C-c C-c` and, as long as there are no errors, pass the test.
   - description: |
       First, create a note: run `ekg-capture`, type "Hello world", and finish
       with `C-c C-c`.

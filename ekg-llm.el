@@ -73,6 +73,12 @@ those other tags."
   :type 'string
   :group 'ekg-llm)
 
+(defcustom ekg-llm-response-mode 'markdown-mode
+  "The major mode to use for LLM response notes.
+This can be `markdown-mode', `org-mode', or any other valid mode symbol."
+  :type 'symbol
+  :group 'ekg-llm)
+
 (defun ekg-llm--response-inheritable-tag-p (tag _note)
   "Return non-nil when TAG is topical rather than LLM provenance."
   (not (member tag (delq nil (list ekg-llm-generated-tag
@@ -490,13 +496,14 @@ NUMWORDS specifies the maximum number of words to include."
       (when (not (equal except-id (ekg-note-id note)))
         (iter-yield (ekg-llm-note-to-text note))))))
 
-(defun ekg-llm-save-response (parent text &optional tags)
-  "Save TEXT as an LLM-generated Markdown response to PARENT.
-TAGS are additional tags to apply.  Return the newly created
-response note."
+(defun ekg-llm-save-response (parent text &optional tags mode)
+  "Save TEXT as an LLM-generated response to PARENT.
+TAGS are additional tags to apply.  MODE is the major mode to use
+for the response note, defaulting to `ekg-llm-response-mode'.
+Return the newly created response note."
   (let ((note (ekg-note-create
                :text text
-               :mode 'markdown-mode
+               :mode (or mode ekg-llm-response-mode 'markdown-mode)
                :tags (seq-uniq
                       (append
                        (ekg-response-inherited-tags parent)

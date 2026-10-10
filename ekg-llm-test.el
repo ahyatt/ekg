@@ -48,6 +48,14 @@
                                      (ekg-note-id parent)))
                      "Question")))))
 
+(ekg-deftest-with-db ekg-llm-test-response-mode ()
+  (let ((parent (ekg-note-create :text "Question"))
+        (ekg-llm-response-mode 'org-mode))
+    (ekg-save-note parent)
+    (let* ((response (ekg-llm-save-response parent "Answer"))
+           (reloaded (ekg-get-note-with-id (ekg-note-id response))))
+      (should (eq (ekg-note-mode reloaded) 'org-mode)))))
+
 (ekg-deftest-with-db ekg-llm-test-generated-tag-can-be-disabled ()
   (let ((parent (ekg-note-create :text "Question"))
         (ekg-llm-generated-tag nil))
