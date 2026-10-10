@@ -155,6 +155,7 @@
       (let ((status-text (overlay-get overlay 'after-string)))
         (should (string-match-p "LLM response failed" status-text))
         (should (string-match-p "Provider failed" status-text))
+        (should (string-suffix-p "\n" status-text))
         (should (eq (get-text-property
                      (string-match "LLM response failed" status-text)
                      'face status-text)

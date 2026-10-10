@@ -525,7 +525,7 @@ response note."
   (concat
    "\n"
    (propertize (format "%s response failed\n" kind) 'face 'error)
-   (format "%s" (or message "Unknown error"))))
+   (format "%s\n" (or message "Unknown error"))))
 
 (defun ekg-llm--error-description (type message)
   "Describe an LLM error of TYPE with MESSAGE."

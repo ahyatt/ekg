@@ -852,7 +852,7 @@ EXTRA-TOOLS is a list of additional tools beyond
                                         (format "The current date and time is %s."
                                                 (format-time-string "%F %R")))
                               :tools (ekg-agent--tools (list ekg-agent-tool-subagent-end))
-                              :tool-options (make-llm-tool-options :tool-choice 'any))))
+                              :tool-options (make-llm-tool-options :tool-choice 'auto))))
                  (ekg-agent--iterate
                   prompt 0
                   :status-callback
@@ -2478,7 +2478,7 @@ agent will decide which is best."
                                             (list ekg-agent-tool-end
                                                   ekg-agent-tool-popup-result)
                                             extra-tools))
-                         :tool-options (make-llm-tool-options :tool-choice 'any))
+                         :tool-options (make-llm-tool-options :tool-choice 'auto))
                         0
                         :status-callback (ekg-agent--make-status-callback)
                         :end-tools '("display_result_in_popup" "end")
@@ -2805,7 +2805,7 @@ to create new notes or perform other actions to help the user."
                                (ekg-agent-instructions-evaluate-status))
                        :tools
                        (ekg-agent--tools (list ekg-agent-tool-end))
-                       :tool-options (make-llm-tool-options :tool-choice 'any))
+                       :tool-options (make-llm-tool-options :tool-choice 'auto))
                       0
                       :status-callback (ekg-agent--make-status-callback)
                       :end-tools '("end")))
@@ -2867,7 +2867,7 @@ Optional PROVIDER is the LLM provider to use."
                    :description "Report the decided id so the agent can use it to name an Emacs status buffer. Use lowercase words separated by hyphens, about 3-5 words."
                    :args '((:name "id" :type string
                                   :description "Lowercase hyphenated buffer id, e.g. check-email-and-respond."))))
-          :tool-options (make-llm-tool-options :tool-choice 'any))
+          :tool-options (make-llm-tool-options :tool-choice 'auto))
          (lambda (_result)
            (ekg-agent--rename-log-buffer log-buf id))
          (lambda (_type err)
@@ -3672,14 +3672,15 @@ The user input will be the selected note.\n\n"
               (cdr (or (ekg--note-region-at-point)
                        (cons (point-max) (point-max)))))
              (overlay (make-overlay pending-position pending-position nil nil t)))
-        (overlay-put overlay 'after-string (propertize " [LLM response computing]" 'face 'shadow))
+        (overlay-put overlay 'after-string
+                     (propertize "\n[LLM response computing]\n" 'face 'shadow))
         (ekg-agent--iterate (llm-make-chat-prompt
                              current-note-json
                              :context prompt
                              :tools
                              (ekg-agent--tools
                               (list ekg-agent-tool-save-response))
-                             :tool-options (make-llm-tool-options :tool-choice 'any))
+                             :tool-options (make-llm-tool-options :tool-choice 'auto))
                             0
                             :status-callback
                             (ekg-agent--make-status-callback
@@ -4539,7 +4540,7 @@ which ends the agent session.  No human input is required."
                                        ekg-agent-org-tool-add-task
                                        ekg-agent-org-tool-set-status
                                        ekg-agent-org-tool-list-items))
-                         :tool-options (make-llm-tool-options :tool-choice 'any))
+                         :tool-options (make-llm-tool-options :tool-choice 'auto))
                         0
                         :status-callback (ekg-agent--make-status-callback)
                         :end-tools '("set_org_item_status"))))
