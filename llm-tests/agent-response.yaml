@@ -13,7 +13,11 @@ tests:
       `ekg-show-notes-latest-captured` and verify your note is there.
 
       Then, create a new note by calling `ekg-capture` again.  In the note,
-      write "What was the secret password I wrote about?" and then press "C-c
-      .".  Wait for a response - in a minute there should be a response that
-      correctly says the secret password is Orion.
+      write "What was the secret password I wrote about?", then save the note.
+      Find the note by calling `ekg-show-notes-latest-captured` and make sure the
+      note asking about the password is selected, and press `.` to trigger the
+      agent response.  Wait for a response - in a minute there should be a
+      response below the selected note that correctly says the secret password
+      is Orion.  If an agent response failure appears below the note, fail the
+      test immediately and report that message.
       

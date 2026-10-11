@@ -88,6 +88,7 @@ post-hoc."
                 (require 'ekg-agent)
                 (require 'ekg-llm)
                 (require 'ekg-org)
+                (setq ekg-llm-response-mode 'org-mode)
                 (ekg-connect)
                 (let ((provider-elisp (getenv "LLM_TEST_PROVIDER_ELISP")))
                   (diag "[%s] env-set:%s env-len:%d load-path-len:%d\n"

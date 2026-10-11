@@ -23,7 +23,7 @@
 #   ekg-tags --regex "pattern"        # Tags matching regex
 #   ekg-tags --prefix "org/"          # Tags with prefix
 #   ekg-tags --including "moltbot"    # Tags containing substring
-#   ekg-tags --co-tagged prompt       # Tags co-occurring with given tag
+#   ekg-tags --co-tagged "prompt"     # Tags co-occurring with given tag
 #
 # Multiple filters can be combined (AND logic).
 

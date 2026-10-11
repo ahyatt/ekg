@@ -91,15 +91,42 @@
       (should (equal 123 (ekg-note-id note)))
       (should (equal '("tag1") (ekg-note-tags note))))))
 
+(ekg-deftest ekg-logseq-test-parse-hierarchy-metadata ()
+  (should (equal '(:id "123" :parent-id 42)
+                 (ekg-logseq--hierarchy-metadata-from-text
+                  "Item\n  EKG_ID:: string:123\n  EKG_PARENT:: integer:42\n")))
+  (should (equal '(:id "child" :parent-id "parent")
+                 (ekg-logseq--hierarchy-metadata-from-text
+                  (concat "* Item\n:PROPERTIES:\n"
+                          ":EKG_ID: string:child\n"
+                          ":EKG_PARENT: string:parent\n:END:\n")))))
+
+(ekg-deftest-with-db ekg-logseq-test-export-and-restore-hierarchy ()
+  (let ((parent (ekg-note-create :id "parent" :text "Parent"
+                                 :mode 'org-mode :tags '("tag")))
+        (child (ekg-note-create :id 2 :text "Child"
+                                :mode 'org-mode :tags '("tag"))))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (let ((text (ekg-logseq-note-to-logseq-md child "tag")))
+      (should (string-match-p "EKG_ID:: integer:2" text))
+      (should (string-match-p "EKG_PARENT:: string:parent" text)))
+    (ekg-note-set-parent child nil)
+    (ekg-save-note child)
+    (ekg-logseq--apply-imported-hierarchy '((2 . "parent")))
+    (should (equal "parent"
+                   (ekg-note-parent-id (ekg-get-note-with-id 2))))))
+
 (ekg-deftest ekg-logseq-test-note-to-logseq ()
   (let ((note (ekg-note-create :text "line1\nline2\n" :mode 'org-mode :tags '("tag1" "tag2" "tag3"))))
     (setf (ekg-note-id note) 123)
     (setf (ekg-note-modified-time note) 123456789)
     (should (equal
-             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: c696f3d4b296c737155637d3a708d2b986ab6f6f\n:END:\n#[[tag1]] #[[tag2]]\nline1\nline2\n"
+             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: c696f3d4b296c737155637d3a708d2b986ab6f6f\n:EKG_ID: integer:123\n:END:\n#[[tag1]] #[[tag2]]\nline1\nline2\n"
              (ekg-logseq-note-to-logseq-org note "tag3")))
     (should (equal
-             "- Untitled Note\n  id:: 123\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  #[[tag1]] #[[tag2]]\n  line1\n  line2\n"
+             "- Untitled Note\n  id:: 123\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  EKG_ID:: integer:123\n  #[[tag1]] #[[tag2]]\n  line1\n  line2\n"
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
 (ekg-deftest ekg-logseq-test-note-to-logseq-with-inlines ()
@@ -114,10 +141,10 @@
     (unwind-protect
         (progn
           (should (equal
-                   "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: b858cb282617fb0956d960215c8e84d1ccf909c6\n:END:\n#[[tag1]] #[[tag2]]\n{{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
+                   "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: b858cb282617fb0956d960215c8e84d1ccf909c6\n:EKG_ID: integer:123\n:END:\n#[[tag1]] #[[tag2]]\n{{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
                    (ekg-logseq-note-to-logseq-org note "tag3")))
           (should (equal
-                   "- Untitled Note\n  id:: 123\n  ekg_hash:: b858cb282617fb0956d960215c8e84d1ccf909c6\n  #[[tag1]] #[[tag2]]\n  {{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
+                   "- Untitled Note\n  id:: 123\n  ekg_hash:: b858cb282617fb0956d960215c8e84d1ccf909c6\n  EKG_ID:: integer:123\n  #[[tag1]] #[[tag2]]\n  {{embed ((abc))}} Created: 2023-04-21   Modified: 2023-04-22\n"
                    (ekg-logseq-note-to-logseq-md note "tag3"))))
       (set-time-zone-rule nil))))
 
@@ -127,10 +154,10 @@
     (setf (ekg-note-modified-time note) 123456789)
     (setf (ekg-note-properties note) '(:titled/title ("Title")))
     (should (equal
-             "* Title\n:PROPERTIES:\n:ID: http://www.example.com\n:EKG_HASH: c696f3d4b296c737155637d3a708d2b986ab6f6f\n:END:\n#[[tag1]] #[[tag2]]\nhttp://www.example.com\nline1\nline2\n"
+             "* Title\n:PROPERTIES:\n:ID: http://www.example.com\n:EKG_HASH: c696f3d4b296c737155637d3a708d2b986ab6f6f\n:EKG_ID: string:http%3A%2F%2Fwww.example.com\n:END:\n#[[tag1]] #[[tag2]]\nhttp://www.example.com\nline1\nline2\n"
              (ekg-logseq-note-to-logseq-org note "tag3")))
     (should (equal
-             "- Title\n  id:: http://www.example.com\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  #[[tag1]] #[[tag2]]\n  http://www.example.com\n  line1\n  line2\n"
+             "- Title\n  id:: http://www.example.com\n  ekg_hash:: c696f3d4b296c737155637d3a708d2b986ab6f6f\n  EKG_ID:: string:http%3A%2F%2Fwww.example.com\n  #[[tag1]] #[[tag2]]\n  http://www.example.com\n  line1\n  line2\n"
              (ekg-logseq-note-to-logseq-md note "tag3")))))
 
 (ekg-deftest ekg-logseq-test-note-to-logseq-org-demotion ()
@@ -138,7 +165,7 @@
     (setf (ekg-note-id note) 123)
     (setf (ekg-note-modified-time note) 123456789)
     (should (equal
-             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: c3475d5573fae5cd21fb32a9ec2e75a7d0e4d409\n:END:\n** Heading 1\n** Heading 2"
+             "* Untitled Note\n:PROPERTIES:\n:ID: 123\n:EKG_HASH: c3475d5573fae5cd21fb32a9ec2e75a7d0e4d409\n:EKG_ID: integer:123\n:END:\n** Heading 1\n** Heading 2"
              (ekg-logseq-note-to-logseq-org note "tag3")))))
 
 (ekg-deftest ekg-logseq-test-notes-to-logseq ()
@@ -153,11 +180,11 @@
     (should
      (equal (concat
              "#+title: a\n#+ekg_export: true\n\n"
-             "* Untitled Note\n:PROPERTIES:\n:ID: 1\n:EKG_HASH: 829ab920fad6efe045caf218b813be4e42ac779a\n:END:\n#[[b]] #[[c]]\nnote1")
+             "* Untitled Note\n:PROPERTIES:\n:ID: 1\n:EKG_HASH: 829ab920fad6efe045caf218b813be4e42ac779a\n:EKG_ID: integer:1\n:END:\n#[[b]] #[[c]]\nnote1")
             (ekg-logseq-notes-to-logseq (list note1 note2 note3 note4) "a" t)))
     (should (equal (concat
                     "title:: a\nekg_export:: true\n\n"
-                    "- Untitled Note\n  id:: 1\n  ekg_hash:: 829ab920fad6efe045caf218b813be4e42ac779a\n  #[[b]] #[[c]]\n  note1")
+                    "- Untitled Note\n  id:: 1\n  ekg_hash:: 829ab920fad6efe045caf218b813be4e42ac779a\n  EKG_ID:: integer:1\n  #[[b]] #[[c]]\n  note1")
                    (ekg-logseq-notes-to-logseq (list note1 note2 note3 note4) "a" nil)))))
 
 (ekg-deftest ekg-logseq-test-filename-to-tag ()

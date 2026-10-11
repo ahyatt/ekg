@@ -51,6 +51,9 @@
 (defvar ekg-apple-notes--resolved-accounts nil
   "Alist mapping Apple Notes folder names to resolved account names.")
 
+(defvar ekg-apple-notes--pending-parent-relations nil
+  "Child-parent relations collected during the current import pass.")
+
 (defcustom ekg-apple-notes-pandoc-executable "pandoc"
   "Path to the pandoc executable for content conversion."
   :type 'string
@@ -458,6 +461,51 @@ This should be called before pandoc conversion to avoid artifacts."
     (replace-regexp-in-string
      "<div>Tag: [^<]*</div>\n?" "" html)))
 
+;;; ---- Hierarchy Metadata ----
+
+(defun ekg-apple-notes--hierarchy-to-metadata (note)
+  "Return hierarchy metadata lines for exported NOTE."
+  (let ((metadata (ekg-note-export-metadata note)))
+    (string-join
+     (append
+      (list (concat "EKG ID: "
+                    (ekg-export-encode-id (plist-get metadata :id))))
+      (when-let ((parent-id (plist-get metadata :parent-id)))
+        (list (concat "EKG Parent: "
+                      (ekg-export-encode-id parent-id)))))
+     "\n")))
+
+(defun ekg-apple-notes--parse-metadata-field (body name)
+  "Return metadata field NAME parsed from Apple Notes BODY."
+  (let ((case-fold-search t))
+    (when (string-match
+           (format "\\(?:<div>\\)?%s: \\([^<\n]+?\\)\\(?:</div>\\|$\\)"
+                   (regexp-quote name))
+           body)
+      (string-trim (match-string 1 body)))))
+
+(defun ekg-apple-notes--hierarchy-from-body (body)
+  "Return hierarchy export metadata parsed from Apple Notes BODY.
+Return nil when BODY predates hierarchy-aware exports."
+  (when-let ((encoded-id
+              (ekg-apple-notes--parse-metadata-field body "EKG ID")))
+    (list :id (ekg-export-decode-id encoded-id)
+          :parent-id
+          (when-let ((encoded-parent
+                      (ekg-apple-notes--parse-metadata-field
+                       body "EKG Parent")))
+            (ekg-export-decode-id encoded-parent)))))
+
+(defun ekg-apple-notes--remove-hierarchy-html (html)
+  "Remove exported EKG hierarchy metadata from HTML."
+  (let ((html
+         (replace-regexp-in-string
+          "<div><br></div>\n?\\(?:<div>EKG \\(?:ID\\|Parent\\|Root\\|Depth\\): [^<]*</div>\n?\\)+"
+          "" html)))
+    (replace-regexp-in-string
+     "<div>EKG \\(?:ID\\|Parent\\|Root\\|Depth\\): [^<]*</div>\n?"
+     "" html)))
+
 ;;; ---- Content Conversion ----
 
 (defun ekg-apple-notes--pandoc (input from to)
@@ -506,15 +554,18 @@ markdown format [text](url)."
                  (_ "markdown")))
          (html (ekg-apple-notes--pandoc text from "html"))
          (html (ekg-apple-notes--html-delink html))
-         (tags-meta (ekg-apple-notes--tags-to-metadata (ekg-note-tags note))))
+         (tags-meta (ekg-apple-notes--tags-to-metadata (ekg-note-tags note)))
+         (hierarchy-meta (ekg-apple-notes--hierarchy-to-metadata note))
+         (metadata (string-join (delq nil (list tags-meta hierarchy-meta))
+                                "\n")))
     (concat (when (ekg-should-show-id-p (ekg-note-id note))
               (format "<div>Resource: %s</div>\n<div><br></div>\n"
                       (ekg-note-id note)))
             html
-            (when tags-meta
+            (when (not (string-empty-p metadata))
               (concat "\n<div><br></div>\n"
                       (mapconcat (lambda (line) (concat "<div>" line "</div>"))
-                                 (split-string tags-meta "\n")
+                                 (split-string metadata "\n")
                                  "\n"))))))
 
 (defun ekg-apple-notes--relink-org (text)
@@ -543,6 +594,7 @@ backslash line breaks."
 MODE should be the symbol `org-mode' or `markdown-mode'."
   (let* ((body (ekg-apple-notes--remove-resource-html body))
          (body (ekg-apple-notes--remove-tags-html body))
+         (body (ekg-apple-notes--remove-hierarchy-html body))
          (body (ekg-apple-notes--normalize-divs body))
          (to (pcase mode
                ('org-mode "org")
@@ -651,12 +703,21 @@ APPLE-NOTE is an `ekg-apple-notes--note' struct.
 Return the ekg note ID if a note was created or updated."
   (let* ((apple-id (ekg-apple-notes--note-id apple-note))
          (body (ekg-apple-notes--note-body apple-note))
-         (ekg-id (ekg-apple-notes--get-ekg-id apple-id))
+         (hierarchy (ekg-apple-notes--hierarchy-from-body body))
+         (exported-id (plist-get hierarchy :id))
+         (ekg-id (or (ekg-apple-notes--get-ekg-id apple-id)
+                     exported-id))
+         (existing-note-p
+          (and ekg-id (ekg-note-with-id-exists-p ekg-id)))
          (resource (ekg-apple-notes--parse-resource-from-body body))
          (tags (ekg-apple-notes--parse-tags-from-body body))
          (mode ekg-capture-default-mode)
          (text (ekg-apple-notes--from-html body mode)))
-    (if ekg-id
+    (when (and exported-id
+               existing-note-p
+               (not (ekg-apple-notes--get-ekg-id apple-id)))
+      (ekg-apple-notes--set-apple-id exported-id apple-id))
+    (if existing-note-p
         ;; Existing note — only import if modified after our last export.
         (let ((mod-time (ekg-apple-notes--parse-iso-time
                          (ekg-apple-notes--note-modification-date apple-note)))
@@ -670,6 +731,10 @@ Return the ekg note ID if a note was created or updated."
                   (setf (ekg-note-tags note) tags))
                 (ekg-save-note note)
                 (ekg-apple-notes--apply-apple-times note apple-note)
+                (when hierarchy
+                  (push (cons (ekg-note-id note)
+                              (plist-get hierarchy :parent-id))
+                        ekg-apple-notes--pending-parent-relations))
                 (message "ekg-apple-notes: updated ekg note from Apple Notes %s"
                          apple-id)
                 (ekg-note-id note)))))
@@ -680,13 +745,31 @@ Return the ekg note ID if a note was created or updated."
                      :text text
                      :mode mode
                      :tags (or tags '("imported"))
-                     :id resource)))
+                     :id (or exported-id resource))))
           (ekg-save-note note)
           (ekg-apple-notes--apply-apple-times note apple-note)
           (ekg-apple-notes--set-apple-id (ekg-note-id note) apple-id)
+          (when hierarchy
+            (push (cons (ekg-note-id note)
+                        (plist-get hierarchy :parent-id))
+                  ekg-apple-notes--pending-parent-relations))
           (message "ekg-apple-notes: imported new note from Apple Notes %s"
                    apple-id)
           (ekg-note-id note))))))
+
+(defun ekg-apple-notes--apply-imported-hierarchy (relations)
+  "Apply imported child-parent RELATIONS after all notes are saved."
+  (dolist (relation relations)
+    (let ((note (ekg-get-note-with-id (car relation)))
+          (parent-id (cdr relation)))
+      (cond
+       ((null note))
+       ((and parent-id (not (ekg-note-with-id-exists-p parent-id)))
+        (warn "Cannot restore parent %S for imported Apple Note %S"
+              parent-id (car relation)))
+       (t
+        (ekg-note-set-parent note parent-id)
+        (ekg-save-note note))))))
 
 (defun ekg-apple-notes--should-import-note-p (apple-note last-import)
   "Return non-nil if APPLE-NOTE should be considered for import.
@@ -724,6 +807,7 @@ import."
          (apple-notes (ekg-apple-notes--list-notes
                        :since (unless force last-import)))
          (count 0)
+         (ekg-apple-notes--pending-parent-relations nil)
          imported-ids)
     (message "ekg-apple-notes: checking %d notes in Apple Notes folder"
              (length apple-notes))
@@ -739,6 +823,8 @@ import."
           (error (message "ekg-apple-notes: failed to import note %s: %s"
                           (ekg-apple-notes--note-id an)
                           (error-message-string err))))))
+    (ekg-apple-notes--apply-imported-hierarchy
+     (nreverse ekg-apple-notes--pending-parent-relations))
     (message "ekg-apple-notes: imported %d notes" count)
     (ekg-apple-notes--set-last-import start-time)
     (nreverse imported-ids)))

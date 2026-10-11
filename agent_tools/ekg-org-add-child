@@ -155,17 +155,22 @@ ELISP_EXPR="(progn
   (require 'ekg)
   (require 'ekg-org)
   (ekg-connect)
-  (let ((parent (ekg-get-note-with-id $PARENT_ID)))
+  (let ((parent (ekg-get-note-with-id '$PARENT_ID)))
     (if (null parent)
-        (error \"Parent note %s not found\" $PARENT_ID)
-      (let ((note (ekg-note-create
-                   :text \"$NOTE_ELISP\"
-                   :mode '$MODE
-                   :tags (append (list ekg-org-task-tag
-                                       (concat ekg-org-state-tag-prefix \"$STATUS_LOWER\"))
-                                 '$TAGS_ELISP)
-                   :properties (list :titled/title (list \"$TITLE_ELISP\")
-                                     :org/parent $PARENT_ID))))$PROP_EXPRS
+        (error \"Parent note %s not found\" '$PARENT_ID)
+      (let* ((siblings (ekg-org-view--sorted-children (ekg-note-id parent)))
+             (last-id (when siblings (ekg-note-id (car (last siblings)))))
+             (order (if last-id (ekg-org-view--assign-order-after siblings last-id) 0))
+             (note (ekg-note-create
+                    :text \"$NOTE_ELISP\"
+                    :mode '$MODE
+                    :tags (append (list ekg-org-task-tag
+                                        (concat ekg-org-state-tag-prefix \"$STATUS_LOWER\"))
+                                  '$TAGS_ELISP)
+                    :properties (list :titled/title (list \"$TITLE_ELISP\")
+                                      :org/sort-order order
+                                      :hierarchy/parent (ekg-note-id parent)))))
+        $PROP_EXPRS
         (ekg-save-note note)
         (format \"%s\" (ekg-note-id note))))))"
 
