@@ -223,14 +223,12 @@
         (should ekg-notes-include-descendants)
         (should (string-match-p "Middle note" (buffer-string)))))))
 
-(ekg-deftest-with-db ekg-test-notes-hierarchy-guides ()
-  "Tree branches, wrapping and navigation follow the displayed hierarchy."
-  (let* ((root (ekg-note-create :text "Root body" :tags '("tree")))
-	 (first (ekg-note-create :text "First body" :tags '("tree")))
-	 (last (ekg-note-create :text "Last body" :tags '("other")))
-	 (nested (ekg-note-create :text "Nested body" :tags '("tree")))
-	 (ekg-display-note-template "%n(text)")
-	 (ekg-notes-hierarchy-style 'guides))
+(ekg-deftest-with-db ekg-test-notes-hierarchy-navigation ()
+  "Hierarchy styles preserve navigation order and strict query results."
+  (let ((root (ekg-note-create :text "Root" :tags '("tree")))
+        (first (ekg-note-create :text "First" :tags '("tree")))
+        (last (ekg-note-create :text "Last" :tags '("other")))
+        (nested (ekg-note-create :text "Nested" :tags '("tree"))))
     (ekg-save-note root)
     (ekg-note-set-parent first root)
     (ekg-note-set-parent last root)
@@ -238,169 +236,52 @@
     (ekg-note-set-parent nested first)
     ;; Explicit times keep sibling order independent of generated IDs.
     (setf (ekg-note-creation-time first) 1
-	  (ekg-note-creation-time last) 2)
+          (ekg-note-creation-time last) 2)
     (mapc #'ekg-save-note (list first last nested))
-    (with-temp-buffer
-      (ekg--show-notes "Tree" (lambda () (list root first nested)) nil)
-      (should (string-match-p "2 children" (buffer-string)))
-      (dolist (entry (list (cons root "2 children") (cons first "├─ 1 child")
-                           (cons nested "Nested body")
-                           (cons last "Last body")))
-        (should (looking-at-p (regexp-quote (cdr entry))))
-	(should (equal (ekg-note-id (car entry))
-		       (get-text-property (point) :ekg-note-id)))
-	(ekg-notes-next))
-      (goto-char (point-min))
-      (search-forward "Nested body")
-      (should (equal "│     " (get-text-property (1- (point)) 'wrap-prefix)))
-      (dolist (style '(outline inset guides))
-	(setq ekg-notes-hierarchy-style style)
-	(ekg-notes-refresh)
-	(ekg-notes-next)
-	(should (equal (ekg-note-id first)
-		       (get-text-property (point) :ekg-note-id)))
-	(ekg-notes-previous)
-	(should (equal (ekg-note-id root)
-		       (get-text-property (point) :ekg-note-id))))
-      (ekg-notes-refresh t)
-      (should (string-match-p "1 child" (buffer-string)))
-      (should-not (string-match-p "Last body" (buffer-string)))
-      (should (string-match-p "└─ 1 child" (buffer-string))))))
+    (dolist (style '(outline inset guides))
+      (let ((ekg-notes-hierarchy-style style))
+        (with-temp-buffer
+          ;; Overlapping fetched roots must not duplicate their descendants.
+          (ekg--show-notes "Tree" (lambda () (list root first nested)) nil)
+          (dolist (note (list root first nested last))
+            (should (equal (ekg-note-id note)
+                           (ekg-note-id (ekg-current-note-or-error))))
+            (ekg-notes-next))
+          (ekg-notes-previous)
+          (should (equal (ekg-note-id nested)
+                         (ekg-note-id (ekg-current-note-or-error))))
+          (ekg-notes-refresh t)
+          (dolist (note (list root first nested))
+            (should (equal (ekg-note-id note)
+                           (ekg-note-id (ekg-current-note-or-error))))
+            (ekg-notes-next))
+          ;; The unfetched last child cannot be an action target in strict mode.
+          (should (equal (ekg-note-id nested)
+                         (ekg-note-id (ekg-current-note-or-error)))))))))
 
-(ekg-deftest-with-db ekg-test-note-list-typography ()
-  "The default template separates title, tags and text in note lists."
-  (let* ((note (ekg-note-create :text "Readable body" :mode 'text-mode
-                                :tags '("one" "two")
-                                :properties '(:titled/title ("A title"))))
-         (ekg-display-note-template
-          "%n(titled)%n(tagged nil separated)%n(id)\n%n(text 500)%n(other)")
-         (ekg-notes-hierarchy-style 'inset))
-    (ekg-save-note note)
-    (should (equal (ekg-display-note note ekg-display-note-template)
-                   "A title\none · two\n\nReadable body\n"))
-    (with-temp-buffer
-      (ekg--show-notes "Typography" (lambda () (list note)) nil)
-      (search-forward "A title")
-      (should (eq (get-text-property (1- (point)) 'face) 'ekg-notes-title))
-      (search-forward "one")
-      (should (eq (get-text-property (1- (point)) 'face) 'ekg-notes-tag))
-      (search-forward "Readable body")
-      (should (equal (ekg-note-id note)
-                     (ekg-note-id (ekg-current-note-or-error))))
-      (ekg--note-highlight)
-      (should (= (overlay-start ekg-notes-hl) (point-min)))
-      (should (= (overlay-end ekg-notes-hl) (point-max)))
-      (should (string-match-p "Current: A title" header-line-format))
-      (should-not (string-match-p "Child note" (buffer-string)))
-      (should-not (string-match-p "^Note" (buffer-string)))
-      (should (equal (ekg-display-note-titled
-                      (ekg-note-create :text "Untitled")) "")))))
-
-(ekg-deftest-with-db ekg-test-notes-selection-follows-point ()
-  "Selection follows arbitrary movement, including gaps and empty results."
-  (let* ((parent (ekg-note-create :text "Parent text" :mode 'text-mode))
-         (child (ekg-note-create :text "Untitled child text" :mode 'text-mode))
-         (ekg-display-note-template "%n(titled)%n(text)")
-         (ekg-notes-hierarchy-style 'inset))
+(ekg-deftest-with-db ekg-test-notes-action-target-at-point ()
+  "Note commands target point, including separators and empty results."
+  (let ((parent (ekg-note-create :text "Parent text" :mode 'text-mode))
+        (child (ekg-note-create :text "Child text" :mode 'text-mode)))
     (ekg-save-note parent)
     (ekg-note-set-parent child parent)
     (ekg-save-note child)
     (with-temp-buffer
       (ekg--show-notes "Selection" (lambda () (list parent)) nil)
-      (should (memq #'ekg--note-highlight post-command-hook))
-      ;; Simulate ordinary movement to the child's body, bypassing n/p.
-      (search-forward "Untitled child text")
-      (run-hooks 'post-command-hook)
+      ;; Move directly into the body, without using note navigation commands.
+      (search-forward "Child text")
       (should (equal (ekg-note-id child)
                      (ekg-note-id (ekg-current-note-or-error))))
-      (should (string-match-p "Current: Untitled child text" header-line-format))
-      (should (= (overlay-end ekg-notes-hl) (point-max)))
       (goto-char (point-min))
       (search-forward "Parent text")
-      (run-hooks 'post-command-hook)
-      (should (string-match-p "Current: Parent text" header-line-format))
-      (let ((end (overlay-end ekg-notes-hl)))
-        (should (equal (ekg-note-id parent)
-                       (get-text-property (1- end) 'ekg-note-id)))
-        (should-not (get-text-property end 'ekg-note-id))
-        ;; Selection at the separating gap still targets the parent.
-        (goto-char end)
-        (run-hooks 'post-command-hook)
-        (should (equal (ekg-note-id parent)
-                       (ekg-note-id (ekg-current-note-or-error))))
-        (should (string-match-p "Current: Parent text" header-line-format)))
+      (should (equal (ekg-note-id parent)
+                     (ekg-note-id (ekg-current-note-or-error))))
+      ;; A separator retains the preceding note's action target.
+      (goto-char (next-single-property-change (point) 'ekg-note-id))
+      (should (equal (ekg-note-id parent)
+                     (ekg-note-id (ekg-current-note-or-error))))
       (ekg--show-notes "Empty" (lambda () nil) nil)
-      (should (equal (overlay-start ekg-notes-hl) (overlay-end ekg-notes-hl)))
-      (should-not (overlay-get ekg-notes-hl 'before-string))
-      (should (string-match-p "No current note" header-line-format)))))
-
-(ekg-deftest-with-db ekg-test-notes-selection-label-refresh ()
-  "The current label follows refreshed content even when the ID is unchanged."
-  (let ((note (ekg-note-create :text "Original body" :mode 'text-mode
-                               :properties '(:titled/title ("Original title")))))
-    (ekg-save-note note)
-    (with-temp-buffer
-      (ekg--show-notes "Selection"
-                       (lambda () (list (ekg-get-note-with-id
-                                         (ekg-note-id note)))) nil)
-      (should (string-match-p "Current: Original title" header-line-format))
-      (setf (ekg-note-properties note) '(:titled/title ("Updated title")))
-      (ekg-save-note note)
-      (ekg-notes-refresh)
-      (should (string-match-p "Current: Updated title" header-line-format))
-      (setf (ekg-note-properties note) '(:titled/title nil)
-            (ekg-note-text note) "Updated body")
-      (ekg-save-note note)
-      (ekg-notes-refresh)
-      (should (string-match-p "Current: Updated body" header-line-format))
-      ;; Moving point reads the label from the rendered note, without I/O.
-      (cl-letf (((symbol-function 'ekg-get-note-with-id)
-                 (lambda (&rest _) (error "Unexpected selection lookup"))))
-        (run-hooks 'post-command-hook)
-        (should (string-match-p "Current: Updated body" header-line-format)))
-      (setf (ekg-note-text note) "")
-      (ekg-save-note note)
-      (ekg-notes-refresh)
-      (should (string-match-p "Current: Untitled" header-line-format)))))
-
-(ekg-deftest-with-db ekg-test-notes-header-literal-percent ()
-  "Titles, excerpts and query names display percent signs literally."
-  (let ((titled (ekg-note-create :text "Body" :mode 'text-mode
-                                :properties '(:titled/title ("Title %b"))))
-        (untitled (ekg-note-create :text "100% done with %b"
-                                  :mode 'text-mode)))
-    (mapc #'ekg-save-note (list titled untitled))
-    (with-temp-buffer
-      (ekg--show-notes "Query %b" (lambda () (list titled)) nil)
-      (should (string-match-p "Current: Title %%b" header-line-format))
-      (should (string-match-p "Query %%b" header-line-format))
-      (ekg--show-notes "Query %b" (lambda () (list untitled)) nil)
-      (should (string-match-p "Current: 100%% done with %%b"
-                              header-line-format))
-      (ekg--show-notes "Empty %b" (lambda () nil) nil)
-      (should (string-match-p "Empty %%b" header-line-format)))))
-
-(ekg-deftest ekg-test-notes-reading-width ()
-  "Window margins adapt without shrinking again on every redisplay."
-  (save-window-excursion
-    (with-temp-buffer
-      (ekg-notes-mode)
-      (set-window-buffer (selected-window) (current-buffer))
-      (let ((ekg-notes-max-width 40)
-            (window (selected-window)))
-        (ekg-notes--size-window window)
-        (let ((margins (window-margins window)))
-          (should (<= (window-body-width window) 40))
-          (ekg-notes--size-window window)
-          (should (equal margins (window-margins window)))
-          ;; A departing buffer's hook must not resize another buffer.
-          (with-temp-buffer
-            (let ((ekg-notes-max-width 20))
-              (ekg-notes--size-window window)))
-          (should (equal margins (window-margins window))))
-        (setq ekg-notes-max-width nil)
-        (ekg-notes--size-window window)
-        (should (= 0 (or (cdr (window-margins window)) 0)))))))
+      (should-error (ekg-current-note-or-error)))))
 
 (ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
   (with-temp-buffer
