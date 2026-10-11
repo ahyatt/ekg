@@ -741,7 +741,10 @@ Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
   "Return the root notes of the current task view."
   (if ekg-org-view--root-id
       (when-let* ((note (ekg-get-note-with-id ekg-org-view--root-id)))
-        (when (ekg-note-active-p note) (list note)))
+        (when (and (ekg-note-active-p note)
+                   (eq (and (member ekg-org-archive-tag (ekg-note-tags note)) t)
+                       (and ekg-org-view--archive t)))
+          (list note)))
     (ekg-org-view--sorted-top-level ekg-org-view--archive)))
 
 ;; Navigation and task commands use the normal notes UI's IDs and depth.
@@ -854,15 +857,25 @@ Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
 (defun ekg-org-view--refresh (&optional target-id)
   "Re-render the view in place without switching windows.
 If TARGET-ID is non-nil, move point to that note's heading after
-re-rendering and ensure it is visible.  When no TARGET-ID is given,
-the note at point is preserved across the rerender.  When insert
-mode is active, the refresh is deferred until insert mode ends."
+re-rendering, unfolding its ancestors to reveal it.  Without TARGET-ID,
+preserve the note at point, or its nearest visible ancestor if folded.
+When insert mode is active, defer the refresh until insert mode ends."
   (if ekg-org-view--insert-overlay
       (setq ekg-org-view--refresh-pending t)
-    (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
+    (let* ((restore-id (or target-id (ekg-org-view--note-at-point)))
+           (ancestors (when-let* ((note (and restore-id
+                                            (ekg-get-note-with-id restore-id))))
+                        (mapcar #'ekg-note-id (ekg-note-ancestors note)))))
+      ;; Actions that explicitly select a task must reveal it.  Background
+      ;; refreshes retain folds and select the nearest visible ancestor.
+      (when target-id
+        (setq ekg-notes-collapsed-ids
+              (seq-difference ekg-notes-collapsed-ids ancestors)))
       (ekg--show-notes (if ekg-org-view--archive "Archived tasks" "Org tasks")
                        #'ekg-org-view--fetch-notes nil)
-      (when (and restore-id (ekg-org-view--goto-note-id restore-id))
+      (when (and restore-id
+                 (seq-some #'ekg-org-view--goto-note-id
+                           (cons restore-id (reverse ancestors))))
         (let ((windows (get-buffer-window-list (current-buffer) nil t)))
           (dolist (win windows)
             (set-window-point win (point))
@@ -913,6 +926,8 @@ mode is active, the refresh is deferred until insert mode ends."
 (defun ekg-org-view-add-child (title)
   "Create a child task of the task at point with TITLE."
   (interactive "sChild task: " ekg-org-view-mode)
+  (when ekg-org-view--archive
+    (user-error "Create tasks in the active task view"))
   (let ((note (ekg-org-view--require-task-at-point)))
     (unless (string-empty-p (string-trim title))
       (setq ekg-notes-collapsed-ids
@@ -1173,7 +1188,7 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
         (let ((ekg-org--inhibit-view-refresh t))
           (ekg-note-set-parent note (ekg-note-id prev-sibling))
           (ekg-save-note note))
-        (ekg-org-view--refresh)))))
+        (ekg-org-view--refresh id)))))
 
 ;;; Task insertion mode
 
@@ -1416,8 +1431,18 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 
 (defun ekg-org-view--insert-create-task (slot title)
   "Create a new task from SLOT data with TITLE."
+  (when ekg-org-view--archive
+    (user-error "Create tasks in the active task view"))
   (let* ((parent-id (plist-get slot :parent-id))
          (after-id (plist-get slot :after-id))
+         (parent (when parent-id (ekg-get-note-with-id parent-id)))
+         (_ (when (and parent
+                       (member ekg-org-archive-tag (ekg-note-tags parent)))
+              (user-error "Cannot create tasks under an archived parent")))
+         (initial-state
+          (or (car (seq-difference (ekg-org--todo-keywords)
+                                  (ekg-org--done-keywords)))
+              (user-error "No unfinished TODO keyword is configured")))
          (ekg-org--inhibit-view-refresh t)
          (siblings (if parent-id
                        (ekg-org-view--sorted-children parent-id)
@@ -1434,14 +1459,13 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                                (ekg-note-id sib) order)
                               (cl-incf order)))))
                        0))
-         (parent-tags (when parent-id
-                        (ekg-org-view--visible-tags
-                         (ekg-get-note-with-id parent-id))))
+         (parent-tags (when parent (ekg-org-view--visible-tags parent)))
          (note (ekg-note-create
                 :text ""
                 :mode 'org-mode
                 :tags (append (list ekg-org-task-tag
-                                    (concat ekg-org-state-tag-prefix "todo"))
+                                    (concat ekg-org-state-tag-prefix
+                                            (downcase initial-state)))
                               parent-tags)
                 :properties (append
                              (list :titled/title (list title)
@@ -1495,6 +1519,8 @@ A placeholder shows where the new task will be inserted.  Use
 \\`n'/\\`p' to move between positions, \\`R'/\\`L' to demote/promote,
 \\`RET' to confirm, and \\`C-g' to cancel."
   (interactive nil ekg-org-view-mode)
+  (when ekg-org-view--archive
+    (user-error "Create tasks in the active task view"))
   (let ((slots (ekg-org-view--build-insert-slots)))
     (if (null slots)
         ;; Empty view — just create a top-level task directly.
@@ -1607,6 +1633,7 @@ Accepts and ignores arguments so it can be used directly on
 
 \\{ekg-org-view-mode-map}"
   (setq-local ekg-notes-children-function #'ekg-org-view--children
+              ekg-notes-include-descendants t
               ekg-notes-show-child-count nil
               ekg-display-note-template
               (concat "%n(titled)%n(org-status)%n(org-tags nil separated)"

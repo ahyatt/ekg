@@ -1156,4 +1156,91 @@ deferred refresh should fire once insert mode ends."
     (should (equal (ekg-note-parent-id (ekg-current-note-or-error)) parent))
     (should (= (length (ekg-notes-visible-ids)) 3))))
 
+(ekg-deftest-with-db ekg-org-test-view-independent-of-strict-notes ()
+  "The task hierarchy is available with strict ordinary note lists."
+  (ekg-org-add-schema)
+  (let* ((ekg-notes-include-descendants nil)
+         (parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent)))
+    (ekg-org-view)
+    (should (equal (ekg-notes-visible-ids) (list parent child)))))
+
+(ekg-deftest-with-db ekg-org-test-view-insert-under-folded-parent ()
+  "Inserting into a folded tree selects the new task for subsequent actions."
+  (ekg-org-add-schema)
+  (let ((parent (ekg-org-test--add-task "Parent")))
+    (ekg-org-view)
+    (ekg-org-view-toggle-collapse)
+    (ekg-org-view--insert-create-task
+     (list :parent-id parent :after-id nil) "Child")
+    (let ((note (ekg-current-note-or-error)))
+      (should (equal (ekg-note-parent-id note) parent))
+      (should (equal (ekg-org--note-title note) "Child")))))
+
+(ekg-deftest-with-db ekg-org-test-view-demote-under-folded-parent ()
+  "Demoting into a folded tree preserves the action target."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (task (ekg-org-test--add-task "Task")))
+    (ekg-org-view)
+    (ekg-org-view-toggle-collapse)
+    (ekg-org-view-next-heading)
+    (ekg-org-view-demote)
+    (should (equal (ekg-note-parent-id (ekg-get-note-with-id task)) parent))
+    (should (equal (ekg-note-id (ekg-current-note-or-error)) task))))
+
+(ekg-deftest-with-db ekg-org-test-view-fold-all-selects-ancestor ()
+  "Folding all tasks selects the current task's own visible ancestor."
+  (ekg-org-add-schema)
+  (let* ((_first (ekg-org-test--add-task "First"))
+         (parent (ekg-org-test--add-task "Second"))
+         (child (ekg-org-test--add-task "Child" parent)))
+    (ekg-org-view)
+    (ekg-org-view--goto-note-id child)
+    (ekg-org-view-toggle-all)
+    (should (equal (ekg-note-id (ekg-current-note-or-error)) parent))))
+
+(ekg-deftest-with-db ekg-org-test-view-archive-rejects-creation ()
+  "Archived views cannot create active tasks under archived roots."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (note (ekg-get-note-with-id parent)))
+    (push ekg-org-archive-tag (ekg-note-tags note))
+    (ekg-save-note note)
+    (ekg-org-archive-view)
+    (should-error (ekg-org-view-add-child "Child") :type 'user-error)
+    (should-error (ekg-org-view-create) :type 'user-error)
+    (should-error (ekg-org-view--insert-create-task
+                   (list :parent-id parent :after-id nil) "Child")
+                  :type 'user-error)
+    (should-not (ekg-note-child-notes (ekg-get-note-with-id parent)))
+    (should-not (ekg-org-get-tasks))))
+
+(ekg-deftest-with-db ekg-org-test-view-create-custom-state ()
+  "New children use the first configured unfinished task state."
+  (ekg-org-add-schema)
+  (let* ((org-todo-keywords '((sequence "OPEN(o)" "|" "CLOSED(c)")))
+         (parent (ekg-org-test--add-task "Parent" nil "OPEN")))
+    (ekg-org-view)
+    (ekg-org-view-add-child "Child")
+    (should (equal (ekg-note-parent-id (ekg-current-note-or-error)) parent))
+    (should (equal (ekg-org-task-state (ekg-current-note-or-error)) "OPEN"))
+    (let ((org-todo-keywords '((sequence "|" "CLOSED"))))
+      (should-error (ekg-org-view-add-child "Invalid") :type 'user-error))
+    (should (= 1 (length (ekg-note-child-notes
+                         (ekg-get-note-with-id parent)))))))
+
+(ekg-deftest-with-db ekg-org-test-focused-view-archive-scope ()
+  "Archiving a focused root removes it and prevents active child creation."
+  (ekg-org-add-schema)
+  (let ((parent (ekg-org-test--add-task "Parent")))
+    (ekg-org-view-task parent)
+    (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+      (ekg-org-view-archive))
+    (should-not (ekg-notes-visible-ids))
+    (should-error (ekg-org-view--insert-create-task
+                   (list :parent-id parent :after-id nil) "Child")
+                  :type 'user-error)
+    (should-not (ekg-note-child-notes (ekg-get-note-with-id parent)))))
+
 (provide 'ekg-org-test)
