@@ -4,9 +4,9 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((emacs "28.1") (ekg "0.8.0") (futur "1.2"))
+;; Package-Requires: ((emacs "28.1") (ekg "0.10.0") (futur "1.2"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.0.1
+;; Version: 0.1.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
