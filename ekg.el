@@ -1505,7 +1505,9 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
         (let ((guide (propertize body-prefix 'face guide-face)))
           (add-text-properties start (point-max)
                                `(line-prefix ,guide wrap-prefix ,guide))
-          (when (and (not heading) (< start (point-max)))
+          (when (and (or (not heading)
+                         (eq ekg-notes-hierarchy-style 'outline))
+                     (< start (point-max)))
             (put-text-property
              start (save-excursion (goto-char start) (line-beginning-position 2))
              'line-prefix
@@ -1566,6 +1568,7 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
   "Major mode for showing a list of notes that can be interacted with."
   (setq-local default-directory (ekg--notes-directory)
               line-spacing 0.15)
+  ;; Buffer-local resize callbacks receive a window, not a frame.
   (add-hook 'window-size-change-functions #'ekg-notes--size-window nil t)
   (add-hook 'post-command-hook #'ekg--note-highlight nil t)
   (setq truncate-lines t)
