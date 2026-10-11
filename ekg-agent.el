@@ -4214,23 +4214,31 @@ notes start as TODO.  Validate the whole graph before creating notes."
           (setf (ekg-note-id note) (ekg--generate-id)))
         (puthash (gethash "id" task) note notes)
         (push (cons (gethash "id" task) (ekg-note-id note)) result)))
-    (cl-loop for task in tasks for order from 0
-             for note = (gethash (gethash "id" task) notes)
-             do
-             (setf (ekg-note-properties note)
-                   (append (ekg-note-properties note)
-                           (list :org/sort-order order
-                                 :org/depends-on
-                                 (mapcar (lambda (id) (cdr (assoc id result)))
-                                         (append (gethash "depends_on" task) nil)))
-                           (when (or (gethash "parent" task) parent-id)
-                             (list :hierarchy/parent
-                                   (if-let* ((local-parent
-                                              (gethash "parent" task)))
-                                       (cdr (assoc local-parent result))
-                                     parent-id)))))
-             (ekg-org-set-dependency-type
-              note (intern (gethash "execution" task))))
+    (let* ((existing-siblings (when parent-id
+                                (ekg-org-view--sorted-children parent-id)))
+           (base-order (if existing-siblings
+                           (1+ (apply #'max (mapcar #'ekg-org-view--sort-order existing-siblings)))
+                         0)))
+      (cl-loop for task in tasks for order from 0
+               for note = (gethash (gethash "id" task) notes)
+               for task-parent = (gethash "parent" task)
+               for sort-order = (if (and (null task-parent) parent-id)
+                                    (+ base-order order)
+                                  order)
+               do
+               (setf (ekg-note-properties note)
+                     (append (ekg-note-properties note)
+                             (list :org/sort-order sort-order
+                                   :org/depends-on
+                                   (mapcar (lambda (id) (cdr (assoc id result)))
+                                           (append (gethash "depends_on" task) nil)))
+                             (when (or task-parent parent-id)
+                               (list :hierarchy/parent
+                                     (if task-parent
+                                         (cdr (assoc task-parent result))
+                                       parent-id)))))
+               (ekg-org-set-dependency-type
+                note (intern (gethash "execution" task)))))
     (let ((save-hooks ekg-note-save-hook)
           (embedding-hook
            (memq 'ekg-embedding-generate-for-note-async ekg-note-pre-save-hook))

@@ -1635,6 +1635,26 @@ result when the agent finishes."
       (should (= (length (ekg-org-get-child-notes-of-id
                           (ekg-note-id parent))) 1)))))
 
+(ekg-deftest-with-db ekg-agent-test-plan-import-under-task-with-existing-children ()
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-note-create
+                  :text "Existing work" :mode 'org-mode
+                  :tags '("org/task" "org/state/todo")
+                  :properties '(:titled/title ("Parent task"))))
+         (_ (ekg-save-note parent))
+         (child1 (ekg-note-create
+                  :text "Child 1" :mode 'org-mode
+                  :tags '("org/task" "org/state/todo")
+                  :properties (list :titled/title '("Child 1")
+                                    :hierarchy/parent (ekg-note-id parent)
+                                    :org/sort-order 5))))
+    (ekg-save-note child1)
+    (let* ((ids (ekg-org-plan-import ekg-agent-test-plan--json nil
+                                     (ekg-note-id parent)))
+           (root (ekg-get-note-with-id (cdr (assoc "root" ids)))))
+      (should (equal (ekg-note-parent-id root) (ekg-note-id parent)))
+      (should (> (plist-get (ekg-note-properties root) :org/sort-order) 5)))))
+
 (ekg-deftest-with-db ekg-agent-test-plan-question-tag ()
   (let* ((ids (ekg-org-plan-import ekg-agent-test-plan-with-question--json
                                     '("project")))

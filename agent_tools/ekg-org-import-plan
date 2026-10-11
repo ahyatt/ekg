@@ -41,7 +41,15 @@ def main():
     if result.returncode or result.stdout.startswith("*ERROR*"):
         print(result.stderr or result.stdout, file=sys.stderr)
         return 1
-    print(json.loads(result.stdout))
+    raw = json.loads(result.stdout)
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+            print(json.dumps(data, indent=2))
+        except json.JSONDecodeError:
+            print(raw)
+    else:
+        print(json.dumps(raw, indent=2))
     return 0
 
 

@@ -1594,15 +1594,18 @@ The following keybindings are available in =ekg-org-view-mode=:
 | =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
 | =TAB=   | =ekg-org-view-toggle-collapse=   | Collapse or expand the subtree    |
 | =RET=   | =ekg-org-view-open-note=         | Open the note for editing in ekg  |
-| =c=     | =ekg-org-view-create-child=      | Create a child task under point   |
-| =C=     | =ekg-org-view-create-sibling=    | Create a sibling task after point |
+| =c=     | =ekg-org-view-create=            | Enter insertion mode to create a new task |
+| =C-c C-r= | =ekg-org-view-respond=         | Capture a response to the task at point |
 | =a=     | =ekg-org-view-archive=           | Archive the task at point         |
 | =d=     | =ekg-org-view-delete=            | Trash (soft-delete) the task      |
 | =L= / =l= | =ekg-org-view-promote=         | Promote: make task a sibling of its parent |
 | =R= / =r= | =ekg-org-view-demote=          | Demote: make task a child of its previous sibling |
 | =U=     | =ekg-org-view-move-up=           | Move task up (swap with previous sibling) |
 | =D=     | =ekg-org-view-move-down=         | Move task down (swap with next sibling) |
+| =w=     | =ekg-org-view-refile=            | Refile task to a new location in hierarchy |
 | =g=     | =ekg-org-view-refresh=           | Manually refresh the view         |
+| =C-c C-s= | =ekg-org-set-schedule=         | Set the scheduled date of current task |
+| =C-c C-d= | =ekg-org-set-deadline=         | Set the deadline of current task  |
 
 **** How it differs from org-mode
 
@@ -1625,9 +1628,9 @@ The following keybindings are available in =ekg-org-view-mode=:
 When =ekg-agent= is loaded alongside =ekg-org=, the agent gains tools for
 working with org tasks:
 
-- *add_org_task*: Create a new task with a title, description, tags, optional
+- *add_org_item*: Create a new task with a title, description, tags, optional
   parent, state, deadline, and scheduled date.
-- *set_org_task_status*: Change the TODO state of an existing task.
+- *set_org_item_status*: Change the TODO state of an existing task.
 - *list_org_items*: List all active tasks, optionally filtered by state.
 
 These tools are registered automatically by =ekg-org-initialize= when

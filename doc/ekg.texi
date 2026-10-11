@@ -2273,11 +2273,11 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @tab @samp{ekg-org-view-open-note}
 @tab Open the note for editing in ekg
 @item @samp{c}
-@tab @samp{ekg-org-view-create-child}
-@tab Create a child task under point
-@item @samp{C}
-@tab @samp{ekg-org-view-create-sibling}
-@tab Create a sibling task after point
+@tab @samp{ekg-org-view-create}
+@tab Enter insertion mode to create a new task
+@item @samp{C-c C-r}
+@tab @samp{ekg-org-view-respond}
+@tab Capture a response to the task at point
 @item @samp{a}
 @tab @samp{ekg-org-view-archive}
 @tab Archive the task at point
@@ -2296,9 +2296,18 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @item @samp{D}
 @tab @samp{ekg-org-view-move-down}
 @tab Move task down (swap with next sibling)
+@item @samp{w}
+@tab @samp{ekg-org-view-refile}
+@tab Refile task to a new location in hierarchy
 @item @samp{g}
 @tab @samp{ekg-org-view-refresh}
 @tab Manually refresh the view
+@item @samp{C-c C-s}
+@tab @samp{ekg-org-set-schedule}
+@tab Set the scheduled date of current task
+@item @samp{C-c C-d}
+@tab @samp{ekg-org-set-deadline}
+@tab Set the deadline of current task
 @end multitable
 
 @item
@@ -2334,10 +2343,10 @@ working with org tasks:
 
 @itemize
 @item
-@strong{add@math{_org}@math{_task}}: Create a new task with a title@comma{} description@comma{} tags@comma{} optional
+@strong{add@math{_org}@math{_item}}: Create a new task with a title@comma{} description@comma{} tags@comma{} optional
 parent@comma{} state@comma{} deadline@comma{} and scheduled date.
 @item
-@strong{set@math{_org}@math{_task}@math{_status}}: Change the TODO state of an existing task.
+@strong{set@math{_org}@math{_item}@math{_status}}: Change the TODO state of an existing task.
 @item
 @strong{list@math{_org}@math{_items}}: List all active tasks@comma{} optionally filtered by state.
 @end itemize
