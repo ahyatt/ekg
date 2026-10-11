@@ -223,6 +223,66 @@
         (should ekg-notes-include-descendants)
         (should (string-match-p "Middle note" (buffer-string)))))))
 
+(ekg-deftest-with-db ekg-test-notes-hierarchy-navigation ()
+  "Hierarchy styles preserve navigation order and strict query results."
+  (let ((root (ekg-note-create :text "Root" :tags '("tree")))
+        (first (ekg-note-create :text "First" :tags '("tree")))
+        (last (ekg-note-create :text "Last" :tags '("other")))
+        (nested (ekg-note-create :text "Nested" :tags '("tree"))))
+    (ekg-save-note root)
+    (ekg-note-set-parent first root)
+    (ekg-note-set-parent last root)
+    (ekg-save-note first)
+    (ekg-note-set-parent nested first)
+    ;; Explicit times keep sibling order independent of generated IDs.
+    (setf (ekg-note-creation-time first) 1
+          (ekg-note-creation-time last) 2)
+    (mapc #'ekg-save-note (list first last nested))
+    (dolist (style '(outline inset guides))
+      (let ((ekg-notes-hierarchy-style style))
+        (with-temp-buffer
+          ;; Overlapping fetched roots must not duplicate their descendants.
+          (ekg--show-notes "Tree" (lambda () (list root first nested)) nil)
+          (dolist (note (list root first nested last))
+            (should (equal (ekg-note-id note)
+                           (ekg-note-id (ekg-current-note-or-error))))
+            (ekg-notes-next))
+          (ekg-notes-previous)
+          (should (equal (ekg-note-id nested)
+                         (ekg-note-id (ekg-current-note-or-error))))
+          (ekg-notes-refresh t)
+          (dolist (note (list root first nested))
+            (should (equal (ekg-note-id note)
+                           (ekg-note-id (ekg-current-note-or-error))))
+            (ekg-notes-next))
+          ;; The unfetched last child cannot be an action target in strict mode.
+          (should (equal (ekg-note-id nested)
+                         (ekg-note-id (ekg-current-note-or-error)))))))))
+
+(ekg-deftest-with-db ekg-test-notes-action-target-at-point ()
+  "Note commands target point, including separators and empty results."
+  (let ((parent (ekg-note-create :text "Parent text" :mode 'text-mode))
+        (child (ekg-note-create :text "Child text" :mode 'text-mode)))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    (with-temp-buffer
+      (ekg--show-notes "Selection" (lambda () (list parent)) nil)
+      ;; Move directly into the body, without using note navigation commands.
+      (search-forward "Child text")
+      (should (equal (ekg-note-id child)
+                     (ekg-note-id (ekg-current-note-or-error))))
+      (goto-char (point-min))
+      (search-forward "Parent text")
+      (should (equal (ekg-note-id parent)
+                     (ekg-note-id (ekg-current-note-or-error))))
+      ;; A separator retains the preceding note's action target.
+      (goto-char (next-single-property-change (point) 'ekg-note-id))
+      (should (equal (ekg-note-id parent)
+                     (ekg-note-id (ekg-current-note-or-error))))
+      (ekg--show-notes "Empty" (lambda () nil) nil)
+      (should-error (ekg-current-note-or-error)))))
+
 (ekg-deftest ekg-test-inline-images-suppress-org-parser-warning ()
   (with-temp-buffer
     (insert "[[attachment:foo.png]]\n")
