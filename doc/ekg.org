@@ -662,32 +662,6 @@ tags.  That is the case for many commands, but not all.  For example,
 :PROPERTIES:
 :CUSTOM_ID: customizing-note-display
 :END:
-Note lists show parent and child notes as inset blocks, with a quiet vertical
-rule beside each child.  Child notes begin directly with their title or
-content, and parents show the number of visible immediate children.  The
-current note is shaded across its complete text and marked in the gutter.
-The header line names it with =Current:=, using its title or a text excerpt.
-Selection follows point, including clicks and ordinary cursor movement as
-well as =n= and =p=.  All note commands act on that current note.
-
-Customize ~ekg-notes-hierarchy-style~ to choose =inset= (the default),
-=guides= (connecting tree lines), or =outline= (indented headings with stars
-indicating depth).  The faces
-~ekg-notes-hierarchy-guide~ and ~ekg-notes-hierarchy-heading~ control their
-appearance.  Refresh the notes buffer with =g= after changing the style.
-
-The default template presents the title first, followed by smaller tags
-separated by dots, the resource (when present), and the note text after a
-blank line.  Untitled notes omit the title line.  The faces ~ekg-notes-title~
-and ~ekg-notes-tag~ control titles and tags in the list without changing their
-appearance in other views.  The =tagged= formatter accepts a =separated=
-format option to display dots between tags, for example
-=%n(tagged nil separated)=.
-
-Notes use a little extra line spacing and a centered reading width of 88
-columns in wide windows.  Customize ~ekg-notes-max-width~ to change that width,
-or set it to nil to use the full window.  Narrow windows adapt automatically.
-
 The main way to customize displays is via the variable
 ~ekg-display-note-template~, which is a string that has inline commands in it
 (normally inline note commands).  See the [[#inlines][inlines]] section for more details on

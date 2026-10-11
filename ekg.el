@@ -1442,6 +1442,20 @@ This is needed to identify references to refresh when the subject is changed.")
       (1+ (point-min))
     (point-min)))
 
+(defun ekg--note-selection-label (note)
+  "Return a short title or text excerpt identifying NOTE."
+  (let* ((title (mapconcat #'identity
+                          (plist-get (ekg-note-properties note) :titled/title)
+                          ", "))
+         (label (string-trim
+                 (replace-regexp-in-string
+                  "[\n\t ]+" " "
+                  (if (string-empty-p title)
+                      (or (ekg-note-text note) "") title)))))
+    (if (string-empty-p label)
+        "Untitled"
+      (truncate-string-to-width label 48 nil nil "…"))))
+
 (defun ekg--indent-displayed-note (note depth &optional branches children)
   "Return NOTE formatted at DEPTH in a hierarchy.
 BRANCHES lists whether each ancestor has following siblings, from
@@ -1504,6 +1518,8 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
       (let ((text (buffer-string)))
         (add-text-properties 0 (length text)
                              `(ekg-note-id ,(ekg-note-id note)
+                                           ekg-note-label
+                                           ,(ekg--note-selection-label note)
                                            read-only t
                                            rear-nonsticky t)
                              text)
@@ -1783,12 +1799,6 @@ displayed.")
 
 (defvar-local ekg-notes-hl nil
   "Highlight for the notes buffer.")
-
-(defvar-local ekg-notes--selected-id nil
-  "ID of the note whose action-target label is cached.")
-
-(defvar-local ekg-notes--selected-label nil
-  "Cached title or text excerpt of the current note.")
 
 (defvar-local ekg-notes-tags nil
   "List of associated tags for creating and removing notes.")
@@ -2337,37 +2347,19 @@ tags)."
                         " " 'display
                         (list '(margin left-margin)
                               (propertize "▶" 'face 'font-lock-keyword-face))))
-          (unless (equal id ekg-notes--selected-id)
-            (setq ekg-notes--selected-id id
-                  ekg-notes--selected-label
-                  (when-let* ((note (ekg-get-note-with-id id)))
-                    (let ((title (mapconcat #'identity
-                                            (plist-get (ekg-note-properties note)
-                                                       :titled/title) ", ")))
-                      (truncate-string-to-width
-                       (string-trim
-                        (replace-regexp-in-string
-                         "[\n\t ]+" " "
-                         (if (string-empty-p title)
-                             (or (ekg-note-text note) "") title)))
-                       48 nil nil "…")))))
           (setq header-line-format
                 (string-replace
                  "%" "%%"
                  (concat (propertize
                           (concat " Current: "
-                                  (if (string-empty-p
-                                       (or ekg-notes--selected-label ""))
-                                      "Untitled" ekg-notes--selected-label))
+                                  (get-text-property start 'ekg-note-label))
                           'face 'bold
                           'help-echo "Note targeted by opening, trashing and other commands")
                          "  |  " ekg-notes-name
                          (unless ekg-notes-include-descendants " (strict)")))))
       (move-overlay ekg-notes-hl (point-min) (point-min))
       (overlay-put ekg-notes-hl 'before-string nil)
-      (setq ekg-notes--selected-id nil
-            ekg-notes--selected-label nil
-            header-line-format
+      (setq header-line-format
             (string-replace
              "%" "%%"
              (concat " " ekg-notes-name "  |  No current note"
@@ -2595,19 +2587,12 @@ NAME is displayed at the top of the buffer."
     (ekg-notes-mode))
   (setq-local ekg-notes-fetch-notes-function notes-func
               ekg-notes-name name
-              ekg-notes--selected-id nil
-              ekg-notes--selected-label nil
               ekg-notes-hl (if (and (overlayp ekg-notes-hl)
                                     (eq (overlay-buffer ekg-notes-hl)
                                         (current-buffer)))
                                ekg-notes-hl
                              (make-overlay 1 1))
-              ekg-notes-tags tags
-              header-line-format (propertize
-                                  (concat " " name
-                                          (unless ekg-notes-include-descendants
-                                            " (strict)"))
-                                             'face 'bold))
+              ekg-notes-tags tags)
   (ekg--notes-mount name notes-func)
   (overlay-put ekg-notes-hl 'face hl-line-face)
   (ekg--note-highlight)

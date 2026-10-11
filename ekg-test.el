@@ -311,7 +311,6 @@
       ;; Simulate ordinary movement to the child's body, bypassing n/p.
       (search-forward "Untitled child text")
       (run-hooks 'post-command-hook)
-      (should (equal (ekg-note-id child) ekg-notes--selected-id))
       (should (equal (ekg-note-id child)
                      (ekg-note-id (ekg-current-note-or-error))))
       (should (string-match-p "Current: Untitled child text" header-line-format))
@@ -319,7 +318,7 @@
       (goto-char (point-min))
       (search-forward "Parent text")
       (run-hooks 'post-command-hook)
-      (should (equal (ekg-note-id parent) ekg-notes--selected-id))
+      (should (string-match-p "Current: Parent text" header-line-format))
       (let ((end (overlay-end ekg-notes-hl)))
         (should (equal (ekg-note-id parent)
                        (get-text-property (1- end) 'ekg-note-id)))
@@ -327,11 +326,42 @@
         ;; Selection at the separating gap still targets the parent.
         (goto-char end)
         (run-hooks 'post-command-hook)
-        (should (equal (ekg-note-id parent) ekg-notes--selected-id)))
+        (should (equal (ekg-note-id parent)
+                       (ekg-note-id (ekg-current-note-or-error))))
+        (should (string-match-p "Current: Parent text" header-line-format)))
       (ekg--show-notes "Empty" (lambda () nil) nil)
       (should (equal (overlay-start ekg-notes-hl) (overlay-end ekg-notes-hl)))
       (should-not (overlay-get ekg-notes-hl 'before-string))
       (should (string-match-p "No current note" header-line-format)))))
+
+(ekg-deftest-with-db ekg-test-notes-selection-label-refresh ()
+  "The current label follows refreshed content even when the ID is unchanged."
+  (let ((note (ekg-note-create :text "Original body" :mode 'text-mode
+                               :properties '(:titled/title ("Original title")))))
+    (ekg-save-note note)
+    (with-temp-buffer
+      (ekg--show-notes "Selection"
+                       (lambda () (list (ekg-get-note-with-id
+                                         (ekg-note-id note)))) nil)
+      (should (string-match-p "Current: Original title" header-line-format))
+      (setf (ekg-note-properties note) '(:titled/title ("Updated title")))
+      (ekg-save-note note)
+      (ekg-notes-refresh)
+      (should (string-match-p "Current: Updated title" header-line-format))
+      (setf (ekg-note-properties note) '(:titled/title nil)
+            (ekg-note-text note) "Updated body")
+      (ekg-save-note note)
+      (ekg-notes-refresh)
+      (should (string-match-p "Current: Updated body" header-line-format))
+      ;; Moving point reads the label from the rendered note, without I/O.
+      (cl-letf (((symbol-function 'ekg-get-note-with-id)
+                 (lambda (&rest _) (error "Unexpected selection lookup"))))
+        (run-hooks 'post-command-hook)
+        (should (string-match-p "Current: Updated body" header-line-format)))
+      (setf (ekg-note-text note) "")
+      (ekg-save-note note)
+      (ekg-notes-refresh)
+      (should (string-match-p "Current: Untitled" header-line-format)))))
 
 (ekg-deftest-with-db ekg-test-notes-header-literal-percent ()
   "Titles, excerpts and query names display percent signs literally."
