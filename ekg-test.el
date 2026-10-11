@@ -774,5 +774,19 @@
     (should-not (ekg-get-note-with-id (ekg-note-id parent)))
     (should-not (ekg-get-note-with-id (ekg-note-id child)))))
 
+(ekg-deftest-with-db ekg-test-respond-to-note-explicit-target ()
+  "Explicit NOTE argument to `ekg-respond-to-note' is preserved."
+  (let* ((target (ekg-note-create :id "target" :text "Target text"))
+         (buffer-note (ekg-note-create :id "buffer-note" :text "Buffer text")))
+    (ekg-save-note target)
+    (ekg-save-note buffer-note)
+    (with-temp-buffer
+      (ekg-edit-mode 1)
+      (setq-local ekg-note buffer-note)
+      (cl-letf (((symbol-function 'ekg-capture)
+                 (lambda (&rest args)
+                   (plist-get (plist-get args :properties) :hierarchy/parent))))
+        (should (equal (ekg-respond-to-note target) "target"))))))
+
 (provide 'ekg-test)
 ;;; ekg-test.el ends here

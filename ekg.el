@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/ekg
 ;; Package-Requires: ((triples "0.6.1") (emacs "28.1") (llm "0.30.0") (vui "1.0.0"))
 ;; Keywords: outlines, hypermedia
-;; Version: 0.9.2
+;; Version: 0.10.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -2237,7 +2237,7 @@ are saved before opening the response buffer."
              (and (derived-mode-p 'ekg-notes-mode)
                   (ekg-current-note-or-error))
              (error "No note is available to respond to"))))
-    (when (and ekg-edit-mode (buffer-modified-p))
+    (when (and (null note) ekg-edit-mode (buffer-modified-p))
       (ekg-edit-save)
       (setq parent ekg-note))
     (unless (ekg-note-with-id-exists-p (ekg-note-id parent))

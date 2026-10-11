@@ -75,8 +75,7 @@ triples library is already installed.
 * Changelog
 ** Version 0.10.0
 - Add generic parent-child relationships between notes.  Note lists display
-  these relationships hierarchically, and edit buffers show parent notes and
-  responses outside the editable text.
+  these relationships hierarchically.
 - Store LLM output as separate Markdown response notes tagged
   =llm-generated= instead of inserting mode-specific output blocks.
 - Move Org task parent relationships to the generic hierarchy schema while

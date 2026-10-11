@@ -1113,4 +1113,15 @@ deferred refresh should fire once insert mode ends."
       (should (member "Existing" titles))
       (should (member "Agent Task" titles)))))
 
+(ekg-deftest-with-db ekg-org-test-scalar-title-and-string-id-sorting ()
+  "Handle scalar titles and string note IDs safely in Org export and sorting."
+  (ekg-org-add-schema)
+  (let ((note1 (ekg-note-create :id "str-1" :text "Body 1"
+                                :properties '(:titled/title "Scalar Title 1" :org/sort-order 0)))
+        (note2 (ekg-note-create :id "str-2" :text "Body 2"
+                                :properties '(:titled/title "Scalar Title 2" :org/sort-order 0))))
+    (should (string= (ekg-org--note-title note1) "Scalar Title 1"))
+    (should (ekg-org-view--sort-predicate note1 note2))
+    (should-not (ekg-org-view--sort-predicate note2 note1))))
+
 (provide 'ekg-org-test)

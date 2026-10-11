@@ -79,6 +79,13 @@ This can be `markdown-mode', `org-mode', or any other valid mode symbol."
   :type 'symbol
   :group 'ekg-llm)
 
+(defcustom ekg-llm-hierarchy-max-depth 5
+  "Maximum descendant depth to serialize in LLM hierarchy context.
+Descendants deeper than this limit are omitted to keep prompt size
+bounded."
+  :type 'integer
+  :group 'ekg-llm)
+
 (defun ekg-llm--response-inheritable-tag-p (tag _note)
   "Return non-nil when TAG is topical rather than LLM provenance."
   (not (member tag (delq nil (list ekg-llm-generated-tag
@@ -386,18 +393,22 @@ the focal note and omit its text, which is sent as the user message."
     (when (gethash id visited)
       (error "Cycle in LLM note hierarchy involving ID %s" id))
     (puthash id t visited)
-    (append
-     (ekg-llm--hierarchy-entry
-      note (if current "current" "descendant") depth current)
-     (list
-      (cons
-       'children
-       (vconcat
-        (mapcar
-         (lambda (child)
-           (ekg-llm--hierarchy-subtree child (1+ depth) visited))
-         (sort (ekg-note-child-notes note t)
-               #'ekg-llm--note-id-less-p))))))))
+    (let* ((at-depth-limit (>= depth ekg-llm-hierarchy-max-depth))
+           (raw-children (if at-depth-limit
+                             nil
+                           (sort (ekg-note-child-notes note t)
+                                 #'ekg-llm--note-id-less-p)))
+           (children (vconcat
+                      (mapcar
+                       (lambda (child)
+                         (ekg-llm--hierarchy-subtree child (1+ depth) visited))
+                       raw-children))))
+      (append
+       (ekg-llm--hierarchy-entry
+        note (if current "current" "descendant") depth current)
+       (when (and at-depth-limit (ekg-note-child-notes note t))
+         '((truncated . t)))
+       (list (cons 'children children))))))
 
 (defun ekg-llm-note-hierarchy-context (note)
   "Return NOTE's ancestor chain and descendant tree as JSON.

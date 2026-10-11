@@ -277,8 +277,7 @@ triples library is already installed.
 @itemize
 @item
 Add generic parent-child relationships between notes.  Note lists display
-these relationships hierarchically@comma{} and edit buffers show parent notes and
-responses outside the editable text.
+these relationships hierarchically.
 @item
 Store LLM output as separate Markdown response notes tagged
 @samp{llm-generated} instead of inserting mode-specific output blocks.

@@ -71,7 +71,8 @@ Bind this around batch operations that save multiple notes; call
 
 (defun ekg-org--note-title (note)
   "Return the title string of NOTE, or nil if it has no title."
-  (car (plist-get (ekg-note-properties note) :titled/title)))
+  (let ((title (plist-get (ekg-note-properties note) :titled/title)))
+    (if (listp title) (car title) title)))
 
 (defun ekg-org-add-schema ()
   "Add schema for integration with `org-mode'."
@@ -250,10 +251,8 @@ active, unarchived, tasks."
 PARENT is the parent org-element node."
   (let* ((props (ekg-note-properties note))
          (task-p (ekg-org--org-note-p note))
-         (title (if task-p
-                    (plist-get props :titled/title)
-                  (or (car (plist-get props :titled/title))
-                      "Response")))
+         (title (or (ekg-org--note-title note)
+                    (if task-p (plist-get props :titled/title) "Response")))
          (id (format "%s" (ekg-note-id note)))
          (state (when task-p (ekg-org--state note)))
          (deadline (let ((d (plist-get props :org/deadline)))
@@ -291,8 +290,13 @@ PARENT is the parent org-element node."
             (with-temp-buffer
               (insert text)
               (org-element-contents (org-element-parse-buffer)))))
-        (mapcar (lambda (child-note) (ekg-org-task-to-element child-note element))
-                (ekg-org-get-child-notes-of-id (ekg-note-id note)))))
+        (let* ((children (ekg-org-get-child-notes-of-id (ekg-note-id note)))
+               (tasks (seq-filter #'ekg-org--org-note-p children))
+               (responses (seq-remove #'ekg-org--org-note-p children))
+               (ordered (append (sort tasks #'ekg-org-view--sort-predicate)
+                                responses)))
+          (mapcar (lambda (child-note) (ekg-org-task-to-element child-note element))
+                  ordered))))
       element)))
 
 (defun ekg-org-task-to-string (note)
@@ -568,6 +572,12 @@ unnecessary."
       (ekg-note-creation-time note)
       0))
 
+(defun ekg-org-view--id-less-p (a b)
+  "Return non-nil if note ID A should sort before note ID B."
+  (if (and (numberp a) (numberp b))
+      (< a b)
+    (string< (format "%s" a) (format "%s" b))))
+
 (defun ekg-org-view--sort-predicate (a b)
   "Return non-nil if note A should sort before note B.
 Uses sort-order as primary key and note ID as tiebreaker for
@@ -576,7 +586,7 @@ stability."
         (ob (ekg-org-view--sort-order b)))
     (or (< oa ob)
         (and (= oa ob)
-             (< (ekg-note-id a) (ekg-note-id b))))))
+             (ekg-org-view--id-less-p (ekg-note-id a) (ekg-note-id b))))))
 
 (defun ekg-org-view--sorted-children (id)
   "Return non-archived task children of ID, sorted by sort-order."
@@ -592,9 +602,12 @@ When ARCHIVE is non-nil, show archived descendants."
   (let* ((children
           (seq-filter
            (lambda (note)
-             (let ((archived
+             (let ((task-p (ekg-org--org-note-p note))
+                   (archived
                     (member ekg-org-archive-tag (ekg-note-tags note))))
-               (if archive archived (not archived))))
+               (if archive
+                   (or archived (not task-p))
+                 (not archived))))
            (ekg-org-get-child-notes-of-id id)))
          (tasks (seq-filter #'ekg-org--org-note-p children)))
     (append (sort tasks #'ekg-org-view--sort-predicate)

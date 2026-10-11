@@ -259,6 +259,27 @@
           (should-not (string-match-p "Sibling text"
                                       (json-encode payload))))))))
 
+(ekg-deftest-with-db ekg-llm-test-note-hierarchy-max-depth ()
+  "Descendant trees respect `ekg-llm-hierarchy-max-depth'."
+  (let ((current (ekg-note-create :id "current" :text "Current text"))
+        (child (ekg-note-create :id "child" :text "Child text"))
+        (grandchild (ekg-note-create :id "grandchild" :text "Grandchild text")))
+    (ekg-save-note current)
+    (ekg-note-set-parent child current)
+    (ekg-save-note child)
+    (ekg-note-set-parent grandchild child)
+    (ekg-save-note grandchild)
+    (let* ((ekg-llm-hierarchy-max-depth 1)
+           (payload (json-parse-string
+                     (ekg-llm-note-hierarchy-context current)
+                     :object-type 'alist :array-type 'list :null-object nil))
+           (current-entry (alist-get "current_note" payload nil nil #'string=))
+           (child-entry (car (alist-get "children" current-entry nil nil #'string=))))
+      (should (equal (alist-get "note_id" child-entry nil nil #'string=) "child"))
+      (should (alist-get "truncated" child-entry nil nil #'string=))
+      (should-not (seq-some (lambda (item) (equal (alist-get "note_id" item nil nil #'string=) "grandchild"))
+                            (alist-get "children" child-entry nil nil #'string=))))))
+
 (provide 'ekg-llm-test)
 
 ;;; ekg-llm-test.el ends here
