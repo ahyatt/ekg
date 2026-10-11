@@ -148,13 +148,10 @@
     (should (equal (mapcar #'ekg-note-id
                            (ekg-org-get-child-tasks-of-id task-id))
                    nil))
-    (let ((org-text (ekg-org-task-to-string task))
-          (view-heading (ekg-org-view--render-heading response 2)))
+    (let ((org-text (ekg-org-task-to-string task)))
       (should (string-match-p "\\*\\* Response" org-text))
       (should (string-match-p "User answer" org-text))
-      (should-not (string-match-p "\\*\\* TODO Response" org-text))
-      (should (string-match-p "\\*\\* Response" view-heading))
-      (should-not (string-match-p "TODO" view-heading)))
+      (should-not (string-match-p "\\*\\* TODO Response" org-text)))
     (should (member (ekg-note-id response)
                     (mapcar #'ekg-note-id
                             (ekg-org-view--display-children task-id))))))
@@ -185,8 +182,6 @@
             (substring rendered 0 (string-match "^\\*\\* " rendered))))
       (should-not (string-match-p "^:ORDERED:" parent-rendered))
       (should (string-match-p "^:OWNER: *Andrew$" parent-rendered)))
-    (should (string-match-p "\\[parallel\\]"
-                            (ekg-org-view--render-heading parent 1)))
     (ekg-org-set-dependency-type parent 'sequential)
     (ekg-save-note parent)
     (setq parent (ekg-get-note-with-id parent-id))
@@ -363,9 +358,9 @@ Returns the note ID."
     (goto-char (point-min))
     (let (headings)
       (while (not (eobp))
-        (when (get-text-property (point) :ekg-org-heading)
-          (let* ((level (get-text-property (point) :ekg-org-level))
-                 (id (get-text-property (point) :ekg-org-note-id))
+        (when (ekg-org-view--on-heading-p)
+          (let* ((level (ekg-org-view--level-at-point))
+                 (id (get-text-property (point) :ekg-note-id))
                  (note (ekg-get-note-with-id id))
                  (title (car (plist-get (ekg-note-properties note)
                                         :titled/title))))
@@ -407,10 +402,9 @@ Returns the note ID."
     (ekg-save-note response)
     (ekg-org-view)
     (with-current-buffer "*ekg-org-tasks*"
-      (should (string-match-p "\\*\\* Response" (buffer-string)))
       (should (string-match-p "My answer" (buffer-string)))
       (goto-char (point-min))
-      (search-forward "Response")
+      (search-forward "My answer")
       (beginning-of-line)
       (should (equal (ekg-org-view--note-at-point)
                      (ekg-note-id response)))
@@ -449,22 +443,6 @@ Returns the note ID."
       (should (equal default-directory expected-directory)))
     (ekg-org-view-task (ekg-org-test--add-task "Focused"))
     (should (equal default-directory expected-directory))))
-
-(ekg-deftest-with-db ekg-org-test-view-body-fontified ()
-  "Test that org body text in the view is fontified, not raw text."
-  (ekg-org-add-schema)
-  (ekg-agent-org--tool-add-item
-   "Task With Body" "This has *bold* and /italic/ text." nil nil "TODO" nil nil)
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    ;; Find the body text in the buffer.
-    (should (search-forward "bold" nil t))
-    ;; The word "bold" should have a face property from org fontification,
-    ;; not just the old ekg-org-view-body shadow face.
-    (let ((face (get-text-property (match-beginning 0) 'face)))
-      (should face)
-      (should-not (eq face 'ekg-org-view-body)))))
 
 (ekg-deftest-with-db ekg-org-test-view-multiple-top-level ()
   "Test that multiple top-level tasks all appear."
@@ -518,8 +496,8 @@ Returns the note ID."
       (goto-char (point-min))
       (let (titles)
         (while (not (eobp))
-          (when (get-text-property (point) :ekg-org-heading)
-            (let* ((nid (get-text-property (point) :ekg-org-note-id))
+          (when (ekg-org-view--on-heading-p)
+            (let* ((nid (get-text-property (point) :ekg-note-id))
                    (note (ekg-get-note-with-id nid))
                    (title (car (plist-get (ekg-note-properties note)
                                           :titled/title))))
@@ -622,9 +600,8 @@ Returns the note ID."
     (ekg-org-view)
     (with-current-buffer "*ekg-org-tasks*"
       (goto-char (point-min))
-      (should (string-match-p "TODO" (buffer-substring
-                                      (line-beginning-position)
-                                      (line-end-position)))))
+      (should (equal (ekg-org-task-state (ekg-current-note-or-error))
+                     "TODO")))
     ;; Change state directly and refresh
     (let ((note (ekg-get-note-with-id id)))
       (setf (ekg-note-tags note)
@@ -637,9 +614,8 @@ Returns the note ID."
     (ekg-org-view)
     (with-current-buffer "*ekg-org-tasks*"
       (goto-char (point-min))
-      (should (string-match-p "DONE" (buffer-substring
-                                      (line-beginning-position)
-                                      (line-end-position)))))))
+      (should (equal (ekg-org-task-state (ekg-current-note-or-error))
+                     "DONE")))))
 
 (ekg-deftest-with-db ekg-org-test-view-insert-mode-sibling ()
   "Test that insert mode creates a sibling after the current task."
@@ -723,27 +699,6 @@ Returns the note ID."
   (let ((headings (ekg-org-test--view-headings)))
     (should (equal headings '((1 "Alpha") (2 "Alpha Child")
                               (1 "Beta") (2 "Beta Child"))))))
-
-(ekg-deftest-with-db ekg-org-test-view-top-level-spacing ()
-  "Test that blank lines separate top-level task groups after creation."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "Alpha")
-  (ekg-org-test--add-task "Beta")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    ;; Create a child of Beta via insert mode.
-    (goto-char (point-min))
-    (while (not (equal (ekg-org-view--note-at-point)
-                       (ekg-org-test--task-id-by-title "Beta")))
-      (forward-line 1))
-    (ekg-org-view-create)
-    (let ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots)))
-      (ekg-org-view--insert-cleanup)
-      (ekg-org-view--insert-create-task slot "Beta Child"))
-    ;; There should be a blank line between Alpha and Beta groups.
-    (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-      (should (string-match-p "\n\n\\*" text)
-              ))))
 
 (ekg-deftest-with-db ekg-org-test-view-insert-point-on-new-item ()
   "Test that point lands on the newly created item after insertion."
@@ -874,21 +829,21 @@ Returns the note ID."
     (with-current-buffer "*ekg-org-tasks*"
       (goto-char (point-min))
       ;; At "Parent 1"
-      (should (equal (get-text-property (point) :ekg-org-level) 1))
+      (should (equal (ekg-org-view--level-at-point) 1))
       ;; Next heading → "Child 1"
       (ekg-org-view-next-heading)
-      (should (equal (get-text-property (point) :ekg-org-level) 2))
+      (should (equal (ekg-org-view--level-at-point) 2))
       ;; Up → back to "Parent 1"
       (ekg-org-view-up-heading)
-      (should (equal (get-text-property (point) :ekg-org-level) 1))
-      (let* ((id (get-text-property (point) :ekg-org-note-id))
+      (should (equal (ekg-org-view--level-at-point) 1))
+      (let* ((id (get-text-property (point) :ekg-note-id))
              (title (car (plist-get (ekg-note-properties
                                      (ekg-get-note-with-id id))
                                     :titled/title))))
         (should (equal title "Parent 1")))
       ;; Next sibling → "Parent 2"
       (ekg-org-view-next-sibling)
-      (let* ((id (get-text-property (point) :ekg-org-note-id))
+      (let* ((id (get-text-property (point) :ekg-note-id))
              (title (car (plist-get (ekg-note-properties
                                      (ekg-get-note-with-id id))
                                     :titled/title))))
@@ -964,9 +919,8 @@ An agent saving a new note should cause the view to update automatically."
     (ekg-org-view)
     (with-current-buffer "*ekg-org-tasks*"
       (goto-char (point-min))
-      (should (string-match-p "TODO" (buffer-substring
-                                      (line-beginning-position)
-                                      (line-end-position)))))
+      (should (equal (ekg-org-task-state (ekg-current-note-or-error))
+                     "TODO")))
     ;; Simulate an external agent changing the state.
     (let ((note (ekg-get-note-with-id id)))
       (setf (ekg-note-tags note)
@@ -979,9 +933,8 @@ An agent saving a new note should cause the view to update automatically."
     ;; The view should have refreshed automatically.
     (with-current-buffer "*ekg-org-tasks*"
       (goto-char (point-min))
-      (should (string-match-p "DONE" (buffer-substring
-                                      (line-beginning-position)
-                                      (line-end-position)))))))
+      (should (equal (ekg-org-task-state (ekg-current-note-or-error))
+                     "DONE")))))
 
 (ekg-deftest-with-db ekg-org-test-view-refile-to-new-parent ()
   "Test that refiling moves a task under a new parent."
@@ -1123,5 +1076,84 @@ deferred refresh should fire once insert mode ends."
     (should (string= (ekg-org--note-title note1) "Scalar Title 1"))
     (should (ekg-org-view--sort-predicate note1 note2))
     (should-not (ekg-org-view--sort-predicate note2 note1))))
+
+(ekg-deftest-with-db ekg-org-test-task-summary-custom-states ()
+  "Summaries honor custom done states and ignore archived task children."
+  (ekg-org-add-schema)
+  (let* ((org-todo-keywords '((sequence "TODO" "WAIT(w)" "|" "DONE(d)"
+                                      "CANCELLED(c)")))
+         (parent (ekg-org-test--add-task "Parent"))
+         (_open (ekg-org-test--add-task "Open" parent "WAIT"))
+         (_closed (ekg-org-test--add-task "Closed" parent "CANCELLED"))
+         (archived (ekg-org-test--add-task "Archived" parent "TODO"))
+         (note (ekg-get-note-with-id archived)))
+    (push ekg-org-archive-tag (ekg-note-tags note))
+    (ekg-save-note note)
+    (let ((summary (ekg-org-task-summary (ekg-get-note-with-id parent))))
+      (should (equal (plist-get summary :state) "TODO"))
+      (should (= (plist-get summary :children) 2))
+      (should (= (plist-get summary :completed) 1))
+      (should (= (plist-get summary :remaining) 1))
+      (should-not (plist-get summary :done)))))
+
+(ekg-deftest-with-db ekg-org-test-notes-view-scope-and-folding ()
+  "Task views fold independently and preserve selection across refreshes."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent))
+         (ordinary (ekg-note-create :text "Ordinary note" :mode 'text-mode)))
+    (ekg-save-note ordinary)
+    (let ((keys (copy-keymap ekg-notes-mode-map))
+          (template ekg-display-note-template)
+          (hidden (copy-sequence ekg-hidden-tags)))
+      (ekg-org-view)
+      (should (derived-mode-p 'ekg-notes-mode))
+      (should (equal (plist-get (ekg-org-view-state) :visible-ids)
+                     (list parent child)))
+      (ekg-org-view-toggle-collapse)
+      (should (equal (plist-get (ekg-org-view-state) :visible-ids)
+                     (list parent)))
+      (should (equal (plist-get (ekg-org-view-state) :folded-ids)
+                     (list parent)))
+      ;; An external save must not unfold the tree or switch action targets.
+      (ekg-save-note (ekg-get-note-with-id child))
+      (should (equal (plist-get (ekg-org-view-state) :current-id) parent))
+      (should (equal (ekg-notes-visible-ids) (list parent)))
+      (ekg-org-view-toggle-collapse)
+      (ekg-org-view-next-heading)
+      (should (equal (ekg-note-id (ekg-current-note-or-error)) child))
+      (let ((note (ekg-get-note-with-id parent)))
+        (setf (ekg-note-text note) "Changed elsewhere")
+        (ekg-save-note note))
+      (should (equal (ekg-note-id (ekg-current-note-or-error)) child))
+      (with-temp-buffer
+        (ekg-notes-mode)
+        (should (equal ekg-notes-mode-map keys))
+        (should (equal ekg-display-note-template template))
+        (should (equal ekg-hidden-tags hidden))
+        (should-not ekg-notes-collapsed-ids)
+        (should (eq ekg-notes-children-function #'ekg--notes-children))
+        (should ekg-notes-show-child-count)))))
+
+(ekg-deftest-with-db ekg-org-test-notes-view-toggle-done-and-add-child ()
+  "Task actions persist state and unfold a parent when adding a child."
+  (ekg-org-add-schema)
+  (let* ((org-todo-keywords '((sequence "TODO" "WAIT" "|" "DONE")))
+         (parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent)))
+    (ekg-org-view)
+    (ekg-org-view-next-heading)
+    (ekg-org-view-toggle-done)
+    (should (equal (ekg-note-id (ekg-current-note-or-error)) child))
+    (should (ekg-org-task-done-p (ekg-get-note-with-id child)))
+    (ekg-org-view-toggle-done)
+    (should (equal (ekg-org-task-state (ekg-get-note-with-id child)) "TODO"))
+    (should-error (ekg-org-change-state "INVALID") :type 'user-error)
+    (ekg-org-view-up-heading)
+    (ekg-org-view-toggle-collapse)
+    (ekg-org-view-add-child "New child")
+    (should-not (member parent ekg-notes-collapsed-ids))
+    (should (equal (ekg-note-parent-id (ekg-current-note-or-error)) parent))
+    (should (= (length (ekg-notes-visible-ids)) 3))))
 
 (provide 'ekg-org-test)
