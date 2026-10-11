@@ -685,8 +685,8 @@ format option to display dots between tags, for example
 =%n(tagged nil separated)=.
 
 Notes use a little extra line spacing and a centered reading width of 88
-columns in wide windows.  Customize ~ekg-notes-max-width~ to change that width, or set it
-to nil to use the full window.  Narrow windows adapt automatically.
+columns in wide windows.  Customize ~ekg-notes-max-width~ to change that width,
+or set it to nil to use the full window.  Narrow windows adapt automatically.
 
 The main way to customize displays is via the variable
 ~ekg-display-note-template~, which is a string that has inline commands in it

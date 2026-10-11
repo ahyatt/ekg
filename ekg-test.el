@@ -333,6 +333,23 @@
       (should-not (overlay-get ekg-notes-hl 'before-string))
       (should (string-match-p "No current note" header-line-format)))))
 
+(ekg-deftest-with-db ekg-test-notes-header-literal-percent ()
+  "Titles, excerpts and query names display percent signs literally."
+  (let ((titled (ekg-note-create :text "Body" :mode 'text-mode
+                                :properties '(:titled/title ("Title %b"))))
+        (untitled (ekg-note-create :text "100% done with %b"
+                                  :mode 'text-mode)))
+    (mapc #'ekg-save-note (list titled untitled))
+    (with-temp-buffer
+      (ekg--show-notes "Query %b" (lambda () (list titled)) nil)
+      (should (string-match-p "Current: Title %%b" header-line-format))
+      (should (string-match-p "Query %%b" header-line-format))
+      (ekg--show-notes "Query %b" (lambda () (list untitled)) nil)
+      (should (string-match-p "Current: 100%% done with %%b"
+                              header-line-format))
+      (ekg--show-notes "Empty %b" (lambda () nil) nil)
+      (should (string-match-p "Empty %%b" header-line-format)))))
+
 (ekg-deftest ekg-test-notes-reading-width ()
   "Window margins adapt without shrinking again on every redisplay."
   (save-window-excursion

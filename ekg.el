@@ -2342,8 +2342,8 @@ tags)."
                   ekg-notes--selected-label
                   (when-let* ((note (ekg-get-note-with-id id)))
                     (let ((title (mapconcat #'identity
-                                           (plist-get (ekg-note-properties note)
-                                                      :titled/title) ", ")))
+                                            (plist-get (ekg-note-properties note)
+                                                       :titled/title) ", ")))
                       (truncate-string-to-width
                        (string-trim
                         (replace-regexp-in-string
@@ -2352,23 +2352,27 @@ tags)."
                              (or (ekg-note-text note) "") title)))
                        48 nil nil "…")))))
           (setq header-line-format
-                (concat (propertize
-                         (concat " Current: "
-                                 (if (string-empty-p
-                                      (or ekg-notes--selected-label ""))
-                                     "Untitled" ekg-notes--selected-label))
-                         'face 'bold
-                         'help-echo "Note targeted by opening, trashing and other commands")
-                        "  |  " ekg-notes-name
-                        (unless ekg-notes-include-descendants " (strict)"))))
+                (string-replace
+                 "%" "%%"
+                 (concat (propertize
+                          (concat " Current: "
+                                  (if (string-empty-p
+                                       (or ekg-notes--selected-label ""))
+                                      "Untitled" ekg-notes--selected-label))
+                          'face 'bold
+                          'help-echo "Note targeted by opening, trashing and other commands")
+                         "  |  " ekg-notes-name
+                         (unless ekg-notes-include-descendants " (strict)")))))
       (move-overlay ekg-notes-hl (point-min) (point-min))
       (overlay-put ekg-notes-hl 'before-string nil)
       (setq ekg-notes--selected-id nil
             ekg-notes--selected-label nil
-            header-line-format (concat " " ekg-notes-name
-                                       "  |  No current note"
-                                       (unless ekg-notes-include-descendants
-                                         " (strict)"))))))
+            header-line-format
+            (string-replace
+             "%" "%%"
+             (concat " " ekg-notes-name "  |  No current note"
+                     (unless ekg-notes-include-descendants
+                       " (strict)")))))))
 
 (defun ekg-current-note-or-error ()
   "Return the current `ekg-note'.
