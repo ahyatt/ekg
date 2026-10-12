@@ -689,13 +689,15 @@ Keys are :state, :done, :scheduled, :deadline, :children, :completed,
 
 (defun ekg-org-view-state ()
   "Return the task view's current selection, scope and folding state.
-Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
+Keys are :current-id, :root-id, :archive, :visible-ids, :folded-ids
+and :display-states."
   (unless (derived-mode-p 'ekg-org-view-mode)
     (user-error "This command requires an Org task view"))
   (list :current-id (get-text-property (point) :ekg-note-id)
         :root-id ekg-org-view--root-id :archive ekg-org-view--archive
         :visible-ids (ekg-notes-visible-ids)
-        :folded-ids (copy-sequence ekg-notes-collapsed-ids)))
+        :folded-ids (copy-sequence ekg-notes-collapsed-ids)
+        :display-states (copy-tree ekg-notes-display-states)))
 
 (defun ekg-org-view--visible-tags (note)
   "Return NOTE's tags excluding task control, trash and draft tags."
@@ -710,6 +712,14 @@ Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
     (setf (ekg-note-tags note)
           (ekg-org-view--visible-tags note))
     (apply #'ekg-display-note-tagged note numwords format)))
+
+(defun ekg-display-note-org-summary (note &optional numwords &rest format)
+  "Return NOTE's state and title with NUMWORDS and FORMAT options."
+  (concat
+   (when-let* ((state (ekg-org-task-state note)))
+     (propertize (concat state " ") 'face
+                 (if (ekg-org-task-done-p note) 'org-done 'org-todo)))
+   (apply #'ekg-display-note-summary note numwords format)))
 
 (defun ekg-org--format-task-date (epoch)
   "Format EPOCH with its time of day when it is not midnight."
@@ -904,7 +914,7 @@ When insert mode is active, defer the refresh until insert mode ends."
     (ekg-org-view--highlight)))
 
 (defun ekg-org-view-toggle-collapse ()
-  "Toggle the body and descendants of the note at point."
+  "Cycle the current subtree through full content, titles, and folded."
   (interactive nil ekg-org-view-mode)
   (ekg-notes-toggle-collapse))
 
@@ -914,7 +924,9 @@ When insert mode is active, defer the refresh until insert mode ends."
   (setq ekg-notes-collapsed-ids
         (unless ekg-notes-collapsed-ids
           (mapcar #'ekg-note-id (ekg-org-view--fetch-notes))))
-  (ekg-org-view--refresh))
+  (setq ekg-notes-display-states nil)
+  (let ((id (ekg-org-view--note-at-point)))
+    (ekg-notes--refresh-preserving-view #'ekg-org-view--refresh id)))
 
 (defun ekg-org-view-cycle-state ()
   "Choose the TODO state of the task at point."
@@ -1659,7 +1671,7 @@ Accepts and ignores arguments so it can be used directly on
               (concat "%n(titled)%n(org-status)%n(org-tags nil separated)"
                       "%n(id)\n%n(text 500)")
               ekg-notes-collapsed-note-template
-              "%n(titled)%n(org-status nil folded)%n(org-tags nil separated)%n(id)")
+              "%n(org-summary)")
   (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
   (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)
   (add-hook 'kill-buffer-hook
