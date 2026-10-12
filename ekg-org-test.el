@@ -1243,4 +1243,25 @@ deferred refresh should fire once insert mode ends."
                   :type 'user-error)
     (should-not (ekg-note-child-notes (ekg-get-note-with-id parent)))))
 
+(ekg-deftest-with-db ekg-org-test-toggle-done-multiple-sequences ()
+  "Completion and reopening remain within the task's keyword sequence."
+  (ekg-org-add-schema)
+  (let* ((org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d)")
+                             (sequence "OPEN(o)" "WAIT(w)" "|"
+                                       "CLOSED(c)" "CANCELLED(a)")))
+         (task (ekg-org-test--add-task "Task" nil "OPEN")))
+    (ekg-org-view)
+    (dolist (states '(("OPEN" . "CLOSED") ("CLOSED" . "OPEN")
+                      ("WAIT" . "CLOSED") ("CANCELLED" . "OPEN")
+                      ("TODO" . "DONE") ("DONE" . "TODO")))
+      (ekg-org-change-state (car states))
+      (ekg-org-view-toggle-done)
+      (should (equal (ekg-org-task-state (ekg-get-note-with-id task))
+                     (cdr states))))
+    ;; A removed configuration must not silently move the task to another
+    ;; workflow or persist a new state.
+    (let ((org-todo-keywords '((sequence "OPEN" "|" "CLOSED"))))
+      (should-error (ekg-org-view-toggle-done) :type 'user-error))
+    (should (equal (ekg-org-task-state (ekg-get-note-with-id task)) "TODO"))))
+
 (provide 'ekg-org-test)

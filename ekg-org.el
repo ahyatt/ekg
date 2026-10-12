@@ -487,22 +487,25 @@ Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
 ;; But without this, we get an error.
 (add-to-list 'auto-mode-alist '("\\.org_archive" . org-mode))
 
-(defun ekg-org--todo-keywords ()
+(defun ekg-org--todo-sequences ()
+  "Return global `org-todo-keywords' in sequence form."
+  (let ((keywords (default-value 'org-todo-keywords)))
+    (if (seq-every-p #'stringp keywords)
+        (list (cons 'sequence keywords))
+      keywords)))
+
+(defun ekg-org--todo-keywords (&optional sequences)
   "Return a flat list of TODO keyword strings from `org-todo-keywords'.
 This reads directly from the global defcustom rather than the
 buffer-local `org-todo-keywords-1', which is only populated inside
-Org-mode buffers."
+Org-mode buffers.  SEQUENCES optionally restricts the keyword sequences."
   (let (result)
-    (dolist (entry (default-value 'org-todo-keywords))
-      (if (stringp entry)
-          ;; Old-style plain keyword list.
-          (push entry result)
-        ;; New-style (sequence/type "KW1" "|" "KW2" ...) entry.
-        (dolist (kw (cdr entry))
-          (unless (equal kw "|")
-            ;; Strip fast-selection key / logging specs, e.g. "WAIT(w@/!)".
-            (when (string-match "^\\([^(]+\\)" kw)
-              (push (match-string 1 kw) result))))))
+    (dolist (entry (or sequences (ekg-org--todo-sequences)))
+      (dolist (kw (cdr entry))
+        (unless (equal kw "|")
+          ;; Strip fast-selection key / logging specs, e.g. "WAIT(w@/!)".
+          (when (string-match "^\\([^(]+\\)" kw)
+            (push (match-string 1 kw) result)))))
     (nreverse result)))
 
 (defun ekg-org--state (note)
@@ -637,12 +640,11 @@ sibling."
                     (ekg-note-tags note))))
     (upcase (substring tag (length ekg-org-state-tag-prefix)))))
 
-(defun ekg-org--done-keywords ()
-  "Return completed keywords from the global `org-todo-keywords'."
-  (let ((sequences (default-value 'org-todo-keywords)) result)
-    (when (seq-every-p #'stringp sequences)
-      (setq sequences (list (cons 'sequence sequences))))
-    (dolist (sequence sequences)
+(defun ekg-org--done-keywords (&optional sequences)
+  "Return completed keywords from the global `org-todo-keywords'.
+SEQUENCES optionally restricts the keyword sequences."
+  (let (result)
+    (dolist (sequence (or sequences (ekg-org--todo-sequences)))
       (let* ((keywords (cdr sequence))
              (separator (member "|" keywords))
              (done (if separator (cdr separator) (last keywords))))
@@ -913,15 +915,23 @@ When insert mode is active, defer the refresh until insert mode ends."
     (ekg-org-change-state state)))
 
 (defun ekg-org-view-toggle-done ()
-  "Mark the current task done, or reopen it if already completed."
+  "Mark the current task done, or reopen it in its TODO keyword sequence."
   (interactive nil ekg-org-view-mode)
   (let* ((note (ekg-org-view--require-task-at-point))
-         (done (ekg-org--done-keywords))
-         (state (if (ekg-org-task-done-p note)
-                    (car (seq-difference (ekg-org--todo-keywords) done))
-                  (car done))))
-    (unless state (user-error "No suitable TODO keyword is configured"))
-    (ekg-org-change-state state)))
+         (current (ekg-org-task-state note))
+         (sequence (seq-find
+                    (lambda (sequence)
+                      (member current (ekg-org--todo-keywords (list sequence))))
+                    (ekg-org--todo-sequences))))
+    (unless sequence
+      (user-error "No TODO keyword sequence contains %s" current))
+    (let* ((done (ekg-org--done-keywords (list sequence)))
+           (state (if (member current done)
+                      (car (seq-difference
+                            (ekg-org--todo-keywords (list sequence)) done))
+                    (car done))))
+      (unless state (user-error "No suitable TODO keyword is configured"))
+      (ekg-org-change-state state))))
 
 (defun ekg-org-view-add-child (title)
   "Create a child task of the task at point with TITLE."

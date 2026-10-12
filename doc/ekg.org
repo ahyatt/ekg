@@ -1550,15 +1550,17 @@ prompts for a title and creates a new note pre-tagged with =org/task= and
 
 The command =ekg-org-change-state= (available in note editing buffers and
 =ekg-notes-mode= buffers) prompts for a new TODO state from
-=org-todo-keywords-1= and updates the task's state tag accordingly.
+=org-todo-keywords= and updates the task's state tag accordingly.
 
 *** The ekg-org-view
 
 =ekg-org-view-mode= is a read-only, interactive view of your task hierarchy,
-built with the =vui= library.  It presents tasks as an indented outline that
-looks like an org buffer (with fontified headings, TODO keywords, and tags) but
-is backed entirely by the ekg database.
-Non-task responses to tasks also appear as headings without a TODO state;
+using the normal EKG note UI.  Each note shows its title, user tags, and body.
+Tasks also show their TODO state, scheduled date, deadline, and immediate-child
+completion count.  Child notes are indented beneath their parent, and the
+current note is highlighted as the target of task commands.  Task control tags
+are omitted from this view's tag display.
+Non-task responses to tasks also appear as notes without a TODO state;
 press =RET= on one to open and edit its note.  Use =C-c C-r= to capture a
 response to the note at point.
 
@@ -1568,11 +1570,12 @@ To open the view, call =ekg-org-view=.  For archived tasks, call
 
 The view refreshes automatically whenever any ekg note is saved, so changes
 made by you, by an agent, or by the command-line tools are reflected
-immediately.
+immediately.  Refreshes preserve folding and selection.  Creating or moving a
+task beneath a folded parent reveals the task so you can continue acting on it.
 
 The keybindings are modeled after org-mode's speed keys (the single-letter
-shortcuts available when point is at the beginning of a headline), so they
-should feel familiar to org-mode users.
+shortcuts available when point is at the beginning of a headline).  In this
+view they act on the current note, including when point is in its body.
 
 **** Navigation
 
@@ -1580,20 +1583,23 @@ The following keybindings are available in =ekg-org-view-mode=:
 
 | Key     | Command                          | Description                       |
 |---------+----------------------------------+-----------------------------------|
-| =n=     | =ekg-org-view-next-heading=      | Move to the next heading          |
-| =p=     | =ekg-org-view-previous-heading=  | Move to the previous heading      |
-| =f=     | =ekg-org-view-next-sibling=      | Move to the next same-level heading |
-| =b=     | =ekg-org-view-previous-sibling=  | Move to the previous same-level heading |
-| =u=     | =ekg-org-view-up-heading=        | Move to the parent heading        |
+| =n=     | =ekg-org-view-next-heading=      | Move to the next note             |
+| =p=     | =ekg-org-view-previous-heading=  | Move to the previous note         |
+| =f=     | =ekg-org-view-next-sibling=      | Move to the next same-level note  |
+| =b=     | =ekg-org-view-previous-sibling=  | Move to the previous same-level note |
+| =u=     | =ekg-org-view-up-heading=        | Move to the parent note           |
 
 **** Actions
 
 | Key     | Command                          | Description                       |
 |---------+----------------------------------+-----------------------------------|
-| =t=     | =ekg-org-view-cycle-state=       | Change the TODO state             |
+| =t= / =C-c C-t= | =ekg-org-view-cycle-state= | Choose the TODO state           |
+| =x=     | =ekg-org-view-toggle-done=       | Complete or reopen the task       |
+| =+=     | =ekg-org-view-add-child=         | Append a child task               |
 | =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
-| =TAB=   | =ekg-org-view-toggle-collapse=   | Collapse or expand the subtree    |
-| =RET=   | =ekg-org-view-open-note=         | Open the note for editing in ekg  |
+| =TAB=   | =ekg-org-view-toggle-collapse=   | Fold or expand the body and children |
+| =S-TAB= | =ekg-org-view-toggle-all=        | Fold all roots or expand all notes |
+| =RET= / =o= | =ekg-org-view-open-note=     | Open the note for editing in ekg  |
 | =c=     | =ekg-org-view-create=            | Enter insertion mode to create a new task |
 | =C-c C-r= | =ekg-org-view-respond=         | Capture a response to the task at point |
 | =a=     | =ekg-org-view-archive=           | Archive the task at point         |
@@ -1606,6 +1612,24 @@ The following keybindings are available in =ekg-org-view-mode=:
 | =g=     | =ekg-org-view-refresh=           | Manually refresh the view         |
 | =C-c C-s= | =ekg-org-set-schedule=         | Set the scheduled date of current task |
 | =C-c C-d= | =ekg-org-set-deadline=         | Set the deadline of current task  |
+| =?=     | =describe-mode=                 | Show available commands           |
+
+=x= uses the first completed or unfinished keyword from the sequence containing
+the task's current state in =org-todo-keywords=.  New tasks use the first
+configured unfinished keyword.  Create tasks in the active view; creation is
+unavailable in the archive view or beneath an archived parent.
+
+**** Querying task and view state
+
+=ekg-org-task-state= returns a note's TODO keyword, and =ekg-org-task-done-p=
+checks whether it is a configured completed state.  =ekg-org-task-summary=
+returns a plist with =:state=, =:done=, =:scheduled=, =:deadline=, =:children=,
+=:completed=, =:remaining=, and =:dependencies=.  Child counts include immediate
+task children in the note's archive scope.
+
+Within a task view, =ekg-org-view-state= returns =:current-id=, =:root-id=,
+=:archive=, =:visible-ids=, and =:folded-ids=.  =ekg-notes-visible-ids= returns
+the visible note IDs in navigation order from any normal notes view.
 
 **** How it differs from org-mode
 
