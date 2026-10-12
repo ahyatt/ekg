@@ -1460,7 +1460,8 @@ This is needed to identify references to refresh when the subject is changed.")
   "Return NOTE formatted at DEPTH in a hierarchy.
 BRANCHES lists whether each ancestor has following siblings, from
 root to NOTE.  CHILDREN is the number of displayed immediate children."
-  (let* ((guide-face 'ekg-notes-hierarchy-guide)
+  (let* ((template ekg-display-note-template)
+         (guide-face 'ekg-notes-hierarchy-guide)
          (heading-face 'ekg-notes-hierarchy-heading)
          (stem (mapconcat (lambda (following)
                             (if following "│  " "   "))
@@ -1490,7 +1491,7 @@ root to NOTE.  CHILDREN is the number of displayed immediate children."
     (with-temp-buffer
       (when heading (insert heading))
       (let ((start (point)))
-        (insert (ekg-display-note note ekg-display-note-template))
+        (insert (ekg-display-note note template))
         (let ((pos start))
           (while (< pos (point-max))
             (let* ((face (get-text-property pos 'face))
@@ -2372,7 +2373,7 @@ tags)."
 (defun ekg-current-note-or-error ()
   "Return the current `ekg-note'.
 Raise an error if there is no current note."
-  (unless (eq major-mode 'ekg-notes-mode)
+  (unless (derived-mode-p 'ekg-notes-mode)
     (error "This command can only be used in `ekg-notes-mode'"))
   (if-let* ((id (get-text-property (point) :ekg-note-id)))
       (or (ekg-get-note-with-id id)
@@ -2489,6 +2490,52 @@ TITLE is the title of the URL to browse to."
                          (ekg-notes--collect-all)))) ekg-notes-mode)
   (when title (ekg-browse-url title)))
 
+(defvar-local ekg-notes-children-function #'ekg--notes-children
+  "Function returning the displayed children of a note, in order.")
+
+(defvar-local ekg-notes-collapsed-ids nil
+  "IDs of notes whose body and descendants are folded in this buffer.")
+
+(defvar-local ekg-notes-collapsed-note-template nil
+  "Optional display template for folded notes in this buffer.")
+
+(defvar-local ekg-notes-show-child-count t
+  "Whether to show a child-count heading above each parent note.")
+
+(defun ekg--notes-children (note)
+  "Return active children of NOTE in the normal note-list order."
+  (sort (ekg-note-child-notes note t) #'ekg--hierarchy-note-less-p))
+
+(defun ekg-notes-visible-ids ()
+  "Return the visible note IDs in navigation order in this notes buffer."
+  (let ((pos (point-min)) ids)
+    (while (< pos (point-max))
+      (when-let* ((id (get-text-property pos :ekg-note-id)))
+        (push id ids))
+      (setq pos (or (next-single-property-change pos :ekg-note-id)
+                    (point-max))))
+    (seq-uniq (nreverse ids))))
+
+(defun ekg-notes--goto-id (id)
+  "Move to note ID in the current buffer, returning non-nil if found."
+  (when-let* ((pos (text-property-any (point-min) (point-max)
+                                    :ekg-note-id id)))
+    (goto-char pos)
+    (ekg--note-highlight)
+    t))
+
+(defun ekg-notes-toggle-collapse ()
+  "Toggle descendants of the note at point.
+Use `ekg-notes-collapsed-note-template' for its folded content when set."
+  (interactive nil ekg-notes-mode)
+  (let ((id (ekg-note-id (ekg-current-note-or-error))))
+    (setq ekg-notes-collapsed-ids
+          (if (member id ekg-notes-collapsed-ids)
+              (remove id ekg-notes-collapsed-ids)
+            (cons id ekg-notes-collapsed-ids)))
+    (ekg-notes-refresh)
+    (ekg-notes--goto-id id)))
+
 (vui-defcomponent ekg-notes-root (name notes-func include-descendants)
   "Root component for the notes list view."
   :render
@@ -2515,21 +2562,28 @@ TITLE is the title of the URL to browse to."
                     (lambda (child)
                       (or include-descendants
                           (gethash (ekg-note-id child) fetched-ids)))
-                    (sort (ekg-note-child-notes note t)
-                          #'ekg--hierarchy-note-less-p))))
+                    (funcall ekg-notes-children-function note))))
              (unless (gethash id visited)
                (puthash id t visited)
-               (apply
-                #'vui-vstack
-                :key (intern (format "note-%s" id))
-                (vui-text (ekg--indent-displayed-note
-                           note depth branches (length children))
-                          :key (intern (format "note-text-%s" id))
-                          :ekg-note-id id)
-                (cl-loop for tail on children
-                         collect (render (car tail) (1+ depth)
-                                         (append branches
-                                                 (list (and (cdr tail) t))))))))))
+               (let* ((collapsed (member id ekg-notes-collapsed-ids))
+                      (ekg-display-note-template
+                       (if collapsed
+                           (or ekg-notes-collapsed-note-template
+                               ekg-display-note-template)
+                         ekg-display-note-template)))
+                 (apply
+                  #'vui-vstack
+                  :key (intern (format "note-%s" id))
+                  (vui-text (ekg--indent-displayed-note
+                             note depth branches
+                             (when ekg-notes-show-child-count (length children)))
+                            :key (intern (format "note-text-%s" id))
+                            :ekg-note-id id
+                            :ekg-note-depth depth)
+                  (cl-loop for tail on (unless collapsed children)
+                           collect (render (car tail) (1+ depth)
+                                           (append branches
+                                                   (list (and (cdr tail) t)))))))))))
       (apply #'vui-vstack
              :spacing 1
              (delq nil

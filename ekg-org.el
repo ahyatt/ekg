@@ -29,8 +29,6 @@
 (require 'seq)
 (require 'ekg)
 (require 'llm)
-(require 'vui)
-(declare-function vui-rerender "vui")
 
 ;; Forward declarations for variables defined in ekg-agent.el.
 (defvar ekg-agent-extra-tools)
@@ -63,11 +61,6 @@ Bind this around batch operations that save multiple notes; call
 
 (add-hook 'ekg-response-tag-filter-functions
           #'ekg-org--response-inheritable-tag-p)
-
-(defface ekg-org-view-body
-  '((t :inherit shadow))
-  "Face used for task body text in `ekg-org-view-mode'."
-  :group 'ekg)
 
 (defun ekg-org--note-title (note)
   "Return the title string of NOTE, or nil if it has no title."
@@ -328,24 +321,27 @@ an ekg-note and returns nil to exclude it."
    (member ekg-org-task-tag (ekg-note-tags note))))
 
 (defun ekg-org-change-state (new-state)
-  "Change the state of the current org task to NEW-STATE.
-
-NEW-STATE is one of the standard org states."
-  (interactive (list (completing-read "New state: " (ekg-org--todo-keywords))))
-  (let ((ekg-note (ekg-current-note-or-error-expanded)))
-    (setf (ekg-note-tags ekg-note)
-          (cons
-           (concat ekg-org-state-tag-prefix (downcase new-state))
-           (seq-remove
-            (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
-            (ekg-note-tags ekg-note))))
-    ;; We save unless we're currently editing the note.  Use the
-    ;; lightweight tag-only save since only the state tag changed.
-    (unless (member 'ekg-edit-mode local-minor-modes)
-      (ekg-org-view--save-tags ekg-note)
-      (when (derived-mode-p 'ekg-notes-mode)
+  "Change the current task to NEW-STATE from `org-todo-keywords'.
+While editing, change the note in memory; otherwise persist just its tags."
+  (interactive
+   (list (completing-read "New state: " (ekg-org--todo-keywords) nil t)))
+  (unless (member new-state (ekg-org--todo-keywords))
+    (user-error "Unknown TODO state: %s" new-state))
+  (let ((note (ekg-current-note-or-error-expanded)))
+    (unless (ekg-org--org-note-p note)
+      (user-error "This action requires an Org task"))
+    (setf (ekg-note-tags note)
+          (cons (concat ekg-org-state-tag-prefix (downcase new-state))
+                (seq-remove
+                 (lambda (tag)
+                   (string-prefix-p ekg-org-state-tag-prefix tag))
+                 (ekg-note-tags note))))
+    (unless (or ekg-edit-mode ekg-capture-mode)
+      (ekg-org-view--save-tags note)
+      ;; Task views refresh and preserve selection through the save hook.
+      (when (and (derived-mode-p 'ekg-notes-mode)
+                 (not (derived-mode-p 'ekg-org-view-mode)))
         (ekg-notes-refresh)))))
-;; ekg-org-view-mode buffers are refreshed via ekg-note-save-hook.
 
 (defun ekg-org-capture (title)
   "Capture a new org task with TITLE into EKG."
@@ -491,45 +487,36 @@ Does nothing when `ekg-org--inhibit-view-refresh' is non-nil."
 ;; But without this, we get an error.
 (add-to-list 'auto-mode-alist '("\\.org_archive" . org-mode))
 
-(defun ekg-org--todo-keywords ()
+(defun ekg-org--todo-sequences ()
+  "Return global `org-todo-keywords' in sequence form."
+  (let ((keywords (default-value 'org-todo-keywords)))
+    (if (seq-every-p #'stringp keywords)
+        (list (cons 'sequence keywords))
+      keywords)))
+
+(defun ekg-org--todo-keywords (&optional sequences)
   "Return a flat list of TODO keyword strings from `org-todo-keywords'.
 This reads directly from the global defcustom rather than the
 buffer-local `org-todo-keywords-1', which is only populated inside
-Org-mode buffers."
+Org-mode buffers.  SEQUENCES optionally restricts the keyword sequences."
   (let (result)
-    (dolist (entry (default-value 'org-todo-keywords))
-      (if (stringp entry)
-          ;; Old-style plain keyword list.
-          (push entry result)
-        ;; New-style (sequence/type "KW1" "|" "KW2" ...) entry.
-        (dolist (kw (cdr entry))
-          (unless (equal kw "|")
-            ;; Strip fast-selection key / logging specs, e.g. "WAIT(w@/!)".
-            (when (string-match "^\\([^(]+\\)" kw)
-              (push (match-string 1 kw) result))))))
+    (dolist (entry (or sequences (ekg-org--todo-sequences)))
+      (dolist (kw (cdr entry))
+        (unless (equal kw "|")
+          ;; Strip fast-selection key / logging specs, e.g. "WAIT(w@/!)".
+          (when (string-match "^\\([^(]+\\)" kw)
+            (push (match-string 1 kw) result)))))
     (nreverse result)))
 
 (defun ekg-org--state (note)
-  "Get the org state of NOTE."
-  (let ((tags (ekg-note-tags note)))
-    (let ((tag (car (seq-filter
-                     (lambda (tag)
-                       (string-prefix-p ekg-org-state-tag-prefix tag))
-                     tags))))
-      (if tag
-          (upcase (string-replace ekg-org-state-tag-prefix "" tag))
-        (error "No org state tag found for note ID %s" (ekg-note-id note))))))
+  "Get the org state of NOTE, signaling an error when it is absent."
+  (or (ekg-org-task-state note)
+      (error "No org state tag found for note ID %s" (ekg-note-id note))))
 
-;;; ekg-org-view — vui-based hierarchical task view
-
-(defvar-local ekg-org-view--hl nil
-  "Overlay for highlighting the current heading in `ekg-org-view-mode'.")
+;;; ekg-org-view — Org actions in the normal notes UI
 
 (defvar-local ekg-org-view--refresh-pending nil
   "When non-nil, a refresh was deferred because insert mode was active.")
-
-(defvar-local ekg-org-view--instance nil
-  "The vui root instance for the current ekg-org-view buffer.")
 
 (defvar-local ekg-org-view--root-id nil
   "When non-nil, show only this task and its children.")
@@ -556,15 +543,15 @@ unnecessary."
         (tags (mapcar #'ekg--normalize-tag (ekg-note-tags note))))
     (setf (ekg-note-tags note) tags)
     (triples-with-transaction
-      ekg-db
-      (triples-set-type ekg-db id 'tagged :tag tags)
-      (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
-      (let ((modified-time (time-convert (current-time) 'integer)))
-        (triples-set-type ekg-db id 'time-tracked
-                          :creation-time (ekg-note-creation-time note)
-                          :modified-time modified-time)
-        (setf (ekg-note-modified-time note) modified-time))
-      (run-hook-with-args 'ekg-note-save-hook note))))
+     ekg-db
+     (triples-set-type ekg-db id 'tagged :tag tags)
+     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
+     (let ((modified-time (time-convert (current-time) 'integer)))
+       (triples-set-type ekg-db id 'time-tracked
+                         :creation-time (ekg-note-creation-time note)
+                         :modified-time modified-time)
+       (setf (ekg-note-modified-time note) modified-time))
+     (run-hook-with-args 'ekg-note-save-hook note))))
 
 (defun ekg-org-view--sort-order (note)
   "Return the sort-order of NOTE, defaulting to creation time."
@@ -634,140 +621,139 @@ sibling."
         (insert-after nil)
         (found nil))
     (triples-with-transaction
-      ekg-db
-      (dolist (sib siblings)
-        (when (and found (not insert-after))
-          (setq insert-after order)
-          (cl-incf order))
-        (ekg-org-view--set-sort-order (ekg-note-id sib) order)
-        (when (equal (ekg-note-id sib) current-id)
-          (setq found t))
-        (cl-incf order)))
+     ekg-db
+     (dolist (sib siblings)
+       (when (and found (not insert-after))
+         (setq insert-after order)
+         (cl-incf order))
+       (ekg-org-view--set-sort-order (ekg-note-id sib) order)
+       (when (equal (ekg-note-id sib) current-id)
+         (setq found t))
+       (cl-incf order)))
     (or insert-after order)))
 
+(defun ekg-org-task-state (note)
+  "Return NOTE's TODO keyword, or nil if it has no task state."
+  (when-let* ((tag (seq-find
+                    (lambda (tag)
+                      (string-prefix-p ekg-org-state-tag-prefix tag))
+                    (ekg-note-tags note))))
+    (upcase (substring tag (length ekg-org-state-tag-prefix)))))
+
+(defun ekg-org--done-keywords (&optional sequences)
+  "Return completed keywords from the global `org-todo-keywords'.
+SEQUENCES optionally restricts the keyword sequences."
+  (let (result)
+    (dolist (sequence (or sequences (ekg-org--todo-sequences)))
+      (let* ((keywords (cdr sequence))
+             (separator (member "|" keywords))
+             (done (if separator (cdr separator) (last keywords))))
+        (dolist (keyword done)
+          (push (car (split-string keyword "(")) result))))
+    (nreverse result)))
+
+(defun ekg-org-task-done-p (note)
+  "Return non-nil if NOTE has a completed TODO keyword.
+Use the configured `org-todo-keywords', including custom done states."
+  (member (ekg-org-task-state note) (ekg-org--done-keywords)))
+
+(defun ekg-org-task-summary (note)
+  "Return a plist describing NOTE's task state and immediate task children.
+Keys are :state, :done, :scheduled, :deadline, :children, :completed,
+:remaining and :dependencies.  Children share NOTE's archive scope."
+  (let* ((children
+          (seq-filter
+           #'ekg-org--org-note-p
+           (ekg-org-view--display-children
+            (ekg-note-id note)
+            (member ekg-org-archive-tag (ekg-note-tags note)))))
+         (completed (seq-count #'ekg-org-task-done-p children))
+         (props (ekg-note-properties note)))
+    (list :state (ekg-org-task-state note)
+          :done (and (ekg-org-task-done-p note) t)
+          :scheduled (plist-get props :org/scheduled)
+          :deadline (plist-get props :org/deadline)
+          :children (length children) :completed completed
+          :remaining (- (length children) completed)
+          :dependencies (ekg-org-dependency-type note))))
+
+(defun ekg-org-view-state ()
+  "Return the task view's current selection, scope and folding state.
+Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
+  (unless (derived-mode-p 'ekg-org-view-mode)
+    (user-error "This command requires an Org task view"))
+  (list :current-id (get-text-property (point) :ekg-note-id)
+        :root-id ekg-org-view--root-id :archive ekg-org-view--archive
+        :visible-ids (ekg-notes-visible-ids)
+        :folded-ids (copy-sequence ekg-notes-collapsed-ids)))
+
 (defun ekg-org-view--visible-tags (note)
-  "Return the user-visible tags of NOTE, excluding internal org tags."
+  "Return NOTE's tags excluding task control, trash and draft tags."
   (seq-filter (lambda (tag)
-                (and (not (string-prefix-p ekg-org-state-tag-prefix tag))
-                     (not (string-equal tag ekg-org-task-tag))
-                     (not (string-equal tag ekg-org-archive-tag))))
+                (and (ekg-org--response-inheritable-tag-p tag note)
+                     (not (member tag (list ekg-trash-tag ekg-draft-tag)))))
               (ekg-note-tags note)))
 
-(defun ekg-org-view--indent-text (text prefix)
-  "Indent each line of TEXT with PREFIX."
-  (mapconcat (lambda (line) (concat prefix line))
-             (split-string text "\n")
-             "\n"))
+(defun ekg-display-note-org-tags (note &optional numwords &rest format)
+  "Display NOTE's user tags, with NUMWORDS and FORMAT template options."
+  (let ((note (copy-ekg-note note)))
+    (setf (ekg-note-tags note)
+          (ekg-org-view--visible-tags note))
+    (apply #'ekg-display-note-tagged note numwords format)))
 
-(defun ekg-org-view--fontify-org (text)
-  "Return TEXT with `org-mode' font-lock properties applied.
-Reuses a hidden buffer to avoid repeated `org-mode' initialization."
-  (if (or (null text) (string-empty-p text))
-      ""
-    (with-current-buffer (get-buffer-create " *ekg-org-fontify*")
-      (unless (derived-mode-p 'org-mode)
-        (delay-mode-hooks (org-mode)))
-      (let ((inhibit-modification-hooks t))
-        (erase-buffer)
-        (insert text)
-        (font-lock-ensure)
-        (buffer-string)))))
+(defun ekg-org--format-task-date (epoch)
+  "Format EPOCH with its time of day when it is not midnight."
+  (let ((time (seconds-to-time epoch)))
+    (format-time-string
+     (if (equal (format-time-string "%H:%M:%S" time) "00:00:00")
+         "%Y-%m-%d"
+       "%Y-%m-%d %H:%M")
+     time)))
 
-(defun ekg-org-view--heading-face (level)
-  "Return the org heading face for LEVEL."
-  (intern (format "org-level-%d" (min level 8))))
+(defun ekg-display-note-org-status (note &optional numwords &rest format)
+  "Display NOTE's task status, with NUMWORDS and FORMAT template options."
+  (when (ekg-org--org-note-p note)
+    (let* ((summary (ekg-org-task-summary note))
+           (state (or (plist-get summary :state) "No state"))
+           (parts (list (propertize state 'face
+                                    (if (plist-get summary :done)
+                                        'org-done 'org-todo)))))
+      (dolist (field '((:scheduled . "Scheduled") (:deadline . "Due")))
+        (when-let* ((date (plist-get summary (car field))))
+          (setq parts (append parts
+                              (list (format "%s %s" (cdr field)
+                                            (ekg-org--format-task-date
+                                             date)))))))
+      (when (> (plist-get summary :children) 0)
+        (setq parts (append parts
+                            (list (format "%d/%d done · %s"
+                                          (plist-get summary :completed)
+                                          (plist-get summary :children)
+                                          (plist-get summary :dependencies))))))
+      (when (memq 'folded format)
+        (setq parts (append parts '("folded"))))
+      (ekg-display--format (mapconcat #'identity parts " · ")
+                           numwords format))))
 
-(defun ekg-org-view--render-heading (note level)
-  "Return a propertized heading string for NOTE at LEVEL."
-  (let* ((task-p (ekg-org--org-note-p note))
-         (state (when task-p
-                  (condition-case nil (ekg-org--state note)
-                    (error "UNKNOWN"))))
-         (title (or (ekg-org--note-title note)
-                    (if task-p "Untitled" "Response")))
-         (tags (ekg-org-view--visible-tags note))
-         (stars (make-string level ?*))
-         (state-face (if (string-equal state "DONE") 'org-done 'org-todo))
-         (dependency-str
-          (if (and task-p (eq (ekg-org-dependency-type note) 'parallel))
-              " [parallel]"
-            ""))
-         (tag-str (if tags (concat " :" (mapconcat #'identity tags ":") ":") "")))
-    (concat (propertize stars 'face (ekg-org-view--heading-face level))
-            " "
-            (when state
-              (concat (propertize state 'face state-face) " "))
-            (propertize title 'face (ekg-org-view--heading-face level))
-            (propertize dependency-str 'face 'shadow)
-            (propertize tag-str 'face 'org-tag))))
+(defun ekg-org-view--children (note)
+  "Return NOTE's children for the active or archived task view."
+  (ekg-org-view--display-children (ekg-note-id note) ekg-org-view--archive))
 
+(defun ekg-org-view--fetch-notes ()
+  "Return the root notes of the current task view."
+  (if ekg-org-view--root-id
+      (when-let* ((note (ekg-get-note-with-id ekg-org-view--root-id)))
+        (when (and (ekg-note-active-p note)
+                   (eq (and (member ekg-org-archive-tag (ekg-note-tags note)) t)
+                       (and ekg-org-view--archive t)))
+          (list note)))
+    (ekg-org-view--sorted-top-level ekg-org-view--archive)))
 
-
-(defun ekg-org-view--render-task (note level collapsed-ids &optional archive)
-  "Return a vui vnode tree for NOTE at LEVEL with COLLAPSED-IDS.
-When ARCHIVE is non-nil, show archived descendants."
-  (let* ((id (ekg-note-id note))
-         (collapsed (member id collapsed-ids))
-         (heading (ekg-org-view--render-heading note level))
-         (children (ekg-org-view--display-children id archive))
-         (text (ekg-note-text note))
-         (body-nodes nil))
-    (unless collapsed
-      (when (and text (not (string-empty-p (string-trim text))))
-        (let* ((fontified (string-trim-right (ekg-org-view--fontify-org text)))
-               (indent (make-string (1+ level) ?\s))
-               (body (ekg-org-view--indent-text fontified indent)))
-          (push (vui-text body
-                  :key (intern (format "body-%s" id))
-                  :ekg-org-note-id id
-                  :ekg-org-level level)
-                body-nodes)))
-      (dolist (child children)
-        (push (ekg-org-view--render-task child (1+ level) collapsed-ids
-                                         archive)
-              body-nodes))
-      (setq body-nodes (nreverse body-nodes)))
-    (apply #'vui-vstack
-           :key (intern (format "task-%s" id))
-           (vui-text heading
-             :key (intern (format "heading-%s" id))
-             :ekg-org-note-id id
-             :ekg-org-level level
-             :ekg-org-heading t)
-           body-nodes)))
-
-(vui-defcomponent ekg-org-view-root (root-id archive)
-  "Root component for the ekg org task view."
-  :state ((collapsed-ids nil))
-  :render
-  (let* ((tasks (if root-id
-                    (let ((note (ekg-get-note-with-id root-id)))
-                      (when note (list note)))
-                  (ekg-org-view--sorted-top-level archive)))
-         (start-level (if root-id 1 1)))
-    (if (null tasks)
-        (vui-text (if archive
-                      "(No archived org tasks found)"
-                    "(No org tasks found)")
-          :face 'font-lock-comment-face)
-      (apply #'vui-vstack
-             :spacing 1
-             (mapcar (lambda (task)
-                       (ekg-org-view--render-task task start-level collapsed-ids
-                                                   archive))
-                     tasks)))))
-
-;; Navigation helpers
+;; Navigation and task commands use the normal notes UI's IDs and depth.
 
 (defun ekg-org-view--note-at-point ()
   "Return the note ID at point, or nil."
-  (or (get-text-property (line-beginning-position) :ekg-org-note-id)
-      (save-excursion
-        (let ((found nil))
-          (while (and (not found) (not (bobp)))
-            (forward-line -1)
-            (setq found (get-text-property (line-beginning-position) :ekg-org-note-id)))
-          found))))
+  (get-text-property (point) :ekg-note-id))
 
 (defun ekg-org-view--require-task-at-point ()
   "Return the task at point, or signal a user-facing error."
@@ -778,74 +764,46 @@ When ARCHIVE is non-nil, show archived descendants."
     note))
 
 (defun ekg-org-view--level-at-point ()
-  "Return the heading level at point, or nil."
-  (get-text-property (line-beginning-position) :ekg-org-level))
+  "Return the task hierarchy level at point, or nil."
+  (when-let* ((id (ekg-org-view--note-at-point))
+              (start (text-property-any (point-min) (point-max)
+                                        :ekg-note-id id))
+              (depth (get-text-property start :ekg-note-depth)))
+    (1+ depth)))
 
 (defun ekg-org-view--on-heading-p ()
-  "Return non-nil if point is on a heading line."
-  (get-text-property (line-beginning-position) :ekg-org-heading))
+  "Return non-nil at the beginning of a displayed note."
+  (and (get-text-property (point) 'ekg-note-id)
+       (or (bobp)
+           (not (equal (get-text-property (point) :ekg-note-id)
+                       (get-text-property (1- (point)) :ekg-note-id))))))
 
 (defun ekg-org-view--ensure-on-heading ()
-  "Move point to the nearest heading line if not already on one.
-Tries forward first, then backward.  Does nothing if the buffer
-has no headings."
-  (unless (ekg-org-view--on-heading-p)
-    (let ((fwd nil) (bwd nil))
-      (save-excursion
-        (while (and (not (eobp)) (not (ekg-org-view--on-heading-p)))
-          (forward-line 1))
-        (when (ekg-org-view--on-heading-p)
-          (setq fwd (point))))
-      (save-excursion
-        (while (and (not (bobp)) (not (ekg-org-view--on-heading-p)))
-          (forward-line -1))
-        (when (ekg-org-view--on-heading-p)
-          (setq bwd (point))))
-      (cond
-       ((and fwd bwd)
-        (goto-char (if (<= (- fwd (point)) (- (point) bwd)) fwd bwd)))
-       (fwd (goto-char fwd))
-       (bwd (goto-char bwd))))))
+  "Move to the beginning of the current note."
+  (when-let* ((id (ekg-org-view--note-at-point)))
+    (ekg-notes--goto-id id)))
 
 (defun ekg-org-view--highlight ()
-  "Highlight the current heading in the ekg-org-view buffer."
-  (when ekg-org-view--hl
-    (let* ((current-id (ekg-org-view--note-at-point))
-           (beg (line-beginning-position))
-           (end (save-excursion
-                  (forward-line 1)
-                  (while (and (not (eobp))
-                              (let ((id (get-text-property (point) :ekg-org-note-id)))
-                                (or (equal id current-id)
-                                    (not (get-text-property (point) :ekg-org-heading)))))
-                    (forward-line 1))
-                  (if (eobp) (point) (line-beginning-position)))))
-      (move-overlay ekg-org-view--hl beg end))))
+  "Update the current note's normal selection indicator."
+  (ekg--note-highlight))
 
 (defun ekg-org-view--goto-heading (direction &optional same-level)
-  "Move to the next heading in DIRECTION (:forward or :backward).
-If SAME-LEVEL, only stop at headings with the same level as current.
-Continuation lines (SCHEDULED/DEADLINE) sharing the same note ID
-as the starting heading are skipped."
-  (let ((current-level (ekg-org-view--level-at-point))
-        (current-id (ekg-org-view--note-at-point))
-        (step (if (eq direction :forward) 1 -1))
-        (found nil))
+  "Move to the next note in DIRECTION, optionally at the SAME-LEVEL."
+  (let ((level (ekg-org-view--level-at-point))
+        (id (ekg-org-view--note-at-point))
+        (step (if (eq direction :forward) 1 -1)))
     (save-excursion
-      (forward-line step)
-      (while (not found)
-        (let ((id (get-text-property (point) :ekg-org-note-id)))
-          (when (and (get-text-property (point) :ekg-org-heading)
-                     (not (equal id current-id)))
-            (if same-level
-                (when (equal (get-text-property (point) :ekg-org-level)
-                             current-level)
-                  (setq found (point)))
-              (setq found (point)))))
-        (when (or found (if (= step 1) (eobp) (bobp)))
-          (setq found (or found 'stop)))
-        (unless found (forward-line step))))
-    (when (integerp found) (goto-char found))))
+      (let (found)
+        (while (and (not found)
+                    (if (= step 1) (not (eobp)) (not (bobp))))
+          (forward-line step)
+          (when (and (ekg-org-view--on-heading-p)
+                     (not (equal id (ekg-org-view--note-at-point)))
+                     (or (not same-level)
+                         (equal level (ekg-org-view--level-at-point))))
+            (setq found (point))))
+        (when found (setq id (ekg-org-view--note-at-point)))))
+    (ekg-notes--goto-id id)))
 
 ;; Interactive navigation commands
 
@@ -883,10 +841,10 @@ as the starting heading are skipped."
       (save-excursion
         (while (and (not found) (not (bobp)))
           (forward-line -1)
-          (let ((id (get-text-property (point) :ekg-org-note-id)))
-            (when (and (get-text-property (point) :ekg-org-heading)
+          (let ((id (get-text-property (point) :ekg-note-id)))
+            (when (and (ekg-org-view--on-heading-p)
                        (not (equal id current-id)))
-              (let ((level (get-text-property (point) :ekg-org-level)))
+              (let ((level (ekg-org-view--level-at-point)))
                 (when (and level (< level current-level))
                   (setq found (point)))))))))
     (when found (goto-char found))
@@ -895,31 +853,31 @@ as the starting heading are skipped."
 ;; Interactive action commands
 
 (defun ekg-org-view--goto-note-id (id)
-  "Move point to the heading for note ID, if present in the buffer.
-Returns non-nil if found."
-  (let ((found nil))
-    (save-excursion
-      (goto-char (point-min))
-      (while (and (not found) (not (eobp)))
-        (when (and (equal (get-text-property (point) :ekg-org-note-id) id)
-                   (get-text-property (point) :ekg-org-heading))
-          (setq found (point)))
-        (forward-line 1)))
-    (when found
-      (goto-char found)
-      t)))
+  "Move to note ID in the current buffer, returning non-nil if found."
+  (ekg-notes--goto-id id))
 
 (defun ekg-org-view--refresh (&optional target-id)
   "Re-render the view in place without switching windows.
 If TARGET-ID is non-nil, move point to that note's heading after
-re-rendering and ensure it is visible.  When no TARGET-ID is given,
-the note at point is preserved across the rerender.  When insert
-mode is active, the refresh is deferred until insert mode ends."
+re-rendering, unfolding its ancestors to reveal it.  Without TARGET-ID,
+preserve the note at point, or its nearest visible ancestor if folded.
+When insert mode is active, defer the refresh until insert mode ends."
   (if ekg-org-view--insert-overlay
       (setq ekg-org-view--refresh-pending t)
-    (let ((restore-id (or target-id (ekg-org-view--note-at-point))))
-      (vui-rerender ekg-org-view--instance)
-      (when (and restore-id (ekg-org-view--goto-note-id restore-id))
+    (let* ((restore-id (or target-id (ekg-org-view--note-at-point)))
+           (ancestors (when-let* ((note (and restore-id
+                                            (ekg-get-note-with-id restore-id))))
+                        (mapcar #'ekg-note-id (ekg-note-ancestors note)))))
+      ;; Actions that explicitly select a task must reveal it.  Background
+      ;; refreshes retain folds and select the nearest visible ancestor.
+      (when target-id
+        (setq ekg-notes-collapsed-ids
+              (seq-difference ekg-notes-collapsed-ids ancestors)))
+      (ekg--show-notes (if ekg-org-view--archive "Archived tasks" "Org tasks")
+                       #'ekg-org-view--fetch-notes nil)
+      (when (and restore-id
+                 (seq-some #'ekg-org-view--goto-note-id
+                           (cons restore-id (reverse ancestors))))
         (let ((windows (get-buffer-window-list (current-buffer) nil t)))
           (dolist (win windows)
             (set-window-point win (point))
@@ -936,35 +894,60 @@ mode is active, the refresh is deferred until insert mode ends."
     (ekg-org-view--highlight)))
 
 (defun ekg-org-view-toggle-collapse ()
-  "Toggle collapse/expand of the task at point."
+  "Toggle the body and descendants of the note at point."
   (interactive nil ekg-org-view-mode)
-  (when-let* ((id (ekg-org-view--note-at-point))
-              (instance ekg-org-view--instance))
-    (let* ((state (vui-instance-state instance))
-           (collapsed (plist-get state :collapsed-ids)))
-      (if (member id collapsed)
-          (setf (vui-instance-state instance)
-                (plist-put state :collapsed-ids (remove id collapsed)))
-        (setf (vui-instance-state instance)
-              (plist-put state :collapsed-ids (cons id collapsed)))))
-    (vui-rerender ekg-org-view--instance)))
+  (ekg-notes-toggle-collapse))
+
+(defun ekg-org-view-toggle-all ()
+  "Fold all root tasks, or expand all tasks when any are folded."
+  (interactive nil ekg-org-view-mode)
+  (setq ekg-notes-collapsed-ids
+        (unless ekg-notes-collapsed-ids
+          (mapcar #'ekg-note-id (ekg-org-view--fetch-notes))))
+  (ekg-org-view--refresh))
 
 (defun ekg-org-view-cycle-state ()
-  "Change the TODO state of the task at point."
+  "Choose the TODO state of the task at point."
   (interactive nil ekg-org-view-mode)
-  (ekg-org-view--require-task-at-point)
-  (when-let* ((id (ekg-org-view--note-at-point))
-              (note (ekg-get-note-with-id id)))
-    (let* ((states (or (ekg-org--todo-keywords) '("TODO" "DONE")))
-           (new-state (completing-read "State: " states nil t))
-           (ekg-org--inhibit-view-refresh t))
-      (setf (ekg-note-tags note)
-            (cons (concat ekg-org-state-tag-prefix (downcase new-state))
-                  (seq-remove
-                   (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
-                   (ekg-note-tags note))))
-      (ekg-org-view--save-tags note))
-    (ekg-org-view--refresh)))
+  (let* ((note (ekg-org-view--require-task-at-point))
+         (state (completing-read "State: " (ekg-org--todo-keywords) nil t
+                                 nil nil (ekg-org-task-state note))))
+    (ekg-org-change-state state)))
+
+(defun ekg-org-view-toggle-done ()
+  "Mark the current task done, or reopen it in its TODO keyword sequence."
+  (interactive nil ekg-org-view-mode)
+  (let* ((note (ekg-org-view--require-task-at-point))
+         (current (ekg-org-task-state note))
+         (sequence (seq-find
+                    (lambda (sequence)
+                      (member current (ekg-org--todo-keywords (list sequence))))
+                    (ekg-org--todo-sequences))))
+    (unless sequence
+      (user-error "No TODO keyword sequence contains %s" current))
+    (let* ((done (ekg-org--done-keywords (list sequence)))
+           (state (if (member current done)
+                      (car (seq-difference
+                            (ekg-org--todo-keywords (list sequence)) done))
+                    (car done))))
+      (unless state (user-error "No suitable TODO keyword is configured"))
+      (ekg-org-change-state state))))
+
+(defun ekg-org-view-add-child (title)
+  "Create a child task of the task at point with TITLE."
+  (interactive "sChild task: " ekg-org-view-mode)
+  (when ekg-org-view--archive
+    (user-error "Create tasks in the active task view"))
+  (let ((note (ekg-org-view--require-task-at-point)))
+    (unless (string-empty-p (string-trim title))
+      (setq ekg-notes-collapsed-ids
+            (remove (ekg-note-id note) ekg-notes-collapsed-ids))
+      (ekg-org-view--insert-create-task
+       (list :parent-id (ekg-note-id note)
+             :after-id (when-let* ((children (ekg-org-view--sorted-children
+                                              (ekg-note-id note))))
+                         (ekg-note-id (car (last children)))))
+       title))))
 
 (defun ekg-org-view-set-dependency-type (dependency-type)
   "Set the dependency mode of the task's children.
@@ -1055,20 +1038,20 @@ among the new siblings."
                              (ekg-note-parent-id parent-note)))
            (ekg-org--inhibit-view-refresh t))
       (triples-with-transaction
-        ekg-db
-        (if grandparent-id
-            (ekg-note-set-parent note grandparent-id)
-          ;; Promoting to top-level: remove the parent property and the
-          ;; hierarchy/parent triple.
-          (ekg-note-set-parent note nil))
-        ;; Place right after the former parent among new siblings.
-        (let* ((new-siblings (if grandparent-id
-                                 (ekg-org-view--sorted-children grandparent-id)
-                               (ekg-org-view--sorted-top-level)))
-               (sort-order (ekg-org-view--assign-order-after
-                            new-siblings parent-id)))
-          (ekg-org-view--set-sort-order id sort-order))
-        (ekg-save-note note)))
+       ekg-db
+       (if grandparent-id
+           (ekg-note-set-parent note grandparent-id)
+         ;; Promoting to top-level: remove the parent property and the
+         ;; hierarchy/parent triple.
+         (ekg-note-set-parent note nil))
+       ;; Place right after the former parent among new siblings.
+       (let* ((new-siblings (if grandparent-id
+                                (ekg-org-view--sorted-children grandparent-id)
+                              (ekg-org-view--sorted-top-level)))
+              (sort-order (ekg-org-view--assign-order-after
+                           new-siblings parent-id)))
+         (ekg-org-view--set-sort-order id sort-order))
+       (ekg-save-note note)))
     (ekg-org-view--refresh id)))
 
 (defun ekg-org-view--descendant-ids (id)
@@ -1165,9 +1148,9 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-prev (ekg-org-view--sort-order prev))
                (ekg-org--inhibit-view-refresh t))
           (triples-with-transaction
-            ekg-db
-            (ekg-org-view--set-sort-order id order-prev)
-            (ekg-org-view--set-sort-order prev-id order-cur))
+           ekg-db
+           (ekg-org-view--set-sort-order id order-prev)
+           (ekg-org-view--set-sort-order prev-id order-cur))
           (ekg-org-view--refresh id))))))
 
 (defun ekg-org-view-move-down ()
@@ -1190,9 +1173,9 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-next (ekg-org-view--sort-order next))
                (ekg-org--inhibit-view-refresh t))
           (triples-with-transaction
-            ekg-db
-            (ekg-org-view--set-sort-order id order-next)
-            (ekg-org-view--set-sort-order next-id order-cur))
+           ekg-db
+           (ekg-org-view--set-sort-order id order-next)
+           (ekg-org-view--set-sort-order next-id order-cur))
           (ekg-org-view--refresh id))))))
 
 (defun ekg-org-view-demote ()
@@ -1215,7 +1198,7 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
         (let ((ekg-org--inhibit-view-refresh t))
           (ekg-note-set-parent note (ekg-note-id prev-sibling))
           (ekg-save-note note))
-        (ekg-org-view--refresh)))))
+        (ekg-org-view--refresh id)))))
 
 ;;; Task insertion mode
 
@@ -1229,9 +1212,9 @@ skipped."
     (save-excursion
       (goto-char (point-min))
       (while (not (eobp))
-        (when (get-text-property (point) :ekg-org-heading)
-          (let ((id (get-text-property (point) :ekg-org-note-id))
-                (level (get-text-property (point) :ekg-org-level)))
+        (when (ekg-org-view--on-heading-p)
+          (let ((id (get-text-property (point) :ekg-note-id))
+                (level (ekg-org-view--level-at-point)))
             (when (and (not (member id seen-ids))
                        (ekg-org--org-note-p
                         (ekg-get-note-with-id id)))
@@ -1310,11 +1293,11 @@ nil to insert as first child/first top-level."
 (defun ekg-org-view--insert-placeholder-string (level &optional title)
   "Return the placeholder string for an insertion slot at LEVEL.
 If TITLE is non-nil and non-empty, show it; otherwise show hint text."
-  (let* ((stars (make-string level ?*))
+  (let* ((prefix (concat (make-string (* 3 (1- level)) ?\s) "+"))
          (title-part (if (and title (not (string-empty-p title)))
                          title
                        (propertize "← type task title" 'face 'shadow)))
-         (text (concat (propertize stars 'face (ekg-org-view--heading-face level))
+         (text (concat (propertize prefix 'face 'ekg-notes-title)
                        " "
                        (propertize "TODO" 'face 'org-todo)
                        " "
@@ -1458,8 +1441,18 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
 
 (defun ekg-org-view--insert-create-task (slot title)
   "Create a new task from SLOT data with TITLE."
+  (when ekg-org-view--archive
+    (user-error "Create tasks in the active task view"))
   (let* ((parent-id (plist-get slot :parent-id))
          (after-id (plist-get slot :after-id))
+         (parent (when parent-id (ekg-get-note-with-id parent-id)))
+         (_ (when (and parent
+                       (member ekg-org-archive-tag (ekg-note-tags parent)))
+              (user-error "Cannot create tasks under an archived parent")))
+         (initial-state
+          (or (car (seq-difference (ekg-org--todo-keywords)
+                                  (ekg-org--done-keywords)))
+              (user-error "No unfinished TODO keyword is configured")))
          (ekg-org--inhibit-view-refresh t)
          (siblings (if parent-id
                        (ekg-org-view--sorted-children parent-id)
@@ -1469,21 +1462,20 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                        ;; Inserting as first: renumber from 1 and take 0.
                        (when siblings
                          (triples-with-transaction
-                           ekg-db
-                           (let ((order 1))
-                             (dolist (sib siblings)
-                               (ekg-org-view--set-sort-order
-                                (ekg-note-id sib) order)
-                               (cl-incf order)))))
+                          ekg-db
+                          (let ((order 1))
+                            (dolist (sib siblings)
+                              (ekg-org-view--set-sort-order
+                               (ekg-note-id sib) order)
+                              (cl-incf order)))))
                        0))
-         (parent-tags (when parent-id
-                       (ekg-org-view--visible-tags
-                        (ekg-get-note-with-id parent-id))))
+         (parent-tags (when parent (ekg-org-view--visible-tags parent)))
          (note (ekg-note-create
                 :text ""
                 :mode 'org-mode
                 :tags (append (list ekg-org-task-tag
-                                    (concat ekg-org-state-tag-prefix "todo"))
+                                    (concat ekg-org-state-tag-prefix
+                                            (downcase initial-state)))
                               parent-tags)
                 :properties (append
                              (list :titled/title (list title)
@@ -1537,6 +1529,8 @@ A placeholder shows where the new task will be inserted.  Use
 \\`n'/\\`p' to move between positions, \\`R'/\\`L' to demote/promote,
 \\`RET' to confirm, and \\`C-g' to cancel."
   (interactive nil ekg-org-view-mode)
+  (when ekg-org-view--archive
+    (user-error "Create tasks in the active task view"))
   (let ((slots (ekg-org-view--build-insert-slots)))
     (if (null slots)
         ;; Empty view — just create a top-level task directly.
@@ -1599,11 +1593,19 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "b") #'ekg-org-view-previous-sibling)
     (define-key map (kbd "u") #'ekg-org-view-up-heading)
     (define-key map (kbd "t") #'ekg-org-view-cycle-state)
+    (define-key map (kbd "C-c C-t") #'ekg-org-view-cycle-state)
+    (define-key map (kbd "x") #'ekg-org-view-toggle-done)
+    (define-key map (kbd "+") #'ekg-org-view-add-child)
+    (define-key map (kbd "?") #'describe-mode)
     (define-key map (kbd "a") #'ekg-org-view-archive)
     (define-key map (kbd "d") #'ekg-org-view-delete)
     (define-key map (kbd "c") #'ekg-org-view-create)
     (define-key map (kbd "TAB") #'ekg-org-view-toggle-collapse)
     (define-key map (kbd "RET") #'ekg-org-view-open-note)
+    (define-key map (kbd "o") #'ekg-org-view-open-note)
+    (define-key map (kbd "<backtab>") #'ekg-org-view-toggle-all)
+    (define-key map (kbd "S-<tab>") #'ekg-org-view-toggle-all)
+    (define-key map (kbd "S-TAB") #'ekg-org-view-toggle-all)
     (define-key map (kbd "C-c C-r") #'ekg-org-view-respond)
     (define-key map (kbd "L") #'ekg-org-view-promote)
     (define-key map (kbd "l") #'ekg-org-view-promote)
@@ -1621,7 +1623,7 @@ timestamp in the note's `:org/deadline' property."
 ;; Keep this outside the `defvar' initializer so reloading ekg-org adds
 ;; the command to an already existing mode map.
 (define-key ekg-org-view-mode-map (kbd "s")
-  #'ekg-org-view-set-dependency-type)
+            #'ekg-org-view-set-dependency-type)
 
 (defun ekg-org-view--refresh-all (&rest _args)
   "Refresh all live `ekg-org-view-mode' buffers.
@@ -1636,11 +1638,18 @@ Accepts and ignores arguments so it can be used directly on
         (with-current-buffer buf
           (ekg-org-view--refresh))))))
 
-(define-derived-mode ekg-org-view-mode vui-mode "EKG-Org"
+(define-derived-mode ekg-org-view-mode ekg-notes-mode "EKG-Org"
   "Major mode for viewing ekg org tasks in a hierarchical view.
 
 \\{ekg-org-view-mode-map}"
-  (setq-local default-directory (ekg--notes-directory))
+  (setq-local ekg-notes-children-function #'ekg-org-view--children
+              ekg-notes-include-descendants t
+              ekg-notes-show-child-count nil
+              ekg-display-note-template
+              (concat "%n(titled)%n(org-status)%n(org-tags nil separated)"
+                      "%n(id)\n%n(text 500)")
+              ekg-notes-collapsed-note-template
+              "%n(titled)%n(org-status nil folded)%n(org-tags nil separated)%n(id)")
   (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
   (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)
   (add-hook 'kill-buffer-hook
@@ -1661,39 +1670,22 @@ Accepts and ignores arguments so it can be used directly on
   (interactive nil ekg-org-view-mode)
   (ekg-org-view--refresh))
 
-(defun ekg-org-view--mount (&optional archive)
-  "Mount the org task view buffer.
-If ARCHIVE is non-nil, show archived tasks."
+(defun ekg-org-view--mount (&optional archive root-id)
+  "Show a normal notes view of Org tasks.
+ARCHIVE selects archived tasks.  ROOT-ID focuses on a single task."
   (ekg-connect)
-  (let* ((buf-name (if archive "*ekg-org-archive*" "*ekg-org-tasks*"))
-         (buf (get-buffer-create buf-name))
-         (vnode (vui-component 'ekg-org-view-root
-                  :root-id nil :archive archive))
-         (instance (vui--create-instance vnode nil))
-         (vui--pending-effects nil))
-    (setf (vui-instance-buffer instance) buf)
+  (let* ((buf-name (cond (root-id (format "*ekg-org-task-%s*" root-id))
+                         (archive "*ekg-org-archive*")
+                         (t "*ekg-org-tasks*")))
+         (buf (get-buffer-create buf-name)))
     (with-current-buffer buf
-      (ekg-org-view-mode)
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (setq-local vui--root-instance instance)
-        (setq-local ekg-org-view--instance instance)
-        (setq-local ekg-org-view--root-id nil)
-        (setq-local ekg-org-view--archive archive)
-        (let ((vui--root-instance instance)
-              (vui--rendering-p t))
-          (unwind-protect
-              (vui--render-instance instance)
-            (setq vui--rendering-p nil)))
-        (widget-setup)
-        (vui--run-pending-effects)
-        (setq-local ekg-org-view--hl (make-overlay 1 1))
-        (overlay-put ekg-org-view--hl 'face hl-line-face)
-        (goto-char (point-min))
-        (ekg-org-view--ensure-on-heading)
-        (ekg-org-view--highlight)))
+      (unless (derived-mode-p 'ekg-org-view-mode)
+        (ekg-org-view-mode))
+      (setq-local ekg-org-view--root-id root-id
+                  ekg-org-view--archive archive)
+      (ekg-org-view--refresh))
     (switch-to-buffer buf)
-    instance))
+    (buffer-local-value 'ekg-notes--instance buf)))
 
 ;;;###autoload
 (defun ekg-org-view ()
@@ -1719,33 +1711,7 @@ If ARCHIVE is non-nil, show archived tasks."
                           tasks))
                 (title (completing-read "Task: " choices nil t)))
            (cdr (assoc title choices)))))
-  (ekg-connect)
-  (let* ((buf (get-buffer-create (format "*ekg-org-task-%s*" id)))
-         (vnode (vui-component 'ekg-org-view-root :root-id id))
-         (instance (vui--create-instance vnode nil))
-         (vui--pending-effects nil))
-    (setf (vui-instance-buffer instance) buf)
-    (with-current-buffer buf
-      (ekg-org-view-mode)
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (setq-local vui--root-instance instance)
-        (setq-local ekg-org-view--instance instance)
-        (setq-local ekg-org-view--root-id id)
-        (let ((vui--root-instance instance)
-              (vui--rendering-p t))
-          (unwind-protect
-              (vui--render-instance instance)
-            (setq vui--rendering-p nil)))
-        (widget-setup)
-        (vui--run-pending-effects)
-        (setq-local ekg-org-view--hl (make-overlay 1 1))
-        (overlay-put ekg-org-view--hl 'face hl-line-face)
-        (goto-char (point-min))
-        (ekg-org-view--ensure-on-heading)
-        (ekg-org-view--highlight)))
-    (switch-to-buffer buf)
-    instance))
+  (ekg-org-view--mount nil id))
 
 (defun ekg-org--format-epoch-as-date (epoch)
   "Format EPOCH seconds as a readable date string."
