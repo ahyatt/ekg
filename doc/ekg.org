@@ -1560,6 +1560,10 @@ Tasks also show their TODO state, scheduled date, deadline, and immediate-child
 completion count.  Child notes are indented beneath their parent, and the
 current note is highlighted as the target of task commands.  Task control tags
 are omitted from this view's tag display.
+Loading =ekg-org= adds =org/task= to =ekg-hidden-tags=, so tasks are omitted
+from ordinary note lists unless that tag is explicitly requested.  The task
+views, Org export, and agenda integration still include them.  Draft, trashed,
+and other hidden notes remain excluded from task views.
 Non-task responses to tasks also appear as notes without a TODO state;
 press =RET= on one to open and edit its note.  Use =C-c C-r= to capture a
 response to the note at point.

@@ -48,6 +48,8 @@ Bind this around batch operations that save multiple notes; call
 (defconst ekg-org-task-tag "org/task"
   "Tag used to identify EKG notes that should be treated as Org tasks.")
 
+(add-to-list 'ekg-hidden-tags ekg-org-task-tag)
+
 (defconst ekg-org-archive-tag "org/archive"
   "Tag used to identify EKG notes that should be treated as archived Org tasks.")
 
@@ -182,13 +184,20 @@ sequential default.  The note is not saved."
          `(:key ,(car property) :value ,(cdr property))))
       properties))))
 
+(defun ekg-org--note-active-p (note)
+  "Return whether NOTE is visible to the Org integration.
+Allow the task tag, while respecting other hidden tags."
+  (let ((ekg-hidden-tags (remove ekg-org-task-tag ekg-hidden-tags)))
+    (ekg-note-active-p note)))
+
 (defun ekg-org-get-tasks (&optional archive)
   "Fetch top-level tasks from ekg, as ekg-note structs.
 
 If ARCHIVE is non-nil, fetch archived tasks instead.  If nil, fetch
 active, unarchived, tasks."
   (ekg-connect)
-  (let* ((all-ids (plist-get (triples-get-type ekg-db ekg-org-task-tag 'tag)
+  (let* ((ekg-hidden-tags (remove ekg-org-task-tag ekg-hidden-tags))
+         (all-ids (plist-get (triples-get-type ekg-db ekg-org-task-tag 'tag)
                              :tagged))
          ;; Pre-filter: exclude IDs that have a parent, since we only
          ;; want top-level tasks.  This avoids loading child notes from
@@ -214,7 +223,8 @@ active, unarchived, tasks."
 
 (defun ekg-org-get-child-notes-of-id (id)
   "Fetch child notes of a given note ID."
-  (ekg-note-child-notes id t))
+  (let ((ekg-hidden-tags (remove ekg-org-task-tag ekg-hidden-tags)))
+    (ekg-note-child-notes id t)))
 
 (defun ekg-org-get-child-tasks-of-id (id)
   "Fetch active Org task children of ID."
@@ -743,7 +753,7 @@ Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
   "Return the root notes of the current task view."
   (if ekg-org-view--root-id
       (when-let* ((note (ekg-get-note-with-id ekg-org-view--root-id)))
-        (when (and (ekg-note-active-p note)
+        (when (and (ekg-org--note-active-p note)
                    (eq (and (member ekg-org-archive-tag (ekg-note-tags note)) t)
                        (and ekg-org-view--archive t)))
           (list note)))
