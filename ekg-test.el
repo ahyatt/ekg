@@ -879,8 +879,8 @@
     (should (= 2 (length (ekg-notes-visible-ids))))))
 
 (ekg-deftest ekg-test-notes-title-text-fallback ()
-  "Compact labels prefer titles and fall back to the first text line."
-  (dolist (case '((nil "First line\nSecond line" "First line")
+  "Compact labels prefer titles and apply the word limit to fallback text."
+  (dolist (case '((nil "First line\nSecond line" "First line Second line")
                   (("Title") "First line\nSecond line" "Title")
                   ("Scalar title" "Body" "Scalar title")
                   (nil "" "Untitled")))
@@ -888,8 +888,18 @@
                                  :properties (list :titled/title (car case)))))
       (should (equal (string-trim
                       (substring-no-properties
-                       (ekg-display-note-titled note nil 'text-fallback)))
-                     (nth 2 case))))))
+                       (ekg-display-note-titled note 12 'text-fallback 'oneline)))
+                     (nth 2 case)))))
+  (let ((ekg-truncation-method 'word))
+    (dolist (titles '(nil ("One two\nthree four five")))
+      (let ((note (ekg-note-create
+                   :text "One two\nthree four five"
+                   :properties (list :titled/title titles))))
+        (should (equal (string-trim
+                        (substring-no-properties
+                         (ekg-display-note-titled
+                          note 3 'text-fallback 'oneline)))
+                       "One two three…"))))))
 
 (ekg-deftest-with-db ekg-test-notes-fold-preserves-window-start ()
   "Changing a note's state preserves the viewport and action target."

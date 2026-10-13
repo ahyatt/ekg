@@ -639,7 +639,7 @@ the list.
 
 =ekg-notes-toggle-collapse= (=TAB=), cycle the current subtree through full
 content, titles only, and folded.  Titles-only display shows the note and its
-descendants using their titles, or their first text line when untitled.  Folded
+descendants using their titles, or a short text excerpt when untitled.  Folded
 display keeps the current title handle and hides its children.  A child can be
 expanded independently while its parent is in titles-only display.  The
 disclosure marker and the header's Full/Titles/Folded label show the current
@@ -679,14 +679,13 @@ really.
 
 ~ekg-display-note-summary-template~ controls the alternative layout used in
 titles-only and folded states.  It uses the same inline commands as the full
-template.  Its default, =%n(titled nil text-fallback)=, shows the title or the
-first text line when the note is untitled.  The =firstline= formatting option
-can also limit other formatters to their first line.  For example, to include
-tags in compact notes:
+template.  Its default, =%n(titled 12 text-fallback oneline)=, shows up to twelve
+words of the title or, when untitled, the note text.  =oneline= presents the
+result on one line.  For example, to include tags in compact notes:
 
 #+begin_src emacs-lisp
 (setq ekg-display-note-summary-template
-      "%n(titled nil text-fallback)%n(tagged nil separated)")
+      "%n(titled 12 text-fallback oneline)%n(tagged nil separated)")
 #+end_src
 
 The Org task view sets a buffer-local summary template that includes the task

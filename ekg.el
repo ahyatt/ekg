@@ -198,7 +198,6 @@ Most formatters can take a maximum number of words to output, and a
 format list, which is a list of desired output properties as symbols.
 Right now, the possibilities are:
   - `oneline', the results must be on one line only.
-  - `firstline', keep only the first line of the result.
   - `plaintext', the results must not have string properties.
 
 For OTHER formatters, everything must
@@ -207,11 +206,11 @@ which are applied to each non-standard property in turn."
   :type 'string
   :group 'ekg)
 
-(defcustom ekg-display-note-summary-template "%n(titled nil text-fallback)"
+(defcustom ekg-display-note-summary-template "%n(titled 12 text-fallback oneline)"
   "Template for notes in titles-only and folded display states.
 Use the same syntax as `ekg-display-note-template'.  The default
-`titled' formatter's `text-fallback' option shows the title, or the
-first text line when untitled.  Modes can override this locally."
+template shows up to twelve words of the title, or a text excerpt
+when untitled, on one line.  Modes can override this locally."
   :type 'string
   :group 'ekg)
 
@@ -1196,8 +1195,6 @@ However, if FORCE is non-nil, it will be shown regardless."
 
 FORMAT is a list of formatting options.  See `ekg-display-note-template'
 for details."
-  (when (memq 'firstline format)
-    (setq text (or (car (split-string text "\n")) "")))
   (let ((unformatted (concat (string-trim-right
                               (ekg-truncate-at text
                                                (or numwords ekg-note-inline-max-words))) "\n")))
@@ -1257,8 +1254,9 @@ desired output properties as described in `ekg-display-note-template'."
 (defun ekg-display-note-titled (note &optional numwords &rest format)
   "Return text of the title of NOTE.
 NUMWORDS and FORMAT are as described in `ekg-display-note-template'.
-With `text-fallback', use the first text line when the title is absent,
-or \"Untitled\" if both are empty."
+With `text-fallback', use the text when the title is absent, or
+\"Untitled\" if both are empty.  NUMWORDS and FORMAT also apply to
+the fallback text."
   (let* ((titles (plist-get (ekg-note-properties note) :titled/title))
          (title (if (stringp titles) titles
                   (mapconcat #'identity titles ", "))))
@@ -1266,8 +1264,7 @@ or \"Untitled\" if both are empty."
      ((not (string-empty-p (string-trim title)))
       (ekg-display--format (propertize title 'face 'ekg-title) numwords format))
      ((memq 'text-fallback format)
-      (let ((text (apply #'ekg-display-note-text note numwords
-                         (cons 'firstline format))))
+      (let ((text (apply #'ekg-display-note-text note numwords format)))
         (if (string-empty-p (string-trim text))
             (ekg-display--format (propertize "Untitled" 'face 'ekg-title)
                                  numwords format)

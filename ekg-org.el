@@ -1668,7 +1668,7 @@ Accepts and ignores arguments so it can be used directly on
                       "%n(id)\n%n(text 500)")
               ekg-display-note-summary-template
               (concat "%n(org-status nil state-only oneline)"
-                      "%n(titled nil text-fallback)"))
+                      "%n(titled 12 text-fallback oneline)"))
   (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
   (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)
   (add-hook 'kill-buffer-hook
