@@ -1133,7 +1133,7 @@ deferred refresh should fire once insert mode ends."
         (should (equal ekg-notes-mode-map keys))
         (should (equal ekg-display-note-template template))
         (should (equal ekg-hidden-tags hidden))
-        (should-not ekg-notes-collapsed-ids)
+        (should-not ekg-notes-display-states)
         (should (eq ekg-notes-children-function #'ekg--notes-children))
         (should ekg-notes-show-child-count)))))
 
@@ -1155,7 +1155,7 @@ deferred refresh should fire once insert mode ends."
     (ekg-notes-toggle-collapse)
     (ekg-notes-toggle-collapse)
     (ekg-org-view-add-child "New child")
-    (should-not (member parent ekg-notes-collapsed-ids))
+    (should-not (member parent (plist-get (ekg-org-view-state) :folded-ids)))
     (should (equal (ekg-note-parent-id (ekg-current-note-or-error)) parent))
     (should (= (length (ekg-notes-visible-ids)) 3))))
 

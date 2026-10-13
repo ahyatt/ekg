@@ -1656,7 +1656,8 @@ task children in the note's archive scope.
 Within a task view, =ekg-org-view-state= returns =:current-id=, =:root-id=,
 =:archive=, =:visible-ids=, =:folded-ids=, and =:display-states=.
 =ekg-notes-display-state= returns the effective =full=, =outline= (titles), or
-=folded= state of a note in the current view.  =ekg-notes-visible-ids= returns
+=folded= state of a visible note, or nil if it is not visible.
+=ekg-notes-visible-ids= returns
 the visible note IDs in navigation order from any normal notes view.
 
 **** How it differs from org-mode

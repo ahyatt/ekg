@@ -899,7 +899,12 @@
                         (substring-no-properties
                          (ekg-display-note-titled
                           note 3 'text-fallback 'oneline)))
-                       "One two three…"))))))
+                       "One two three…")))))
+  (dolist (titles '(nil ("Title")))
+    (let* ((note (ekg-note-create :text "Fallback text"
+                                  :properties (list :titled/title titles)))
+           (text (ekg-display-note-titled note 12 'text-fallback 'plaintext)))
+      (should-not (text-properties-at 0 text)))))
 
 (ekg-deftest-with-db ekg-test-notes-fold-preserves-window-start ()
   "Changing a note's state preserves the viewport and action target."
@@ -922,6 +927,53 @@
           (should (= (count-screen-lines (window-start) (point)) rows))
           (should (equal (ekg-note-id (ekg-current-note-or-error))
                          (ekg-note-id target))))))))
+
+(ekg-deftest-with-db ekg-test-notes-fold-preserves-other-window-selection ()
+  "Folding preserves independent selections in windows sharing a note list."
+  (let ((first (ekg-note-create :text "First\nBody" :tags '("windows")))
+        (second (ekg-note-create :text "Second\nBody" :tags '("windows"))))
+    (ekg-save-note first)
+    (ekg-save-note second)
+    (save-window-excursion
+      (delete-other-windows)
+      (ekg-show-notes-with-tag "windows")
+      (let* ((action (selected-window))
+             (other (split-window-right))
+             (other-pos (text-property-any (point-min) (point-max)
+                                            :ekg-note-id (ekg-note-id second))))
+        (set-window-point other other-pos)
+        (set-window-start other other-pos t)
+        (ekg-notes--goto-id (ekg-note-id first))
+        (dotimes (_ 3)
+          (ekg-notes-toggle-collapse)
+          (should (equal (get-text-property (window-point action) :ekg-note-id)
+                         (ekg-note-id first)))
+          (should (equal (get-text-property (window-point other) :ekg-note-id)
+                         (ekg-note-id second)))
+          (should (equal (get-text-property (window-start other) :ekg-note-id)
+                         (ekg-note-id second))))))))
+
+(ekg-deftest-with-db ekg-test-notes-state-query-hidden-descendants ()
+  "State queries report effective visible states and nil for hidden notes."
+  (let* ((parent (ekg-note-create :text "Parent" :tags '("states")))
+         (child (ekg-note-create :text "Child" :tags '("states")))
+         (grandchild (ekg-note-create :text "Grandchild" :tags '("states"))))
+    (dolist (note (list parent child grandchild)) (ekg-save-note note))
+    (ekg-note-set-parent child (ekg-note-id parent))
+    (ekg-note-set-parent grandchild (ekg-note-id child))
+    (ekg-save-note child)
+    (ekg-save-note grandchild)
+    (ekg-show-notes-with-tag "states")
+    (ekg-notes--goto-id (ekg-note-id child))
+    (ekg-notes-toggle-collapse)
+    (should (eq (ekg-notes-display-state (ekg-note-id grandchild)) 'outline))
+    (ekg-notes--goto-id (ekg-note-id parent))
+    (ekg-notes-toggle-collapse)
+    (ekg-notes-toggle-collapse)
+    (should-not (ekg-notes-display-state (ekg-note-id grandchild)))
+    (should-not (ekg-notes-display-state "missing"))
+    (ekg-notes-toggle-collapse)
+    (should (eq (ekg-notes-display-state (ekg-note-id grandchild)) 'outline))))
 
 (provide 'ekg-test)
 ;;; ekg-test.el ends here

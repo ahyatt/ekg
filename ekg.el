@@ -1268,7 +1268,8 @@ the fallback text."
         (if (string-empty-p (string-trim text))
             (ekg-display--format (propertize "Untitled" 'face 'ekg-title)
                                  numwords format)
-          (propertize text 'face 'ekg-title))))
+          (if (memq 'plaintext format) text
+            (propertize text 'face 'ekg-title)))))
      (t ""))))
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
@@ -2524,47 +2525,66 @@ TITLE is the title of the URL to browse to."
 (defvar-local ekg-notes-children-function #'ekg--notes-children
   "Function returning the displayed children of a note, in order.")
 
-(defvar-local ekg-notes-collapsed-ids nil
-  "IDs of notes whose body and descendants are folded in this buffer.")
-
 (defvar-local ekg-notes-display-states nil
-  "Alist of note IDs and explicit `full' or `outline' display states.")
+  "Alist of note IDs and explicit `full', `outline', or `folded' states.")
 
 (defun ekg-notes-display-state (&optional id)
-  "Return ID's effective display state: `full', `outline', or `folded'.
-Without ID, use the current note."
+  "Return visible note ID's effective `full', `outline', or `folded' state.
+Without ID, use the current note.  Return nil when ID is not visible."
   (let* ((id (or id (ekg-note-id (ekg-current-note-or-error))))
          (pos (text-property-any (point-min) (point-max) :ekg-note-id id)))
-    (or (and pos (get-text-property pos :ekg-note-display-state))
-        (and (member id ekg-notes-collapsed-ids) 'folded)
-        (alist-get id ekg-notes-display-states nil nil #'equal)
-        'full)))
+    (when pos (get-text-property pos :ekg-note-display-state))))
+
+(defun ekg-notes--unfold-ids (ids)
+  "Expand folded notes in IDS, preserving other display states."
+  (dolist (id ids)
+    (when (eq (alist-get id ekg-notes-display-states nil nil #'equal) 'folded)
+      (setf (alist-get id ekg-notes-display-states nil nil #'equal) 'full))))
 
 (defun ekg-notes--refresh-preserving-view (refresh id)
-  "Call REFRESH and select ID while preserving visible window positions."
-  (let ((views
-         (mapcar
-          (lambda (win)
-            (let* ((start (window-start win))
-                   (anchor (get-text-property start :ekg-note-id))
-                   (anchor-start (and anchor (text-property-any
-                                              (point-min) (point-max)
-                                              :ekg-note-id anchor))))
-              (list win anchor (if anchor-start (- start anchor-start) 0)
-                    (window-vscroll win t))))
-          (get-buffer-window-list (current-buffer) nil t))))
-    (funcall refresh)
-    (ekg-notes--goto-id id)
-    (dolist (view views)
-      (pcase-let ((`(,win ,anchor ,offset ,vscroll) view))
-        (when (window-live-p win)
-          (set-window-point win (point))
-          (when-let* ((start (text-property-any (point-min) (point-max)
-                                               :ekg-note-id anchor)))
-            (let ((end (or (next-single-property-change start :ekg-note-id)
-                           (point-max))))
-              (set-window-start win (min (+ start offset) (1- end)) t)
-              (set-window-vscroll win vscroll t))))))))
+  "Call REFRESH and select ID while preserving independent window views."
+  (cl-labels
+      ((anchor (pos)
+         (let* ((id (get-text-property
+                     (min pos (max (point-min) (1- (point-max)))) :ekg-note-id))
+                (start (and id (text-property-any (point-min) (point-max)
+                                                 :ekg-note-id id)))
+                (note (and id (ekg-get-note-with-id id))))
+           (list id (if start (- pos start) 0)
+                 (when note
+                   (reverse (mapcar #'ekg-note-id (ekg-note-ancestors note)))))))
+       (position (anchor)
+         (pcase-let ((`(,id ,offset ,ancestors) anchor))
+           (cl-loop for candidate in (delq nil (cons id ancestors))
+                    for start = (text-property-any (point-min) (point-max)
+                                                   :ekg-note-id candidate)
+                    when start return
+                    (let ((exact (equal candidate id)))
+                      (cons (if exact
+                                (min (+ start offset)
+                                     (1- (or (next-single-property-change
+                                              start :ekg-note-id)
+                                             (point-max))))
+                              start)
+                            exact))))))
+    (let* ((action-window (selected-window))
+           (views (mapcar
+                   (lambda (win)
+                     (list win (anchor (window-start win))
+                           (anchor (window-point win)) (window-vscroll win t)))
+                   (get-buffer-window-list (current-buffer) nil t))))
+      (funcall refresh)
+      (ekg-notes--goto-id id)
+      (dolist (view views)
+        (pcase-let ((`(,win ,start-anchor ,point-anchor ,vscroll) view))
+          (when (window-live-p win)
+            (if (eq win action-window)
+                (set-window-point win (point))
+              (when-let* ((pos (position point-anchor)))
+                (set-window-point win (car pos))))
+            (when-let* ((start (position start-anchor)))
+              (set-window-start win (car start) t)
+              (set-window-vscroll win (if (cdr start) vscroll 0) t))))))))
 
 (defvar-local ekg-notes-show-child-count t
   "Whether to show a child-count heading above each parent note.")
@@ -2599,14 +2619,7 @@ Folded notes retain a title handle and hide their descendants."
   (let* ((id (ekg-note-id (ekg-current-note-or-error)))
          (state (pcase (ekg-notes-display-state id)
                   ('full 'outline) ('outline 'folded) (_ 'full))))
-    (setq ekg-notes-collapsed-ids
-          (if (eq state 'folded)
-              (cons id (remove id ekg-notes-collapsed-ids))
-            (remove id ekg-notes-collapsed-ids)))
-    (if (eq state 'folded)
-        (setq ekg-notes-display-states
-              (assoc-delete-all id ekg-notes-display-states))
-      (setf (alist-get id ekg-notes-display-states nil nil #'equal) state))
+    (setf (alist-get id ekg-notes-display-states nil nil #'equal) state)
     (ekg-notes--refresh-preserving-view #'ekg-notes-refresh id)))
 
 (vui-defcomponent ekg-notes-root (name notes-func include-descendants)
@@ -2638,11 +2651,10 @@ Folded notes retain a title handle and hide their descendants."
                     (funcall ekg-notes-children-function note))))
              (unless (gethash id visited)
                (puthash id t visited)
-               (let* ((collapsed (member id ekg-notes-collapsed-ids))
-                      (state (if collapsed 'folded
-                               (or (alist-get id ekg-notes-display-states
-                                              nil nil #'equal)
-                                   (if outline 'outline 'full))))
+               (let* ((state (or (alist-get id ekg-notes-display-states
+                                            nil nil #'equal)
+                                 (if outline 'outline 'full)))
+                      (collapsed (eq state 'folded))
                       (ekg-display-note-template
                        (if (not (eq state 'full))
                            ekg-display-note-summary-template

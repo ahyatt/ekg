@@ -1146,7 +1146,7 @@ the list.
 
 @samp{ekg-notes-toggle-collapse} (@samp{TAB})@comma{} cycle the current subtree through full
 content@comma{} titles only@comma{} and folded.  Titles-only display shows the note and its
-descendants using their titles@comma{} or their first text line when untitled.  Folded
+descendants using their titles@comma{} or a short text excerpt when untitled.  Folded
 display keeps the current title handle and hides its children.  A child can be
 expanded independently while its parent is in titles-only display.  The
 disclosure marker and the header's Full/Titles/Folded label show the current
@@ -1186,12 +1186,13 @@ really.
 
 @code{ekg-display-note-summary-template} controls the alternative layout used in
 titles-only and folded states.  It uses the same inline commands as the full
-template.  Its default@comma{} @samp{%n(summary)}@comma{} shows the title or the first text line
-when the note is untitled.  For example@comma{} to include tags in compact notes:
+template.  Its default@comma{} @samp{%n(titled 12 text-fallback oneline)}@comma{} shows up to twelve
+words of the title or@comma{} when untitled@comma{} the note text.  @samp{oneline} presents the
+result on one line.  For example@comma{} to include tags in compact notes:
 
 @lisp
 (setq ekg-display-note-summary-template
-      "%n(summary)%n(tagged nil separated)")
+      "%n(titled 12 text-fallback oneline)%n(tagged nil separated)")
 @end lisp
 
 The Org task view sets a buffer-local summary template that includes the task
@@ -2301,7 +2302,7 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @tab @samp{ekg-org-view-set-dependency-type}
 @tab Set children sequential or parallel
 @item @samp{TAB}
-@tab @samp{ekg-org-view-toggle-collapse}
+@tab @samp{ekg-notes-toggle-collapse}
 @tab Cycle full content@comma{} titles@comma{} folded
 @item @samp{S-TAB}
 @tab @samp{ekg-org-view-toggle-all}
@@ -2368,7 +2369,8 @@ task children in the note's archive scope.
 Within a task view@comma{} @samp{ekg-org-view-state} returns @samp{:current-id}@comma{} @samp{:root-id}@comma{}
 @samp{:archive}@comma{} @samp{:visible-ids}@comma{} @samp{:folded-ids}@comma{} and @samp{:display-states}.
 @samp{ekg-notes-display-state} returns the effective @samp{full}@comma{} @samp{outline} (titles)@comma{} or
-@samp{folded} state of a note in the current view.  @samp{ekg-notes-visible-ids} returns
+@samp{folded} state of a visible note@comma{} or nil if it is not visible.
+@samp{ekg-notes-visible-ids} returns
 the visible note IDs in navigation order from any normal notes view.
 
 @item

@@ -696,7 +696,9 @@ and :display-states."
   (list :current-id (get-text-property (point) :ekg-note-id)
         :root-id ekg-org-view--root-id :archive ekg-org-view--archive
         :visible-ids (ekg-notes-visible-ids)
-        :folded-ids (copy-sequence ekg-notes-collapsed-ids)
+        :folded-ids (mapcar #'car (seq-filter
+                                  (lambda (entry) (eq (cdr entry) 'folded))
+                                  ekg-notes-display-states))
         :display-states (copy-tree ekg-notes-display-states)))
 
 (defun ekg-org-view--visible-tags (note)
@@ -887,8 +889,7 @@ When insert mode is active, defer the refresh until insert mode ends."
       ;; Actions that explicitly select a task must reveal it.  Background
       ;; refreshes retain folds and select the nearest visible ancestor.
       (when target-id
-        (setq ekg-notes-collapsed-ids
-              (seq-difference ekg-notes-collapsed-ids ancestors)))
+        (ekg-notes--unfold-ids ancestors))
       (ekg--show-notes (if ekg-org-view--archive "Archived tasks" "Org tasks")
                        #'ekg-org-view--fetch-notes nil)
       (when (and restore-id
@@ -912,10 +913,11 @@ When insert mode is active, defer the refresh until insert mode ends."
 (defun ekg-org-view-toggle-all ()
   "Fold all root tasks, or expand all tasks when any are folded."
   (interactive nil ekg-org-view-mode)
-  (setq ekg-notes-collapsed-ids
-        (unless ekg-notes-collapsed-ids
-          (mapcar #'ekg-note-id (ekg-org-view--fetch-notes))))
-  (setq ekg-notes-display-states nil)
+  (setq ekg-notes-display-states
+        (unless (seq-some (lambda (entry) (eq (cdr entry) 'folded))
+                          ekg-notes-display-states)
+          (mapcar (lambda (note) (cons (ekg-note-id note) 'folded))
+                  (ekg-org-view--fetch-notes))))
   (let ((id (ekg-org-view--note-at-point)))
     (ekg-notes--refresh-preserving-view #'ekg-org-view--refresh id)))
 
@@ -953,8 +955,7 @@ When insert mode is active, defer the refresh until insert mode ends."
     (user-error "Create tasks in the active task view"))
   (let ((note (ekg-org-view--require-task-at-point)))
     (unless (string-empty-p (string-trim title))
-      (setq ekg-notes-collapsed-ids
-            (remove (ekg-note-id note) ekg-notes-collapsed-ids))
+      (ekg-notes--unfold-ids (list (ekg-note-id note)))
       (ekg-org-view--insert-create-task
        (list :parent-id (ekg-note-id note)
              :after-id (when-let* ((children (ekg-org-view--sorted-children
