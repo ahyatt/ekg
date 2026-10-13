@@ -2504,7 +2504,8 @@ TITLE is the title of the URL to browse to."
 
 (defun ekg--notes-children (note)
   "Return active children of NOTE in the normal note-list order."
-  (sort (ekg-note-child-notes note t) #'ekg--hierarchy-note-less-p))
+  (let ((ekg-hidden-tags (seq-difference ekg-hidden-tags ekg-notes-tags)))
+    (sort (ekg-note-child-notes note t) #'ekg--hierarchy-note-less-p)))
 
 (defun ekg-notes-visible-ids ()
   "Return the visible note IDs in navigation order in this notes buffer."

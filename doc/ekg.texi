@@ -1767,7 +1767,7 @@ A prefix argument (@samp{[C-u .]}) additionally lets you select the provider whe
 multiple providers are configured.  The manual-response command remains
 available on @samp{r}.
 
-The output is saved as a separate response note beneath the selected note,
+The output is saved as a separate response note beneath the selected note@comma{}
 using the major mode in @code{ekg-llm-response-mode} (which defaults to
 @samp{markdown-mode}@comma{} but can also be set to @samp{org-mode} or any other valid mode).
 It is tagged with the value of @code{ekg-llm-generated-tag}@comma{} which defaults to
@@ -2199,16 +2199,22 @@ prompts for a title and creates a new note pre-tagged with @samp{org/task} and
 
 The command @samp{ekg-org-change-state} (available in note editing buffers and
 @samp{ekg-notes-mode} buffers) prompts for a new TODO state from
-@samp{org-todo-keywords-1} and updates the task's state tag accordingly.
+@samp{org-todo-keywords} and updates the task's state tag accordingly.
 
 @node The ekg-org-view
 @subsection The ekg-org-view
 
 @samp{ekg-org-view-mode} is a read-only@comma{} interactive view of your task hierarchy@comma{}
-built with the @samp{vui} library.  It presents tasks as an indented outline that
-looks like an org buffer (with fontified headings@comma{} TODO keywords@comma{} and tags) but
-is backed entirely by the ekg database.
-Non-task responses to tasks also appear as headings without a TODO state;
+using the normal EKG note UI@.  Each note shows its title@comma{} user tags@comma{} and body.
+Tasks also show their TODO state@comma{} scheduled date@comma{} deadline@comma{} and immediate-child
+completion count.  Child notes are indented beneath their parent@comma{} and the
+current note is highlighted as the target of task commands.  Task control tags
+are omitted from this view's tag display.
+Loading @samp{ekg-org} adds @samp{org/task} to @samp{ekg-hidden-tags}@comma{} so tasks are omitted
+from ordinary note lists unless that tag is explicitly requested.  The task
+views@comma{} Org export@comma{} and agenda integration still include them.  Draft@comma{} trashed@comma{}
+and other hidden notes remain excluded from task views.
+Non-task responses to tasks also appear as notes without a TODO state;
 press @samp{RET} on one to open and edit its note.  Use @samp{C-c C-r} to capture a
 response to the note at point.
 
@@ -2218,11 +2224,12 @@ To open the view@comma{} call @samp{ekg-org-view}.  For archived tasks@comma{} c
 
 The view refreshes automatically whenever any ekg note is saved@comma{} so changes
 made by you@comma{} by an agent@comma{} or by the command-line tools are reflected
-immediately.
+immediately.  Refreshes preserve folding and selection.  Creating or moving a
+task beneath a folded parent reveals the task so you can continue acting on it.
 
 The keybindings are modeled after org-mode's speed keys (the single-letter
-shortcuts available when point is at the beginning of a headline)@comma{} so they
-should feel familiar to org-mode users.
+shortcuts available when point is at the beginning of a headline).  In this
+view they act on the current note@comma{} including when point is in its body.
 
 @enumerate
 @item
@@ -2231,45 +2238,54 @@ should feel familiar to org-mode users.
 
 The following keybindings are available in @samp{ekg-org-view-mode}:
 
-@multitable {aaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@multitable {aaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Key
 @tab Command
 @tab Description
 @item @samp{n}
 @tab @samp{ekg-org-view-next-heading}
-@tab Move to the next heading
+@tab Move to the next note
 @item @samp{p}
 @tab @samp{ekg-org-view-previous-heading}
-@tab Move to the previous heading
+@tab Move to the previous note
 @item @samp{f}
 @tab @samp{ekg-org-view-next-sibling}
-@tab Move to the next same-level heading
+@tab Move to the next same-level note
 @item @samp{b}
 @tab @samp{ekg-org-view-previous-sibling}
-@tab Move to the previous same-level heading
+@tab Move to the previous same-level note
 @item @samp{u}
 @tab @samp{ekg-org-view-up-heading}
-@tab Move to the parent heading
+@tab Move to the parent note
 @end multitable
 
 @item
 @anchor{Actions}Actions
 
 
-@multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@multitable {aaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Key
 @tab Command
 @tab Description
-@item @samp{t}
+@item @samp{t} / @samp{C-c C-t}
 @tab @samp{ekg-org-view-cycle-state}
-@tab Change the TODO state
+@tab Choose the TODO state
+@item @samp{x}
+@tab @samp{ekg-org-view-toggle-done}
+@tab Complete or reopen the task
+@item @samp{+}
+@tab @samp{ekg-org-view-add-child}
+@tab Append a child task
 @item @samp{s}
 @tab @samp{ekg-org-view-set-dependency-type}
 @tab Set children sequential or parallel
 @item @samp{TAB}
 @tab @samp{ekg-org-view-toggle-collapse}
-@tab Collapse or expand the subtree
-@item @samp{RET}
+@tab Fold or expand the body and children
+@item @samp{S-TAB}
+@tab @samp{ekg-org-view-toggle-all}
+@tab Fold all roots or expand all notes
+@item @samp{RET} / @samp{o}
 @tab @samp{ekg-org-view-open-note}
 @tab Open the note for editing in ekg
 @item @samp{c}
@@ -2308,7 +2324,29 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @item @samp{C-c C-d}
 @tab @samp{ekg-org-set-deadline}
 @tab Set the deadline of current task
+@item @samp{?}
+@tab @samp{describe-mode}
+@tab Show available commands
 @end multitable
+
+@samp{x} uses the first completed or unfinished keyword from the sequence containing
+the task's current state in @samp{org-todo-keywords}.  New tasks use the first
+configured unfinished keyword.  Create tasks in the active view; creation is
+unavailable in the archive view or beneath an archived parent.
+
+@item
+@anchor{Querying task and view state}Querying task and view state
+
+
+@samp{ekg-org-task-state} returns a note's TODO keyword@comma{} and @samp{ekg-org-task-done-p}
+checks whether it is a configured completed state.  @samp{ekg-org-task-summary}
+returns a plist with @samp{:state}@comma{} @samp{:done}@comma{} @samp{:scheduled}@comma{} @samp{:deadline}@comma{} @samp{:children}@comma{}
+@samp{:completed}@comma{} @samp{:remaining}@comma{} and @samp{:dependencies}.  Child counts include immediate
+task children in the note's archive scope.
+
+Within a task view@comma{} @samp{ekg-org-view-state} returns @samp{:current-id}@comma{} @samp{:root-id}@comma{}
+@samp{:archive}@comma{} @samp{:visible-ids}@comma{} and @samp{:folded-ids}.  @samp{ekg-notes-visible-ids} returns
+the visible note IDs in navigation order from any normal notes view.
 
 @item
 @anchor{How it differs from org-mode}How it differs from org-mode
