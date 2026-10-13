@@ -1670,7 +1670,7 @@ Accepts and ignores arguments so it can be used directly on
               ekg-display-note-template
               (concat "%n(titled)%n(org-status)%n(org-tags nil separated)"
                       "%n(id)\n%n(text 500)")
-              ekg-notes-collapsed-note-template
+              ekg-display-note-summary-template
               "%n(org-summary)")
   (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
   (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)

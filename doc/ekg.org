@@ -677,6 +677,19 @@ these commands.  Through changing this, the ordering or inclusion of various
 type-related information can be configured, or extra text added, or anything,
 really.
 
+~ekg-display-note-summary-template~ controls the alternative layout used in
+titles-only and folded states.  It uses the same inline commands as the full
+template.  Its default, =%n(summary)=, shows the title or the first text line
+when the note is untitled.  For example, to include tags in compact notes:
+
+#+begin_src emacs-lisp
+(setq ekg-display-note-summary-template
+      "%n(summary)%n(tagged nil separated)")
+#+end_src
+
+The Org task view sets a buffer-local summary template that includes the task
+state.  You can change it through =ekg-org-view-mode-hook=.
+
 The variable ~ekg-format-funcs~ has functions to run to format what ekg displays
 to the user.  Each format function runs in turn on a temporary buffer with the
 note text in it, and can make whatever changes it needs to before the buffer's

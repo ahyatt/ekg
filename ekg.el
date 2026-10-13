@@ -206,6 +206,14 @@ which are applied to each non-standard property in turn."
   :type 'string
   :group 'ekg)
 
+(defcustom ekg-display-note-summary-template "%n(summary)"
+  "Template for notes in titles-only and folded display states.
+Use the same syntax as `ekg-display-note-template'.  The default
+%n(summary) formatter shows the title, or the first text line when
+the note has no title.  Modes can override this template locally."
+  :type 'string
+  :group 'ekg)
+
 (defcustom ekg-oneliner-note-template "%n(tagged 20 oneline) %n(titled 20 oneline) %n(text 40 oneline)"
   "Template for displaying one-line notes in a note buffer.
 Otherwise the same format as `ekg-display-note-template'."
@@ -2526,9 +2534,6 @@ TITLE is the title of the URL to browse to."
 (defvar-local ekg-notes-display-states nil
   "Alist of note IDs and explicit `full' or `outline' display states.")
 
-(defvar-local ekg-notes-collapsed-note-template "%n(summary)"
-  "Display template for titles-only and folded notes in this buffer.")
-
 (defun ekg-notes-display-state (&optional id)
   "Return ID's effective display state: `full', `outline', or `folded'.
 Without ID, use the current note."
@@ -2644,8 +2649,7 @@ Folded notes retain a title handle and hide their descendants."
                                    (if outline 'outline 'full))))
                       (ekg-display-note-template
                        (if (not (eq state 'full))
-                           (or ekg-notes-collapsed-note-template
-                               ekg-display-note-template)
+                           ekg-display-note-summary-template
                          ekg-display-note-template)))
                  (apply
                   #'vui-vstack
