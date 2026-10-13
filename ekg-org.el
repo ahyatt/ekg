@@ -909,11 +909,6 @@ When insert mode is active, defer the refresh until insert mode ends."
                 (setcar (cddr entry) (point-marker))))))))
     (ekg-org-view--highlight)))
 
-(defun ekg-org-view-toggle-collapse ()
-  "Cycle the current subtree through full content, titles, and folded."
-  (interactive nil ekg-org-view-mode)
-  (ekg-notes-toggle-collapse))
-
 (defun ekg-org-view-toggle-all ()
   "Fold all root tasks, or expand all tasks when any are folded."
   (interactive nil ekg-org-view-mode)
@@ -1618,7 +1613,6 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "a") #'ekg-org-view-archive)
     (define-key map (kbd "d") #'ekg-org-view-delete)
     (define-key map (kbd "c") #'ekg-org-view-create)
-    (define-key map (kbd "TAB") #'ekg-org-view-toggle-collapse)
     (define-key map (kbd "RET") #'ekg-org-view-open-note)
     (define-key map (kbd "o") #'ekg-org-view-open-note)
     (define-key map (kbd "<backtab>") #'ekg-org-view-toggle-all)

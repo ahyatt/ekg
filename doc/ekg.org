@@ -1623,7 +1623,7 @@ The following keybindings are available in =ekg-org-view-mode=:
 | =x=     | =ekg-org-view-toggle-done=       | Complete or reopen the task       |
 | =+=     | =ekg-org-view-add-child=         | Append a child task               |
 | =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
-| =TAB=   | =ekg-org-view-toggle-collapse=   | Cycle full content, titles, folded |
+| =TAB=   | =ekg-notes-toggle-collapse=   | Cycle full content, titles, folded |
 | =S-TAB= | =ekg-org-view-toggle-all=        | Fold all roots or expand all notes |
 | =RET= / =o= | =ekg-org-view-open-note=     | Open the note for editing in ekg  |
 | =c=     | =ekg-org-view-create=            | Enter insertion mode to create a new task |
