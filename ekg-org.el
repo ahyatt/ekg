@@ -910,6 +910,9 @@ When insert mode is active, defer the refresh until insert mode ends."
                 (setcar (cddr entry) (point-marker))))))))
     (ekg-org-view--highlight)))
 
+(define-obsolete-function-alias 'ekg-org-view-toggle-collapse
+  #'ekg-notes-toggle-collapse "0.10.0")
+
 (defun ekg-org-view-toggle-all ()
   "Fold all root tasks, or expand all tasks when any are folded."
   (interactive nil ekg-org-view-mode)
