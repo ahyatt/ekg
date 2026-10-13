@@ -713,14 +713,6 @@ and :display-states."
           (ekg-org-view--visible-tags note))
     (apply #'ekg-display-note-tagged note numwords format)))
 
-(defun ekg-display-note-org-summary (note &optional numwords &rest format)
-  "Return NOTE's state and title with NUMWORDS and FORMAT options."
-  (concat
-   (when-let* ((state (ekg-org-task-state note)))
-     (propertize (concat state " ") 'face
-                 (if (ekg-org-task-done-p note) 'org-done 'org-todo)))
-   (apply #'ekg-display-note-summary note numwords format)))
-
 (defun ekg-org--format-task-date (epoch)
   "Format EPOCH with its time of day when it is not midnight."
   (let ((time (seconds-to-time epoch)))
@@ -731,9 +723,13 @@ and :display-states."
      time)))
 
 (defun ekg-display-note-org-status (note &optional numwords &rest format)
-  "Display NOTE's task status, with NUMWORDS and FORMAT template options."
+  "Display NOTE's task status, with NUMWORDS and FORMAT template options.
+With `state-only', omit dates and child completion counts."
   (when (ekg-org--org-note-p note)
-    (let* ((summary (ekg-org-task-summary note))
+    (let* ((summary (if (memq 'state-only format)
+                        (list :state (ekg-org-task-state note)
+                              :done (ekg-org-task-done-p note))
+                      (ekg-org-task-summary note)))
            (state (or (plist-get summary :state) "No state"))
            (parts (list (propertize state 'face
                                     (if (plist-get summary :done)
@@ -744,7 +740,7 @@ and :display-states."
                               (list (format "%s %s" (cdr field)
                                             (ekg-org--format-task-date
                                              date)))))))
-      (when (> (plist-get summary :children) 0)
+      (when (> (or (plist-get summary :children) 0) 0)
         (setq parts (append parts
                             (list (format "%d/%d done · %s"
                                           (plist-get summary :completed)
@@ -1671,7 +1667,8 @@ Accepts and ignores arguments so it can be used directly on
               (concat "%n(titled)%n(org-status)%n(org-tags nil separated)"
                       "%n(id)\n%n(text 500)")
               ekg-display-note-summary-template
-              "%n(org-summary)")
+              (concat "%n(org-status nil state-only oneline)"
+                      "%n(titled nil text-fallback)"))
   (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
   (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)
   (add-hook 'kill-buffer-hook

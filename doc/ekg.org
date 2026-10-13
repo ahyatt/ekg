@@ -679,12 +679,14 @@ really.
 
 ~ekg-display-note-summary-template~ controls the alternative layout used in
 titles-only and folded states.  It uses the same inline commands as the full
-template.  Its default, =%n(summary)=, shows the title or the first text line
-when the note is untitled.  For example, to include tags in compact notes:
+template.  Its default, =%n(titled nil text-fallback)=, shows the title or the
+first text line when the note is untitled.  The =firstline= formatting option
+can also limit other formatters to their first line.  For example, to include
+tags in compact notes:
 
 #+begin_src emacs-lisp
 (setq ekg-display-note-summary-template
-      "%n(summary)%n(tagged nil separated)")
+      "%n(titled nil text-fallback)%n(tagged nil separated)")
 #+end_src
 
 The Org task view sets a buffer-local summary template that includes the task

@@ -198,6 +198,7 @@ Most formatters can take a maximum number of words to output, and a
 format list, which is a list of desired output properties as symbols.
 Right now, the possibilities are:
   - `oneline', the results must be on one line only.
+  - `firstline', keep only the first line of the result.
   - `plaintext', the results must not have string properties.
 
 For OTHER formatters, everything must
@@ -206,11 +207,11 @@ which are applied to each non-standard property in turn."
   :type 'string
   :group 'ekg)
 
-(defcustom ekg-display-note-summary-template "%n(summary)"
+(defcustom ekg-display-note-summary-template "%n(titled nil text-fallback)"
   "Template for notes in titles-only and folded display states.
 Use the same syntax as `ekg-display-note-template'.  The default
-%n(summary) formatter shows the title, or the first text line when
-the note has no title.  Modes can override this template locally."
+`titled' formatter's `text-fallback' option shows the title, or the
+first text line when untitled.  Modes can override this locally."
   :type 'string
   :group 'ekg)
 
@@ -1195,6 +1196,8 @@ However, if FORCE is non-nil, it will be shown regardless."
 
 FORMAT is a list of formatting options.  See `ekg-display-note-template'
 for details."
+  (when (memq 'firstline format)
+    (setq text (or (car (split-string text "\n")) "")))
   (let ((unformatted (concat (string-trim-right
                               (ekg-truncate-at text
                                                (or numwords ekg-note-inline-max-words))) "\n")))
@@ -1253,27 +1256,23 @@ desired output properties as described in `ekg-display-note-template'."
 
 (defun ekg-display-note-titled (note &optional numwords &rest format)
   "Return text of the title of NOTE.
-NUMWORDS and FORMAT are as described in `ekg-display-note-template'."
-  (if-let* ((titles (plist-get (ekg-note-properties note) :titled/title)))
-      (ekg-display--format
-       (propertize (mapconcat #'identity titles ", ") 'face 'ekg-title)
-       numwords format)
-    ""))
-
-(defun ekg-display-note-summary (note &optional numwords &rest format)
-  "Return NOTE's title, or its first text line, with NUMWORDS and FORMAT."
+NUMWORDS and FORMAT are as described in `ekg-display-note-template'.
+With `text-fallback', use the first text line when the title is absent,
+or \"Untitled\" if both are empty."
   (let* ((titles (plist-get (ekg-note-properties note) :titled/title))
          (title (if (stringp titles) titles
-                  (mapconcat #'identity titles ", ")))
-         (label (replace-regexp-in-string
-                 "[\r\n\t]+" " "
-                 (if (string-empty-p (string-trim title))
-                     (car (split-string (or (ekg-note-text note) "") "\n"))
-                   title))))
-    (ekg-display--format
-     (propertize (if (string-empty-p (string-trim label)) "Untitled" label)
-                 'face 'ekg-title)
-     numwords format)))
+                  (mapconcat #'identity titles ", "))))
+    (cond
+     ((not (string-empty-p (string-trim title)))
+      (ekg-display--format (propertize title 'face 'ekg-title) numwords format))
+     ((memq 'text-fallback format)
+      (let ((text (apply #'ekg-display-note-text note numwords
+                         (cons 'firstline format))))
+        (if (string-empty-p (string-trim text))
+            (ekg-display--format (propertize "Untitled" 'face 'ekg-title)
+                                 numwords format)
+          (propertize text 'face 'ekg-title))))
+     (t ""))))
 
 (defun ekg-inline-command-transclude-note (id &optional numwords)
   "Return the text of ID.

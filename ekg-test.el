@@ -878,7 +878,7 @@
     (should (eq (ekg-notes-display-state) 'full))
     (should (= 2 (length (ekg-notes-visible-ids))))))
 
-(ekg-deftest ekg-test-notes-summary-label ()
+(ekg-deftest ekg-test-notes-title-text-fallback ()
   "Compact labels prefer titles and fall back to the first text line."
   (dolist (case '((nil "First line\nSecond line" "First line")
                   (("Title") "First line\nSecond line" "Title")
@@ -887,7 +887,8 @@
     (let ((note (ekg-note-create :text (nth 1 case)
                                  :properties (list :titled/title (car case)))))
       (should (equal (string-trim
-                      (substring-no-properties (ekg-display-note-summary note)))
+                      (substring-no-properties
+                       (ekg-display-note-titled note nil 'text-fallback)))
                      (nth 2 case))))))
 
 (ekg-deftest-with-db ekg-test-notes-fold-preserves-window-start ()
