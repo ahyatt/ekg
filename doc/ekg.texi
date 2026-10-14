@@ -1144,6 +1144,14 @@ the list.
 
 @samp{ekg-notes-next} (@samp{n})@comma{} move selection to the next note.
 
+@samp{ekg-notes-toggle-collapse} (@samp{TAB})@comma{} cycle the current subtree through full
+content@comma{} titles only@comma{} and folded.  Titles-only display shows the note and its
+descendants using their titles@comma{} or a short text excerpt when untitled.  Folded
+display keeps the current title handle and hides its children.  A child can be
+expanded independently while its parent is in titles-only display.  The
+disclosure marker and the header's Full/Titles/Folded label show the current
+state.  Cycling preserves the viewport and the selected note.
+
 @samp{ekg-notes-previous} (@samp{p})@comma{} move selection to the previous node.
 
 @samp{ekg-notes-any-note-tags} (@samp{a})@comma{} open a new notes list showing any of the tags
@@ -1175,6 +1183,20 @@ The main way to customize displays is via the variable
 these commands.  Through changing this@comma{} the ordering or inclusion of various
 type-related information can be configured@comma{} or extra text added@comma{} or anything@comma{}
 really.
+
+@code{ekg-display-note-summary-template} controls the alternative layout used in
+titles-only and folded states.  It uses the same inline commands as the full
+template.  Its default@comma{} @samp{%n(titled 12 text-fallback oneline)}@comma{} shows up to twelve
+words of the title or@comma{} when untitled@comma{} the note text.  @samp{oneline} presents the
+result on one line.  For example@comma{} to include tags in compact notes:
+
+@lisp
+(setq ekg-display-note-summary-template
+      "%n(titled 12 text-fallback oneline)%n(tagged nil separated)")
+@end lisp
+
+The Org task view sets a buffer-local summary template that includes the task
+state.  You can change it through @samp{ekg-org-view-mode-hook}.
 
 The variable @code{ekg-format-funcs} has functions to run to format what ekg displays
 to the user.  Each format function runs in turn on a temporary buffer with the
@@ -2280,8 +2302,8 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @tab @samp{ekg-org-view-set-dependency-type}
 @tab Set children sequential or parallel
 @item @samp{TAB}
-@tab @samp{ekg-org-view-toggle-collapse}
-@tab Fold or expand the body and children
+@tab @samp{ekg-notes-toggle-collapse}
+@tab Cycle full content@comma{} titles@comma{} folded
 @item @samp{S-TAB}
 @tab @samp{ekg-org-view-toggle-all}
 @tab Fold all roots or expand all notes
@@ -2345,7 +2367,10 @@ returns a plist with @samp{:state}@comma{} @samp{:done}@comma{} @samp{:scheduled
 task children in the note's archive scope.
 
 Within a task view@comma{} @samp{ekg-org-view-state} returns @samp{:current-id}@comma{} @samp{:root-id}@comma{}
-@samp{:archive}@comma{} @samp{:visible-ids}@comma{} and @samp{:folded-ids}.  @samp{ekg-notes-visible-ids} returns
+@samp{:archive}@comma{} @samp{:visible-ids}@comma{} @samp{:folded-ids}@comma{} and @samp{:display-states}.
+@samp{ekg-notes-display-state} returns the effective @samp{full}@comma{} @samp{outline} (titles)@comma{} or
+@samp{folded} state of a visible note@comma{} or nil if it is not visible.
+@samp{ekg-notes-visible-ids} returns
 the visible note IDs in navigation order from any normal notes view.
 
 @item

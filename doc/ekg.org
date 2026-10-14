@@ -637,6 +637,14 @@ the list.
 
 =ekg-notes-next= (=n=), move selection to the next note.
 
+=ekg-notes-toggle-collapse= (=TAB=), cycle the current subtree through full
+content, titles only, and folded.  Titles-only display shows the note and its
+descendants using their titles, or a short text excerpt when untitled.  Folded
+display keeps the current title handle and hides its children.  A child can be
+expanded independently while its parent is in titles-only display.  The
+disclosure marker and the header's Full/Titles/Folded label show the current
+state.  Cycling preserves the viewport and the selected note.
+
 =ekg-notes-previous= (=p=), move selection to the previous node.
 
 =ekg-notes-any-note-tags= (=a=), open a new notes list showing any of the tags
@@ -668,6 +676,20 @@ The main way to customize displays is via the variable
 these commands.  Through changing this, the ordering or inclusion of various
 type-related information can be configured, or extra text added, or anything,
 really.
+
+~ekg-display-note-summary-template~ controls the alternative layout used in
+titles-only and folded states.  It uses the same inline commands as the full
+template.  Its default, =%n(titled 12 text-fallback oneline)=, shows up to twelve
+words of the title or, when untitled, the note text.  =oneline= presents the
+result on one line.  For example, to include tags in compact notes:
+
+#+begin_src emacs-lisp
+(setq ekg-display-note-summary-template
+      "%n(titled 12 text-fallback oneline)%n(tagged nil separated)")
+#+end_src
+
+The Org task view sets a buffer-local summary template that includes the task
+state.  You can change it through =ekg-org-view-mode-hook=.
 
 The variable ~ekg-format-funcs~ has functions to run to format what ekg displays
 to the user.  Each format function runs in turn on a temporary buffer with the
@@ -1601,7 +1623,7 @@ The following keybindings are available in =ekg-org-view-mode=:
 | =x=     | =ekg-org-view-toggle-done=       | Complete or reopen the task       |
 | =+=     | =ekg-org-view-add-child=         | Append a child task               |
 | =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
-| =TAB=   | =ekg-org-view-toggle-collapse=   | Fold or expand the body and children |
+| =TAB=   | =ekg-notes-toggle-collapse=   | Cycle full content, titles, folded |
 | =S-TAB= | =ekg-org-view-toggle-all=        | Fold all roots or expand all notes |
 | =RET= / =o= | =ekg-org-view-open-note=     | Open the note for editing in ekg  |
 | =c=     | =ekg-org-view-create=            | Enter insertion mode to create a new task |
@@ -1632,7 +1654,10 @@ returns a plist with =:state=, =:done=, =:scheduled=, =:deadline=, =:children=,
 task children in the note's archive scope.
 
 Within a task view, =ekg-org-view-state= returns =:current-id=, =:root-id=,
-=:archive=, =:visible-ids=, and =:folded-ids=.  =ekg-notes-visible-ids= returns
+=:archive=, =:visible-ids=, =:folded-ids=, and =:display-states=.
+=ekg-notes-display-state= returns the effective =full=, =outline= (titles), or
+=folded= state of a visible note, or nil if it is not visible.
+=ekg-notes-visible-ids= returns
 the visible note IDs in navigation order from any normal notes view.
 
 **** How it differs from org-mode

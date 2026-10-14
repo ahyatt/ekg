@@ -689,13 +689,17 @@ Keys are :state, :done, :scheduled, :deadline, :children, :completed,
 
 (defun ekg-org-view-state ()
   "Return the task view's current selection, scope and folding state.
-Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
+Keys are :current-id, :root-id, :archive, :visible-ids, :folded-ids
+and :display-states."
   (unless (derived-mode-p 'ekg-org-view-mode)
     (user-error "This command requires an Org task view"))
   (list :current-id (get-text-property (point) :ekg-note-id)
         :root-id ekg-org-view--root-id :archive ekg-org-view--archive
         :visible-ids (ekg-notes-visible-ids)
-        :folded-ids (copy-sequence ekg-notes-collapsed-ids)))
+        :folded-ids (mapcar #'car (seq-filter
+                                  (lambda (entry) (eq (cdr entry) 'folded))
+                                  ekg-notes-display-states))
+        :display-states (copy-tree ekg-notes-display-states)))
 
 (defun ekg-org-view--visible-tags (note)
   "Return NOTE's tags excluding task control, trash and draft tags."
@@ -721,9 +725,13 @@ Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
      time)))
 
 (defun ekg-display-note-org-status (note &optional numwords &rest format)
-  "Display NOTE's task status, with NUMWORDS and FORMAT template options."
+  "Display NOTE's task status, with NUMWORDS and FORMAT template options.
+With `state-only', omit dates and child completion counts."
   (when (ekg-org--org-note-p note)
-    (let* ((summary (ekg-org-task-summary note))
+    (let* ((summary (if (memq 'state-only format)
+                        (list :state (ekg-org-task-state note)
+                              :done (ekg-org-task-done-p note))
+                      (ekg-org-task-summary note)))
            (state (or (plist-get summary :state) "No state"))
            (parts (list (propertize state 'face
                                     (if (plist-get summary :done)
@@ -734,7 +742,7 @@ Keys are :current-id, :root-id, :archive, :visible-ids and :folded-ids."
                               (list (format "%s %s" (cdr field)
                                             (ekg-org--format-task-date
                                              date)))))))
-      (when (> (plist-get summary :children) 0)
+      (when (> (or (plist-get summary :children) 0) 0)
         (setq parts (append parts
                             (list (format "%d/%d done · %s"
                                           (plist-get summary :completed)
@@ -881,8 +889,7 @@ When insert mode is active, defer the refresh until insert mode ends."
       ;; Actions that explicitly select a task must reveal it.  Background
       ;; refreshes retain folds and select the nearest visible ancestor.
       (when target-id
-        (setq ekg-notes-collapsed-ids
-              (seq-difference ekg-notes-collapsed-ids ancestors)))
+        (ekg-notes--unfold-ids ancestors))
       (ekg--show-notes (if ekg-org-view--archive "Archived tasks" "Org tasks")
                        #'ekg-org-view--fetch-notes nil)
       (when (and restore-id
@@ -903,18 +910,19 @@ When insert mode is active, defer the refresh until insert mode ends."
                 (setcar (cddr entry) (point-marker))))))))
     (ekg-org-view--highlight)))
 
-(defun ekg-org-view-toggle-collapse ()
-  "Toggle the body and descendants of the note at point."
-  (interactive nil ekg-org-view-mode)
-  (ekg-notes-toggle-collapse))
+(define-obsolete-function-alias 'ekg-org-view-toggle-collapse
+  #'ekg-notes-toggle-collapse "0.10.0")
 
 (defun ekg-org-view-toggle-all ()
   "Fold all root tasks, or expand all tasks when any are folded."
   (interactive nil ekg-org-view-mode)
-  (setq ekg-notes-collapsed-ids
-        (unless ekg-notes-collapsed-ids
-          (mapcar #'ekg-note-id (ekg-org-view--fetch-notes))))
-  (ekg-org-view--refresh))
+  (setq ekg-notes-display-states
+        (unless (seq-some (lambda (entry) (eq (cdr entry) 'folded))
+                          ekg-notes-display-states)
+          (mapcar (lambda (note) (cons (ekg-note-id note) 'folded))
+                  (ekg-org-view--fetch-notes))))
+  (let ((id (ekg-org-view--note-at-point)))
+    (ekg-notes--refresh-preserving-view #'ekg-org-view--refresh id)))
 
 (defun ekg-org-view-cycle-state ()
   "Choose the TODO state of the task at point."
@@ -950,8 +958,7 @@ When insert mode is active, defer the refresh until insert mode ends."
     (user-error "Create tasks in the active task view"))
   (let ((note (ekg-org-view--require-task-at-point)))
     (unless (string-empty-p (string-trim title))
-      (setq ekg-notes-collapsed-ids
-            (remove (ekg-note-id note) ekg-notes-collapsed-ids))
+      (ekg-notes--unfold-ids (list (ekg-note-id note)))
       (ekg-org-view--insert-create-task
        (list :parent-id (ekg-note-id note)
              :after-id (when-let* ((children (ekg-org-view--sorted-children
@@ -1610,7 +1617,6 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "a") #'ekg-org-view-archive)
     (define-key map (kbd "d") #'ekg-org-view-delete)
     (define-key map (kbd "c") #'ekg-org-view-create)
-    (define-key map (kbd "TAB") #'ekg-org-view-toggle-collapse)
     (define-key map (kbd "RET") #'ekg-org-view-open-note)
     (define-key map (kbd "o") #'ekg-org-view-open-note)
     (define-key map (kbd "<backtab>") #'ekg-org-view-toggle-all)
@@ -1658,8 +1664,9 @@ Accepts and ignores arguments so it can be used directly on
               ekg-display-note-template
               (concat "%n(titled)%n(org-status)%n(org-tags nil separated)"
                       "%n(id)\n%n(text 500)")
-              ekg-notes-collapsed-note-template
-              "%n(titled)%n(org-status nil folded)%n(org-tags nil separated)%n(id)")
+              ekg-display-note-summary-template
+              (concat "%n(org-status nil state-only oneline)"
+                      "%n(titled 12 text-fallback oneline)"))
   (add-hook 'ekg-note-save-hook #'ekg-org-view--refresh-all)
   (add-hook 'ekg-note-delete-hook #'ekg-org-view--refresh-all)
   (add-hook 'kill-buffer-hook
