@@ -1012,6 +1012,43 @@ parallel children have no ordering dependency."
     (ekg-org-view--refresh id)
     (message "Child tasks are now %s" dependency-type)))
 
+(defun ekg-org-view-set-property (property value &optional remove)
+  "Set PROPERTY to VALUE on the task at point and save it.
+With prefix argument REMOVE, delete PROPERTY instead.  Property names
+are case-insensitive.  Prompt with directory completion for DIR."
+  (interactive
+   (let* ((note (ekg-org-view--require-task-at-point))
+          (remove current-prefix-arg)
+          (properties (mapcar #'car (ekg-org-properties-alist note)))
+          (property
+           (upcase (completing-read
+                    (if remove "Remove property: " "Property: ")
+                    (if remove properties
+                      (delete-dups (append '("DIR" "ORDERED") properties)))
+                    nil (and remove t))))
+          (current (ekg-org-get-property note property)))
+     (list property
+           (unless remove
+             (if (string= property "DIR")
+                 (read-directory-name "Directory: " nil current t)
+               (read-string (format "%s value: " property) current)))
+           remove))
+   ekg-org-view-mode)
+  (unless (and (string-match-p "\\`[^[:space:]:]+\\'" property)
+               (not (string-equal (upcase property) "EKG_ID")))
+    (user-error "Invalid or reserved task property: %s" property))
+  (let* ((note (ekg-org-view--require-task-at-point))
+         (id (ekg-note-id note))
+         (ekg-org--inhibit-view-refresh t))
+    (if remove
+        (ekg-org-remove-property note property)
+      (ekg-org-set-property note property value)
+      (when (string-equal (upcase property) "DIR")
+        (ekg-org-set-property note property (ekg-org-working-directory note))))
+    (ekg-save-note note)
+    (ekg-org-view--refresh id)
+    (message "%s property %s" (if remove "Removed" "Set") (upcase property))))
+
 (defun ekg-org-view--archive-note (note)
   "Archive NOTE by adding the archive tag if not already present."
   (unless (member ekg-org-archive-tag (ekg-note-tags note))
@@ -1663,6 +1700,8 @@ timestamp in the note's `:org/deadline' property."
 ;; the command to an already existing mode map.
 (define-key ekg-org-view-mode-map (kbd "s")
             #'ekg-org-view-set-dependency-type)
+(define-key ekg-org-view-mode-map (kbd "C-c C-x p")
+            #'ekg-org-view-set-property)
 
 (defun ekg-org-view--refresh-all (&rest _args)
   "Refresh all live `ekg-org-view-mode' buffers.
