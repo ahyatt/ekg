@@ -2184,6 +2184,29 @@ following org property syntax) can be attached to tasks via the
 @samp{ekg-org-set-property}@comma{} and @samp{ekg-org-remove-property}.
 @end itemize
 
+Tasks can set a @samp{DIR} Org property to choose the working directory used by
+@samp{ekg-agent-org-plan-task} and @samp{ekg-agent-org-run-task}.  Child tasks inherit
+the nearest ancestor's @samp{DIR} unless they define their own@comma{} so generated plans
+attached under a project task use that project's directory automatically.
+In the task view@comma{} put point on the task and press @samp{C-c C-x p}
+(@samp{ekg-org-view-set-property}).  Enter @samp{DIR} as the property name@comma{} then
+choose the working directory using directory completion.  The command saves
+the task immediately.  It can also set other Org-style task properties.
+Use @samp{C-u C-c C-x p} to remove a property; removing @samp{DIR} restores inheritance
+from the parent task@comma{} or the invoking buffer's directory if no parent sets it.
+
+The agent resolves this directory before starting@comma{} reads its @samp{AGENTS.md}@comma{}
+and uses it as @samp{default-directory} for synchronous and asynchronous tools@comma{}
+including planning research@comma{} relative file paths@comma{} and subprocesses.  The
+session retains the directory when continued or when the invoking buffer is
+closed.  Tool arguments that explicitly choose another directory still take
+precedence; @samp{DIR} sets the working context rather than restricting file access.
+Empty@comma{} missing@comma{} or inaccessible directories cause an error before work begins.
+Relative @samp{DIR} paths are resolved against the invoking buffer's directory;
+absolute paths or @samp{~/} paths are preferable for tasks run from multiple views.
+Without @samp{DIR} on the task or its ancestors@comma{} the invoking buffer's directory
+is used as before.  The buffer's directory is not changed by a task's @samp{DIR}.
+
 @node Org agenda integration
 @subsection Org agenda integration
 
@@ -2301,6 +2324,9 @@ The following keybindings are available in @samp{ekg-org-view-mode}:
 @item @samp{s}
 @tab @samp{ekg-org-view-set-dependency-type}
 @tab Set children sequential or parallel
+@item @samp{C-c C-x p}
+@tab @samp{ekg-org-view-set-property}
+@tab Set a task property; with prefix@comma{} remove it
 @item @samp{TAB}
 @tab @samp{ekg-notes-toggle-collapse}
 @tab Cycle full content@comma{} titles@comma{} folded

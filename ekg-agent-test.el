@@ -1824,5 +1824,147 @@ result when the agent finishes."
       (should (string-match-p "cancelled" result))
       (should-not (triples-subjects-of-type ekg-db 'text)))))
 
+(ekg-deftest ekg-agent-test-task-directory-tools ()
+  "Tools retain the task directory across buffers and nested async calls."
+  (let* ((directory (file-name-as-directory
+                     (make-temp-file "ekg-agent-dir-" t)))
+         (origin (generate-new-buffer " *ekg-cwd-origin*"))
+         (log (generate-new-buffer " *ekg-cwd-log*"))
+         (original-directory (buffer-local-value 'default-directory origin))
+         read-tool command-tool elisp-tool nested-tool result)
+    (unwind-protect
+        (progn
+          (with-temp-file (expand-file-name "relative.txt" directory)
+            (insert "task directory content"))
+          (let ((ekg-agent--task-directory directory))
+            (setq read-tool (ekg-agent--wrap-tool-function
+                             ekg-agent-tool-read-file log origin)
+                  command-tool (ekg-agent--wrap-tool-function
+                                ekg-agent-tool-run-command log origin)
+                  elisp-tool (ekg-agent--wrap-tool-function
+                              ekg-agent-tool-run-elisp log origin)
+                  nested-tool
+                  (ekg-agent--wrap-tool-function
+                   (make-llm-tool
+                    :name "nested" :async t
+                    :function
+                    (lambda (callback)
+                      ;; A research agent creates its own wrappers later.
+                      (setq read-tool
+                            (ekg-agent--wrap-tool-function
+                             ekg-agent-tool-read-file log origin))
+                      (funcall callback "ready")))
+                   log origin)))
+          (with-temp-buffer
+            (should (string-match-p
+                     "task directory content"
+                     (funcall (llm-tool-function read-tool) "relative.txt"))))
+          (funcall (llm-tool-function nested-tool) #'ignore)
+          (should (equal (buffer-local-value 'default-directory origin)
+                         original-directory))
+          (kill-buffer origin)
+          ;; A dead origin must not silently change relative path resolution.
+          (with-temp-buffer
+            (should (string-match-p
+                     "task directory content"
+                     (funcall (llm-tool-function read-tool) "relative.txt")))
+            (funcall (llm-tool-function command-tool)
+                     (lambda (value) (setq result value)) "pwd"))
+          (let ((deadline (+ (float-time) 5)))
+            (while (and (not result) (< (float-time) deadline))
+              (accept-process-output nil 0.05)))
+          (should result)
+          (should (string-match-p (regexp-quote (directory-file-name directory))
+                                  result))
+          (setq result nil)
+          (funcall (llm-tool-function elisp-tool)
+                   (lambda (value) (setq result value))
+                   "default-directory" "result")
+          (let ((deadline (+ (float-time) 5)))
+            (while (and (not result) (< (float-time) deadline))
+              (accept-process-output nil 0.05)))
+          (should result)
+          ;; Emacs can abbreviate the subprocess directory with ~/ when
+          ;; CI's temporary-file-directory is beneath the runner's home.
+          (should (file-equal-p directory (read result)))
+          (should (equal default-directory original-directory)))
+      (when (buffer-live-p origin) (kill-buffer origin))
+      (kill-buffer log)
+      (delete-directory directory t))))
+
+(ekg-deftest-with-db ekg-agent-test-task-directory-entry-points ()
+  "Planning and execution build prompts in the inherited task directory."
+  (ekg-org-add-schema)
+  (let* ((directory (file-name-as-directory
+                     (make-temp-file "ekg-agent-dir-" t)))
+         (parent (ekg-note-create :text "Parent" :mode 'org-mode))
+         (child (ekg-note-create :text "Child" :mode 'org-mode))
+         (default-directory temporary-file-directory)
+         (original-directory default-directory)
+         (ekg-agent-org-plan-provider 'provider)
+         (ekg-agent-plan-provider 'provider)
+         planned (executed 0))
+    (unwind-protect
+        (progn
+          (ekg-org-set-property
+           parent "DIR" (file-name-nondirectory (directory-file-name directory)))
+          (ekg-save-note parent)
+          (ekg-note-set-parent child (ekg-note-id parent))
+          (ekg-save-note child)
+          (cl-letf
+              (((symbol-function 'ekg-current-note-or-error-expanded)
+                (lambda () child))
+               ((symbol-function 'ekg-agent-ask-with-note)
+                (lambda (_question _id tools)
+                  (setq planned t)
+                  (should (equal default-directory directory))
+                  (should (equal ekg-agent--task-directory directory))
+                  (funcall (llm-tool-function (car tools)) #'ignore "Plan" [])))
+               ((symbol-function 'ekg-agent--iterate)
+                (lambda (prompt _ &rest _options)
+                  (cl-incf executed)
+                  (should (equal default-directory directory))
+                  (should (equal ekg-agent--task-directory directory))
+                  (should (string-match-p
+                           (regexp-quote directory)
+                           (llm-chat-prompt-context prompt))))))
+            (ekg-agent-org-plan-task)
+            (ekg-agent-org-run-task))
+          (should planned)
+          (should (= executed 2))
+          (should (equal default-directory original-directory)))
+      (delete-directory directory))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-research-task-directory ()
+  "The plan tool uses its parent's DIR even outside the task commands."
+  (ekg-org-add-schema)
+  (let* ((directory (file-name-as-directory
+                     (make-temp-file "ekg-plan-dir-" t)))
+         (parent (ekg-note-create :text "Parent" :mode 'org-mode))
+         (ekg-agent-org-plan-provider 'provider)
+         (ekg-agent-plan-provider 'provider)
+         researched result)
+    (unwind-protect
+        (progn
+          (ekg-org-set-property parent "DIR" directory)
+          (ekg-save-note parent)
+          (with-temp-file (expand-file-name "AGENTS.md" directory)
+            (insert "Task directory research instructions"))
+          (cl-letf (((symbol-function 'ekg-agent--iterate)
+                     (lambda (prompt _ &rest options)
+                       (setq researched t)
+                       (should (equal default-directory directory))
+                       (should (equal ekg-agent--task-directory directory))
+                       (should (string-match-p
+                                "Task directory research instructions"
+                                (llm-chat-prompt-context prompt)))
+                       (funcall (plist-get options :status-callback) 'error))))
+            (ekg-agent-org--create-plan
+             (lambda (value) (setq result value))
+             "Research the task" [] (ekg-note-id parent)))
+          (should researched)
+          (should (string-prefix-p "Error:" result)))
+      (delete-directory directory t))))
+
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here
