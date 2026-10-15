@@ -1884,7 +1884,9 @@ result when the agent finishes."
             (while (and (not result) (< (float-time) deadline))
               (accept-process-output nil 0.05)))
           (should result)
-          (should (string-match-p (regexp-quote directory) result))
+          ;; Emacs can abbreviate the subprocess directory with ~/ when
+          ;; CI's temporary-file-directory is beneath the runner's home.
+          (should (file-equal-p directory (read result)))
           (should (equal default-directory original-directory)))
       (when (buffer-live-p origin) (kill-buffer origin))
       (kill-buffer log)
