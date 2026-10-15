@@ -275,6 +275,10 @@ Shown in the header line; updated by tool wrappers and the iterate loop.")
 Tool functions execute in this buffer so that `major-mode',
 `default-directory', and other buffer-local state are correct.")
 
+(defvar ekg-agent--task-directory nil
+  "Working directory dynamically supplied when starting an Org task.
+Tool wrappers capture this value for subsequent asynchronous calls.")
+
 (defvar ekg-agent--current-log-buffer nil
   "Dynamically bound to the current agent log buffer.
 Logging functions consult this variable instead of relying on
@@ -1025,13 +1029,27 @@ strings."
     "summarize_state was already the previous successful tool; do substantive work with another tool before summarizing again")
    (t nil)))
 
+(defun ekg-agent--call-tool-function (function args origin-buffer directory)
+  "Call tool FUNCTION with ARGS in ORIGIN-BUFFER and optional DIRECTORY.
+If ORIGIN-BUFFER is dead, use the current buffer.  Bind the task directory
+only for this call, preserving the origin buffer's own directory."
+  (let ((ekg-agent--task-directory directory))
+    (with-current-buffer (if (buffer-live-p origin-buffer)
+                             origin-buffer
+                           (current-buffer))
+      (if directory
+          (let ((default-directory directory))
+            (apply function args))
+        (apply function args)))))
+
 (defun ekg-agent--wrap-tool-function (tool log-buf origin-buf)
   "Return a copy of TOOL with its function wrapped for resilience.
 
 LOG-BUF is the buffer to log to.  ORIGIN-BUF is the buffer from
 which the agent was invoked; tool functions execute there so that
 buffer-local state such as `major-mode' and `default-directory'
-are correct.
+are correct.  When `ekg-agent--task-directory' is set, capture it
+and bind `default-directory' for every tool call, including nested agents.
 
 The wrapper provides four layers of protection:
 
@@ -1051,7 +1069,8 @@ The wrapper provides four layers of protection:
    cause `json-serialize' to fail downstream."
   (let* ((original-fn (llm-tool-function tool))
          (tool-name (llm-tool-name tool))
-         (async-p (llm-tool-async tool)))
+         (async-p (llm-tool-async tool))
+         (task-directory ekg-agent--task-directory))
     (make-llm-tool
      :function (if async-p
                    (lambda (callback &rest args)
@@ -1063,34 +1082,21 @@ The wrapper provides four layers of protection:
                                       (ekg-agent--blocked-tool-error
                                        log-buf tool-name args)))
                                (error "%s" blocked)
-                             (if (buffer-live-p origin-buf)
-                                 (with-current-buffer origin-buf
-                                   (apply original-fn
-                                          (lambda (result)
-                                            (unless called
-                                              (setq called t)
-                                              (let ((sanitized
-                                                     (ekg-agent--sanitize-tool-result result)))
-                                                (ekg-agent--log-tool-done log-buf marker)
-                                                (ekg-agent--log-tool-error-result
-                                                 tool-name sanitized args)
-                                                (ekg-agent--record-tool-completion
-                                                 log-buf tool-name sanitized args)
-                                                (funcall callback sanitized))))
-                                          args))
-                               (apply original-fn
-                                      (lambda (result)
-                                        (unless called
-                                          (setq called t)
-                                          (let ((sanitized
-                                                 (ekg-agent--sanitize-tool-result result)))
-                                            (ekg-agent--log-tool-done log-buf marker)
-                                            (ekg-agent--log-tool-error-result
-                                             tool-name sanitized args)
-                                            (ekg-agent--record-tool-completion
-                                             log-buf tool-name sanitized args)
-                                            (funcall callback sanitized))))
-                                      args)))
+                             (ekg-agent--call-tool-function
+                              original-fn
+                              (cons (lambda (result)
+                                      (unless called
+                                        (setq called t)
+                                        (let ((sanitized
+                                               (ekg-agent--sanitize-tool-result result)))
+                                          (ekg-agent--log-tool-done log-buf marker)
+                                          (ekg-agent--log-tool-error-result
+                                           tool-name sanitized args)
+                                          (ekg-agent--record-tool-completion
+                                           log-buf tool-name sanitized args)
+                                          (funcall callback sanitized))))
+                                    args)
+                              origin-buf task-directory))
                          (error
                           (unless called
                             (setq called t)
@@ -1111,10 +1117,9 @@ The wrapper provides four layers of protection:
                                                   (ekg-agent--blocked-tool-error
                                                    log-buf tool-name args)))
                                            (error "%s" blocked)
-                                         (if (buffer-live-p origin-buf)
-                                             (with-current-buffer origin-buf
-                                               (apply original-fn args))
-                                           (apply original-fn args)))))
+                                         (ekg-agent--call-tool-function
+                                          original-fn args origin-buf
+                                          task-directory))))
                            (let ((sanitized
                                   (ekg-agent--sanitize-tool-result result)))
                              (ekg-agent--log-tool-done log-buf marker)
@@ -3382,6 +3387,7 @@ session.  At iteration 0 the log buffer is created and
       ;; Set up everything.  Capture the current buffer as the origin
       ;; buffer before switching to the log buffer.
       (let* ((origin-buf (current-buffer))
+             (directory (or ekg-agent--task-directory default-directory))
              (id (ekg-agent--prompt-id prompt))
              (deadline (or deadline (ekg-agent--timeout-deadline)))
              (buf (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
@@ -3390,6 +3396,7 @@ session.  At iteration 0 the log buffer is created and
           ;; Set up major mode first since it calls
           ;; `kill-all-local-variables'.
           (ekg-agent--markdown-mode-no-hooks)
+          (setq default-directory directory)
           (let ((ekg-agent--current-log-buffer buf))
             (ekg-agent--log-session-start (buffer-name)))
           (insert (format "Agent session for: %s\n\n" id))
@@ -4304,6 +4311,11 @@ Call CALLBACK once with the created ID mapping or an error message."
     (let* ((provider ekg-agent-org-plan-provider)
            (reasoning ekg-agent-org-plan-reasoning)
            (parameters (copy-tree ekg-agent-org-plan-parameters))
+           (ekg-agent--task-directory
+            (or ekg-agent--task-directory
+                (when parent-id
+                  (ekg-org-working-directory (ekg-get-note-with-id parent-id)))))
+           (default-directory (or ekg-agent--task-directory default-directory))
            (owner ekg-agent--current-log-buffer)
            (finished nil)
            (ended nil)
@@ -4331,7 +4343,9 @@ Call CALLBACK once with the created ID mapping or an error message."
                              ekg-agent-org-user-response-tag)
                      "with a response note. Finish by calling "
                      "finish_plan_research with requirements, decisions, and "
-                     "unresolved questions.")
+                     "unresolved questions."
+                     (format "\nWorking directory: %s" default-directory)
+                     (ekg-agent--agents-md-context))
              :tools (list ekg-agent-tool-all-tags ekg-agent-tool-any-tags
                           ekg-agent-tool-get-note-by-id
                           ekg-agent-tool-search-notes ekg-agent-tool-list-tags
@@ -4481,6 +4495,8 @@ Returns text in Org format, as if they were in an Org file."
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (parent-id (ekg-note-id ekg-note))
          (parent-note (ekg-get-note-with-id parent-id))
+         (ekg-agent--task-directory (ekg-org-working-directory parent-note))
+         (default-directory (or ekg-agent--task-directory default-directory))
          (plan-tool (copy-llm-tool ekg-agent-org-tool-create-plan))
          ;; The outer agent only delegates to the plan tool.  In particular,
          ;; neither stage should interrupt the user with `ask_user'.
@@ -4504,6 +4520,8 @@ which ends the agent session.  No human input is required."
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (task-id (ekg-note-id ekg-note))
          (note (ekg-get-note-with-id task-id))
+         (ekg-agent--task-directory (ekg-org-working-directory note))
+         (default-directory (or ekg-agent--task-directory default-directory))
          (hierarchy (ekg-org--get-hierarchy note))
          (hierarchy-text (ekg-org--hierarchy-to-text hierarchy))
          (title (or (ekg-org--note-title note) "(untitled)"))
@@ -4530,6 +4548,7 @@ which ends the agent session.  No human input is required."
                    "You are executing an org task autonomously. Here is the full task hierarchy, "
                    "from the root task down to the current task you must execute:\n\n"
                    hierarchy-text
+                   (format "\nWorking directory: %s\n" default-directory)
                    (or children-text "")
                    (or prompt-context "")
                    "\n\n"

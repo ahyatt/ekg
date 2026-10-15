@@ -1538,6 +1538,29 @@ Tasks in =ekg-org= are ordinary ekg notes with special tags and properties:
   =:org/property= property, and manipulated with =ekg-org-get-property=,
   =ekg-org-set-property=, and =ekg-org-remove-property=.
 
+Tasks can set a =DIR= Org property to choose the working directory used by
+=ekg-agent-org-plan-task= and =ekg-agent-org-run-task=.  Child tasks inherit
+the nearest ancestor's =DIR= unless they define their own, so generated plans
+attached under a project task use that project's directory automatically.
+For example, set and save the property on a task note:
+
+#+begin_src emacs-lisp
+(ekg-org-set-property task-note "DIR" "~/src/my-project")
+(ekg-save-note task-note)
+#+end_src
+
+The agent resolves this directory before starting, reads its =AGENTS.md=,
+and uses it as =default-directory= for synchronous and asynchronous tools,
+including planning research, relative file paths, and subprocesses.  The
+session retains the directory when continued or when the invoking buffer is
+closed.  Tool arguments that explicitly choose another directory still take
+precedence; =DIR= sets the working context rather than restricting file access.
+Empty, missing, or inaccessible directories cause an error before work begins.
+Relative =DIR= paths are resolved against the invoking buffer's directory;
+absolute paths or =~/= paths are preferable for tasks run from multiple views.
+Without =DIR= on the task or its ancestors, the invoking buffer's directory
+is used as before.  The buffer's directory is not changed by a task's =DIR=.
+
 *** Org agenda integration
 
 When =ekg-org= is loaded, it registers a virtual file =/ekg:tasks.org= with the

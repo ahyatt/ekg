@@ -136,6 +136,29 @@ KEY is case-insensitive.  The note is not saved."
     (setf (ekg-note-properties note)
           (plist-put clean-props :org/property filtered))))
 
+(defun ekg-org-working-directory (note)
+  "Return NOTE's working directory, inheriting the nearest DIR property.
+Return nil when neither NOTE nor its ancestors has DIR set.  Relative
+paths are resolved against `default-directory'.  Signal a user error
+if the configured directory is empty, missing, or inaccessible."
+  (let ((current note) seen directory)
+    (while (and current (not directory))
+      (when (member (ekg-note-id current) seen)
+        (user-error "Cycle in task parents at %s" (ekg-note-id current)))
+      (push (ekg-note-id current) seen)
+      (setq directory (ekg-org-get-property current "DIR"))
+      (unless directory
+        (setq current (when-let* ((parent (ekg-note-parent-id current)))
+                        (ekg-get-note-with-id parent)))))
+    (when directory
+      (when (string-empty-p (string-trim directory))
+        (user-error "Task DIR property must not be empty"))
+      (setq directory (file-name-as-directory (expand-file-name directory)))
+      (unless (and (file-directory-p directory)
+                   (file-accessible-directory-p directory))
+        (user-error "Task directory is missing or inaccessible: %s" directory))
+      directory)))
+
 (defun ekg-org-dependency-type (note)
   "Return the dependency mode for NOTE's children.
 The return value is `parallel' when NOTE has an explicitly false

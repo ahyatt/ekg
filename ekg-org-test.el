@@ -1315,4 +1315,41 @@ deferred refresh should fire once insert mode ends."
     (should (= 0 (plist-get (ekg-org-task-summary
                             (ekg-get-note-with-id parent)) :children)))))
 
+(ekg-deftest-with-db ekg-org-test-working-directory-inheritance ()
+  "DIR survives saving and is inherited until a child overrides it."
+  (ekg-org-add-schema)
+  (let* ((directory (make-temp-file "ekg-task-dir-" t))
+         (child-directory (expand-file-name "child" directory))
+         (parent (ekg-note-create :text "Parent" :mode 'org-mode))
+         (child (ekg-note-create :text "Child" :mode 'org-mode)))
+    (unwind-protect
+        (progn
+          (make-directory child-directory)
+          (should-not (ekg-org-working-directory parent))
+          (ekg-org-set-property parent "dir" directory)
+          (ekg-save-note parent)
+          (ekg-note-set-parent child (ekg-note-id parent))
+          (ekg-save-note child)
+          (setq child (ekg-get-note-with-id (ekg-note-id child)))
+          (should (equal (ekg-org-working-directory child)
+                         (file-name-as-directory directory)))
+          (let ((default-directory (file-name-as-directory directory)))
+            (ekg-org-set-property child "DIR" "child")
+            (should (equal (ekg-org-working-directory child)
+                           (file-name-as-directory child-directory))))
+          (ekg-org-remove-property child "DIR")
+          (should (equal (ekg-org-working-directory child)
+                         (file-name-as-directory directory))))
+      (delete-directory directory t))))
+
+(ekg-deftest ekg-org-test-working-directory-invalid ()
+  "Invalid DIR properties fail instead of running in another directory."
+  (let* ((directory (make-temp-file "ekg-task-dir-" t))
+         (note (ekg-note-create :text "Task")))
+    (unwind-protect
+        (dolist (value (list "" "   " (expand-file-name "missing" directory)))
+          (ekg-org-set-property note "DIR" value)
+          (should-error (ekg-org-working-directory note) :type 'user-error))
+      (delete-directory directory))))
+
 (provide 'ekg-org-test)

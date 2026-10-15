@@ -2184,6 +2184,29 @@ following org property syntax) can be attached to tasks via the
 @samp{ekg-org-set-property}@comma{} and @samp{ekg-org-remove-property}.
 @end itemize
 
+Tasks can set a @samp{DIR} Org property to choose the working directory used by
+@samp{ekg-agent-org-plan-task} and @samp{ekg-agent-org-run-task}.  Child tasks inherit
+the nearest ancestor's @samp{DIR} unless they define their own@comma{} so generated plans
+attached under a project task use that project's directory automatically.
+For example@comma{} set and save the property on a task note:
+
+@lisp
+(ekg-org-set-property task-note "DIR" "~/src/my-project")
+(ekg-save-note task-note)
+@end lisp
+
+The agent resolves this directory before starting@comma{} reads its @samp{AGENTS.md}@comma{}
+and uses it as @samp{default-directory} for synchronous and asynchronous tools@comma{}
+including planning research@comma{} relative file paths@comma{} and subprocesses.  The
+session retains the directory when continued or when the invoking buffer is
+closed.  Tool arguments that explicitly choose another directory still take
+precedence; @samp{DIR} sets the working context rather than restricting file access.
+Empty@comma{} missing@comma{} or inaccessible directories cause an error before work begins.
+Relative @samp{DIR} paths are resolved against the invoking buffer's directory;
+absolute paths or @samp{~/} paths are preferable for tasks run from multiple views.
+Without @samp{DIR} on the task or its ancestors@comma{} the invoking buffer's directory
+is used as before.  The buffer's directory is not changed by a task's @samp{DIR}.
+
 @node Org agenda integration
 @subsection Org agenda integration
 
