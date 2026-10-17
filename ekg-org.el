@@ -38,9 +38,9 @@
 (defvar ekg-agent-org-tool-list-items)
 
 (defvar ekg-org--inhibit-view-refresh nil
-  "When non-nil, suppress `ekg-org-view' refreshes from save hooks.
+  "When non-nil, defer `ekg-org-view' refreshes from save hooks.
 Bind this around batch operations that save multiple notes; call
-`ekg-org-view--refresh' once afterward.")
+`ekg-org-view--refresh-all' once afterward to refresh synchronously.")
 
 (defconst ekg-org-state-tag-prefix "org/state/"
   "Prefix for EKG tags representing Org TODO states.")
@@ -913,16 +913,19 @@ When insert mode is active, defer the refresh until insert mode ends."
       ;; refreshes retain folds and select the nearest visible ancestor.
       (when target-id
         (ekg-notes--unfold-ids ancestors))
-      (ekg--show-notes (if ekg-org-view--archive "Archived tasks" "Org tasks")
-                       #'ekg-org-view--fetch-notes nil)
-      (when (and restore-id
-                 (seq-some #'ekg-org-view--goto-note-id
-                           (cons restore-id (reverse ancestors))))
+      (ekg-notes--refresh-preserving-view
+       (lambda ()
+         (ekg--show-notes
+          (if ekg-org-view--archive "Archived tasks" "Org tasks")
+          #'ekg-org-view--fetch-notes nil))
+       target-id)
+      (when (or (null target-id)
+                (seq-some #'ekg-org-view--goto-note-id
+                          (cons restore-id (reverse ancestors))))
         (let ((windows (get-buffer-window-list (current-buffer) nil t)))
           (dolist (win windows)
-            (set-window-point win (point))
-            (unless (pos-visible-in-window-p (point) win)
-              (with-selected-window win (recenter))))
+            (when (eq win (selected-window))
+              (set-window-point win (point))))
           ;; When the buffer is not visible, update the saved point in
           ;; each window's prev-buffer history so that `quit-window'
           ;; restores point to the right heading.
@@ -1703,12 +1706,26 @@ timestamp in the note's `:org/deadline' property."
 (define-key ekg-org-view-mode-map (kbd "C-c C-x p")
             #'ekg-org-view-set-property)
 
+(defvar ekg-org-view--refresh-timer nil
+  "Timer for refreshing task views after an inhibited batch of saves.")
+
 (defun ekg-org-view--refresh-all (&rest _args)
   "Refresh all live `ekg-org-view-mode' buffers.
-Does nothing when `ekg-org--inhibit-view-refresh' is non-nil.
+Defer until the next event loop when refreshes are inhibited.
 Accepts and ignores arguments so it can be used directly on
 `ekg-note-save-hook' and `ekg-note-delete-hook'."
-  (unless ekg-org--inhibit-view-refresh
+  (if ekg-org--inhibit-view-refresh
+      ;; Commands may explicitly refresh only their own view.  Do not lose
+      ;; updates to other views while suppressing intermediate batch renders.
+      (unless (timerp ekg-org-view--refresh-timer)
+        (setq ekg-org-view--refresh-timer
+              (run-at-time
+               0 nil (lambda ()
+                       (setq ekg-org-view--refresh-timer nil)
+                       (ekg-org-view--refresh-all)))))
+    (when (timerp ekg-org-view--refresh-timer)
+      (cancel-timer ekg-org-view--refresh-timer))
+    (setq ekg-org-view--refresh-timer nil)
     (dolist (buf (buffer-list))
       (when (and (buffer-live-p buf)
                  (with-current-buffer buf

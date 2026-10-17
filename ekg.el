@@ -2541,8 +2541,9 @@ Without ID, use the current note.  Return nil when ID is not visible."
     (when (eq (alist-get id ekg-notes-display-states nil nil #'equal) 'folded)
       (setf (alist-get id ekg-notes-display-states nil nil #'equal) 'full))))
 
-(defun ekg-notes--refresh-preserving-view (refresh id)
-  "Call REFRESH and select ID while preserving independent window views."
+(defun ekg-notes--refresh-preserving-view (refresh &optional id)
+  "Call REFRESH while preserving point and independent window views.
+When ID is non-nil, select its heading instead of restoring point."
   (cl-labels
       ((anchor (pos)
          (let* ((id (get-text-property
@@ -2567,14 +2568,17 @@ Without ID, use the current note.  Return nil when ID is not visible."
                                              (point-max))))
                               start)
                             exact))))))
-    (let* ((action-window (selected-window))
+    (let* ((point-anchor (anchor (point)))
+           (action-window (selected-window))
            (views (mapcar
                    (lambda (win)
                      (list win (anchor (window-start win))
                            (anchor (window-point win)) (window-vscroll win t)))
                    (get-buffer-window-list (current-buffer) nil t))))
       (funcall refresh)
-      (ekg-notes--goto-id id)
+      (unless (and id (ekg-notes--goto-id id))
+        (when-let* ((pos (position point-anchor)))
+          (goto-char (car pos))))
       (dolist (view views)
         (pcase-let ((`(,win ,start-anchor ,point-anchor ,vscroll) view))
           (when (window-live-p win)
@@ -2784,10 +2788,12 @@ fetched results are shown."
   (unless (functionp ekg-notes-fetch-notes-function)
     (user-error
      "This EKG notes buffer is missing its refresh function; recreate it"))
-  (ekg--show-notes
-   ekg-notes-name
-   ekg-notes-fetch-notes-function
-   ekg-notes-tags))
+  (ekg-notes--refresh-preserving-view
+   (lambda ()
+     (ekg--show-notes
+      ekg-notes-name
+      ekg-notes-fetch-notes-function
+      ekg-notes-tags))))
 
 (defun ekg-notes-create ()
   "Add a note that by default has all the tags in the buffer."

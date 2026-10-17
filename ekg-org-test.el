@@ -902,6 +902,72 @@ An agent saving a new note should cause the view to update automatically."
     (should (member "Agent Task" titles))
     (should (member "Initial Task" titles))))
 
+(ekg-deftest-with-db ekg-org-test-view-refresh-preserves-windows ()
+  "Background insertions and edits retain independent points and viewports."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent))
+         (later (ekg-org-test--add-task "Later")))
+    (save-window-excursion
+      (delete-other-windows)
+      (ekg-org-view)
+      (let* ((view (current-buffer))
+             (first (selected-window))
+             (second (split-window-right)))
+        (ekg-org-view--goto-note-id parent)
+        (set-window-start first (point) t)
+        (ekg-org-view--goto-note-id child)
+        (forward-char 2)
+        (set-window-point first (point))
+        (let ((saved-point (point))
+              (saved-start (window-start first)))
+          (ekg-org-view--goto-note-id later)
+          (set-window-start second (point) t)
+          (set-window-point second (+ (point) 3))
+          (goto-char saved-point)
+          ;; Save from a different buffer, as an asynchronous callback does.
+          (with-temp-buffer
+            (ekg-org-test--add-task "New child" parent)
+            (let ((note (ekg-get-note-with-id child)))
+              (setf (ekg-note-text note) "New body\nWith more lines")
+              (ekg-save-note note)))
+          (should (= (window-start first) saved-start))
+          (should (= (window-point first) saved-point))
+          (with-current-buffer view
+            (should (member "New child" (ekg-org-test--view-titles))))
+          (with-current-buffer view
+            (let ((later-start (text-property-any
+                                (point-min) (point-max) :ekg-note-id later)))
+              (should (= (window-start second) later-start))
+              (should (= (window-point second) (+ later-start 3)))))
+          (ekg-org-view--goto-note-id parent)
+          (set-window-start first (point) t)
+          (let ((start (window-start first)))
+            (ekg-org-view-add-child "Interactive child")
+            (should (= (window-start first) start))))))))
+
+(ekg-deftest-with-db ekg-org-test-view-insertion-refreshes-other-views ()
+  "Inhibited insertions update focused views after the command finishes."
+  (ekg-org-add-schema)
+  (let ((parent (ekg-org-test--add-task "Parent")))
+    (save-window-excursion
+      (ekg-org-view-task parent)
+      (let ((focused (current-buffer)))
+        (ekg-org-view)
+        (ekg-org-view--goto-note-id parent)
+        (unwind-protect
+            (progn
+              (ekg-org-view-add-child "New child")
+              ;; Run the deferred callback without waiting for an idle loop.
+              (should (timerp ekg-org-view--refresh-timer))
+              (timer-event-handler ekg-org-view--refresh-timer)
+              (with-current-buffer focused
+                (should (= (length (ekg-notes-visible-ids)) 2))
+                (should (string-match-p "New child" (buffer-string)))))
+          (when (timerp ekg-org-view--refresh-timer)
+            (cancel-timer ekg-org-view--refresh-timer)
+            (setq ekg-org-view--refresh-timer nil)))))))
+
 (ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-delete ()
   "Test that the view refreshes when a note is deleted externally."
   (ekg-org-add-schema)

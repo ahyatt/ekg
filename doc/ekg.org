@@ -1619,7 +1619,9 @@ To open the view, call =ekg-org-view=.  For archived tasks, call
 
 The view refreshes automatically whenever any ekg note is saved, so changes
 made by you, by an agent, or by the command-line tools are reflected
-immediately.  Refreshes preserve folding and selection.  Creating or moving a
+immediately.  Refreshes preserve folding, point within the note, and each
+window's scroll position.  Batch changes refresh all open task views when
+the batch finishes.  Creating or moving a
 task beneath a folded parent reveals the task so you can continue acting on it.
 
 The keybindings are modeled after org-mode's speed keys (the single-letter
