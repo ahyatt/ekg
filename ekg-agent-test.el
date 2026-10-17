@@ -2229,5 +2229,42 @@ result when the agent finishes."
           (accept-process-output nil 0.05)))
       (should (equal result "Prompt with spaces, quotes \" and newline\nend")))))
 
+(ekg-deftest ekg-agent-test-code-command-prompt-delivery-failure ()
+  "A failed stdin write must not leave an untracked command running."
+  (let ((ekg-agent-code-command "cat")
+        (ekg-agent-code-command-prompt-method 'stdin)
+        (make-process (symbol-function 'make-process))
+        process result (calls 0))
+    (cl-letf (((symbol-function 'make-process)
+               (lambda (&rest args)
+                 (setq process (apply make-process args))))
+              ((symbol-function 'process-send-string)
+               (lambda (&rest _) (error "Prompt delivery failed"))))
+      (ekg-agent--run-code
+       (lambda (output) (cl-incf calls) (setq result output)) "Task"))
+    (should process)
+    (should-not (process-live-p process))
+    (should-not (memq process ekg-agent--tool-processes))
+    (should (string-match-p "Prompt delivery failed" result))
+    (should (= calls 1))))
+
+(ekg-deftest ekg-agent-test-code-command-completion-during-startup ()
+  "An error after an early completion must not invoke the callback twice."
+  (let ((ekg-agent-code-command "printf %s")
+        (ekg-agent-code-command-prompt-method 'argument)
+        (start (symbol-function 'ekg-agent--start-code-process))
+        result (calls 0))
+    (cl-letf (((symbol-function 'ekg-agent--start-code-process)
+               (lambda (&rest args)
+                 (let ((process (apply start args))
+                       (deadline (+ (float-time) 5)))
+                   (while (and (process-live-p process) (< (float-time) deadline))
+                     (accept-process-output process 0.05))
+                   (error "Late prompt delivery failure")))))
+      (ekg-agent--run-code
+       (lambda (output) (cl-incf calls) (setq result output)) "done"))
+    (should (equal result "done"))
+    (should (= calls 1))))
+
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here

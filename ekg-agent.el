@@ -781,20 +781,32 @@ Use SENTINEL for process status changes and return the process."
                         (when follow (goto-char (point-max)))))))
                 :sentinel sentinel)))
     (push proc ekg-agent--tool-processes)
-    (when (eq ekg-agent-code-command-prompt-method 'stdin)
-      (process-send-string proc prompt))
-    (process-send-eof proc)
-    proc))
+    (condition-case err
+        (progn
+          (when (eq ekg-agent-code-command-prompt-method 'stdin)
+            (process-send-string proc prompt))
+          (process-send-eof proc)
+          proc)
+      (error
+       ;; No handle reaches the caller if prompt delivery fails.  Stop the
+       ;; child here and let the caller report the startup error once.
+       (set-process-sentinel proc #'ignore)
+       (when (process-live-p proc) (delete-process proc))
+       (setq ekg-agent--tool-processes (delq proc ekg-agent--tool-processes))
+       (signal (car err) (cdr err))))))
 
 (defun ekg-agent--run-code (callback prompt)
   "Run the configured `ekg-agent-code-command' asynchronously with PROMPT.
 CALLBACK is called with the result string when the process finishes."
-  (let ((output-buf (generate-new-buffer " *ekg-agent-code*" t)))
+  (let ((output-buf (generate-new-buffer " *ekg-agent-code*" t))
+        (completed nil))
     (condition-case err
         (ekg-agent--start-code-process
          prompt output-buf
          (lambda (process _event)
-           (when (memq (process-status process) '(exit signal))
+           (when (and (not completed)
+                      (memq (process-status process) '(exit signal)))
+             (setq completed t)
              (let* ((exit-code (process-exit-status process))
                     (output (with-current-buffer (process-buffer process)
                               (buffer-string))))
@@ -807,7 +819,9 @@ CALLBACK is called with the result string when the process finishes."
                                   (string-trim-right output))))))))
       (error
        (when (buffer-live-p output-buf) (kill-buffer output-buf))
-       (funcall callback (format "Error: %s" (error-message-string err)))))))
+       (unless completed
+         (setq completed t)
+         (funcall callback (format "Error: %s" (error-message-string err))))))))
 
 (defconst ekg-agent-tool-run-elisp
   (make-llm-tool :function (lambda (callback elisp return)
