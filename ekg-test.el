@@ -909,6 +909,27 @@
            (text (ekg-display-note-titled note 12 'text-fallback 'plaintext)))
       (should-not (text-properties-at 0 text)))))
 
+(ekg-deftest-with-db ekg-test-notes-refresh-reuses-vui-items ()
+  "Refreshing retains the mounted tree and skips unchanged note regions."
+  (let ((first (ekg-note-create :text "Unchanged"))
+        (second (ekg-note-create :text "Before")))
+    (mapc #'ekg-save-note (list first second))
+    (with-temp-buffer
+      (ekg--show-notes "Notes" (lambda () (list first second)) nil)
+      ;; Establish VUI's incremental render record after the initial mount.
+      (ekg-notes-refresh)
+      (let ((root ekg-notes--instance)
+            (item (car (vui-instance-children ekg-notes--instance)))
+            (inhibit-read-only t))
+        (put-text-property (point-min) (1+ (point-min)) 'ekg-test-retained t)
+        (setf (ekg-note-text second) "After\nMore content")
+        (ekg-save-note second)
+        (ekg-notes-refresh)
+        (should (eq ekg-notes--instance root))
+        (should (eq (car (vui-instance-children root)) item))
+        (should (get-text-property (point-min) 'ekg-test-retained))
+        (should (string-match-p "After\nMore content" (buffer-string)))))))
+
 (ekg-deftest-with-db ekg-test-notes-fold-preserves-window-start ()
   "Changing a note's state preserves the viewport and action target."
   (let* ((first (ekg-note-create :text "Above\nUnchanged content" :tags '("fold")))

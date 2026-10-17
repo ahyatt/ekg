@@ -947,26 +947,23 @@ An agent saving a new note should cause the view to update automatically."
             (should (= (window-start first) start))))))))
 
 (ekg-deftest-with-db ekg-org-test-view-insertion-refreshes-other-views ()
-  "Inhibited insertions update focused views after the command finishes."
+  "Inhibited insertions update focused views through VUI's scheduler."
   (ekg-org-add-schema)
-  (let ((parent (ekg-org-test--add-task "Parent")))
-    (save-window-excursion
-      (ekg-org-view-task parent)
-      (let ((focused (current-buffer)))
-        (ekg-org-view)
-        (ekg-org-view--goto-note-id parent)
-        (unwind-protect
-            (progn
-              (ekg-org-view-add-child "New child")
-              ;; Run the deferred callback without waiting for an idle loop.
-              (should (timerp ekg-org-view--refresh-timer))
-              (timer-event-handler ekg-org-view--refresh-timer)
-              (with-current-buffer focused
-                (should (= (length (ekg-notes-visible-ids)) 2))
-                (should (string-match-p "New child" (buffer-string)))))
-          (when (timerp ekg-org-view--refresh-timer)
-            (cancel-timer ekg-org-view--refresh-timer)
-            (setq ekg-org-view--refresh-timer nil)))))))
+  (dolist (vui-render-delay '(nil 0.01))
+    (let ((parent (ekg-org-test--add-task "Parent")))
+      (save-window-excursion
+        (ekg-org-view-task parent)
+        (let ((focused (current-buffer)))
+          (ekg-org-view)
+          (ekg-org-view--goto-note-id parent)
+          (ekg-org-view-add-child "New child")
+          (with-current-buffer focused
+            ;; The current view was flushed by the command; the other view's
+            ;; state update is still queued on its own VUI root.
+            (should (= (length (ekg-notes-visible-ids)) 1))
+            (vui-flush-sync)
+            (should (= (length (ekg-notes-visible-ids)) 2))
+            (should (string-match-p "New child" (buffer-string)))))))))
 
 (ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-delete ()
   "Test that the view refreshes when a note is deleted externally."

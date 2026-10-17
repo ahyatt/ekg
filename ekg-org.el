@@ -913,12 +913,9 @@ When insert mode is active, defer the refresh until insert mode ends."
       ;; refreshes retain folds and select the nearest visible ancestor.
       (when target-id
         (ekg-notes--unfold-ids ancestors))
-      (ekg-notes--refresh-preserving-view
-       (lambda ()
-         (ekg--show-notes
-          (if ekg-org-view--archive "Archived tasks" "Org tasks")
-          #'ekg-org-view--fetch-notes nil))
-       target-id)
+      (ekg--show-notes
+       (if ekg-org-view--archive "Archived tasks" "Org tasks")
+       #'ekg-org-view--fetch-notes nil)
       (when (or (null target-id)
                 (seq-some #'ekg-org-view--goto-note-id
                           (cons restore-id (reverse ancestors))))
@@ -1706,32 +1703,25 @@ timestamp in the note's `:org/deadline' property."
 (define-key ekg-org-view-mode-map (kbd "C-c C-x p")
             #'ekg-org-view-set-property)
 
-(defvar ekg-org-view--refresh-timer nil
-  "Timer for refreshing task views after an inhibited batch of saves.")
-
 (defun ekg-org-view--refresh-all (&rest _args)
   "Refresh all live `ekg-org-view-mode' buffers.
-Defer until the next event loop when refreshes are inhibited.
-Accepts and ignores arguments so it can be used directly on
-`ekg-note-save-hook' and `ekg-note-delete-hook'."
-  (if ekg-org--inhibit-view-refresh
-      ;; Commands may explicitly refresh only their own view.  Do not lose
-      ;; updates to other views while suppressing intermediate batch renders.
-      (unless (timerp ekg-org-view--refresh-timer)
-        (setq ekg-org-view--refresh-timer
-              (run-at-time
-               0 nil (lambda ()
-                       (setq ekg-org-view--refresh-timer nil)
-                       (ekg-org-view--refresh-all)))))
-    (when (timerp ekg-org-view--refresh-timer)
-      (cancel-timer ekg-org-view--refresh-timer))
-    (setq ekg-org-view--refresh-timer nil)
-    (dolist (buf (buffer-list))
-      (when (and (buffer-live-p buf)
-                 (with-current-buffer buf
-                   (derived-mode-p 'ekg-org-view-mode)))
-        (with-current-buffer buf
-          (ekg-org-view--refresh))))))
+During inhibited batches, let VUI coalesce updates to each mounted
+view.  Other saves refresh synchronously.  Accept and ignore arguments
+so this can run on `ekg-note-save-hook' and `ekg-note-delete-hook'."
+  (dolist (buf (buffer-list))
+    (when (and (buffer-live-p buf)
+               (with-current-buffer buf
+                 (derived-mode-p 'ekg-org-view-mode)))
+      (with-current-buffer buf
+        (cond
+         (ekg-org-view--insert-overlay
+          (setq ekg-org-view--refresh-pending t))
+         ((and ekg-org--inhibit-view-refresh ekg-notes--request-refresh)
+          ;; Even when the user disables VUI's delay, wait until the
+          ;; current batch has finished before showing its intermediate state.
+          (let ((vui-render-delay (or vui-render-delay 0)))
+            (funcall ekg-notes--request-refresh)))
+         (t (ekg-org-view--refresh)))))))
 
 (define-derived-mode ekg-org-view-mode ekg-notes-mode "EKG-Org"
   "Major mode for viewing ekg org tasks in a hierarchical view.
