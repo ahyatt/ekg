@@ -71,20 +71,24 @@ if [[ -z "$APPEND_TEXT" ]]; then
 fi
 
 # Escape strings for elisp
+NOTE_ID_ELISP="${NOTE_ID//\\/\\\\}"
+NOTE_ID_ELISP="${NOTE_ID_ELISP//\"/\\\"}"
+
 APPEND_ELISP="${APPEND_TEXT//\\/\\\\}"
 APPEND_ELISP="${APPEND_ELISP//\"/\\\"}"
 APPEND_ELISP="${APPEND_ELISP//$'\n'/\\n}"
 
 ELISP_EXPR="(progn
   (require 'ekg)
+  (require 'ekg-agent)
   (ekg-connect)
-  (let ((note (ekg-get-note-with-id $NOTE_ID)))
+  (let ((note (ekg-agent--get-note-with-id \"$NOTE_ID_ELISP\")))
     (if (null note)
-        (error \"Note %s not found\" $NOTE_ID)
+        (error \"Note %s not found\" \"$NOTE_ID_ELISP\")
       (setf (ekg-note-text note)
             (concat (ekg-note-text note) \"\\n\" \"$APPEND_ELISP\"))
       (ekg-save-note note)
-      (format \"Appended to note %s\" $NOTE_ID))))"
+      (format \"Appended to note %s\" (ekg-note-id note)))))"
 
 EMACSCLIENT_CMD=("${EMACSCLIENT:-emacsclient}")
 if [[ -n "$DAEMON_NAME" ]]; then
