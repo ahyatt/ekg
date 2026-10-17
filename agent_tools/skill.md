@@ -316,13 +316,16 @@ Optional `--daemon NAME` selects an Emacs server. The result is a JSON map
 from document-local task IDs to created EKG note IDs.
 
 The canonical contract is `ekg-org-plan-schema` in `ekg-agent.el`.
-JSON is `{"version":1,"tasks":[...]}`. Each task has `id`, `parent`
-(another local ID or null for the single root), `title`, `content` (Org text),
+JSON is `{"version":1,"tasks":[...]}`. Each task has `id` (used directly as the
+created EKG note ID; prefix with the parent note ID or a generated ID so it is
+globally unique), `parent` (another task ID, the existing parent note ID when
+planning under an existing note, or null for the single root when there is no
+existing parent note), `title`, `content` (Org text),
 `execution` (`sequential` or `parallel`, governing its children), `depends_on`
 (array of prerequisite local IDs), and `tags` (task-specific tags; use `[]`
 when none). Older version 1 plans without `tags` remain importable. The only
-per-task internal tag allowed is `ekg-agent-org-user-response-tag` (default
-`org/needs-user-response`); use it for any task requiring user action. For a
+per-task internal tag allowed is `ekg-agent-org-user-task-tag` (default
+`org/user-task`); use it for any task planned for the user to do. For a
 question, ask the user to add a child response note. Array order
 sets sibling order. All tasks begin as TODO. All supplied tags apply to all
 tasks. Imported tasks also receive `ekg-agent-author-tag`.

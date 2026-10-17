@@ -280,6 +280,25 @@
       (should-not (seq-some (lambda (item) (equal (alist-get "note_id" item nil nil #'string=) "grandchild"))
                             (alist-get "children" child-entry nil nil #'string=))))))
 
+(ekg-deftest-with-db ekg-llm-test-context-tags-draft-note-and-inactive-ancestor ()
+  "Draft focal notes keep their own topic tags while excluding inactive ancestors."
+  (let ((inactive-root (ekg-note-create :id "inactive-root" :text "Root"
+                                        :tags (list "root-tag" ekg-draft-tag)))
+        (active-parent (ekg-note-create :id "active-parent" :text "Parent"
+                                        :tags '("parent-tag")))
+        (draft-note (ekg-note-create :id "draft-note" :text "Draft"
+                                     :tags (list "note-tag" ekg-draft-tag))))
+    (ekg-save-note inactive-root)
+    (ekg-note-set-parent active-parent inactive-root)
+    (ekg-save-note active-parent)
+    (ekg-note-set-parent draft-note active-parent)
+    (ekg-save-note draft-note)
+    (let ((tags (ekg-llm--context-tags (ekg-get-note-with-id "draft-note"))))
+      (should (member "note-tag" tags))
+      (should (member "parent-tag" tags))
+      (should-not (member "root-tag" tags))
+      (should-not (member ekg-draft-tag tags)))))
+
 (provide 'ekg-llm-test)
 
 ;;; ekg-llm-test.el ends here
