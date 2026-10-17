@@ -10,7 +10,7 @@
   '((triples "0.6.1")
     (emacs   "29.1")
     (llm "0.18.0")
-    (vui "1.4.0")))
+    (vui "20261017.1157")))
 
 (provide 'ekg-pkg)
 ;;; ekg-pkg.el ends here

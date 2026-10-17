@@ -585,6 +585,7 @@ Returns the note ID."
           (ekg-org-view-refresh)
           (ekg-org-view--goto-note-id second)
           (funcall move)
+          (should vui-incremental-render)
           (should (eq ekg-notes--instance root))
           (should (equal (ekg-notes-visible-ids)
                          (if (eq move #'ekg-org-view-move-up)

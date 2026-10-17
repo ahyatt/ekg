@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.6.1") (emacs "29.1") (llm "0.30.0") (vui "1.4.0"))
+;; Package-Requires: ((triples "0.6.1") (emacs "29.1") (llm "0.30.0") (vui "20261017.1157"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.10.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -2659,7 +2659,6 @@ Folded notes retain a title handle and hide their descendants."
          (fetched-ids (make-hash-table :test #'equal))
          (visited (make-hash-table :test #'equal))
          (generation (vui-use-ref 0))
-         (order (vui-use-ref nil))
          (restore-view (when ekg-notes--instance
                          (ekg-notes--view-restorer)))
          rows)
@@ -2727,12 +2726,6 @@ Folded notes retain a title handle and hide their descendants."
     (setq rows (seq-remove
                 (lambda (row) (member (car row) ekg-notes--hidden-ids))
                 (nreverse rows)))
-    ;; VUI 1.4 mutates a moved component's recorded length before removing
-    ;; its old region.  Reconcile reordered lists with a wholesale commit;
-    ;; stable lists can still patch individual changed notes in place.
-    (let ((ids (mapcar #'car rows)))
-      (setq-local vui-incremental-render (equal ids (car order)))
-      (setcar order ids))
     (apply #'vui-fragment
            (cl-loop for tail on rows
                     for (id text depth state) = (car tail)
@@ -2772,6 +2765,7 @@ cursor always lands on a note."
         (let ((vui-render-delay (or vui-render-delay 0)))
           (funcall ekg-notes--request-refresh))
         (vui-flush-sync))
+    (setq-local vui-incremental-render t)
     ;; `vui-mount' selects its buffer.  Initial mounting must not change
     ;; the caller's windows; subsequent updates never switch buffers.
     (setq ekg-notes--instance
