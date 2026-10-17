@@ -805,15 +805,15 @@ Use SENTINEL for process status changes and return the process."
                 :connection-type 'pipe :noquery t :command command
                 :filter
                 (lambda (process text)
-                  (when-let* ((buffer (process-buffer process))
-                              (_ (buffer-live-p buffer)))
-                    (with-current-buffer buffer
-                      (let ((inhibit-read-only t)
-                            (follow (= (point) (point-max))))
-                        (save-excursion
-                          (goto-char (point-max))
-                          (insert text))
-                        (when follow (goto-char (point-max)))))))
+                  (let ((buffer (process-buffer process)))
+                    (when (buffer-live-p buffer)
+                      (with-current-buffer buffer
+                        (let ((inhibit-read-only t)
+                              (follow (= (point) (point-max))))
+                          (save-excursion
+                            (goto-char (point-max))
+                            (insert text))
+                          (when follow (goto-char (point-max))))))))
                 :sentinel sentinel)))
     (push proc ekg-agent--tool-processes)
     (condition-case err
