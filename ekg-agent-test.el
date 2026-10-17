@@ -1750,14 +1750,22 @@ result when the agent finishes."
                                     :hierarchy/parent (ekg-note-id parent)
                                     :org/sort-order 5))))
     (ekg-save-note child1)
+    ;; Planning is disallowed when the task already has active children.
+    (should-error
+     (ekg-org-plan-import subplan-json nil (ekg-note-id parent)))
+    (with-temp-buffer
+      (setq major-mode 'ekg-note-mode)
+      (setq-local ekg-note parent)
+      (should-error (ekg-agent-org-plan-task) :type 'user-error))
+    ;; Once the existing child is trashed, planning under the task succeeds.
+    (ekg-note-trash child1)
     (let* ((ids (ekg-org-plan-import subplan-json nil
                                      (ekg-note-id parent)))
            (a (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-a") ids))))
            (b (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-b") ids)))))
       (should (equal (ekg-note-parent-id a) (ekg-note-id parent)))
-      (should (> (plist-get (ekg-note-properties a) :org/sort-order) 5))
-      (should (> (plist-get (ekg-note-properties b) :org/sort-order)
-                 (plist-get (ekg-note-properties a) :org/sort-order))))))
+      (should (= (plist-get (ekg-note-properties a) :org/sort-order) 0))
+      (should (= (plist-get (ekg-note-properties b) :org/sort-order) 1)))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-question-tag ()
   (let* ((ids (ekg-org-plan-import ekg-agent-test-plan-with-question--json

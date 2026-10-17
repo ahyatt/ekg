@@ -4245,7 +4245,10 @@ notes start as TODO.  Validate the whole graph before creating notes."
   (when parent-id
     (let ((parent (ekg-get-note-with-id parent-id)))
       (unless (and parent (ekg-org--org-note-p parent))
-        (error "Parent %s is not an Org task" parent-id))))
+        (error "Parent %s is not an Org task" parent-id))
+      (when (plist-get (ekg-note-properties parent) :hierarchy/children)
+        (error "Cannot plan task %s because it already has active children"
+               parent-id))))
   (let* ((plan (json-parse-string json :null-object nil :false-object :json-false))
          (tasks (ekg-org-plan--validate plan parent-id))
          (parent-key (when parent-id (format "%s" parent-id)))
@@ -4274,32 +4277,23 @@ notes start as TODO.  Validate the whole graph before creating notes."
                                     (list (gethash "title" task))))
                  notes)
         (push (cons task-id task-id) result)))
-    (let* ((existing-siblings (when parent-id
-                                (ekg-org-view--sorted-children parent-id)))
-           (base-order (if existing-siblings
-                           (1+ (apply #'max (mapcar #'ekg-org-view--sort-order existing-siblings)))
-                         0)))
-      (cl-loop for task in tasks for order from 0
-               for note = (gethash (gethash "id" task) notes)
-               for task-parent = (gethash "parent" task)
-               for top-under-parent-p = (and parent-key
-                                             (equal task-parent parent-key))
-               for sort-order = (if top-under-parent-p
-                                    (+ base-order order)
-                                  order)
-               do
-               (setf (ekg-note-properties note)
-                     (append (ekg-note-properties note)
-                             (list :org/sort-order sort-order
-                                   :org/depends-on
-                                   (append (gethash "depends_on" task) nil))
-                             (when task-parent
-                               (list :hierarchy/parent
-                                     (if top-under-parent-p
-                                         parent-id
-                                       task-parent)))))
-               (ekg-org-set-dependency-type
-                note (intern (gethash "execution" task)))))
+    (cl-loop for task in tasks for order from 0
+             for note = (gethash (gethash "id" task) notes)
+             for task-parent = (gethash "parent" task)
+             do
+             (setf (ekg-note-properties note)
+                   (append (ekg-note-properties note)
+                           (list :org/sort-order order
+                                 :org/depends-on
+                                 (append (gethash "depends_on" task) nil))
+                           (when task-parent
+                             (list :hierarchy/parent
+                                   (if (and parent-key
+                                            (equal task-parent parent-key))
+                                       parent-id
+                                     task-parent)))))
+             (ekg-org-set-dependency-type
+              note (intern (gethash "execution" task))))
     (let ((save-hooks ekg-note-save-hook)
           (embedding-hook
            (memq 'ekg-embedding-generate-for-note-async ekg-note-pre-save-hook))
@@ -4360,8 +4354,16 @@ ordinary agent provider; this provider makes the final planning decision."
   "Research DESCRIPTION, synthesize a plan, and import it with TAGS.
 When PARENT-ID is non-nil, attach the plan root to that Org task.
 Call CALLBACK once with the created ID mapping or an error message."
-  (if (null ekg-agent-org-plan-provider)
-      (funcall callback "Error: Configure ekg-agent-org-plan-provider first")
+  (cond
+   ((null ekg-agent-org-plan-provider)
+    (funcall callback "Error: Configure ekg-agent-org-plan-provider first"))
+   ((and parent-id
+         (when-let* ((parent (ekg-get-note-with-id parent-id)))
+           (plist-get (ekg-note-properties parent) :hierarchy/children)))
+    (funcall callback
+             (format "Error: Cannot plan task %s because it already has active children"
+                     parent-id)))
+   (t
     (let* ((provider ekg-agent-org-plan-provider)
            (reasoning ekg-agent-org-plan-reasoning)
            (parameters (copy-tree ekg-agent-org-plan-parameters))
@@ -4477,7 +4479,7 @@ perform an action an agent cannot, tag the task with the %s tag."
            :end-tools '("finish_plan_research")
            :provider (or ekg-agent-plan-provider
                          (ekg-agent--provider)))
-        (error (funcall finish (format "Error: %s" err)))))))
+        (error (funcall finish (format "Error: %s" err))))))))
 
 (defconst ekg-agent-org-tool-create-plan
   (make-llm-tool
@@ -4549,6 +4551,9 @@ Returns text in Org format, as if they were in an Org file."
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (parent-id (ekg-note-id ekg-note))
          (parent-note (ekg-get-note-with-id parent-id))
+         (_ (when (plist-get (ekg-note-properties parent-note)
+                             :hierarchy/children)
+              (user-error "Cannot plan a task that already has active children")))
          (ekg-agent--task-directory (ekg-org-working-directory parent-note))
          (default-directory (or ekg-agent--task-directory default-directory))
          (plan-tool (copy-llm-tool ekg-agent-org-tool-create-plan))
