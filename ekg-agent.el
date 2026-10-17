@@ -631,7 +631,7 @@ types, but we'll often get strings from the LLM."
                          (ekg-get-note-with-id int-id))))
                    (when (stringp id)
                      (ekg-get-note-with-id (intern id))))))
-    (when (and note (ekg-active-id-p (ekg-note-id note)))
+    (when (and note (ekg-note-active-p note))
       note)))
 
 (defconst ekg-agent-tool-append-to-note
@@ -3809,20 +3809,11 @@ add notes to ekg."
     (ekg-note-id note)))
 
 (defun ekg-agent--filter-properties (props)
-  "Filter PROPS plist, removing internal properties and inactive IDs."
-  (let ((ekg-hidden-tags (seq-difference ekg-hidden-tags
-                                         (list ekg-agent-self-info-tag
-                                               ekg-org-task-tag)))
-        result)
+  "Filter PROPS plist, removing large internal properties like embeddings."
+  (let (result)
     (cl-loop for (key val) on props by #'cddr
              unless (eq key :embedding/embedding)
-             do (let ((filtered-val
-                       (if (memq key '(:hierarchy/children :org/depends-on))
-                           (seq-filter #'ekg-active-id-p val)
-                         val)))
-                  (when (or filtered-val
-                            (not (memq key '(:hierarchy/children :org/depends-on))))
-                    (setq result (plist-put result key filtered-val)))))
+             do (setq result (plist-put result key val)))
     result))
 
 (defun ekg-agent--note-to-alist (note &optional max-words)
@@ -3889,9 +3880,8 @@ Returns a list of note objects."
       (unless ekg-embedding-provider
         (error "Semantic search requires ekg-embedding-provider to be configured"))
       (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
-        (seq-filter #'ekg-note-active-p
-                    (delq nil (mapcar #'ekg-get-note-with-id
-                                      (ekg-embedding-n-most-similar-notes embedding num))))))
+        (delq nil (mapcar #'ekg-get-note-with-id
+                          (ekg-embedding-n-most-similar-notes embedding num)))))
 
      ;; Text search (full-text search)
      (text-search
@@ -3903,9 +3893,9 @@ Returns a list of note objects."
 
      ;; Tag-based search with OR logic (already sorted by creation time)
      (any-tags
-      (let ((clean-tags (seq-difference any-tags ekg-hidden-tags)))
-        (when clean-tags
-          (seq-take (ekg-get-notes-with-any-tags clean-tags) num))))
+      (seq-take (ekg-get-notes-with-any-tags
+                 (seq-difference any-tags ekg-hidden-tags))
+                num))
 
      ;; Tag-based search (AND logic)
      (tags
@@ -3962,14 +3952,11 @@ notes from ekg."
   (let* ((status (if (and status (not (string-empty-p status)))
                      status
                    (ekg-agent--org-default-todo-keyword)))
-         (has-parent (and parent-id
-                          (not (equal parent-id 0))
-                          (not (equal parent-id "0"))
-                          (not (string-empty-p (format "%s" parent-id)))))
-         (parent-id (when has-parent
-                      (if-let* ((parent-note (ekg-agent--get-note-with-id parent-id)))
-                          (ekg-note-id parent-note)
-                        parent-id)))
+         (parent-id (and parent-id
+                         (not (member parent-id '(0 "0" "")))
+                         (if-let* ((parent-note (ekg-agent--get-note-with-id parent-id)))
+                             (ekg-note-id parent-note)
+                           parent-id)))
          (note (ekg-note-create
                 :text (or content "")
                 :tags (cl-remove-duplicates
@@ -3979,10 +3966,10 @@ notes from ekg."
                                              (downcase status))))
                        :test #'string=)
                 :properties (list :titled/title (list title)))))
-    (when has-parent
+    (when parent-id
       (ekg-note-set-parent note parent-id))
     ;; Assign sort-order at the end of existing siblings.
-    (let* ((siblings (if has-parent
+    (let* ((siblings (if parent-id
                          (ekg-org-view--sorted-children parent-id)
                        (ekg-org-view--sorted-top-level)))
            (last-id (when siblings
@@ -4199,17 +4186,11 @@ Dependencies name tasks that must finish before this task starts.")
         (puthash id task by-id)))
     (dolist (task tasks)
       (let ((id (gethash "id" task)) (parent (gethash "parent" task)))
-        (cond
-         ((and parent-key (equal parent parent-key))
-          (push id roots))
-         ((null parent)
-          (if parent-key
-              (error "Task %s has null parent when planning under %s"
-                     id parent-key)
-            (push id roots)))
-         (t
-          (unless (gethash parent by-id) (error "Unknown parent %s" parent))
-          (puthash parent (append (gethash parent children) (list id)) children)))
+        (if (equal parent parent-key)
+            (push id roots)
+          (unless (and parent (gethash parent by-id))
+            (error "Unknown parent %s" parent))
+          (puthash parent (append (gethash parent children) (list id)) children))
         (dolist (dep (append (gethash "depends_on" task) nil))
           (unless (and (stringp dep) (gethash dep by-id))
             (error "Unknown dependency %s" dep)))))
@@ -4265,29 +4246,28 @@ notes start as TODO.  Validate the whole graph before creating notes."
         (unless (and parent (ekg-org--org-note-p parent))
           (error "Parent %s is not an Org task" parent-id))))
     (dolist (task tasks)
-      (let* ((task-id (gethash "id" task))
-             (task-tags (mapcar #'ekg--normalize-tag
-                                (append (gethash "tags" task []) nil)))
-             (_ (when (seq-some
-                       (lambda (tag)
-                         (and (string-prefix-p "org/" tag)
-                              (not (equal tag
-                                          ekg-agent-org-user-task-tag))))
-                       task-tags)
-                  (error "Task %s has a reserved org tag" task-id)))
-             (_ (when (ekg-note-with-id-exists-p task-id)
-                  (error "Task ID %s already exists" task-id)))
-             (note (ekg-note-create
-                    :id task-id
-                    :text (gethash "content" task) :mode 'org-mode
-                    :tags (seq-uniq
-                           (append '("org/task" "org/state/todo")
-                                   (list ekg-agent-author-tag)
-                                   tags task-tags))
-                    :properties (list :titled/title
-                                      (list (gethash "title" task))))))
-        (puthash task-id note notes)
-        (push (cons task-id (ekg-note-id note)) result)))
+      (let ((task-id (gethash "id" task))
+            (task-tags (mapcar #'ekg--normalize-tag
+                               (append (gethash "tags" task []) nil))))
+        (when (seq-some (lambda (tag)
+                          (and (string-prefix-p "org/" tag)
+                               (not (equal tag ekg-agent-org-user-task-tag))))
+                        task-tags)
+          (error "Task %s has a reserved org tag" task-id))
+        (when (ekg-note-with-id-exists-p task-id)
+          (error "Task ID %s already exists" task-id))
+        (puthash task-id
+                 (ekg-note-create
+                  :id task-id
+                  :text (gethash "content" task) :mode 'org-mode
+                  :tags (seq-uniq
+                         (append '("org/task" "org/state/todo")
+                                 (list ekg-agent-author-tag)
+                                 tags task-tags))
+                  :properties (list :titled/title
+                                    (list (gethash "title" task))))
+                 notes)
+        (push (cons task-id task-id) result)))
     (let* ((existing-siblings (when parent-id
                                 (ekg-org-view--sorted-children parent-id)))
            (base-order (if existing-siblings
@@ -4306,13 +4286,12 @@ notes start as TODO.  Validate the whole graph before creating notes."
                      (append (ekg-note-properties note)
                              (list :org/sort-order sort-order
                                    :org/depends-on
-                                   (mapcar (lambda (id) (cdr (assoc id result)))
-                                           (append (gethash "depends_on" task) nil)))
+                                   (append (gethash "depends_on" task) nil))
                              (when task-parent
                                (list :hierarchy/parent
                                      (if top-under-parent-p
                                          parent-id
-                                       (cdr (assoc task-parent result)))))))
+                                       task-parent)))))
                (ekg-org-set-dependency-type
                 note (intern (gethash "execution" task)))))
     (let ((save-hooks ekg-note-save-hook)

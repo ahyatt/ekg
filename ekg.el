@@ -768,6 +768,11 @@ at least one non-trash tag."
              ekg-hidden-tags
              (plist-get (triples-get-type ekg-db id 'tagged) :tag)))))
 
+(defun ekg--hidden-tags-for (tags)
+  "Return `ekg-hidden-tags' excluding non-trash, non-draft tags in TAGS."
+  (seq-difference ekg-hidden-tags
+                  (seq-difference tags (list ekg-trash-tag ekg-draft-tag))))
+
 (defun ekg-get-note-with-id (id)
   "Get the note with ID, or nil if it does not exist."
   (ekg-connect)
@@ -812,20 +817,13 @@ at least one non-trash tag."
                    extra-props))
            (props (if (plist-member props :hierarchy/children)
                       (let* ((ekg-hidden-tags
-                              (seq-difference
-                               ekg-hidden-tags
-                               (seq-difference
-                                (plist-get v :tagged/tag)
-                                (list ekg-trash-tag ekg-draft-tag))))
+                              (ekg--hidden-tags-for (plist-get v :tagged/tag)))
                              (active-children
                               (seq-filter #'ekg-active-id-p
-                                          (plist-get props :hierarchy/children)))
-                             (without-children
-                              (ekg--plist-without-key props :hierarchy/children)))
+                                          (plist-get props :hierarchy/children))))
                         (if active-children
-                            (plist-put without-children
-                                       :hierarchy/children active-children)
-                          without-children))
+                            (plist-put props :hierarchy/children active-children)
+                          (ekg--plist-without-key props :hierarchy/children)))
                     props)))
       (make-ekg-note :id id
                      :text (plist-get v :text/text)
