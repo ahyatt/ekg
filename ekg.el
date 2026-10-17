@@ -752,6 +752,22 @@ Draft notes are not returned, unless TAGS contains the draft tag."
   (ekg-connect)
   (triples-get-subject ekg-db id))
 
+(defun ekg-note-active-p (note)
+  "Return non-nil if NOTE is active.
+This is similar to `ekg-active-id-p', but takes a note, which may
+be unsaved."
+  (not (seq-intersection ekg-hidden-tags (ekg-note-tags note))))
+
+(defun ekg-active-id-p (id)
+  "Return non-nil if the note with ID is active.
+This will return true if the note exists, is not a draft, and has
+at least one non-trash tag."
+  (ekg-connect)
+  (and (ekg-note-with-id-exists-p id)
+       (not (seq-intersection
+             ekg-hidden-tags
+             (plist-get (triples-get-type ekg-db id 'tagged) :tag)))))
+
 (defun ekg-get-note-with-id (id)
   "Get the note with ID, or nil if it does not exist."
   (ekg-connect)
@@ -780,7 +796,37 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                                      nconc (list (intern (format ":%s/%s" type
                                                                  (substring (symbol-name k) 1)))
                                                  v))))))
-                    (ekg-note-cotypes))))
+                    (ekg-note-cotypes)))
+           (props (append
+                   (map-into
+                    (map-filter
+                     (lambda (plist-key _)
+                       (not (member plist-key
+                                    '(:text/text
+                                      :text/mode
+                                      :text/inlines
+                                      :tagged/tag
+                                      :time-tracked/creation-time
+                                      :time-tracked/modified-time)))) v)
+                    'plist)
+                   extra-props))
+           (props (if (plist-member props :hierarchy/children)
+                      (let* ((ekg-hidden-tags
+                              (seq-difference
+                               ekg-hidden-tags
+                               (seq-difference
+                                (plist-get v :tagged/tag)
+                                (list ekg-trash-tag ekg-draft-tag))))
+                             (active-children
+                              (seq-filter #'ekg-active-id-p
+                                          (plist-get props :hierarchy/children)))
+                             (without-children
+                              (ekg--plist-without-key props :hierarchy/children)))
+                        (if active-children
+                            (plist-put without-children
+                                       :hierarchy/children active-children)
+                          without-children))
+                    props)))
       (make-ekg-note :id id
                      :text (plist-get v :text/text)
                      :mode (plist-get v :text/mode)
@@ -788,19 +834,7 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                      :tags (plist-get v :tagged/tag)
                      :creation-time (plist-get v :time-tracked/creation-time)
                      :modified-time (plist-get v :time-tracked/modified-time)
-                     :properties (append
-                                  (map-into
-                                   (map-filter
-                                    (lambda (plist-key _)
-                                      (not (member plist-key
-                                                   '(:text/text
-                                                     :text/mode
-                                                     :text/inlines
-                                                     :tagged/tag
-                                                     :time-tracked/creation-time
-                                                     :time-tracked/modified-time)))) v)
-                                   'plist)
-                                  extra-props)))))
+                     :properties props))))
 
 (defun ekg-note-parent-id (note)
   "Return the parent ID of NOTE, or nil when NOTE has no parent.
@@ -1004,25 +1038,11 @@ responses in an older thread to recover the thread's topical tags."
     (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
             (append (ekg-note-ancestors note) (list note))))))
 
-(defun ekg-note-active-p (note)
-  "Return non-nil if NOTE is active.
-This is similar to `ekg-active-id-p', but takes a note, which may
-be unsaved."
-  (not (seq-intersection ekg-hidden-tags (ekg-note-tags note))))
-
 (defun ekg-note-is-content-p (note)
   "Return non-nil if NOTE has no control-type tags.
 
 Those tags are things such as `ekg-draft-tag', or `ekg-function-tag'."
   (seq-every-p #'ekg-content-tag-p (ekg-note-tags note)))
-
-(defun ekg-active-id-p (id)
-  "Return non-nil if the note with ID is active.
-This will return true if the note exists, is not a draft, and has
-at least one non-trash tag."
-  (ekg-connect)
-  (let ((note (ekg-get-note-with-id id)))
-    (and note (ekg-note-active-p note))))
 
 (defun ekg-live-id-p (sub)
   "Return non-nil if SUB represents an undeleted note."
@@ -3136,7 +3156,8 @@ those look at all notes also tagged with COTAG.  We return a list
 of the text of all these notes for all tags and tag parents, etc."
   (flatten-list (mapcar (lambda (tag)
                           (ekg-get-notes-with-tags (list tag cotag)))
-                        (seq-mapcat #'ekg-tag-to-hierarchy tags))))
+                        (seq-mapcat #'ekg-tag-to-hierarchy
+                                    (seq-difference tags ekg-hidden-tags)))))
 
 (defun ekg-on-add-tag-insert-template (tag)
   "Look for templates for TAG, and insert into current buffer.

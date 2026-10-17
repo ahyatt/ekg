@@ -73,8 +73,8 @@
   :type 'string
   :group 'ekg-agent)
 
-(defcustom ekg-agent-org-user-response-tag "org/needs-user-response"
-  "Tag for Org tasks that require action or a response from the user."
+(defcustom ekg-agent-org-user-task-tag "org/user-task"
+  "Tag for Org tasks that are planned for the user to do."
   :type 'string
   :group 'ekg-agent)
 
@@ -87,7 +87,7 @@
   "Return non-nil when TAG is not agent provenance or control data."
   (not (member tag (delq nil (list ekg-agent-author-tag
                                    ekg-agent-self-info-tag
-                                   ekg-agent-org-user-response-tag)))))
+                                   ekg-agent-org-user-task-tag)))))
 
 (add-hook 'ekg-response-tag-filter-functions
           #'ekg-agent--response-inheritable-tag-p)
@@ -223,6 +223,34 @@ listings.  When set to `argument', append the prompt as the final
 command-line argument for tools that require that interface."
   :type '(choice (const :tag "Send prompt on standard input" stdin)
                  (const :tag "Append prompt as command argument" argument))
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-plan-instructions
+  "Create a plan for the following task.  The plan is a hierarchy of tasks.
+Each parent can have children that can either be executed in parallel or
+in sequence.
+
+Each task must have a title, a clear description of what the task
+involves, which will be read along with the parents (so no need to
+restate things), and a goal: an end-state that should be achieved before
+the task is done.
+
+Each task must be substantial.  Less tasks are better than more.  Create
+tasks only when the work is significant and complex, and different than
+other tasks.  There may be no tasks to create in some circumstances.
+For example, updating the documentation is usually too simple to be its
+own task, but instead should be part of the goals of another task.
+
+Focus each task directly on the concrete deliverable or change to make.
+Do not include meta-instructions, environment discovery, or preliminary
+code-auditing steps (such as reading `AGENTS.md`, recording executables
+or versions, or auditing existing code paths), as research has already
+been performed and executing agents receive project instructions
+automatically."
+  "Instructions for planning.
+
+Should not include information about adding tasks for users to do."
+  :type 'string
   :group 'ekg-agent)
 
 (defvar-local ekg-agent--prompt nil
@@ -589,15 +617,22 @@ tool call."
                  :args '((:name "regex_filter" :type string :description "Optional regex to filter the tags by" :optional t))))
 
 (defun ekg-agent--get-note-with-id (id)
-  "Retrieve the note with string ID, handling different ID types.
+  "Retrieve the active note with ID, handling different ID types.
 
 This tries a few different things, since ekg ids can be of various
-types, but we'll only get strings from the LLM."
-  (or (ekg-get-note-with-id id)
-      (let ((int-id (string-to-number id)))
-        (when (> int-id 0)
-          (ekg-get-note-with-id int-id)))
-      (ekg-get-note-with-id (intern id))))
+types, but we'll often get strings from the LLM."
+  (let* ((ekg-hidden-tags (seq-difference ekg-hidden-tags
+                                          (list ekg-agent-self-info-tag
+                                                ekg-org-task-tag)))
+         (note (or (ekg-get-note-with-id id)
+                   (when (and (stringp id) (string-match-p "\\`[0-9]+\\'" id))
+                     (let ((int-id (string-to-number id)))
+                       (when (> int-id 0)
+                         (ekg-get-note-with-id int-id))))
+                   (when (stringp id)
+                     (ekg-get-note-with-id (intern id))))))
+    (when (and note (ekg-active-id-p (ekg-note-id note)))
+      note)))
 
 (defconst ekg-agent-tool-append-to-note
   (make-llm-tool :function (lambda (id content)
@@ -3774,11 +3809,20 @@ add notes to ekg."
     (ekg-note-id note)))
 
 (defun ekg-agent--filter-properties (props)
-  "Filter PROPS plist, removing large internal properties like embeddings."
-  (let (result)
+  "Filter PROPS plist, removing internal properties and inactive IDs."
+  (let ((ekg-hidden-tags (seq-difference ekg-hidden-tags
+                                         (list ekg-agent-self-info-tag
+                                               ekg-org-task-tag)))
+        result)
     (cl-loop for (key val) on props by #'cddr
              unless (eq key :embedding/embedding)
-             do (setq result (plist-put result key val)))
+             do (let ((filtered-val
+                       (if (memq key '(:hierarchy/children :org/depends-on))
+                           (seq-filter #'ekg-active-id-p val)
+                         val)))
+                  (when (or filtered-val
+                            (not (memq key '(:hierarchy/children :org/depends-on))))
+                    (setq result (plist-put result key filtered-val)))))
     result))
 
 (defun ekg-agent--note-to-alist (note &optional max-words)
@@ -3835,9 +3879,7 @@ Returns a list of note objects."
 
      ;; Read by note ID
      (note-id
-      (let ((note (ekg-get-note-with-id (if (stringp note-id)
-                                            (string-to-number note-id)
-                                          note-id))))
+      (let ((note (ekg-agent--get-note-with-id note-id)))
         (if note
             (list note)
           (error "Note with ID %s not found" note-id))))
@@ -3847,8 +3889,9 @@ Returns a list of note objects."
       (unless ekg-embedding-provider
         (error "Semantic search requires ekg-embedding-provider to be configured"))
       (let ((embedding (llm-embedding ekg-embedding-provider semantic-search)))
-        (delq nil (mapcar #'ekg-get-note-with-id
-                          (ekg-embedding-n-most-similar-notes embedding num)))))
+        (seq-filter #'ekg-note-active-p
+                    (delq nil (mapcar #'ekg-get-note-with-id
+                                      (ekg-embedding-n-most-similar-notes embedding num))))))
 
      ;; Text search (full-text search)
      (text-search
@@ -3860,13 +3903,16 @@ Returns a list of note objects."
 
      ;; Tag-based search with OR logic (already sorted by creation time)
      (any-tags
-      (seq-take (ekg-get-notes-with-any-tags any-tags) num))
+      (let ((clean-tags (seq-difference any-tags ekg-hidden-tags)))
+        (when clean-tags
+          (seq-take (ekg-get-notes-with-any-tags clean-tags) num))))
 
      ;; Tag-based search (AND logic)
      (tags
-      (seq-take (sort (ekg-get-notes-with-tags tags)
-                      #'ekg-sort-by-creation-time)
-                num))
+      (unless (seq-intersection tags ekg-hidden-tags)
+        (seq-take (sort (ekg-get-notes-with-tags tags)
+                        #'ekg-sort-by-creation-time)
+                  num)))
 
      ;; No search criteria
      (t
@@ -3918,7 +3964,12 @@ notes from ekg."
                    (ekg-agent--org-default-todo-keyword)))
          (has-parent (and parent-id
                           (not (equal parent-id 0))
+                          (not (equal parent-id "0"))
                           (not (string-empty-p (format "%s" parent-id)))))
+         (parent-id (when has-parent
+                      (if-let* ((parent-note (ekg-agent--get-note-with-id parent-id)))
+                          (ekg-note-id parent-note)
+                        parent-id)))
          (note (ekg-note-create
                 :text (or content "")
                 :tags (cl-remove-duplicates
@@ -4079,7 +4130,7 @@ SCHEDULED is the scheduled timestamp string (ignored if empty)."
      (:name "content" :type string :description "The content/description of the task" :optional t)
      (:name "tags" :type array :items (:type string)
             :description "Additional tags for the task (org tags and agent tags will be added automatically)" :optional t)
-     (:name "parent_id" :type integer :description "The parent task ID if exists" :optional t)
+     (:name "parent_id" :type string :description "The parent task ID if exists" :optional t)
      (:name "status" :type string :description "The task status (TODO, DONE, etc.), will default to TODO if not set" :optional t)
      (:name "deadline" :type string :description "The deadline timestamp in ISO 8601 format" :optional t)
      (:name "scheduled" :type string :description "The scheduled timestamp in ISO 8601 format" :optional t))))
@@ -4104,12 +4155,14 @@ SCHEDULED is the scheduled timestamp string (ignored if empty)."
                                        :depends_on (:type "array" :items (:type "string"))
                                        :tags (:type "array" :items (:type "string")))))))
   "JSON Schema for version 1 plans.
-Exactly one task has a null parent.  IDs are local to this document.
+When planning without an existing parent task, exactly one task has a
+null parent.  When planning under an existing task, top-level tasks set
+parent to that task's ID.  IDs become the created notes' IDs.
 Array order defines sibling order; execution describes a node's children.
 Dependencies name tasks that must finish before this task starts.")
 
-(defun ekg-org-plan--validate (plan)
-  "Validate parsed PLAN and return its tasks, before any database writes."
+(defun ekg-org-plan--validate (plan &optional parent-id)
+  "Validate parsed PLAN under optional PARENT-ID and return its tasks."
   (unless (and (hash-table-p plan) (equal (gethash "version" plan) 1)
                (vectorp (gethash "tasks" plan))
                (> (length (gethash "tasks" plan)) 0))
@@ -4118,6 +4171,7 @@ Dependencies name tasks that must finish before this task starts.")
              (unless (member key '("version" "tasks"))
                (error "Unknown plan field %s" key))) plan)
   (let ((tasks (append (gethash "tasks" plan) nil))
+        (parent-key (when parent-id (format "%s" parent-id)))
         (by-id (make-hash-table :test #'equal))
         (edges (make-hash-table :test #'equal))
         (children (make-hash-table :test #'equal))
@@ -4132,6 +4186,7 @@ Dependencies name tasks that must finish before this task starts.")
         (unless (stringp (gethash key task)) (error "Missing string %s" key)))
       (let ((id (gethash "id" task)))
         (when (or (string-empty-p id) (gethash id by-id)
+                  (and parent-key (equal id parent-key))
                   (string-empty-p (string-trim (gethash "title" task))))
           (error "Empty or duplicate task ID/title: %s" id))
         (unless (and (member (gethash "execution" task)
@@ -4144,13 +4199,25 @@ Dependencies name tasks that must finish before this task starts.")
         (puthash id task by-id)))
     (dolist (task tasks)
       (let ((id (gethash "id" task)) (parent (gethash "parent" task)))
-        (if (null parent) (push id roots)
+        (cond
+         ((and parent-key (equal parent parent-key))
+          (push id roots))
+         ((null parent)
+          (if parent-key
+              (error "Task %s has null parent when planning under %s"
+                     id parent-key)
+            (push id roots)))
+         (t
           (unless (gethash parent by-id) (error "Unknown parent %s" parent))
-          (puthash parent (append (gethash parent children) (list id)) children))
+          (puthash parent (append (gethash parent children) (list id)) children)))
         (dolist (dep (append (gethash "depends_on" task) nil))
           (unless (and (stringp dep) (gethash dep by-id))
             (error "Unknown dependency %s" dep)))))
-    (unless (= (length roots) 1) (error "Plan must have exactly one root"))
+    (if parent-key
+        (unless roots
+          (error "Plan must have at least one task under %s" parent-key))
+      (unless (= (length roots) 1)
+        (error "Plan must have exactly one root")))
     ;; Model start/finish events: a group finishes after all its children;
     ;; children start after their group starts.  This catches dependency
     ;; cycles involving ancestor groups as well as ordinary task cycles.
@@ -4182,7 +4249,8 @@ Dependencies name tasks that must finish before this task starts.")
 Return an alist mapping document task IDs to created note IDs.  All
 notes start as TODO.  Validate the whole graph before creating notes."
   (let* ((plan (json-parse-string json :null-object nil :false-object :json-false))
-         (tasks (ekg-org-plan--validate plan))
+         (tasks (ekg-org-plan--validate plan parent-id))
+         (parent-key (when parent-id (format "%s" parent-id)))
          (notes (make-hash-table :test #'equal))
          result)
     (unless (and (listp tags) (seq-every-p #'stringp tags))
@@ -4197,17 +4265,20 @@ notes start as TODO.  Validate the whole graph before creating notes."
         (unless (and parent (ekg-org--org-note-p parent))
           (error "Parent %s is not an Org task" parent-id))))
     (dolist (task tasks)
-      (let* ((task-tags (mapcar #'ekg--normalize-tag
+      (let* ((task-id (gethash "id" task))
+             (task-tags (mapcar #'ekg--normalize-tag
                                 (append (gethash "tags" task []) nil)))
              (_ (when (seq-some
                        (lambda (tag)
                          (and (string-prefix-p "org/" tag)
                               (not (equal tag
-                                          ekg-agent-org-user-response-tag))))
+                                          ekg-agent-org-user-task-tag))))
                        task-tags)
-                  (error "Task %s has a reserved org tag"
-                         (gethash "id" task))))
+                  (error "Task %s has a reserved org tag" task-id)))
+             (_ (when (ekg-note-with-id-exists-p task-id)
+                  (error "Task ID %s already exists" task-id)))
              (note (ekg-note-create
+                    :id task-id
                     :text (gethash "content" task) :mode 'org-mode
                     :tags (seq-uniq
                            (append '("org/task" "org/state/todo")
@@ -4215,12 +4286,8 @@ notes start as TODO.  Validate the whole graph before creating notes."
                                    tags task-tags))
                     :properties (list :titled/title
                                       (list (gethash "title" task))))))
-        ;; Allocate IDs before resolving forward references.
-        (while (or (ekg-note-with-id-exists-p (ekg-note-id note))
-                   (rassoc (ekg-note-id note) result))
-          (setf (ekg-note-id note) (ekg--generate-id)))
-        (puthash (gethash "id" task) note notes)
-        (push (cons (gethash "id" task) (ekg-note-id note)) result)))
+        (puthash task-id note notes)
+        (push (cons task-id (ekg-note-id note)) result)))
     (let* ((existing-siblings (when parent-id
                                 (ekg-org-view--sorted-children parent-id)))
            (base-order (if existing-siblings
@@ -4229,7 +4296,9 @@ notes start as TODO.  Validate the whole graph before creating notes."
       (cl-loop for task in tasks for order from 0
                for note = (gethash (gethash "id" task) notes)
                for task-parent = (gethash "parent" task)
-               for sort-order = (if (and (null task-parent) parent-id)
+               for top-under-parent-p = (and parent-key
+                                             (equal task-parent parent-key))
+               for sort-order = (if top-under-parent-p
                                     (+ base-order order)
                                   order)
                do
@@ -4239,11 +4308,11 @@ notes start as TODO.  Validate the whole graph before creating notes."
                                    :org/depends-on
                                    (mapcar (lambda (id) (cdr (assoc id result)))
                                            (append (gethash "depends_on" task) nil)))
-                             (when (or task-parent parent-id)
+                             (when task-parent
                                (list :hierarchy/parent
-                                     (if task-parent
-                                         (cdr (assoc task-parent result))
-                                       parent-id)))))
+                                     (if top-under-parent-p
+                                         parent-id
+                                       (cdr (assoc task-parent result)))))))
                (ekg-org-set-dependency-type
                 note (intern (gethash "execution" task)))))
     (let ((save-hooks ekg-note-save-hook)
@@ -4334,14 +4403,19 @@ Call CALLBACK once with the created ID mapping or an error message."
             (llm-make-chat-prompt
              description
              :context
-             (concat "Research a task plan. Read relevant context, but do not "
+             (concat "Research a task plan. Inspect the relevant files and "
+                     "notes yourself now so the plan is based on concrete "
+                     "findings rather than deferring code auditing or "
+                     "environment discovery into planned tasks. Do not "
                      "ask the user questions directly, execute tasks, or create "
                      "notes. Identify unresolved questions and other actions "
                      "requiring the user in your research summary. The final "
                      "plan will turn them into tasks "
                      (format "tagged %s, so the user can act or answer "
-                             ekg-agent-org-user-response-tag)
-                     "with a response note. Finish by calling "
+                             ekg-agent-org-user-task-tag)
+                     "with a response note. Do not include meta-instructions "
+                     "(such as reading AGENTS.md or recording executables/"
+                     "versions) in the requirements. Finish by calling "
                      "finish_plan_research with requirements, decisions, and "
                      "unresolved questions."
                      (format "\nWorking directory: %s" default-directory)
@@ -4372,31 +4446,21 @@ Call CALLBACK once with the created ID mapping or an error message."
                                      (or parent-id "none") description status
                                      (llm-chat-prompt-interactions prompt))
                              :context
-                             (concat
-                              "Produce a complete executable Org task plan. "
-                              "Use one root and document-local string IDs. "
-                              "parent is null only for the root. Array order "
-                              "sets sibling order. execution sets how children "
-                              "run: sequential or parallel. depends_on lists "
-                              "prerequisite task IDs; avoid cycles including "
-                              "those implied by sequential groups. content is "
-                              "Org text with actionable acceptance criteria. "
-                              "Every task has a tags array; use [] when there "
-                              "are no task-specific tags. Do not ask the user "
-                              "questions now or invent missing answers. For "
-                              "each decision or action that needs the user, "
-                              "create a task tagged "
-                              (format "%s. For a question, its content must "
-                                      ekg-agent-org-user-response-tag)
-                              "state the question and ask the user to add a "
-                              "child response note. Make dependent work wait "
-                              "for the answer. When such questions exist, "
-                              "include a follow-up task to review the responses, "
-                              "revise the plan, and update the original EKG "
-                              "task note with the new information and revised "
-                              "plan; give its note ID in that task's content "
-                              "when available. "
-                              "Return only JSON conforming to the supplied schema.")
+                             (let ((id-prefix (format "%s" (or parent-id (ekg--generate-id)))))
+                               (concat ekg-agent-plan-instructions
+                                       "\n\n"
+                                       (if parent-id
+                                           (format
+                                            "Do not generate a top-level wrapper task for the task being planned. Instead, top-level tasks in the plan must be direct children of the existing task and set `parent` to %S.\n"
+                                            id-prefix)
+                                         "Include a single root task with `parent` set to null, and make all other tasks descend from it.\n")
+                                       (format
+                                        "Prefix every task `id` with \"%s-\" (for example, \"%s-1\") so that task IDs are globally unique.\n"
+                                        id-prefix id-prefix)
+                                       (format
+                                        "If you need a human to do work, such as answer a design question, or
+perform an action an agent cannot, tag the task with the %s tag."
+                                        ekg-agent-org-user-task-tag)))
                              :response-format ekg-org-plan-schema
                              :reasoning reasoning :non-standard-params parameters)
                             (lambda (json)
@@ -4441,7 +4505,7 @@ Call CALLBACK once with the created ID mapping or an error message."
 ID is the note ID.
 STATUS is the new status (will be converted to uppercase)."
   (ekg-agent--with-error-as-text
-    (let ((note (ekg-get-note-with-id id)))
+    (let ((note (ekg-agent--get-note-with-id id)))
       (unless note
         (error "No note found with ID %s" id))
       (setf (ekg-note-tags note)
@@ -4451,7 +4515,7 @@ STATUS is the new status (will be converted to uppercase)."
               (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
               (ekg-note-tags note))))
       (ekg-save-note note)
-      (format "Set status of note ID %s to %s" id status))))
+      (format "Set status of note ID %s to %s" (ekg-note-id note) status))))
 
 (defconst ekg-agent-org-tool-set-status
   (llm-make-tool
@@ -4459,7 +4523,7 @@ STATUS is the new status (will be converted to uppercase)."
    :name "set_org_item_status"
    :description "Set the status keyword of an ekg org-mode task item."
    :args
-   '((:name "id" :type integer :description "The ID of the task item")
+   '((:name "id" :type string :description "The ID of the task item")
      (:name "status" :type string :description "The new status of the task (TODO, DONE, etc.)"))))
 
 (defun ekg-agent-org--tool-list-items (&optional state)

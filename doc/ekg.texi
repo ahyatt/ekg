@@ -2450,8 +2450,8 @@ items done@comma{} and review your task list as part of its autonomous operation
 The @samp{create_org_plan} agent tool takes @samp{description} (the goal and its
 constraints) and @samp{tags} (topic tags applied to every created task).  It first
 runs a research agent with note/file/web read tools@comma{} but no @samp{ask_user} tool.
-Tasks requiring user action receive @code{ekg-agent-org-user-response-tag}
-(default @samp{org/needs-user-response}).  The user can answer question tasks with
+Tasks planned for the user to do receive @code{ekg-agent-org-user-task-tag}
+(default @samp{org/user-task}).  The user can answer question tasks with
 a child response note.  When questions exist@comma{}
 the plan includes a follow-up task to incorporate those responses@comma{} revise the
 plan@comma{} and update the original task note.  This follow-up is a task to execute@comma{}
@@ -2508,8 +2508,8 @@ prerequisites@comma{} stored as multi-valued @samp{:org/depends-on} note IDs.  T
 task has one display parent but may have multiple execution prerequisites.
 The per-task @samp{tags} array is required in newly generated plans but optional
 when importing older version 1 JSON@.  It adds task-specific topic tags; the
-only allowed internal tag is @code{ekg-agent-org-user-response-tag} (default
-@samp{org/needs-user-response}).  Use it for any task requiring user action.  For a
+only allowed internal tag is @code{ekg-agent-org-user-task-tag} (default
+@samp{org/user-task}).  Use it for any task planned for the user to do.  For a
 question@comma{} ask the user to add a child response note@comma{} and make work that
 requires the answer depend on that task.
 The importer rejects cycles@comma{} including those implied by sequential groups and
@@ -2633,7 +2633,7 @@ The agent uses specific tags to organize its work:
 @item
 @code{ekg-agent-author-tag} (default "agent"): All notes created by the agent will have this tag.
 @item
-@code{ekg-agent-org-user-response-tag} (default "org/needs-user-response"): Org tasks requiring user action have this tag.
+@code{ekg-agent-org-user-task-tag} (default "org/user-task"): Org tasks planned for the user to do have this tag.
 @item
 @code{ekg-agent-self-info-tag} (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
 @end itemize

@@ -457,9 +457,11 @@ The results are in order of most similar to least similar."
   (if ekg-vecdb-provider
       (let ((provider (car ekg-vecdb-provider))
             (collection (cdr ekg-vecdb-provider)))
-        (mapcar
-         (lambda (item) (read (plist-get (vecdb-item-payload item) :ekg-id)))
-         (vecdb-search-by-vector provider collection e n)))
+        (seq-filter
+         #'ekg-active-id-p
+         (mapcar
+          (lambda (item) (read (plist-get (vecdb-item-payload item) :ekg-id)))
+          (vecdb-search-by-vector provider collection e n))))
     ;; Fallback to the triples database if no vecdb-provider is set.
     ;; This is less efficient, but works for smaller datasets.
     (let* ((embeddings (ekg-embedding-get-all-notes)))

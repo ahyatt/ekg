@@ -71,11 +71,12 @@ Bind this around batch operations that save multiple notes; call
 
 (defun ekg-org-add-schema ()
   "Add schema for integration with `org-mode'."
+  (triples-db-delete ekg-db 'org/depends-on 'base/type)
   (triples-add-schema ekg-db 'org
                       '(deadline :base/type integer :base/unique t)
                       '(scheduled :base/type integer :base/unique t)
                       '(sort-order :base/type integer :base/unique t)
-                      '(depends-on :base/type integer)
+                      'depends-on
                       ;; Generic org properties, stored as readable cons
                       ;; cells "(KEY . VALUE)" following org property
                       ;; syntax: keys are uppercase strings,
@@ -396,7 +397,7 @@ traversal depth to avoid infinite loops; defaults to 10."
                 (let ((parent-id (ekg-note-parent-id current)))
                   (when parent-id
                     (let ((parent (ekg-get-note-with-id parent-id)))
-                      (when parent
+                      (when (and parent (ekg-org--note-active-p parent))
                         (push parent hierarchy)
                         (setq current parent)
                         t)))))

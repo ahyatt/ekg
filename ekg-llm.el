@@ -177,11 +177,17 @@ buffer's `major-mode'."
 
 (defun ekg-llm--context-tags (note)
   "Return the tags relevant to prompting from NOTE and its ancestors."
-  (seq-uniq
-   (seq-remove
-    (lambda (tag) (equal tag ekg-llm-generated-tag))
-    (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
-            (append (ekg-note-ancestors note) (list note))))))
+  (let ((ekg-hidden-tags
+         (seq-difference ekg-hidden-tags
+                         (seq-difference (ekg-note-tags note)
+                                         (list ekg-trash-tag ekg-draft-tag)))))
+    (seq-uniq
+     (seq-remove
+      (lambda (tag) (or (equal tag ekg-llm-generated-tag)
+                        (member tag ekg-hidden-tags)))
+      (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
+              (seq-filter #'ekg-note-active-p
+                          (append (ekg-note-ancestors note) (list note))))))))
 
 (defun ekg-llm-prompt-tags ()
   "Return tags that occur on notes tagged with `ekg-llm-prompt-tag'."
@@ -415,7 +421,12 @@ the focal note and omit its text, which is sent as the user message."
 Ancestors have negative depths, NOTE has depth zero, and descendants
 have positive depths.  The current note's text is omitted because it
 is supplied separately as the user interaction."
-  (let* ((ancestors (ekg-note-ancestors note))
+  (let* ((ekg-hidden-tags
+          (seq-difference ekg-hidden-tags
+                          (seq-difference (ekg-note-tags note)
+                                          (list ekg-trash-tag ekg-draft-tag))))
+         (ancestors (seq-filter #'ekg-note-active-p
+                                (ekg-note-ancestors note)))
          (ancestor-count (length ancestors))
          (visited (make-hash-table :test #'equal))
          (json-encoding-pretty-print t))
@@ -440,6 +451,7 @@ is supplied separately as the user interaction."
       (dolist (id similar-notes)
         (let ((note (ekg-get-note-with-id id)))
           (when (and note
+                     (ekg-note-active-p note)
                      (ekg-note-is-content-p note)
                      (not (member ekg-llm-prompt-tag (ekg-note-tags note))))
             (iter-yield (ekg-llm-note-to-text note))))))))
@@ -485,12 +497,19 @@ NUMWORDS specifies the maximum number of words to include."
       (push (cons "id" (ekg-note-id note)) result))
     (when (ekg-note-mode note)
       (push (cons "mode" (symbol-name (ekg-note-mode note))) result))
-    (map-do
-     (lambda (prop value)
-       (when-let* ((label (ekg-property-name-for prop)))
-         (unless (member prop ekg-llm-ignored-props-for-json)
-           (push (cons (downcase label) value) result))))
-     (ekg-note-properties note))
+    (let ((ekg-hidden-tags
+           (seq-difference ekg-hidden-tags
+                           (seq-difference (ekg-note-tags note)
+                                           (list ekg-trash-tag ekg-draft-tag)))))
+      (map-do
+       (lambda (prop value)
+         (when (memq prop '(:hierarchy/children :org/depends-on))
+           (setq value (seq-filter #'ekg-active-id-p value)))
+         (when (or value (not (memq prop '(:hierarchy/children :org/depends-on))))
+           (when-let* ((label (ekg-property-name-for prop)))
+             (unless (member prop ekg-llm-ignored-props-for-json)
+               (push (cons (downcase label) value) result)))))
+       (ekg-note-properties note)))
     ;; Sort the result so JSON is deterministic and we can test it.
     (sort result (lambda (a b) (string< (car a) (car b))))
     result))
@@ -503,8 +522,10 @@ NUMWORDS specifies the maximum number of words to include."
 (defun ekg-llm-make-any-tag-generator (tags except-id)
   "Return a generator for notes with any of TAGS, not include EXCEPT-ID."
   (iter-lambda ()
-    (dolist (note (ekg-get-notes-with-any-tags tags))
-      (when (not (equal except-id (ekg-note-id note)))
+    (dolist (note (ekg-get-notes-with-any-tags
+                   (seq-difference tags ekg-hidden-tags)))
+      (when (and (not (equal except-id (ekg-note-id note)))
+                 (ekg-note-active-p note))
         (iter-yield (ekg-llm-note-to-text note))))))
 
 (defun ekg-llm-save-response (parent text &optional tags mode)
