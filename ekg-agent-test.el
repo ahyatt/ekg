@@ -2149,6 +2149,11 @@ result when the agent finishes."
                     ((symbol-function 'display-buffer)
                      (lambda (buffer &rest _) (setq output-buffer buffer))))
             (ekg-agent-org-run-task)
+            (let ((tools-directory
+                   (expand-file-name "agent_tools"
+                                     (file-name-directory (locate-library "ekg")))))
+              (dolist (script '("ekg-org-edit" "ekg-update-tags" "ekg-read"))
+                (should (file-executable-p (expand-file-name script tools-directory)))))
             (let ((ekg-agent-org-execution-backend 'code-command))
               (ekg-agent-org-run-task))
             ;; Read the actual subprocess input back through cat, rather
