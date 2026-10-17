@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.6.1") (emacs "28.1") (llm "0.30.0") (vui "1.0.0"))
+;; Package-Requires: ((triples "0.6.1") (emacs "29.1") (llm "0.30.0") (vui "20261017.1157"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.10.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -1828,7 +1828,13 @@ displayed.")
   "Name displayed at the top of the buffer.")
 
 (defvar-local ekg-notes--instance nil
-  "The vui root instance for the notes buffer.")
+  "The VUI root instance for the notes buffer.")
+
+(defvar-local ekg-notes--request-refresh nil
+  "VUI callback scheduling a refresh of this buffer's mounted notes.")
+
+(defvar-local ekg-notes--hidden-ids nil
+  "Note IDs hidden from the current view until its next refresh.")
 
 (defvar-local ekg-notes-hl nil
   "Highlight for the notes buffer.")
@@ -2474,10 +2480,9 @@ tags."
 Note is not deleted from the database and will reappear when the
 view is refreshed."
   (interactive nil ekg-notes-mode)
-  (when-let* ((region (ekg--note-region-at-point)))
-    (let ((inhibit-read-only t))
-      (delete-region (car region) (min (1+ (cdr region)) (point-max)))
-      (ekg--note-highlight))))
+  (when-let* ((id (get-text-property (point) :ekg-note-id)))
+    (push id ekg-notes--hidden-ids)
+    (ekg--notes-mount)))
 
 (defun ekg-notes-delete (arg)
   "Trash the current note.
@@ -2541,14 +2546,17 @@ Without ID, use the current note.  Return nil when ID is not visible."
     (when (eq (alist-get id ekg-notes-display-states nil nil #'equal) 'folded)
       (setf (alist-get id ekg-notes-display-states nil nil #'equal) 'full))))
 
-(defun ekg-notes--refresh-preserving-view (refresh id)
-  "Call REFRESH and select ID while preserving independent window views."
+(defun ekg-notes--view-restorer ()
+  "Return a function to restore each window's note and scroll position.
+VUI preserves positions on widgets, but notes are plain text.  Retain
+note IDs and offsets so inserting notes above a window, or folding
+an ancestor, does not change its action target."
   (cl-labels
       ((anchor (pos)
          (let* ((id (get-text-property
                      (min pos (max (point-min) (1- (point-max)))) :ekg-note-id))
                 (start (and id (text-property-any (point-min) (point-max)
-                                                 :ekg-note-id id)))
+                                                  :ekg-note-id id)))
                 (note (and id (ekg-get-note-with-id id))))
            (list id (if start (- pos start) 0)
                  (when note
@@ -2567,24 +2575,32 @@ Without ID, use the current note.  Return nil when ID is not visible."
                                              (point-max))))
                               start)
                             exact))))))
-    (let* ((action-window (selected-window))
+    (let* ((point-anchor (anchor (point)))
+           (action-window (selected-window))
            (views (mapcar
                    (lambda (win)
                      (list win (anchor (window-start win))
                            (anchor (window-point win)) (window-vscroll win t)))
                    (get-buffer-window-list (current-buffer) nil t))))
-      (funcall refresh)
-      (ekg-notes--goto-id id)
-      (dolist (view views)
-        (pcase-let ((`(,win ,start-anchor ,point-anchor ,vscroll) view))
-          (when (window-live-p win)
-            (if (eq win action-window)
-                (set-window-point win (point))
-              (when-let* ((pos (position point-anchor)))
-                (set-window-point win (car pos))))
-            (when-let* ((start (position start-anchor)))
-              (set-window-start win (car start) t)
-              (set-window-vscroll win (if (cdr start) vscroll 0) t))))))))
+      (lambda ()
+        (when-let* ((pos (position point-anchor)))
+          (goto-char (car pos)))
+        (dolist (view views)
+          (pcase-let ((`(,win ,start-anchor ,point-anchor ,vscroll) view))
+            (when (window-live-p win)
+              (if (eq win action-window)
+                  (set-window-point win (point))
+                (when-let* ((pos (position point-anchor)))
+                  (set-window-point win (car pos))))
+              (when-let* ((start (position start-anchor)))
+                (set-window-start win (car start) t)
+                (set-window-vscroll win (if (cdr start) vscroll 0) t)))))))))
+
+(defun ekg-notes--refresh-preserving-view (refresh id)
+  "Call REFRESH, then select note ID when it is visible.
+The mounted notes component preserves other windows independently."
+  (funcall refresh)
+  (ekg-notes--goto-id id))
 
 (defvar-local ekg-notes-show-child-count t
   "Whether to show a child-count heading above each parent note.")
@@ -2622,12 +2638,43 @@ Folded notes retain a title handle and hide their descendants."
     (setf (alist-get id ekg-notes-display-states nil nil #'equal) state)
     (ekg-notes--refresh-preserving-view #'ekg-notes-refresh id)))
 
-(vui-defcomponent ekg-notes-root (name notes-func include-descendants)
-  "Root component for the notes list view."
+(vui-defcomponent ekg-notes-item (text id depth display-state)
+  "One keyed note in a notes view, including its following separator."
+  :memo t
   :render
-  (let* ((notes (funcall notes-func))
+  (vui-text text :ekg-note-id id :ekg-note-depth depth
+            :ekg-note-display-state display-state))
+
+(vui-defcomponent ekg-notes-root ()
+  "Root component for the notes list view."
+  :state ((revision 0))
+  :on-mount
+  (progn
+    (setq ekg-notes--request-refresh
+          (vui-with-async-context (vui-set-state :revision #'1+)))
+    (lambda () (setq ekg-notes--request-refresh nil)))
+  :render
+  (let* ((notes (funcall ekg-notes-fetch-notes-function))
+         (include-descendants ekg-notes-include-descendants)
          (fetched-ids (make-hash-table :test #'equal))
-         (visited (make-hash-table :test #'equal)))
+         (visited (make-hash-table :test #'equal))
+         (generation (vui-use-ref 0))
+         (restore-view (when ekg-notes--instance
+                         (ekg-notes--view-restorer)))
+         rows)
+    ;; Effects run after VUI has committed and restored its own positions.
+    ;; The generation also covers renders caused by window resizing.
+    (cl-incf (car generation))
+    (vui-use-effect (revision (car generation))
+      (let ((inhibit-read-only t))
+        (ekg--notes-fill-id-gaps))
+      (when restore-view (funcall restore-view))
+      (ekg--note-highlight)
+      (when (eq ekg-capture-default-mode 'org-mode)
+        (ekg--notes-activate-links)
+        (when ekg-notes-display-images (ekg--org-redisplay-inline-images)))
+      (set-buffer-modified-p nil)
+      nil)
     (dolist (note notes)
       (puthash (ekg-note-id note) t fetched-ids))
     (cl-labels
@@ -2640,7 +2687,7 @@ Folded notes retain a title handle and hide their descendants."
                              (ekg-note-ancestors note))
                  (error nil))
              (gethash (ekg-note-parent-id note) fetched-ids)))
-         (render
+         (collect
            (note depth &optional branches outline)
            (let* ((id (ekg-note-id note))
                   (children
@@ -2654,35 +2701,41 @@ Folded notes retain a title handle and hide their descendants."
                (let* ((state (or (alist-get id ekg-notes-display-states
                                             nil nil #'equal)
                                  (if outline 'outline 'full)))
-                      (collapsed (eq state 'folded))
                       (ekg-display-note-template
                        (if (not (eq state 'full))
                            ekg-display-note-summary-template
-                         ekg-display-note-template)))
-                 (apply
-                  #'vui-vstack
-                  :key (intern (format "note-%s" id))
-                  (vui-text (let ((text (ekg--indent-displayed-note
-                                        note depth branches
-                                        (when (and ekg-notes-show-child-count
-                                                   (eq state 'full))
-                                          (length children)) state)))
-                              (if (eq state 'full) text
-                                (string-trim-right text "\n+")))
-                            :key (intern (format "note-text-%s" id))
-                            :ekg-note-id id
-                            :ekg-note-depth depth
-                            :ekg-note-display-state state)
-                  (cl-loop for tail on (unless collapsed children)
-                           collect (render (car tail) (1+ depth)
-                                           (append branches
-                                                   (list (and (cdr tail) t)))
-                                           (eq state 'outline)))))))))
-      (apply #'vui-vstack
-             :spacing 1
-             (delq nil
-                   (mapcar (lambda (note) (render note 0))
-                           (seq-remove #'ancestor-fetched-p notes)))))))
+                         ekg-display-note-template))
+                      (text (ekg--indent-displayed-note
+                             note depth branches
+                             (when (and ekg-notes-show-child-count
+                                        (eq state 'full))
+                               (length children)) state)))
+                 (push (list id (if (eq state 'full) text
+                                  (string-trim-right text "\n+"))
+                             depth state)
+                       rows)
+                 (cl-loop for tail on (unless (eq state 'folded) children)
+                          do (collect (car tail) (1+ depth)
+                                      (append branches
+                                              (list (and (cdr tail) t)))
+                                      (eq state 'outline))))))))
+      (dolist (note (seq-remove #'ancestor-fetched-p notes))
+        (collect note 0)))
+    ;; A flat list lets VUI reconcile keyed note components and patch only
+    ;; changed regions.  Indentation is already part of each note's text.
+    (setq rows (seq-remove
+                (lambda (row) (member (car row) ekg-notes--hidden-ids))
+                (nreverse rows)))
+    (apply #'vui-fragment
+           (cl-loop for tail on rows
+                    for (id text depth state) = (car tail)
+                    collect
+                    (vui-component 'ekg-notes-item :key id :id id
+                                   :depth depth :display-state state
+                                   :text (concat text
+                                                 (when (cdr tail)
+                                                   (if (zerop (nth 2 (cadr tail)))
+                                                       "\n\n" "\n"))))))))
 
 (defun ekg--notes-fill-id-gaps ()
   "Extend `:ekg-note-id' properties to cover gaps between notes.
@@ -2705,30 +2758,23 @@ cursor always lands on a note."
               (put-text-property pos gap-end :ekg-note-id next-id)))
           (setq pos gap-end))))))
 
-(defun ekg--notes-mount (name notes-func)
-  "Mount a vui notes view with NAME and NOTES-FUNC into the current buffer."
-  (let* ((vnode (vui-component 'ekg-notes-root
-                  :name name :notes-func notes-func
-                  :include-descendants ekg-notes-include-descendants))
-         (instance (vui--create-instance vnode nil))
-         (vui--pending-effects nil))
-    (setf (vui-instance-buffer instance) (current-buffer))
-    (unless (derived-mode-p 'ekg-notes-mode)
-      (ekg-notes-mode))
-    (let ((inhibit-read-only t))
-      (erase-buffer)
-      (setq-local vui--root-instance instance)
-      (setq-local ekg-notes--instance instance)
-      (let ((vui--root-instance instance)
-            (vui--rendering-p t))
-        (unwind-protect
-            (vui--render-instance instance)
-          (setq vui--rendering-p nil)))
-      (widget-setup)
-      (vui--run-pending-effects)
-      (ekg--notes-fill-id-gaps)
-      (goto-char (point-min)))
-    instance))
+(defun ekg--notes-mount ()
+  "Mount or refresh the notes view using VUI's public lifecycle APIs."
+  (if (and ekg-notes--instance ekg-notes--request-refresh)
+      (progn
+        (let ((vui-render-delay (or vui-render-delay 0)))
+          (funcall ekg-notes--request-refresh))
+        (vui-flush-sync))
+    (setq-local vui-incremental-render t)
+    ;; `vui-mount' selects its buffer.  Initial mounting must not change
+    ;; the caller's windows; subsequent updates never switch buffers.
+    (setq ekg-notes--instance
+          (save-window-excursion
+            (vui-mount (vui-component 'ekg-notes-root) (buffer-name))))
+    ;; Notes use text prefixes and Emacs wrapping, not width-dependent VUI
+    ;; layouts.  A resize must not invalidate Org insertion placeholders.
+    (vui-cancel-rerender-on-resize))
+  ekg-notes--instance)
 
 (defun ekg--show-notes (name notes-func tags)
   "Display notes from NOTES-FUNC in buffer.
@@ -2738,19 +2784,15 @@ NAME is displayed at the top of the buffer."
     (ekg-notes-mode))
   (setq-local ekg-notes-fetch-notes-function notes-func
               ekg-notes-name name
+              ekg-notes--hidden-ids nil
               ekg-notes-hl (if (and (overlayp ekg-notes-hl)
                                     (eq (overlay-buffer ekg-notes-hl)
                                         (current-buffer)))
                                ekg-notes-hl
                              (make-overlay 1 1))
               ekg-notes-tags tags)
-  (ekg--notes-mount name notes-func)
-  (overlay-put ekg-notes-hl 'face hl-line-face)
-  (ekg--note-highlight)
-  (when (eq ekg-capture-default-mode 'org-mode)
-    (ekg--notes-activate-links)
-    (if ekg-notes-display-images (ekg--org-redisplay-inline-images)))
-  (set-buffer-modified-p nil))
+  (ekg--notes-mount)
+  (overlay-put ekg-notes-hl 'face hl-line-face))
 
 (defun ekg--notes-activate-links()
   "Activate the `org-mode' links so they can be seen and followed."
@@ -2784,10 +2826,7 @@ fetched results are shown."
   (unless (functionp ekg-notes-fetch-notes-function)
     (user-error
      "This EKG notes buffer is missing its refresh function; recreate it"))
-  (ekg--show-notes
-   ekg-notes-name
-   ekg-notes-fetch-notes-function
-   ekg-notes-tags))
+  (ekg--show-notes ekg-notes-name ekg-notes-fetch-notes-function ekg-notes-tags))
 
 (defun ekg-notes-create ()
   "Add a note that by default has all the tags in the buffer."
@@ -2873,7 +2912,13 @@ notes are created with additional tags TAGS."
   (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
-    (switch-to-buffer buf)))
+    (switch-to-buffer buf)
+    ;; Explicit navigation starts at the query's first result.  Background
+    ;; updates call `ekg-notes-refresh' directly and preserve their view.
+    (goto-char (point-min))
+    (set-window-start (selected-window) (point-min) t)
+    (set-window-vscroll (selected-window) 0 t)
+    (ekg--note-highlight)))
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."

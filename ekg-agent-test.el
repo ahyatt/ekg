@@ -1635,6 +1635,28 @@ result when the agent finishes."
       (should (= (length (ekg-org-get-child-notes-of-id
                           (ekg-note-id parent))) 1)))))
 
+(ekg-deftest-with-db ekg-agent-test-plan-import-refreshes-views ()
+  "A committed plan updates existing task views without moving its parent."
+  (ekg-org-add-schema)
+  (ekg-agent-org--save-item "Before" "Earlier task" nil nil nil nil nil)
+  (let ((parent (ekg-agent-org--save-item "Parent" "Body" nil
+                                         nil nil nil nil)))
+    (save-window-excursion
+      (ekg-org-view-task parent)
+      (let ((focused (current-buffer)))
+        (ekg-org-view)
+        (ekg-org-view--goto-note-id parent)
+        (set-window-start (selected-window) (point) t)
+        (let ((start (window-start))
+              (pos (point)))
+          (with-temp-buffer
+            (ekg-org-plan-import ekg-agent-test-plan--json nil parent))
+          (should (= (window-start) start))
+          (should (= (point) pos))
+          (should (= (length (ekg-notes-visible-ids)) 5))
+          (with-current-buffer focused
+            (should (= (length (ekg-notes-visible-ids)) 4))))))))
+
 (ekg-deftest-with-db ekg-agent-test-plan-import-under-task-with-existing-children ()
   (ekg-org-add-schema)
   (let* ((parent (ekg-note-create

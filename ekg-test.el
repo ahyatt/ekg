@@ -251,6 +251,9 @@
           (should (equal (ekg-note-id nested)
                          (ekg-note-id (ekg-current-note-or-error))))
           (ekg-notes-refresh t)
+          (should (equal (ekg-note-id nested)
+                         (ekg-note-id (ekg-current-note-or-error))))
+          (goto-char (point-min))
           (dolist (note (list root first nested))
             (should (equal (ekg-note-id note)
                            (ekg-note-id (ekg-current-note-or-error))))
@@ -905,6 +908,68 @@
                                   :properties (list :titled/title titles)))
            (text (ekg-display-note-titled note 12 'text-fallback 'plaintext)))
       (should-not (text-properties-at 0 text)))))
+
+(ekg-deftest-with-db ekg-test-notes-refresh-reuses-vui-items ()
+  "Refreshing retains the mounted tree and skips unchanged note regions."
+  (let ((first (ekg-note-create :text "Unchanged"))
+        (second (ekg-note-create :text "Before")))
+    (mapc #'ekg-save-note (list first second))
+    (with-temp-buffer
+      (ekg--show-notes "Notes" (lambda () (list first second)) nil)
+      ;; Establish VUI's incremental render record after the initial mount.
+      (ekg-notes-refresh)
+      (let ((root ekg-notes--instance)
+            (item (car (vui-instance-children ekg-notes--instance)))
+            (inhibit-read-only t))
+        (put-text-property (point-min) (1+ (point-min)) 'ekg-test-retained t)
+        (setf (ekg-note-text second) "After\nMore content")
+        (ekg-save-note second)
+        (ekg-notes-refresh)
+        (should (eq ekg-notes--instance root))
+        (should (eq (car (vui-instance-children root)) item))
+        (should (get-text-property (point-min) 'ekg-test-retained))
+        (should (string-match-p "After\nMore content" (buffer-string)))))))
+
+(ekg-deftest-with-db ekg-test-latest-captured-selects-new-note ()
+  "Background refresh retains point; explicitly opening latest shows newest."
+  (save-window-excursion
+    (delete-other-windows)
+    (ekg-capture)
+    (insert "First captured note")
+    (setf (ekg-note-creation-time ekg-note) 1)
+    (ekg-capture-finalize)
+    (ekg-show-notes-latest-captured)
+    (let ((first (ekg-note-id (ekg-current-note-or-error))))
+      (ekg-capture)
+      (insert "Second captured note")
+      (setf (ekg-note-creation-time ekg-note) 2)
+      (let ((second (ekg-note-id ekg-note)))
+        (ekg-capture-finalize)
+        ;; Saving updates the existing view without changing its selection.
+        (should (equal (ekg-notes-visible-ids) (list second first)))
+        (should (equal (ekg-note-id (ekg-current-note-or-error)) first))
+        (ekg-show-notes-latest-captured)
+        ;; An explicit navigation command must bring the newest note into view.
+        (should (equal (ekg-note-id (ekg-current-note-or-error)) second))
+        (should (= (window-start) (point-min)))
+        (should (= (point) (point-min)))))))
+
+(ekg-deftest-with-db ekg-test-notes-kill-refreshes-retained-tree ()
+  "Hiding a note keeps VUI's regions valid for later refreshes."
+  (let ((first (ekg-note-create :text "First"))
+        (second (ekg-note-create :text "Second")))
+    (mapc #'ekg-save-note (list first second))
+    (with-temp-buffer
+      (ekg--show-notes "Notes" (lambda () (list first second)) nil)
+      (ekg-notes-refresh)
+      (let ((root ekg-notes--instance))
+        (ekg-notes--goto-id (ekg-note-id first))
+        (ekg-notes-kill)
+        (should (equal (ekg-notes-visible-ids) (list (ekg-note-id second))))
+        (ekg-notes-refresh)
+        (should (eq ekg-notes--instance root))
+        (should (equal (ekg-notes-visible-ids)
+                       (list (ekg-note-id first) (ekg-note-id second))))))))
 
 (ekg-deftest-with-db ekg-test-notes-fold-preserves-window-start ()
   "Changing a note's state preserves the viewport and action target."
