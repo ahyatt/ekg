@@ -179,11 +179,12 @@ buffer's `major-mode'."
   "Return the tags relevant to prompting from NOTE and its ancestors."
   (let ((ekg-hidden-tags (ekg--hidden-tags-for (ekg-note-tags note))))
     (seq-uniq
-     (seq-remove
-      (lambda (tag) (equal tag ekg-llm-generated-tag))
+     (seq-difference
       (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
-              (seq-filter #'ekg-note-active-p
-                          (append (ekg-note-ancestors note) (list note))))))))
+              (append (seq-filter #'ekg-note-active-p
+                                  (ekg-note-ancestors note))
+                      (list note)))
+      (cons ekg-llm-generated-tag ekg-hidden-tags)))))
 
 (defun ekg-llm-prompt-tags ()
   "Return tags that occur on notes tagged with `ekg-llm-prompt-tag'."

@@ -72,6 +72,9 @@ if [[ ${#ADD_TAGS[@]} -eq 0 && ${#REMOVE_TAGS[@]} -eq 0 ]]; then
     exit 1
 fi
 
+NOTE_ID_ELISP="${NOTE_ID//\\/\\\\}"
+NOTE_ID_ELISP="${NOTE_ID_ELISP//\"/\\\"}"
+
 # Build add tags elisp list
 ADD_ELISP="("
 for tag in "${ADD_TAGS[@]}"; do
@@ -90,8 +93,9 @@ REMOVE_ELISP="${REMOVE_ELISP% })"
 
 ELISP_EXPR="(progn
   (require 'ekg)
+  (require 'ekg-agent)
   (ekg-connect)
-  (let ((note (ekg-get-note-with-id $NOTE_ID)))
+  (let ((note (ekg-agent--get-note-with-id \"$NOTE_ID_ELISP\")))
     (if note
         (progn
           (dolist (tag '$ADD_ELISP)
@@ -100,8 +104,8 @@ ELISP_EXPR="(progn
           (dolist (tag '$REMOVE_ELISP)
             (setf (ekg-note-tags note) (delete tag (ekg-note-tags note))))
           (ekg-save-note note)
-          (princ (format \"Updated note $NOTE_ID. Tags: %s\" (ekg-note-tags note))))
-      (princ \"Error: Note $NOTE_ID not found\"))))"
+          (princ (format \"Updated note %s. Tags: %s\" (ekg-note-id note) (ekg-note-tags note))))
+      (princ (format \"Error: Note %s not found\" \"$NOTE_ID_ELISP\")))))"
 
 EMACSCLIENT_CMD=("${EMACSCLIENT:-emacsclient}")
 if [[ -n "$DAEMON_NAME" ]]; then

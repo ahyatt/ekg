@@ -125,6 +125,9 @@ done
 TAGS_ELISP="${TAGS_ELISP% })"
 
 # Escape strings for elisp
+PARENT_ID_ELISP="${PARENT_ID//\\/\\\\}"
+PARENT_ID_ELISP="${PARENT_ID_ELISP//\"/\\\"}"
+
 TITLE_ELISP="${TITLE//\\/\\\\}"
 TITLE_ELISP="${TITLE_ELISP//\"/\\\"}"
 
@@ -154,10 +157,11 @@ done
 ELISP_EXPR="(progn
   (require 'ekg)
   (require 'ekg-org)
+  (require 'ekg-agent)
   (ekg-connect)
-  (let ((parent (ekg-get-note-with-id '$PARENT_ID)))
+  (let ((parent (ekg-agent--get-note-with-id \"$PARENT_ID_ELISP\")))
     (if (null parent)
-        (error \"Parent note %s not found\" '$PARENT_ID)
+        (error \"Parent note %s not found\" \"$PARENT_ID_ELISP\")
       (let* ((siblings (ekg-org-view--sorted-children (ekg-note-id parent)))
              (last-id (when siblings (ekg-note-id (car (last siblings)))))
              (order (if last-id (ekg-org-view--assign-order-after siblings last-id) 0))

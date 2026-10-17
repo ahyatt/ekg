@@ -1660,6 +1660,22 @@ result when the agent finishes."
     ;; A plan with a null parent root is rejected when planning under an existing task.
     (should-error
      (ekg-org-plan-import ekg-agent-test-plan--json nil (ekg-note-id parent)))
+    ;; Under a sequential parent (the default), a forward dependency from A to B is a cycle.
+    (should-error
+     (ekg-org-plan-import
+      (json-serialize
+       `(:version 1
+         :tasks [(:id ,(concat parent-id-str "-cycle-a")
+                  :parent ,parent-id-str
+                  :title "A" :content "First"
+                  :execution "sequential"
+                  :depends_on [,(concat parent-id-str "-cycle-b")]
+                  :tags [])
+                 (:id ,(concat parent-id-str "-cycle-b")
+                  :parent ,parent-id-str
+                  :title "B" :content "Second"
+                  :execution "parallel" :depends_on [] :tags [])]))
+      nil (ekg-note-id parent)))
     (let* ((ids (ekg-org-plan-import subplan-json nil (ekg-note-id parent)))
            (a (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-a") ids))))
            (b (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-b") ids)))))
@@ -2077,6 +2093,44 @@ result when the agent finishes."
         (should-not (member "parent-task-trash" topic-ids))
         (should-not (member "parent-task-draft" topic-ids))
         (should-not (member "parent-task-private" topic-ids)))
+      ;; Co-tagged prompt lookup on Org tasks keeps org/task prompts while excluding inactive ones.
+      (let ((org-prompt (ekg-note-create :id "org-prompt"
+                                         :text "Org task prompt"
+                                         :mode 'org-mode
+                                         :tags (list "org/task" ekg-llm-prompt-tag)))
+            (trashed-prompt (ekg-note-create :id "trashed-prompt"
+                                             :text "Trashed prompt"
+                                             :mode 'org-mode
+                                             :tags (list "topic" ekg-llm-prompt-tag))))
+        (ekg-save-note org-prompt)
+        (ekg-save-note trashed-prompt)
+        (ekg-note-trash trashed-prompt)
+        (let ((prompt-ids (mapcar #'ekg-note-id
+                                  (ekg-get-notes-cotagged-with-tags
+                                   (ekg-note-tags reloaded-parent)
+                                   ekg-llm-prompt-tag))))
+          (should (member "org-prompt" prompt-ids))
+          (should-not (member "trashed-prompt" prompt-ids))))
+      ;; Vector search over-fetches when initial hits are inactive.
+      (let ((active-note (ekg-note-create :id "active-note"
+                                          :text "Active regular note"
+                                          :mode 'org-mode
+                                          :tags '("topic")))
+            (ekg-vecdb-provider '(fake-provider . fake-collection))
+            (limits nil))
+        (ekg-save-note active-note)
+        (cl-letf (((symbol-function 'vecdb-search-by-vector)
+                   (lambda (_provider _collection _vector limit)
+                     (push limit limits)
+                     (seq-take (list (list :payload '(:ekg-id "\"parent-task-trash\""))
+                                     (list :payload '(:ekg-id "\"parent-task-draft\""))
+                                     (list :payload '(:ekg-id "\"active-note\"")))
+                               limit)))
+                  ((symbol-function 'vecdb-item-payload)
+                   (lambda (item) (plist-get item :payload))))
+          (should (equal (ekg-embedding-n-most-similar-notes [1.0] 1)
+                         '("active-note")))
+          (should (equal (nreverse limits) '(1 2 4)))))
       ;; Trashing the last live child removes :hierarchy/children completely.
       (ekg-note-trash live-child)
       (let ((empty-parent (ekg-get-note-with-id "parent-task")))

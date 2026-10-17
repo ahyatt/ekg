@@ -3155,7 +3155,9 @@ of the text of all these notes for all tags and tag parents, etc."
   (flatten-list (mapcar (lambda (tag)
                           (ekg-get-notes-with-tags (list tag cotag)))
                         (seq-mapcat #'ekg-tag-to-hierarchy
-                                    (seq-difference tags ekg-hidden-tags)))))
+                                    (seq-difference tags
+                                                    (list ekg-draft-tag
+                                                          ekg-trash-tag))))))
 
 (defun ekg-on-add-tag-insert-template (tag)
   "Look for templates for TAG, and insert into current buffer.

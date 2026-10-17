@@ -4203,6 +4203,12 @@ Dependencies name tasks that must finish before this task starts.")
     ;; children start after their group starts.  This catches dependency
     ;; cycles involving ancestor groups as well as ordinary task cycles.
     (cl-labels ((edge (a b) (puthash a (cons b (gethash a edges)) edges)))
+      (when (and parent-id
+                 (let ((parent (and ekg-db (ekg-get-note-with-id parent-id))))
+                   (or (null parent)
+                       (eq (ekg-org-dependency-type parent) 'sequential))))
+        (cl-loop for (a b) on (reverse roots) while b
+                 do (edge (cons a 'finish) (cons b 'start))))
       (dolist (task tasks)
         (let* ((id (gethash "id" task)) (kids (gethash id children)))
           (edge (cons id 'start) (cons id 'finish))
@@ -4229,22 +4235,22 @@ Dependencies name tasks that must finish before this task starts.")
   "Import version 1 plan JSON with TAGS under optional PARENT-ID.
 Return an alist mapping document task IDs to created note IDs.  All
 notes start as TODO.  Validate the whole graph before creating notes."
+  (unless (and (listp tags) (seq-every-p #'stringp tags))
+    (error "Tags must be a list of strings"))
+  (setq tags (delete "org/task" (mapcar #'ekg--normalize-tag tags)))
+  (when (seq-some (lambda (tag) (string-prefix-p "org/" tag)) tags)
+    (error "Plan tags must not override internal org tags"))
+  (ekg-connect)
+  (ekg-org-add-schema)
+  (when parent-id
+    (let ((parent (ekg-get-note-with-id parent-id)))
+      (unless (and parent (ekg-org--org-note-p parent))
+        (error "Parent %s is not an Org task" parent-id))))
   (let* ((plan (json-parse-string json :null-object nil :false-object :json-false))
          (tasks (ekg-org-plan--validate plan parent-id))
          (parent-key (when parent-id (format "%s" parent-id)))
          (notes (make-hash-table :test #'equal))
          result)
-    (unless (and (listp tags) (seq-every-p #'stringp tags))
-      (error "Tags must be a list of strings"))
-    (setq tags (delete "org/task" (mapcar #'ekg--normalize-tag tags)))
-    (when (seq-some (lambda (tag) (string-prefix-p "org/" tag)) tags)
-      (error "Plan tags must not override internal org tags"))
-    (ekg-connect)
-    (ekg-org-add-schema)
-    (when parent-id
-      (let ((parent (ekg-get-note-with-id parent-id)))
-        (unless (and parent (ekg-org--org-note-p parent))
-          (error "Parent %s is not an Org task" parent-id))))
     (dolist (task tasks)
       (let ((task-id (gethash "id" task))
             (task-tags (mapcar #'ekg--normalize-tag
@@ -4425,13 +4431,18 @@ Call CALLBACK once with the created ID mapping or an error message."
                                      (or parent-id "none") description status
                                      (llm-chat-prompt-interactions prompt))
                              :context
-                             (let ((id-prefix (format "%s" (or parent-id (ekg--generate-id)))))
+                             (let ((parent-key (when parent-id
+                                                 (format "%s" parent-id)))
+                                   (id-prefix (if parent-id
+                                                  (format "%s-%s" parent-id
+                                                          (ekg--generate-id))
+                                                (format "%s" (ekg--generate-id)))))
                                (concat ekg-agent-plan-instructions
                                        "\n\n"
-                                       (if parent-id
+                                       (if parent-key
                                            (format
                                             "Do not generate a top-level wrapper task for the task being planned. Instead, top-level tasks in the plan must be direct children of the existing task and set `parent` to %S.\n"
-                                            id-prefix)
+                                            parent-key)
                                          "Include a single root task with `parent` set to null, and make all other tasks descend from it.\n")
                                        (format
                                         "Prefix every task `id` with \"%s-\" (for example, \"%s-1\") so that task IDs are globally unique.\n"
