@@ -1608,6 +1608,8 @@ A placeholder shows where the new task will be inserted.  Use
   (interactive nil ekg-org-view-mode)
   (when ekg-org-view--archive
     (user-error "Create tasks in the active task view"))
+  ;; Commit any scheduled batch updates before caching insertion positions.
+  (vui-flush-sync)
   (let ((slots (ekg-org-view--build-insert-slots)))
     (if (null slots)
         ;; Empty view — just create a top-level task directly.
@@ -1719,6 +1721,7 @@ so this can run on `ekg-note-save-hook' and `ekg-note-delete-hook'."
          ((and ekg-org--inhibit-view-refresh ekg-notes--request-refresh)
           ;; Even when the user disables VUI's delay, wait until the
           ;; current batch has finished before showing its intermediate state.
+          (setq ekg-notes--hidden-ids nil)
           (let ((vui-render-delay (or vui-render-delay 0)))
             (funcall ekg-notes--request-refresh)))
          (t (ekg-org-view--refresh)))))))

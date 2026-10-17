@@ -930,6 +930,23 @@
         (should (get-text-property (point-min) 'ekg-test-retained))
         (should (string-match-p "After\nMore content" (buffer-string)))))))
 
+(ekg-deftest-with-db ekg-test-notes-kill-refreshes-retained-tree ()
+  "Hiding a note keeps VUI's regions valid for later refreshes."
+  (let ((first (ekg-note-create :text "First"))
+        (second (ekg-note-create :text "Second")))
+    (mapc #'ekg-save-note (list first second))
+    (with-temp-buffer
+      (ekg--show-notes "Notes" (lambda () (list first second)) nil)
+      (ekg-notes-refresh)
+      (let ((root ekg-notes--instance))
+        (ekg-notes--goto-id (ekg-note-id first))
+        (ekg-notes-kill)
+        (should (equal (ekg-notes-visible-ids) (list (ekg-note-id second))))
+        (ekg-notes-refresh)
+        (should (eq ekg-notes--instance root))
+        (should (equal (ekg-notes-visible-ids)
+                       (list (ekg-note-id first) (ekg-note-id second))))))))
+
 (ekg-deftest-with-db ekg-test-notes-fold-preserves-window-start ()
   "Changing a note's state preserves the viewport and action target."
   (let* ((first (ekg-note-create :text "Above\nUnchanged content" :tags '("fold")))

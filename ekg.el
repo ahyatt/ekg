@@ -1833,6 +1833,9 @@ displayed.")
 (defvar-local ekg-notes--request-refresh nil
   "VUI callback scheduling a refresh of this buffer's mounted notes.")
 
+(defvar-local ekg-notes--hidden-ids nil
+  "Note IDs hidden from the current view until its next refresh.")
+
 (defvar-local ekg-notes-hl nil
   "Highlight for the notes buffer.")
 
@@ -2477,10 +2480,9 @@ tags."
 Note is not deleted from the database and will reappear when the
 view is refreshed."
   (interactive nil ekg-notes-mode)
-  (when-let* ((region (ekg--note-region-at-point)))
-    (let ((inhibit-read-only t))
-      (delete-region (car region) (min (1+ (cdr region)) (point-max)))
-      (ekg--note-highlight))))
+  (when-let* ((id (get-text-property (point) :ekg-note-id)))
+    (push id ekg-notes--hidden-ids)
+    (ekg--notes-mount)))
 
 (defun ekg-notes-delete (arg)
   "Trash the current note.
@@ -2721,7 +2723,9 @@ Folded notes retain a title handle and hide their descendants."
         (collect note 0)))
     ;; A flat list lets VUI reconcile keyed note components and patch only
     ;; changed regions.  Indentation is already part of each note's text.
-    (setq rows (nreverse rows))
+    (setq rows (seq-remove
+                (lambda (row) (member (car row) ekg-notes--hidden-ids))
+                (nreverse rows)))
     (apply #'vui-fragment
            (cl-loop for tail on rows
                     for (id text depth state) = (car tail)
@@ -2766,7 +2770,10 @@ cursor always lands on a note."
     ;; the caller's windows; subsequent updates never switch buffers.
     (setq ekg-notes--instance
           (save-window-excursion
-            (vui-mount (vui-component 'ekg-notes-root) (buffer-name)))))
+            (vui-mount (vui-component 'ekg-notes-root) (buffer-name))))
+    ;; Notes use text prefixes and Emacs wrapping, not width-dependent VUI
+    ;; layouts.  A resize must not invalidate Org insertion placeholders.
+    (vui-cancel-rerender-on-resize))
   ekg-notes--instance)
 
 (defun ekg--show-notes (name notes-func tags)
@@ -2777,6 +2784,7 @@ NAME is displayed at the top of the buffer."
     (ekg-notes-mode))
   (setq-local ekg-notes-fetch-notes-function notes-func
               ekg-notes-name name
+              ekg-notes--hidden-ids nil
               ekg-notes-hl (if (and (overlayp ekg-notes-hl)
                                     (eq (overlay-buffer ekg-notes-hl)
                                         (current-buffer)))

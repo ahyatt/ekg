@@ -965,6 +965,28 @@ An agent saving a new note should cause the view to update automatically."
             (should (= (length (ekg-notes-visible-ids)) 2))
             (should (string-match-p "New child" (buffer-string)))))))))
 
+(ekg-deftest-with-db ekg-org-test-view-insert-flushes-pending-vui-render ()
+  "Insertion positions account for scheduled updates before showing a slot."
+  (ekg-org-add-schema)
+  (let ((vui-render-delay 10)
+        (parent (ekg-org-test--add-task "Parent")))
+    (save-window-excursion
+      (ekg-org-view)
+      (let ((ekg-org--inhibit-view-refresh t))
+        (ekg-org-test--add-task "Queued child" parent))
+      (unwind-protect
+          (progn
+            (ekg-org-view-create)
+            (should (string-match-p "Queued child" (buffer-string)))
+            (let ((text (buffer-string))
+                  (slots (copy-tree ekg-org-view--insert-slots)))
+              (ekg-org-test--add-task "Deferred child" parent)
+              (should ekg-org-view--refresh-pending)
+              (should (equal text (buffer-string)))
+              (should (equal slots ekg-org-view--insert-slots))))
+        (ekg-org-view--insert-cleanup))
+      (should (string-match-p "Deferred child" (buffer-string))))))
+
 (ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-delete ()
   "Test that the view refreshes when a note is deleted externally."
   (ekg-org-add-schema)
