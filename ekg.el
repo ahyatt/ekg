@@ -2912,7 +2912,13 @@ notes are created with additional tags TAGS."
   (let ((buf (get-buffer-create (format "*ekg %s*" name))))
     (set-buffer buf)
     (ekg--show-notes name notes-func tags)
-    (switch-to-buffer buf)))
+    (switch-to-buffer buf)
+    ;; Explicit navigation starts at the query's first result.  Background
+    ;; updates call `ekg-notes-refresh' directly and preserve their view.
+    (goto-char (point-min))
+    (set-window-start (selected-window) (point-min) t)
+    (set-window-vscroll (selected-window) 0 t)
+    (ekg--note-highlight)))
 
 (defun ekg-sort-by-creation-time (a b)
   "Used to pass to `sort', which will supply A and B."

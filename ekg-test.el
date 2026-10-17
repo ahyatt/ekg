@@ -930,6 +930,30 @@
         (should (get-text-property (point-min) 'ekg-test-retained))
         (should (string-match-p "After\nMore content" (buffer-string)))))))
 
+(ekg-deftest-with-db ekg-test-latest-captured-selects-new-note ()
+  "Background refresh retains point; explicitly opening latest shows newest."
+  (save-window-excursion
+    (delete-other-windows)
+    (ekg-capture)
+    (insert "First captured note")
+    (setf (ekg-note-creation-time ekg-note) 1)
+    (ekg-capture-finalize)
+    (ekg-show-notes-latest-captured)
+    (let ((first (ekg-note-id (ekg-current-note-or-error))))
+      (ekg-capture)
+      (insert "Second captured note")
+      (setf (ekg-note-creation-time ekg-note) 2)
+      (let ((second (ekg-note-id ekg-note)))
+        (ekg-capture-finalize)
+        ;; Saving updates the existing view without changing its selection.
+        (should (equal (ekg-notes-visible-ids) (list second first)))
+        (should (equal (ekg-note-id (ekg-current-note-or-error)) first))
+        (ekg-show-notes-latest-captured)
+        ;; An explicit navigation command must bring the newest note into view.
+        (should (equal (ekg-note-id (ekg-current-note-or-error)) second))
+        (should (= (window-start) (point-min)))
+        (should (= (point) (point-min)))))))
+
 (ekg-deftest-with-db ekg-test-notes-kill-refreshes-retained-tree ()
   "Hiding a note keeps VUI's regions valid for later refreshes."
   (let ((first (ekg-note-create :text "First"))
