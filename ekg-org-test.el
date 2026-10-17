@@ -571,6 +571,31 @@ Returns the note ID."
     (ekg-org-view-move-down))
   (should (equal (ekg-org-test--view-titles) '("Second" "First" "Third"))))
 
+(ekg-deftest-with-db ekg-org-test-view-reorder-after-warm-refresh ()
+  "Reordering warmed VUI components keeps their rendered regions valid."
+  (ekg-org-add-schema)
+  (let ((first (ekg-org-test--add-task "First"))
+        (second (ekg-org-test--add-task "Second with a longer title")))
+    (save-window-excursion
+      (ekg-org-view)
+      (let ((root ekg-notes--instance))
+        (dolist (move '(ekg-org-view-move-up ekg-org-view-move-down
+                        ekg-org-view-move-up ekg-org-view-move-down))
+          ;; The first refresh establishes VUI's incremental render record.
+          (ekg-org-view-refresh)
+          (ekg-org-view--goto-note-id second)
+          (funcall move)
+          (should (eq ekg-notes--instance root))
+          (should (equal (ekg-notes-visible-ids)
+                         (if (eq move #'ekg-org-view-move-up)
+                             (list second first)
+                           (list first second))))
+          (let ((rendered (buffer-string)))
+            (with-temp-buffer
+              (ekg-org-view-mode)
+              (ekg-org-view--refresh)
+              (should (equal-including-properties rendered (buffer-string))))))))))
+
 (ekg-deftest-with-db ekg-org-test-view-move-up-at-top ()
   "Test that moving up at the top position is a no-op."
   (ekg-org-add-schema)
