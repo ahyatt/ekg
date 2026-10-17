@@ -106,8 +106,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            # If it's a number, treat it as a note ID
-            if [[ "$1" =~ ^[0-9]+$ ]]; then
+            if [[ "$1" != -* && -z "$NOTE_ID" ]]; then
                 NOTE_ID="$1"
                 MODE="id"
                 shift
@@ -157,7 +156,9 @@ case $MODE in
         ;;
 
     id)
-        READ_EXPR="(ekg-agent-read-notes :note-id $NOTE_ID :max-words $MAX_WORDS)"
+        NOTE_ID_ELISP="${NOTE_ID//\\/\\\\}"
+        NOTE_ID_ELISP="${NOTE_ID_ELISP//\"/\\\"}"
+        READ_EXPR="(ekg-agent-read-notes :note-id \"$NOTE_ID_ELISP\" :max-words $MAX_WORDS)"
         ;;
 
     semantic)

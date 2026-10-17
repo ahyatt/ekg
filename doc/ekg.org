@@ -1719,8 +1719,8 @@ items done, and review your task list as part of its autonomous operation.
 The =create_org_plan= agent tool takes =description= (the goal and its
 constraints) and =tags= (topic tags applied to every created task).  It first
 runs a research agent with note/file/web read tools, but no =ask_user= tool.
-Tasks requiring user action receive ~ekg-agent-org-user-response-tag~
-(default =org/needs-user-response=).  The user can answer question tasks with
+Tasks planned for the user to do receive ~ekg-agent-org-user-task-tag~
+(default =org/user-task=).  The user can answer question tasks with
 a child response note.  When questions exist,
 the plan includes a follow-up task to incorporate those responses, revise the
 plan, and update the original task note.  This follow-up is a task to execute,
@@ -1777,8 +1777,8 @@ prerequisites, stored as multi-valued =:org/depends-on= note IDs.  Thus each
 task has one display parent but may have multiple execution prerequisites.
 The per-task =tags= array is required in newly generated plans but optional
 when importing older version 1 JSON.  It adds task-specific topic tags; the
-only allowed internal tag is ~ekg-agent-org-user-response-tag~ (default
-=org/needs-user-response=).  Use it for any task requiring user action.  For a
+only allowed internal tag is ~ekg-agent-org-user-task-tag~ (default
+=org/user-task=).  Use it for any task planned for the user to do.  For a
 question, ask the user to add a child response note, and make work that
 requires the answer depend on that task.
 The importer rejects cycles, including those implied by sequential groups and
@@ -1819,7 +1819,7 @@ full child notes, task properties, working directory (including inherited
 They verify the work and set the task to DONE, or record a blocker and set
 WAITING, without asking questions.
 If user clarification, action, or review is needed, they also add
-~ekg-agent-org-user-response-tag~ (default =org/needs-user-response=) and
+~ekg-agent-org-user-task-tag~ (default =org/user-task=) and
 record what is needed on the task.
 
 For Codex, configure:
@@ -1938,7 +1938,7 @@ with =ekg-agent-cancel-daily=.
 
 The agent uses specific tags to organize its work:
 - ~ekg-agent-author-tag~ (default "agent"): All notes created by the agent will have this tag.
-- ~ekg-agent-org-user-response-tag~ (default "org/needs-user-response"): Org tasks requiring user action have this tag.
+- ~ekg-agent-org-user-task-tag~ (default "org/user-task"): Org tasks planned for the user to do have this tag.
 - ~ekg-agent-self-info-tag~ (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
 
 You can customize these tags if you prefer different names.

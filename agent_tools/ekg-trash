@@ -57,13 +57,20 @@ if [[ -z "$NOTE_ID" ]]; then
     exit 1
 fi
 
+NOTE_ID_ELISP="${NOTE_ID//\\/\\\\}"
+NOTE_ID_ELISP="${NOTE_ID_ELISP//\"/\\\"}"
+
 ELISP_EXPR="(progn
   (require 'ekg)
   (ekg-connect)
-  (let ((note (ekg-get-note-with-id $NOTE_ID)))
+  (let* ((id \"$NOTE_ID_ELISP\")
+         (note (or (ekg-get-note-with-id id)
+                   (when (string-match-p \"\\\\\`[0-9]+\\\\'\" id)
+                     (ekg-get-note-with-id (string-to-number id)))
+                   (ekg-get-note-with-id (intern id)))))
     (if note
-        (progn (ekg-note-trash note) (princ \"Trashed note $NOTE_ID\"))
-      (princ \"Error: Note $NOTE_ID not found\"))))"
+        (progn (ekg-note-trash note) (princ (format \"Trashed note %s\" (ekg-note-id note))))
+      (princ (format \"Error: Note %s not found\" id)))))"
 
 EMACSCLIENT_CMD=("${EMACSCLIENT:-emacsclient}")
 if [[ -n "$DAEMON_NAME" ]]; then
