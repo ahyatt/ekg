@@ -2155,7 +2155,9 @@ result when the agent finishes."
               (dolist (script '("ekg-org-edit" "ekg-update-tags" "ekg-read"))
                 (should (file-executable-p (expand-file-name script tools-directory)))))
             (let ((ekg-agent-org-execution-backend 'code-command))
-              (ekg-agent-org-run-task))
+              (cl-letf (((symbol-function 'ekg-agent--agents-md-context)
+                         (lambda () (ert-fail "External execution read AGENTS.md"))))
+                (ekg-agent-org-run-task)))
             ;; Read the actual subprocess input back through cat, rather
             ;; than mocking the command runner or invoking an LLM.
             (let ((deadline (+ (float-time) 5)))
@@ -2166,12 +2168,16 @@ result when the agent finishes."
             (let ((output (with-current-buffer output-buffer (buffer-string))))
               (should (eq (buffer-local-value 'ekg-agent--execution-status output-buffer)
                           'finished))
-              (should (string-match-p (regexp-quote context) output))
+              (should (string-match-p "Run the project's verification command."
+                                      context))
+              (should-not (string-match-p "Run the project's verification command."
+                                          output))
+              (should-not (string-match-p "User instructions from AGENTS.md files:"
+                                          output))
               (dolist (text '("Parent requirements"
                               "Implement and verify the requested fix"
                               "Detailed acceptance criteria" "ORDERED"
                               "Use the project formatter before finishing."
-                              "Run the project's verification command."
                               "ekg-org-edit" "--status DONE" "--status WAITING"
                               "Never ask the user questions"
                               "org/custom-review" "user clarification, action, or review"

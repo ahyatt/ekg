@@ -1815,7 +1815,9 @@ the backend selected by ~ekg-agent-org-execution-backend~: =ekg-agent= (the
 default) or =code-command= to execute with ~ekg-agent-code-command~.
 Both receive the task hierarchy,
 full child notes, task properties, working directory (including inherited
-=DIR=), co-tagged ~ekg-llm-prompt-tag~ instructions, and =AGENTS.md= context.
+=DIR=), and co-tagged ~ekg-llm-prompt-tag~ instructions.  The built-in agent
+also receives =AGENTS.md= context; external coding agents load their own
+project instructions.
 They verify the work and set the task to DONE, or record a blocker and set
 WAITING, without asking questions.
 If user clarification, action, or review is needed, they also add
@@ -1831,10 +1833,19 @@ For Codex, configure:
       ekg-agent-code-command-prompt-method 'stdin)
 #+end_src
 
-This command allows Codex to execute without approval prompts or sandbox
-restrictions.  Start an Emacs server with =M-x server-start= first; the external
+For Claude Code, configure:
+
+#+begin_src emacs-lisp
+(setq ekg-agent-org-execution-backend 'code-command
+      ekg-agent-code-command "claude --print --dangerously-skip-permissions"
+      ekg-agent-code-command-prompt-method 'stdin)
+#+end_src
+
+These commands run non-interactively and bypass permission prompts; the Codex
+command also disables its sandbox.  Start an Emacs server with
+=M-x server-start= first; the external
 agent uses the bundled EKG CLI scripts to read notes, record progress, and
-update task status in that Emacs.  External execution requires Codex's own
+update task status in that Emacs.  External execution requires the agent's own
 authentication, but no ~ekg-llm-provider~ or Emacs API key.
 
 Each execution has a separate buffer named =*ekg task <id>: <title>*=;

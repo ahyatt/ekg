@@ -213,7 +213,9 @@ This should be a shell-style command string (for example, \"claude -p
 --dangerously-skip-permissions\").  The prompt is passed according to
 `ekg-agent-code-command-prompt-method'; stdout will be returned.
 Use a non-interactive command.  For Codex, for example:
-\"codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -\"."
+\"codex exec --dangerously-bypass-approvals-and-sandbox
+--skip-git-repo-check -\".
+For Claude Code: \"claude --print --dangerously-skip-permissions\"."
   :type '(choice (const :tag "Unset" nil) string)
   :group 'ekg-agent)
 
@@ -4848,7 +4850,8 @@ External execution requires a running Emacs server for the EKG CLI tools."
                      (concat "\nFull child notes:\n"
                              (ekg-agent--notes-to-json children)))
                    (or prompt-context "")
-                   (ekg-agent--agents-md-context)
+                   (unless (eq ekg-agent-org-execution-backend 'code-command)
+                     (ekg-agent--agents-md-context))
                    "\n\n"
                    (format "The current date and time is %s." (format-time-string "%F %R"))))
          (question (concat
