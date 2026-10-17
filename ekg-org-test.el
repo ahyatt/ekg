@@ -571,6 +571,32 @@ Returns the note ID."
     (ekg-org-view-move-down))
   (should (equal (ekg-org-test--view-titles) '("Second" "First" "Third"))))
 
+(ekg-deftest-with-db ekg-org-test-view-reorder-after-warm-refresh ()
+  "Reordering warmed VUI components keeps their rendered regions valid."
+  (ekg-org-add-schema)
+  (let ((first (ekg-org-test--add-task "First"))
+        (second (ekg-org-test--add-task "Second with a longer title")))
+    (save-window-excursion
+      (ekg-org-view)
+      (let ((root ekg-notes--instance))
+        (dolist (move '(ekg-org-view-move-up ekg-org-view-move-down
+                        ekg-org-view-move-up ekg-org-view-move-down))
+          ;; The first refresh establishes VUI's incremental render record.
+          (ekg-org-view-refresh)
+          (ekg-org-view--goto-note-id second)
+          (funcall move)
+          (should vui-incremental-render)
+          (should (eq ekg-notes--instance root))
+          (should (equal (ekg-notes-visible-ids)
+                         (if (eq move #'ekg-org-view-move-up)
+                             (list second first)
+                           (list first second))))
+          (let ((rendered (buffer-string)))
+            (with-temp-buffer
+              (ekg-org-view-mode)
+              (ekg-org-view--refresh)
+              (should (equal-including-properties rendered (buffer-string))))))))))
+
 (ekg-deftest-with-db ekg-org-test-view-move-up-at-top ()
   "Test that moving up at the top position is a no-op."
   (ekg-org-add-schema)
@@ -901,6 +927,91 @@ An agent saving a new note should cause the view to update automatically."
     (should (= (length titles) 2))
     (should (member "Agent Task" titles))
     (should (member "Initial Task" titles))))
+
+(ekg-deftest-with-db ekg-org-test-view-refresh-preserves-windows ()
+  "Background insertions and edits retain independent points and viewports."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent))
+         (later (ekg-org-test--add-task "Later")))
+    (save-window-excursion
+      (delete-other-windows)
+      (ekg-org-view)
+      (let* ((view (current-buffer))
+             (first (selected-window))
+             (second (split-window-right)))
+        (ekg-org-view--goto-note-id parent)
+        (set-window-start first (point) t)
+        (ekg-org-view--goto-note-id child)
+        (forward-char 2)
+        (set-window-point first (point))
+        (let ((saved-point (point))
+              (saved-start (window-start first)))
+          (ekg-org-view--goto-note-id later)
+          (set-window-start second (point) t)
+          (set-window-point second (+ (point) 3))
+          (goto-char saved-point)
+          ;; Save from a different buffer, as an asynchronous callback does.
+          (with-temp-buffer
+            (ekg-org-test--add-task "New child" parent)
+            (let ((note (ekg-get-note-with-id child)))
+              (setf (ekg-note-text note) "New body\nWith more lines")
+              (ekg-save-note note)))
+          (should (= (window-start first) saved-start))
+          (should (= (window-point first) saved-point))
+          (with-current-buffer view
+            (should (member "New child" (ekg-org-test--view-titles))))
+          (with-current-buffer view
+            (let ((later-start (text-property-any
+                                (point-min) (point-max) :ekg-note-id later)))
+              (should (= (window-start second) later-start))
+              (should (= (window-point second) (+ later-start 3)))))
+          (ekg-org-view--goto-note-id parent)
+          (set-window-start first (point) t)
+          (let ((start (window-start first)))
+            (ekg-org-view-add-child "Interactive child")
+            (should (= (window-start first) start))))))))
+
+(ekg-deftest-with-db ekg-org-test-view-insertion-refreshes-other-views ()
+  "Inhibited insertions update focused views through VUI's scheduler."
+  (ekg-org-add-schema)
+  (dolist (vui-render-delay '(nil 0.01))
+    (let ((parent (ekg-org-test--add-task "Parent")))
+      (save-window-excursion
+        (ekg-org-view-task parent)
+        (let ((focused (current-buffer)))
+          (ekg-org-view)
+          (ekg-org-view--goto-note-id parent)
+          (ekg-org-view-add-child "New child")
+          (with-current-buffer focused
+            ;; The current view was flushed by the command; the other view's
+            ;; state update is still queued on its own VUI root.
+            (should (= (length (ekg-notes-visible-ids)) 1))
+            (vui-flush-sync)
+            (should (= (length (ekg-notes-visible-ids)) 2))
+            (should (string-match-p "New child" (buffer-string)))))))))
+
+(ekg-deftest-with-db ekg-org-test-view-insert-flushes-pending-vui-render ()
+  "Insertion positions account for scheduled updates before showing a slot."
+  (ekg-org-add-schema)
+  (let ((vui-render-delay 10)
+        (parent (ekg-org-test--add-task "Parent")))
+    (save-window-excursion
+      (ekg-org-view)
+      (let ((ekg-org--inhibit-view-refresh t))
+        (ekg-org-test--add-task "Queued child" parent))
+      (unwind-protect
+          (progn
+            (ekg-org-view-create)
+            (should (string-match-p "Queued child" (buffer-string)))
+            (let ((text (buffer-string))
+                  (slots (copy-tree ekg-org-view--insert-slots)))
+              (ekg-org-test--add-task "Deferred child" parent)
+              (should ekg-org-view--refresh-pending)
+              (should (equal text (buffer-string)))
+              (should (equal slots ekg-org-view--insert-slots))))
+        (ekg-org-view--insert-cleanup))
+      (should (string-match-p "Deferred child" (buffer-string))))))
 
 (ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-delete ()
   "Test that the view refreshes when a note is deleted externally."

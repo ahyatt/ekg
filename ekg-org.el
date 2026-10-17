@@ -38,9 +38,9 @@
 (defvar ekg-agent-org-tool-list-items)
 
 (defvar ekg-org--inhibit-view-refresh nil
-  "When non-nil, suppress `ekg-org-view' refreshes from save hooks.
+  "When non-nil, defer `ekg-org-view' refreshes from save hooks.
 Bind this around batch operations that save multiple notes; call
-`ekg-org-view--refresh' once afterward.")
+`ekg-org-view--refresh-all' once afterward to refresh synchronously.")
 
 (defconst ekg-org-state-tag-prefix "org/state/"
   "Prefix for EKG tags representing Org TODO states.")
@@ -914,16 +914,16 @@ When insert mode is active, defer the refresh until insert mode ends."
       ;; refreshes retain folds and select the nearest visible ancestor.
       (when target-id
         (ekg-notes--unfold-ids ancestors))
-      (ekg--show-notes (if ekg-org-view--archive "Archived tasks" "Org tasks")
-                       #'ekg-org-view--fetch-notes nil)
-      (when (and restore-id
-                 (seq-some #'ekg-org-view--goto-note-id
-                           (cons restore-id (reverse ancestors))))
+      (ekg--show-notes
+       (if ekg-org-view--archive "Archived tasks" "Org tasks")
+       #'ekg-org-view--fetch-notes nil)
+      (when (or (null target-id)
+                (seq-some #'ekg-org-view--goto-note-id
+                          (cons restore-id (reverse ancestors))))
         (let ((windows (get-buffer-window-list (current-buffer) nil t)))
           (dolist (win windows)
-            (set-window-point win (point))
-            (unless (pos-visible-in-window-p (point) win)
-              (with-selected-window win (recenter))))
+            (when (eq win (selected-window))
+              (set-window-point win (point))))
           ;; When the buffer is not visible, update the saved point in
           ;; each window's prev-buffer history so that `quit-window'
           ;; restores point to the right heading.
@@ -1609,6 +1609,8 @@ A placeholder shows where the new task will be inserted.  Use
   (interactive nil ekg-org-view-mode)
   (when ekg-org-view--archive
     (user-error "Create tasks in the active task view"))
+  ;; Commit any scheduled batch updates before caching insertion positions.
+  (vui-flush-sync)
   (let ((slots (ekg-org-view--build-insert-slots)))
     (if (null slots)
         ;; Empty view — just create a top-level task directly.
@@ -1706,16 +1708,24 @@ timestamp in the note's `:org/deadline' property."
 
 (defun ekg-org-view--refresh-all (&rest _args)
   "Refresh all live `ekg-org-view-mode' buffers.
-Does nothing when `ekg-org--inhibit-view-refresh' is non-nil.
-Accepts and ignores arguments so it can be used directly on
-`ekg-note-save-hook' and `ekg-note-delete-hook'."
-  (unless ekg-org--inhibit-view-refresh
-    (dolist (buf (buffer-list))
-      (when (and (buffer-live-p buf)
-                 (with-current-buffer buf
-                   (derived-mode-p 'ekg-org-view-mode)))
-        (with-current-buffer buf
-          (ekg-org-view--refresh))))))
+During inhibited batches, let VUI coalesce updates to each mounted
+view.  Other saves refresh synchronously.  Accept and ignore arguments
+so this can run on `ekg-note-save-hook' and `ekg-note-delete-hook'."
+  (dolist (buf (buffer-list))
+    (when (and (buffer-live-p buf)
+               (with-current-buffer buf
+                 (derived-mode-p 'ekg-org-view-mode)))
+      (with-current-buffer buf
+        (cond
+         (ekg-org-view--insert-overlay
+          (setq ekg-org-view--refresh-pending t))
+         ((and ekg-org--inhibit-view-refresh ekg-notes--request-refresh)
+          ;; Even when the user disables VUI's delay, wait until the
+          ;; current batch has finished before showing its intermediate state.
+          (setq ekg-notes--hidden-ids nil)
+          (let ((vui-render-delay (or vui-render-delay 0)))
+            (funcall ekg-notes--request-refresh)))
+         (t (ekg-org-view--refresh)))))))
 
 (define-derived-mode ekg-org-view-mode ekg-notes-mode "EKG-Org"
   "Major mode for viewing ekg org tasks in a hierarchical view.

@@ -1686,6 +1686,42 @@ result when the agent finishes."
       (should (= (length (ekg-org-get-child-notes-of-id
                           (ekg-note-id parent))) 2)))))
 
+(ekg-deftest-with-db ekg-agent-test-plan-import-refreshes-views ()
+  "A committed plan updates existing task views without moving its parent."
+  (ekg-org-add-schema)
+  (ekg-agent-org--save-item "Before" "Earlier task" nil nil nil nil nil)
+  (let* ((parent (ekg-agent-org--save-item "Parent" "Body" nil
+                                          nil nil nil nil))
+         (parent-id-str (format "%s" parent))
+         (subplan-json
+          (json-serialize
+           `(:version 1
+             :tasks [(:id ,(concat parent-id-str "-a")
+                      :parent ,parent-id-str
+                      :title "A" :content "First"
+                      :execution "sequential" :depends_on [] :tags [])
+                     (:id ,(concat parent-id-str "-b")
+                      :parent ,parent-id-str
+                      :title "B" :content "Second"
+                      :execution "parallel"
+                      :depends_on [,(concat parent-id-str "-a")]
+                      :tags [])]))))
+    (save-window-excursion
+      (ekg-org-view-task parent)
+      (let ((focused (current-buffer)))
+        (ekg-org-view)
+        (ekg-org-view--goto-note-id parent)
+        (set-window-start (selected-window) (point) t)
+        (let ((start (window-start))
+              (pos (point)))
+          (with-temp-buffer
+            (ekg-org-plan-import subplan-json nil parent))
+          (should (= (window-start) start))
+          (should (= (point) pos))
+          (should (= (length (ekg-notes-visible-ids)) 4))
+          (with-current-buffer focused
+            (should (= (length (ekg-notes-visible-ids)) 3))))))))
+
 (ekg-deftest-with-db ekg-agent-test-plan-import-under-task-with-existing-children ()
   (ekg-org-add-schema)
   (let* ((parent (ekg-note-create
