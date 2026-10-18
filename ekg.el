@@ -2839,10 +2839,16 @@ fetched results are shown."
      "This EKG notes buffer is missing its refresh function; recreate it"))
   (ekg--show-notes ekg-notes-name ekg-notes-fetch-notes-function ekg-notes-tags))
 
+(defvar-local ekg-notes-create-function #'ekg-capture
+  "Function used to capture a note from the current notes view.
+Called with the keyword argument :tags containing `ekg-notes-tags'.
+Specialized queries can supply capture defaults while sharing the
+normal capture editor and its save and abort commands.")
+
 (defun ekg-notes-create ()
   "Add a note that by default has all the tags in the buffer."
   (interactive nil ekg-notes-mode)
-  (ekg-capture :tags ekg-notes-tags))
+  (funcall ekg-notes-create-function :tags ekg-notes-tags))
 
 (defun ekg--notes-find-note-start (pos direction)
   "From POS, find the start of a note in DIRECTION (:forward or :backward).

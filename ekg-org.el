@@ -236,13 +236,10 @@ active, unarchived, tasks."
      (lambda (note)
        (and (ekg-note-active-p note)
             (ekg-note-is-content-p note)
-            (let ((props (ekg-note-properties note)))
-              (and
-               (plist-get props :titled/title)
-               (let ((tags (ekg-note-tags note)))
-                 (if archive
-                     (member ekg-org-archive-tag tags)
-                   (not (member ekg-org-archive-tag tags))))))))
+            (let ((tags (ekg-note-tags note)))
+              (if archive
+                  (member ekg-org-archive-tag tags)
+                (not (member ekg-org-archive-tag tags))))))
      (delq nil (mapcar #'ekg-get-note-with-id top-ids)))))
 
 (defun ekg-org-get-child-notes-of-id (id)
@@ -279,7 +276,7 @@ PARENT is the parent org-element node."
   (let* ((props (ekg-note-properties note))
          (task-p (ekg-org--org-note-p note))
          (title (or (ekg-org--note-title note)
-                    (if task-p (plist-get props :titled/title) "Response")))
+                    (if task-p "Untitled task" "Response")))
          (id (format "%s" (ekg-note-id note)))
          (state (when task-p (ekg-org--state note)))
          (deadline (let ((d (plist-get props :org/deadline)))
@@ -990,6 +987,37 @@ When insert mode is active, defer the refresh until insert mode ends."
                          (ekg-note-id (car (last children)))))
        title))))
 
+(cl-defun ekg-org-view--capture (&key tags parent)
+  "Capture a task with TAGS in the normal note editor.
+PARENT, when non-nil, is the parent task.  Otherwise create a root,
+regardless of the selected task or focused view.  Do not write any
+task or reorder siblings until the capture is saved."
+  (when ekg-org-view--archive
+    (user-error "Create tasks in the active task view"))
+  (when (and parent (member ekg-org-archive-tag (ekg-note-tags parent)))
+    (user-error "Cannot create tasks under an archived parent"))
+  (let* ((state (or (car (seq-difference (ekg-org--todo-keywords)
+                                       (ekg-org--done-keywords)))
+                    (user-error "No unfinished TODO keyword is configured")))
+         (siblings (if parent
+                       (ekg-org-view--sorted-children (ekg-note-id parent))
+                     (ekg-org-view--sorted-top-level)))
+         (order (1+ (apply #'max -1
+                          (mapcar #'ekg-org-view--sort-order siblings)))))
+    (ekg-capture
+     :mode 'org-mode
+     :tags (append (list ekg-org-task-tag
+                         (concat ekg-org-state-tag-prefix (downcase state)))
+                   tags (when parent (ekg-org-view--visible-tags parent)))
+     :properties (append (list :org/sort-order order)
+                         (when parent
+                           (list :hierarchy/parent (ekg-note-id parent)))))))
+
+(defun ekg-org-view-capture-child ()
+  "Capture a child task in the normal note editor."
+  (interactive nil ekg-org-view-mode)
+  (ekg-org-view--capture :parent (ekg-org-view--require-task-at-point)))
+
 (defun ekg-org-view-set-dependency-type (dependency-type)
   "Set the dependency mode of the task's children.
 DEPENDENCY-TYPE is either `sequential' or `parallel'.  Sequential
@@ -1669,21 +1697,14 @@ timestamp in the note's `:org/deadline' property."
 
 (defvar ekg-org-view-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "n") #'ekg-org-view-next-heading)
-    (define-key map (kbd "p") #'ekg-org-view-previous-heading)
     (define-key map (kbd "f") #'ekg-org-view-next-sibling)
-    (define-key map (kbd "b") #'ekg-org-view-previous-sibling)
     (define-key map (kbd "u") #'ekg-org-view-up-heading)
-    (define-key map (kbd "t") #'ekg-org-view-cycle-state)
     (define-key map (kbd "C-c C-t") #'ekg-org-view-cycle-state)
     (define-key map (kbd "x") #'ekg-org-view-toggle-done)
-    (define-key map (kbd "+") #'ekg-org-view-add-child)
+    (define-key map (kbd "+") #'ekg-org-view-capture-child)
     (define-key map (kbd "?") #'describe-mode)
-    (define-key map (kbd "a") #'ekg-org-view-archive)
-    (define-key map (kbd "d") #'ekg-org-view-delete)
-    (define-key map (kbd "c") #'ekg-org-view-create)
-    (define-key map (kbd "RET") #'ekg-org-view-open-note)
-    (define-key map (kbd "o") #'ekg-org-view-open-note)
+    (define-key map (kbd "C-c C-a") #'ekg-org-view-archive)
+    (define-key map (kbd "RET") #'ekg-notes-open)
     (define-key map (kbd "<backtab>") #'ekg-org-view-toggle-all)
     (define-key map (kbd "S-<tab>") #'ekg-org-view-toggle-all)
     (define-key map (kbd "S-TAB") #'ekg-org-view-toggle-all)
@@ -1691,11 +1712,9 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "L") #'ekg-org-view-promote)
     (define-key map (kbd "l") #'ekg-org-view-promote)
     (define-key map (kbd "R") #'ekg-org-view-demote)
-    (define-key map (kbd "r") #'ekg-org-view-demote)
     (define-key map (kbd "U") #'ekg-org-view-move-up)
     (define-key map (kbd "D") #'ekg-org-view-move-down)
     (define-key map (kbd "w") #'ekg-org-view-refile)
-    (define-key map (kbd "g") #'ekg-org-view-refresh)
     (define-key map (kbd "C-c C-s") #'ekg-org-set-schedule)
     (define-key map (kbd "C-c C-d") #'ekg-org-set-deadline)
     map)
@@ -1734,6 +1753,7 @@ so this can run on `ekg-note-save-hook' and `ekg-note-delete-hook'."
 
 \\{ekg-org-view-mode-map}"
   (setq-local ekg-notes-children-function #'ekg-org-view--children
+              ekg-notes-create-function #'ekg-org-view--capture
               ekg-notes-include-descendants t
               ekg-notes-show-child-count nil
               ekg-display-note-template

@@ -1621,12 +1621,28 @@ To open the view, call =ekg-org-view=.  For archived tasks, call
 
 The view refreshes automatically whenever any ekg note is saved, so changes
 made by you, by an agent, or by the command-line tools are reflected
-immediately.  Refreshes preserve folding and selection.  Creating or moving a
-task beneath a folded parent reveals the task so you can continue acting on it.
+immediately.  Refreshes preserve folding and selection.  Use =TAB= to reveal
+newly captured children beneath a folded parent.  Moving an existing task
+beneath a folded parent reveals the task so you can continue acting on it.
 
-The keybindings are modeled after org-mode's speed keys (the single-letter
-shortcuts available when point is at the beginning of a headline).  In this
-view they act on the current note, including when point is in its body.
+Task views inherit the normal notes UI and its keybindings.  Navigation,
+opening, tagging, responding, browsing, trashing, folding, and refresh work
+the same way as in any notes list.  Task-specific commands extend that UI
+without changing the meaning of its existing keys.
+
+Press =c= to capture a new top-level task, even when a nested task is selected.
+Press =+= to capture a child of the selected task.  Both open the normal capture
+editor in Org mode with task tags and the first unfinished TODO state supplied
+automatically.  Enter the body and edit metadata as for any note; save with
+=C-c C-c= or abort with =C-c C-k=.  There is no separate positioning step.
+Titles are optional, as for other notes.  Untitled tasks still appear in the
+view and are exported to Org with an =Untitled task= heading.
+New tasks append to their siblings.  A root created from a focused subtree is
+outside that query; use =ekg-org-view= to see all roots.  Use =w= to refile a task
+after capture, including moving it to the top level.
+
+The older visual placement command remains available via
+=M-x ekg-org-view-create= for experiments with arbitrary insertion positions.
 
 **** Navigation
 
@@ -1634,34 +1650,36 @@ The following keybindings are available in =ekg-org-view-mode=:
 
 | Key     | Command                          | Description                       |
 |---------+----------------------------------+-----------------------------------|
-| =n=     | =ekg-org-view-next-heading=      | Move to the next note             |
-| =p=     | =ekg-org-view-previous-heading=  | Move to the previous note         |
+| =n=     | =ekg-notes-next=                | Move to the next note             |
+| =p=     | =ekg-notes-previous=            | Move to the previous note         |
 | =f=     | =ekg-org-view-next-sibling=      | Move to the next same-level note  |
-| =b=     | =ekg-org-view-previous-sibling=  | Move to the previous same-level note |
 | =u=     | =ekg-org-view-up-heading=        | Move to the parent note           |
 
 **** Actions
 
 | Key     | Command                          | Description                       |
 |---------+----------------------------------+-----------------------------------|
-| =t= / =C-c C-t= | =ekg-org-view-cycle-state= | Choose the TODO state           |
+| =C-c C-t= | =ekg-org-view-cycle-state=   | Choose the TODO state           |
 | =x=     | =ekg-org-view-toggle-done=       | Complete or reopen the task       |
-| =+=     | =ekg-org-view-add-child=         | Append a child task               |
+| =+=     | =ekg-org-view-capture-child=     | Capture a child task               |
 | =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
 | =C-c C-x p= | =ekg-org-view-set-property=  | Set a task property; with prefix, remove it |
 | =TAB=   | =ekg-notes-toggle-collapse=   | Cycle full content, titles, folded |
 | =S-TAB= | =ekg-org-view-toggle-all=        | Fold all roots or expand all notes |
-| =RET= / =o= | =ekg-org-view-open-note=     | Open the note for editing in ekg  |
-| =c=     | =ekg-org-view-create=            | Enter insertion mode to create a new task |
-| =C-c C-r= | =ekg-org-view-respond=         | Capture a response to the task at point |
-| =a=     | =ekg-org-view-archive=           | Archive the task at point         |
-| =d=     | =ekg-org-view-delete=            | Trash (soft-delete) the task      |
+| =RET= / =o= | =ekg-notes-open=            | Open the note for editing in ekg  |
+| =c=     | =ekg-notes-create=              | Capture a top-level task          |
+| =r=     | =ekg-notes-respond=             | Capture a Markdown response       |
+| =t=     | =ekg-notes-tag=                 | Show notes with a selected tag    |
+| =a=     | =ekg-notes-any-note-tags=       | Show notes sharing this note's tags |
+| =b=     | =ekg-notes-browse=              | Browse the note's resource        |
+| =C-c C-a= | =ekg-org-view-archive=         | Archive the task and descendants  |
+| =d=     | =ekg-notes-delete=              | Trash the current note            |
 | =L= / =l= | =ekg-org-view-promote=         | Promote: make task a sibling of its parent |
-| =R= / =r= | =ekg-org-view-demote=          | Demote: make task a child of its previous sibling |
+| =R=     | =ekg-org-view-demote=          | Demote: make task a child of its previous sibling |
 | =U=     | =ekg-org-view-move-up=           | Move task up (swap with previous sibling) |
 | =D=     | =ekg-org-view-move-down=         | Move task down (swap with next sibling) |
 | =w=     | =ekg-org-view-refile=            | Refile task to a new location in hierarchy |
-| =g=     | =ekg-org-view-refresh=           | Manually refresh the view         |
+| =g=     | =ekg-notes-refresh=             | Manually refresh the view         |
 | =C-c C-s= | =ekg-org-set-schedule=         | Set the scheduled date of current task |
 | =C-c C-d= | =ekg-org-set-deadline=         | Set the deadline of current task  |
 | =?=     | =describe-mode=                 | Show available commands           |
