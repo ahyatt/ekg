@@ -2545,6 +2545,60 @@ These complement the general @samp{ekg-add-note} and @samp{ekg-read} scripts.  S
 @node Agent
 @section Agent
 
+To execute the task at point@comma{} use @samp{M-x ekg-agent-org-run-task}.  This runs
+the backend selected by @code{ekg-agent-org-execution-backend}: @samp{ekg-agent} (the
+default) or @samp{code-command} to execute with @code{ekg-agent-code-command}.
+Both receive the task hierarchy@comma{}
+full child notes@comma{} task properties@comma{} working directory (including inherited
+@samp{DIR})@comma{} and co-tagged @code{ekg-llm-prompt-tag} instructions.  The built-in agent
+also receives @samp{AGENTS.md} context; external coding agents load their own
+project instructions.
+They verify the work and set the task to DONE@comma{} or record a blocker and set
+WAITING@comma{} without asking questions.
+If user clarification@comma{} action@comma{} or review is needed@comma{} they also add
+@code{ekg-agent-org-user-task-tag} (default @samp{org/user-task}) and
+record what is needed on the task.
+
+For Codex@comma{} configure:
+
+@lisp
+(setq ekg-agent-org-execution-backend 'code-command
+      ekg-agent-code-command
+      "codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -"
+      ekg-agent-code-command-prompt-method 'stdin)
+@end lisp
+
+For Claude Code@comma{} configure:
+
+@lisp
+(setq ekg-agent-org-execution-backend 'code-command
+      ekg-agent-code-command "claude --print --dangerously-skip-permissions"
+      ekg-agent-code-command-prompt-method 'stdin)
+@end lisp
+
+These commands run non-interactively and bypass permission prompts; the Codex
+command also disables its sandbox.  Start an Emacs server with
+@samp{M-x server-start} first; the external
+agent uses the bundled EKG CLI scripts to read notes@comma{} record progress@comma{} and
+update task status in that Emacs.  External execution requires the agent's own
+authentication@comma{} but no @code{ekg-llm-provider} or Emacs API key.
+
+Each execution has a separate buffer named @samp{*ekg task <id>: <title>*};
+the built-in agent also includes the task ID in its log buffer name.
+The buffer-local variable @code{ekg-agent-task-id} associates the buffer with its
+task@comma{} without storing transient buffer names in the database.  Use
+@samp{M-x ekg-agent-org-show-execution} from a task to find its most recent execution
+buffer@comma{} or @samp{C-c C-o} in an execution buffer to open the associated task.
+
+External execution buffers stream standard output and error as the command
+produces them.  The header shows process state and elapsed time.  A successful
+process exit means the command finished; the task's status is managed by the
+agent.  Use @samp{C-c C-k} to stop that buffer's external process@comma{} record the
+interruption on its task@comma{} and leave the task WAITING@.  Killing a running
+execution buffer also stops its process.  Other executions are unaffected.
+The built-in agent retains its existing cancellation and continuation commands.
+The coding tool remains available for delegation from the built-in agent.
+
 The @samp{ekg-agent} module provides an autonomous agent that can help you with your
 notes.  This agent can review your notes and org-mode agenda@comma{} searching across
 notes by embeddings or tags as appropriate@comma{} and proactively create new notes to
