@@ -26,7 +26,7 @@ EKG is a notetaking application for Emacs, which stores everything in SQLite in
 a triples database (a dependency of this package).
 
 All functionality is documented in the file `//doc/ekg.org`, which should be
-consulted before changing anything.
+consulted before changing anything.  This file should be changed for most user-visible changes.
 
 ## Data Model
 
@@ -125,4 +125,5 @@ Uses `triples` library for RDF-like storage in SQLite:
 - All code follows standard Emacs Lisp conventions with `lexical-binding: t`
 - All code in this package is designed for distribution to other users, so
   nothing can depend on a specific emacs setup.
-* PR descriptions should be a clear title, and only a short description of what was done and why.  No testing notes.
+- Changes in `doc/ekg.org` must be also exported to texinfo using `M-x org-texinfo-export-to-texinfo`.
+- PR descriptions should be a clear title, and only a short description of what was done and why.  No testing notes.
