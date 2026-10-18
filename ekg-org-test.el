@@ -32,7 +32,7 @@
   (ekg-org-add-schema)
   (ekg-org-test--add-task "Task")
   (ekg-org-view)
-  (dolist (key '("c" "n" "p" "o" "r" "t" "a" "b" "d" "g" "TAB"))
+  (dolist (key '("c" "n" "p" "o" "RET" "r" "t" "a" "b" "d" "g" "TAB"))
     (should (eq (key-binding (kbd key))
                 (lookup-key ekg-notes-mode-map (kbd key)))))
   (should (eq (key-binding (kbd "C-c C-t")) #'ekg-org-view-cycle-state))

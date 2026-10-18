@@ -1117,7 +1117,7 @@ also given):
 @samp{ekg-notes-tag} (@samp{t})@comma{} open another notes buffer showing notes with one of the
 tags of current note.
 
-@samp{ekg-notes-open} (@samp{o})@comma{} edit the currently selected note.
+@samp{ekg-notes-open} (@samp{o} or @samp{RET})@comma{} edit the currently selected note.
 
 @samp{ekg-notes-respond} (@samp{r})@comma{} capture a Markdown response to the currently
 selected note.  Responses can themselves have responses and inherit the

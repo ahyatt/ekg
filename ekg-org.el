@@ -1704,7 +1704,6 @@ timestamp in the note's `:org/deadline' property."
     (define-key map (kbd "+") #'ekg-org-view-capture-child)
     (define-key map (kbd "?") #'describe-mode)
     (define-key map (kbd "C-c C-a") #'ekg-org-view-archive)
-    (define-key map (kbd "RET") #'ekg-notes-open)
     (define-key map (kbd "<backtab>") #'ekg-org-view-toggle-all)
     (define-key map (kbd "S-<tab>") #'ekg-org-view-toggle-all)
     (define-key map (kbd "S-TAB") #'ekg-org-view-toggle-all)

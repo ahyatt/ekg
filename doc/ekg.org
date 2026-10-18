@@ -608,7 +608,7 @@ also given):
 =ekg-notes-tag= (=t=), open another notes buffer showing notes with one of the
 tags of current note.
 
-=ekg-notes-open= (=o=), edit the currently selected note.
+=ekg-notes-open= (=o= or =RET=), edit the currently selected note.
 
 =ekg-notes-respond= (=r=), capture a Markdown response to the currently
 selected note.  Responses can themselves have responses and inherit the

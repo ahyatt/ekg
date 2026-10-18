@@ -1585,6 +1585,7 @@ STATE is the note's display state."
     (define-key map (kbd "TAB") #'ekg-notes-toggle-collapse)
     (define-key map "n" #'ekg-notes-next)
     (define-key map "o" #'ekg-notes-open)
+    (define-key map (kbd "RET") #'ekg-notes-open)
     (define-key map "b" #'ekg-notes-browse)
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
