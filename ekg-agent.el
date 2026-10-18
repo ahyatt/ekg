@@ -235,6 +235,13 @@ involves, which will be read along with the parents (so no need to
 restate things), and a goal: an end-state that should be achieved before
 the task is done.
 
+Each task runs in a fresh agent session that sees only the task
+hierarchy, not the research conversation.  Make each task description
+self-contained: name the specific files, functions, and interfaces to
+modify, the existing codebase patterns to follow, what is out of scope
+so sibling tasks do not overlap, and the concrete test or edge cases and
+exact verification command to run.
+
 Each task must be substantial.  Less tasks are better than more.  Create
 tasks only when the work is significant and complex, and different than
 other tasks.  There may be no tasks to create in some circumstances.
@@ -2397,34 +2404,40 @@ MAX-RESULTS is capped at 20."
            (:name "max_results" :type integer
                   :description "Maximum search results to return.  Defaults to 8; capped at 20." :optional t))))
 
-(defconst ekg-agent-base-tools
+(defconst ekg-agent-read-only-tools
   (list
    ekg-agent-tool-all-tags
    ekg-agent-tool-any-tags
    ekg-agent-tool-get-note-by-id
    ekg-agent-tool-search-notes
    ekg-agent-tool-list-tags
-   ekg-agent-tool-append-to-note
-   ekg-agent-tool-replace-note
-   ekg-agent-tool-create-note
-   ekg-agent-tool-summarize-state
-   ekg-agent-tool-subagent
-   ekg-agent-tool-ask-user
    ekg-agent-tool-read-agents-md
    ekg-agent-tool-read-file
-   ekg-agent-tool-edit-file
-   ekg-agent-tool-write-file
    ekg-agent-tool-list-buffers
    ekg-agent-tool-read-buffer
    ekg-agent-tool-search-buffer
-   ekg-agent-tool-edit-buffer
-   ekg-agent-tool-run-interactive-command
    ekg-agent-tool-web-browse
    ekg-agent-tool-web-search
    ekg-agent-tool-emacs-help-symbol
    ekg-agent-tool-emacs-help-search
    ekg-agent-tool-emacs-info-node
    ekg-agent-tool-emacs-info-search)
+  "List of read-only tools available to the agent.")
+
+(defconst ekg-agent-base-tools
+  (append
+   ekg-agent-read-only-tools
+   (list
+    ekg-agent-tool-append-to-note
+    ekg-agent-tool-replace-note
+    ekg-agent-tool-create-note
+    ekg-agent-tool-summarize-state
+    ekg-agent-tool-subagent
+    ekg-agent-tool-ask-user
+    ekg-agent-tool-edit-file
+    ekg-agent-tool-write-file
+    ekg-agent-tool-edit-buffer
+    ekg-agent-tool-run-interactive-command))
   "List of base tools available to the agent.
 These tools are necessary for basic agent functionality.")
 
@@ -4390,29 +4403,28 @@ Call CALLBACK once with the created ID mapping or an error message."
             (llm-make-chat-prompt
              description
              :context
-             (concat "Research a task plan. Inspect the relevant files and "
-                     "notes yourself now so the plan is based on concrete "
+             (concat "Research a task plan. Inspect the relevant files, symbols, "
+                     "and notes yourself now so the plan is based on concrete "
                      "findings rather than deferring code auditing or "
-                     "environment discovery into planned tasks. Do not "
-                     "ask the user questions directly, execute tasks, or create "
-                     "notes. Identify unresolved questions and other actions "
-                     "requiring the user in your research summary. The final "
-                     "plan will turn them into tasks "
+                     "environment discovery into planned tasks. Do not ask the "
+                     "user questions directly, execute tasks, or create notes. "
+                     "Only record genuine ambiguities, tradeoffs, or actions "
+                     "requiring human judgment (with concrete options and "
+                     "tradeoffs) as unresolved questions—never questions "
+                     "answerable from the codebase or notes. The final plan "
+                     "will turn them into tasks "
                      (format "tagged %s, so the user can act or answer "
                              ekg-agent-org-user-task-tag)
                      "with a response note. Do not include meta-instructions "
                      "(such as reading AGENTS.md or recording executables/"
                      "versions) in the requirements. Finish by calling "
-                     "finish_plan_research with requirements, decisions, and "
-                     "unresolved questions."
+                     "finish_plan_research with requirements, decisions, "
+                     "files/functions/patterns to follow, verification commands, "
+                     "and unresolved questions."
                      (format "\nWorking directory: %s" default-directory)
                      (ekg-agent--agents-md-context))
-             :tools (list ekg-agent-tool-all-tags ekg-agent-tool-any-tags
-                          ekg-agent-tool-get-note-by-id
-                          ekg-agent-tool-search-notes ekg-agent-tool-list-tags
-                          ekg-agent-tool-read-file ekg-agent-tool-web-search
-                          ekg-agent-tool-web-browse
-                          ekg-agent-org-tool-list-items end-tool))))
+             :tools (append ekg-agent-read-only-tools
+                            (list ekg-agent-org-tool-list-items end-tool)))))
       (condition-case err
           (ekg-agent--iterate
            prompt 0
@@ -4450,8 +4462,10 @@ Call CALLBACK once with the created ID mapping or an error message."
                                         "Prefix every task `id` with \"%s-\" (for example, \"%s-1\") so that task IDs are globally unique.\n"
                                         id-prefix id-prefix)
                                        (format
-                                        "If you need a human to do work, such as answer a design question, or
-perform an action an agent cannot, tag the task with the %s tag."
+                                        "If you need a human to do work, such as answer a design or tradeoff
+question that cannot be resolved from the codebase, or perform an action
+an agent cannot, tag the task with the %s tag, state the options and
+tradeoffs in its content, and make dependent tasks list it in `depends_on`."
                                         ekg-agent-org-user-task-tag)))
                              :response-format ekg-org-plan-schema
                              :reasoning reasoning :non-standard-params parameters)
@@ -4616,6 +4630,9 @@ which ends the agent session.  No human input is required."
                     (format "Execute the following task: '%s' (note id: %s).\n\n" title task-id)
                     "Complete this task using the tools available to you. "
                     "You should NOT ask the user for input. Work autonomously.\n\n"
+                    "Before finishing, run the task's verification steps or tests "
+                    "(fixing root causes rather than suppressing errors) and check "
+                    "your changes against the requirements and edge cases.\n\n"
                     "When you are done, you MUST call the `set_org_item_status` tool to "
                     "set this task's status (typically to DONE, or WAITING if blocked). "
                     "Calling `set_org_item_status` will end your session.\n\n"

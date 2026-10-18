@@ -1869,8 +1869,15 @@ result when the agent finishes."
               (should-not (member "ask_user" names))
               (should-not (member "add_org_item" names))
               (should-not (member "run_elisp" names))
+              (should-not (member "run_subagent" names))
+              (should (member "emacs_help_symbol" names))
+              (should (member "emacs_help_search" names))
+              (should (member "search_buffer" names))
               (should (string-match-p
                        "unresolved questions"
+                       (llm-chat-prompt-context prompt)))
+              (should (string-match-p
+                       "verification commands"
                        (llm-chat-prompt-context prompt))))
             (funcall (llm-tool-function
                       (car (last (llm-chat-prompt-tools prompt))))
