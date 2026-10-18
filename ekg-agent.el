@@ -3320,7 +3320,7 @@ Return non-nil when a naming request was scheduled."
   "Write current agent prompt and log state to FILE as JSON.
 When FILE is nil, write to a new temporary file.  Return the file
 path.  The command is intended to be run from an agent log buffer."
-  (interactive)
+  (interactive nil ekg-agent-log-mode)
   (let* ((path (or file (make-temp-file "ekg-agent-debug-" nil ".json")))
          (payload (ekg-agent--debug-session-to-json))
          (coding-system-for-write 'utf-8-unix)
@@ -3629,7 +3629,8 @@ session.  At iteration 0 the log buffer is created and
 (defun ekg-agent-continue (message)
   "Continue the agent from where it left off.
 Prompts for a MESSAGE with additional instructions for the agent."
-  (interactive (list (read-string "Instructions for agent: ")))
+  (interactive (list (read-string "Instructions for agent: "))
+               ekg-agent-log-mode)
   (unless ekg-agent--prompt
     (user-error "No agent prompt available to continue"))
   (when ekg-agent--running-p
@@ -3660,7 +3661,7 @@ Prompts for a MESSAGE with additional instructions for the agent."
   "Cancel the current agent run, preserving the prompt for continuation.
 The agent will stop after the current in-flight LLM call completes.
 Use \\[ekg-agent-continue] to resume."
-  (interactive)
+  (interactive nil ekg-agent-log-mode)
   (unless ekg-agent--running-p
     (user-error "No agent is currently running"))
   (setq ekg-agent--cancelled-p t)
@@ -3672,7 +3673,7 @@ Use \\[ekg-agent-continue] to resume."
 Unlike `ekg-agent-cancel', which waits for the current operation to
 finish, this immediately kills the LLM request and any tool
 subprocesses.  Use \\[ekg-agent-continue] to resume."
-  (interactive)
+  (interactive nil ekg-agent-log-mode)
   (unless ekg-agent--running-p
     (user-error "No agent is currently running"))
   (setq ekg-agent--cancelled-p t)
@@ -4625,7 +4626,8 @@ Returns text in Org format, as if they were in an Org file."
 
 (defun ekg-agent-org-plan-task ()
   "Plan the current task and add the plan as child tasks using the agent."
-  (interactive)
+  (interactive nil ekg-org-view-mode ekg-notes-mode
+               ekg-capture-mode ekg-edit-mode)
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (parent-id (ekg-note-id ekg-note))
          (parent-note (ekg-get-note-with-id parent-id))
@@ -4649,7 +4651,9 @@ Returns text in Org format, as if they were in an Org file."
 
 (defun ekg-agent-org-show-execution ()
   "Show the most recent execution buffer associated with the current task."
-  (interactive)
+  (interactive nil ekg-org-view-mode ekg-notes-mode
+               ekg-capture-mode ekg-edit-mode
+               ekg-agent-org-execution-mode ekg-agent-log-mode)
   (let* ((id (or ekg-agent-task-id
                  (ekg-note-id (ekg-current-note-or-error-expanded))))
          (database (or ekg-agent--execution-db ekg-db))
@@ -4670,7 +4674,7 @@ Returns text in Org format, as if they were in an Org file."
 
 (defun ekg-agent-org-execution-show-task ()
   "Open the task associated with this execution buffer."
-  (interactive)
+  (interactive nil ekg-agent-org-execution-mode ekg-agent-log-mode)
   (unless ekg-agent-task-id (user-error "No task associated with this buffer"))
   (let ((ekg-db ekg-agent--execution-db))
     (ekg-org-view-task ekg-agent-task-id)))
@@ -4699,7 +4703,7 @@ Returns text in Org format, as if they were in an Org file."
 (defun ekg-agent-org-execution-cancel ()
   "Stop this buffer's external process and record interruption on its task.
 The task is left WAITING.  Other task executions are unaffected."
-  (interactive)
+  (interactive nil ekg-agent-org-execution-mode)
   (unless (eq ekg-agent--execution-status 'running)
     (user-error "No external task execution is running in this buffer"))
   (ekg-agent-org--execution-finish 'cancelled "Interrupted by user")
@@ -4810,7 +4814,8 @@ which ends the agent session.  No human input is required.
 `ekg-agent-org-execution-backend' selects the built-in agent or
 `ekg-agent-code-command'.  External execution needs no LLM provider or API key.
 External execution requires a running Emacs server for the EKG CLI tools."
-  (interactive)
+  (interactive nil ekg-org-view-mode ekg-notes-mode
+               ekg-capture-mode ekg-edit-mode)
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (task-id (ekg-note-id ekg-note))
          (note (ekg-get-note-with-id task-id))
