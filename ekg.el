@@ -2470,10 +2470,16 @@ are saved before opening the response buffer."
                  :properties (list :hierarchy/parent
                                    (ekg-note-id parent)))))
 
+(defvar-local ekg-notes-respond-function #'ekg-respond-to-note
+  "Function used to capture a child of the selected note.
+Called with the parent note.  By default capture a Markdown response;
+specialized views can supply another kind of child capture.")
+
 (defun ekg-notes-respond ()
-  "Capture a Markdown response to the note at point."
+  "Capture a child of the note at point.
+Use `ekg-notes-respond-function', normally a Markdown response capture."
   (interactive nil ekg-notes-mode)
-  (ekg-respond-to-note (ekg-current-note-or-error)))
+  (funcall ekg-notes-respond-function (ekg-current-note-or-error)))
 
 (defun ekg-notes-tag (&optional tag)
   "Show notes associated with TAG.

@@ -612,7 +612,8 @@ tags of current note.
 
 =ekg-notes-respond= (=r=), capture a Markdown response to the currently
 selected note.  Responses can themselves have responses and inherit the
-thread's topical tags.
+thread's topical tags.  In a task view, responding to a task captures a
+child task instead.
 
 =ekg-llm-notes-respond= (=.=, when =ekg-llm= is loaded), ask the configured
 LLM to respond to the currently selected note.  The command always prompts for
@@ -1631,7 +1632,8 @@ the same way as in any notes list.  Task-specific commands extend that UI
 without changing the meaning of its existing keys.
 
 Press =c= to capture a new top-level task, even when a nested task is selected.
-Press =+= to capture a child of the selected task.  Both open the normal capture
+Press =r= to capture a child of the selected task (=+= is an alias).  Both
+creation actions open the normal capture
 editor in Org mode with task tags and the first unfinished TODO state supplied
 automatically.  Enter the body and edit metadata as for any note; save with
 =C-c C-c= or abort with =C-c C-k=.  There is no separate positioning step.
@@ -1640,6 +1642,9 @@ view and are exported to Org with an =Untitled task= heading.
 New tasks append to their siblings.  A root created from a focused subtree is
 outside that query; use =ekg-org-view= to see all roots.  Use =w= to refile a task
 after capture, including moving it to the top level.
+
+On an ordinary response note, =r= continues to capture a Markdown response.
+Use =C-c C-r= to capture a Markdown discussion response directly to a task.
 
 The older visual placement command remains available via
 =M-x ekg-org-view-create= for experiments with arbitrary insertion positions.
@@ -1668,7 +1673,8 @@ The following keybindings are available in =ekg-org-view-mode=:
 | =S-TAB= | =ekg-org-view-toggle-all=        | Fold all roots or expand all notes |
 | =RET= / =o= | =ekg-notes-open=            | Open the note for editing in ekg  |
 | =c=     | =ekg-notes-create=              | Capture a top-level task          |
-| =r=     | =ekg-notes-respond=             | Capture a Markdown response       |
+| =r=     | =ekg-notes-respond=             | Capture a child task or respond to an ordinary note |
+| =C-c C-r= | =ekg-org-view-respond=         | Capture a Markdown discussion response |
 | =t=     | =ekg-notes-tag=                 | Show notes with a selected tag    |
 | =a=     | =ekg-notes-any-note-tags=       | Show notes sharing this note's tags |
 | =b=     | =ekg-notes-browse=              | Browse the note's resource        |

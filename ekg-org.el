@@ -1018,6 +1018,12 @@ task or reorder siblings until the capture is saved."
   (interactive nil ekg-org-view-mode)
   (ekg-org-view--capture :parent (ekg-org-view--require-task-at-point)))
 
+(defun ekg-org-view--capture-response (note)
+  "Capture a child task of task NOTE, or a response to an ordinary note."
+  (if (ekg-org--org-note-p note)
+      (ekg-org-view--capture :parent note)
+    (ekg-respond-to-note note)))
+
 (defun ekg-org-view-set-dependency-type (dependency-type)
   "Set the dependency mode of the task's children.
 DEPENDENCY-TYPE is either `sequential' or `parallel'.  Sequential
@@ -1753,6 +1759,7 @@ so this can run on `ekg-note-save-hook' and `ekg-note-delete-hook'."
 \\{ekg-org-view-mode-map}"
   (setq-local ekg-notes-children-function #'ekg-org-view--children
               ekg-notes-create-function #'ekg-org-view--capture
+              ekg-notes-respond-function #'ekg-org-view--capture-response
               ekg-notes-include-descendants t
               ekg-notes-show-child-count nil
               ekg-display-note-template
