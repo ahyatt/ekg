@@ -125,3 +125,4 @@ Uses `triples` library for RDF-like storage in SQLite:
 - All code follows standard Emacs Lisp conventions with `lexical-binding: t`
 - All code in this package is designed for distribution to other users, so
   nothing can depend on a specific emacs setup.
+* PR descriptions should be a clear title, and only a short description of what was done and why.  No testing notes.
