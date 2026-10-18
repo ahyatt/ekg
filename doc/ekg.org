@@ -74,6 +74,7 @@ triples library is already installed.
 #+end_src
 * Changelog
 ** Version 0.10.0
+- Fix tag embedding refresh and synchronous embedding generation with =vecdb=.
 - Add generic parent-child relationships between notes.  Note lists display
   these relationships hierarchically.
 - Store LLM output as separate Markdown response notes tagged

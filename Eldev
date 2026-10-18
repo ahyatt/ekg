@@ -12,3 +12,4 @@
 (eldev-add-extra-dependencies 'test 'futur)
 (eldev-add-extra-dependencies 'test 'llm-test)
 (eldev-add-extra-dependencies 'test 'vui)
+(eldev-add-extra-dependencies 'test 'vecdb)
