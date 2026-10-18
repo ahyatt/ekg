@@ -175,7 +175,7 @@ wait for the embedding to return and be set."
                               (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))))
     (if (ekg-embedding-valid-p embedding)
         (if ekg-vecdb-provider
-            (ekg-embedding-batch-store
+            (ekg-embedding-batch-store-vecdb
              (list (ekg-embedding--note-to-embed-item note embedding)))
           (triples-set-type ekg-db (ekg-note-id note) 'embedding
                             :embedding embedding))
@@ -286,7 +286,7 @@ embeddings of notes with the given tag."
                     (seq-filter #'ekg-embedding-valid-p embeddings))))
           (if (ekg-embedding-valid-p avg)
               (if ekg-vecdb-provider
-                  (ekg-embedding-batch-store
+                  (ekg-embedding-batch-store-vecdb
                    (list (ekg-embedding--note-to-embed-item
                           (ekg-get-note-with-id tag) avg)))
                 (triples-set-type ekg-db tag 'embedding :embedding avg))

@@ -25,6 +25,7 @@
 ;;; Code:
 (require 'ekg)
 (require 'ekg-embedding)
+(require 'vecdb)
 (require 'ert)
 (require 'ert-x)
 (require 'org)
@@ -702,15 +703,67 @@
         ;; The good note's embedding should still be retrievable.
         (should (ekg-embedding-valid-p (ekg-embedding-get (ekg-note-id good-note))))))))
 
+(ekg-deftest-with-db ekg-test-embedding-refresh-tag-vecdb ()
+  "Tag averages and repaired note embeddings are stored in vecdb."
+  (let* ((ekg-vecdb-provider (cons :provider :collection))
+         (ekg-embedding-provider 'fake)
+         (items (make-hash-table :test #'equal))
+         (first (ekg-note-create :text "first" :mode 'text-mode
+                                 :tags '("agent")))
+         (second (ekg-note-create :text "second" :mode 'text-mode
+                                  :tags '("agent"))))
+    (ekg-save-note first)
+    (ekg-save-note second)
+    (cl-letf (((symbol-function 'vecdb-exists)
+               (lambda (_provider _collection) t))
+              ((symbol-function 'vecdb-get-item)
+               (lambda (_provider _collection id) (gethash id items)))
+              ((symbol-function 'vecdb-upsert-items)
+               (lambda (provider collection batch &optional _sync)
+                 (should (eq provider :provider))
+                 (should (eq collection :collection))
+                 (dolist (item batch)
+                   (puthash (vecdb-item-id item) item items))))
+              ((symbol-function 'llm-embedding)
+               (lambda (_provider _text) [0.2 0.4])))
+      ;; Exercise both existing embeddings and synchronous repair of a
+      ;; missing embedding during tag refresh.
+      (dolist (missing '(nil t))
+        (clrhash items)
+        (ekg-embedding-batch-store-vecdb
+         (list (ekg-embedding--note-to-embed-item first [0.4 0.8])))
+        (unless missing
+          (ekg-embedding-batch-store-vecdb
+           (list (ekg-embedding--note-to-embed-item second [0.2 0.4]))))
+        (ekg-embedding-refresh-tag-embedding "agent")
+        (let ((average (ekg-embedding-get "agent")))
+          (should (vectorp average))
+          (should (< (abs (- (aref average 0) 0.3)) 0.000001))
+          (should (< (abs (- (aref average 1) 0.6)) 0.000001)))
+        (should (equal (ekg-embedding-note-get second) [0.2 0.4]))
+        (should (equal
+                 (vecdb-item-payload
+                  (gethash (ekg-embedding-id-to-embed-id "agent") items))
+                 '(:ekg-id "\"agent\"")))))))
+
+(ekg-deftest-with-db ekg-test-embedding-generate-sync-sqlite ()
+  "Synchronous generation still stores embeddings in SQLite without vecdb."
+  (let ((ekg-vecdb-provider nil)
+        (ekg-embedding-provider 'fake)
+        (note (ekg-note-create :text "note" :mode 'text-mode)))
+    (ekg-save-note note)
+    (cl-letf (((symbol-function 'llm-embedding)
+               (lambda (_provider _text) [0.2 0.4])))
+      (ekg-embedding-generate-for-note-sync note)
+      (should (equal (ekg-embedding-note-get note) [0.2 0.4])))))
+
 (ekg-deftest ekg-test-embedding-get-vecdb-returns-vector ()
   "When using vecdb, `ekg-embedding-get' returns the vector, not the struct."
   (let* ((ekg-vecdb-provider (cons :provider :collection))
          (expected-vector [0.1 0.2 0.3])
-         (fake-item :fake-item))
+         (fake-item (make-vecdb-item :id 1 :vector expected-vector)))
     (cl-letf (((symbol-function 'vecdb-get-item)
-               (lambda (_provider _collection _embed-id) fake-item))
-              ((symbol-function 'vecdb-item-vector)
-               (lambda (_item) expected-vector)))
+               (lambda (_provider _collection _embed-id) fake-item)))
       (should (equal (ekg-embedding-get 'note-id) expected-vector)))))
 
 (ekg-deftest ekg-test-embedding-get-vecdb-returns-nil-when-missing ()

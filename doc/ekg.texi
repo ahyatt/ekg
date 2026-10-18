@@ -276,6 +276,8 @@ triples library is already installed.
 
 @itemize
 @item
+Fix tag embedding refresh and synchronous embedding generation with @samp{vecdb}.
+@item
 Add generic parent-child relationships between notes.  Note lists display
 these relationships hierarchically.
 @item
