@@ -1383,8 +1383,9 @@ ARG is the prefix argument, if used it opens in another window."
                                    (markdown-wiki-link-link))))
     (markdown-follow-thing-at-point arg)))
 
-(defun ekg--set-local-variables ()
-  "Set some common local variables."
+(defun ekg--set-local-variables (&optional defer-header)
+  "Set common editing variables, deferring the header with DEFER-HEADER.
+Capture setup defers the header until its hooks have initialized the note."
   (setq-local
    default-directory (ekg--notes-directory)
    completion-at-point-functions
@@ -1393,8 +1394,9 @@ ARG is the prefix argument, if used it opens in another window."
            completion-at-point-functions)
    kill-buffer-query-functions
    (append (list #'ekg--kill-buffer-query-function)
-           kill-buffer-query-functions)
-   header-line-format (ekg--header-line-format))
+           kill-buffer-query-functions))
+  (unless defer-header
+    (setq-local header-line-format (ekg--header-line-format)))
 
   (when (eq major-mode 'markdown-mode)
     (setq-local markdown-enable-wiki-links t
@@ -1433,7 +1435,7 @@ This is used when capturing new notes.")
   :init-value nil
   :lighter " EKG-CAP"
   :interactive nil
-  (ekg--set-local-variables))
+  (ekg--set-local-variables t))
 
 (defvar ekg-capture-mode-hook nil
   "Hook for `ekg-capture-mode'.")
@@ -1585,6 +1587,7 @@ STATE is the note's display state."
     (define-key map (kbd "TAB") #'ekg-notes-toggle-collapse)
     (define-key map "n" #'ekg-notes-next)
     (define-key map "o" #'ekg-notes-open)
+    (define-key map (kbd "RET") #'ekg-notes-open)
     (define-key map "b" #'ekg-notes-browse)
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
@@ -1920,7 +1923,10 @@ If ID is given, force the triple subject to be that value."
           (wrong-type-argument (message "Problem showing image for note ID %s (content: \"%s\")"
                                         id (ekg-truncate-at text 10)))))
     (set-buffer-modified-p nil)
-    (pop-to-buffer buf)))
+    (pop-to-buffer buf)
+    ;; Hooks and function tags may change metadata; format it only afterward.
+    (setq header-line-format (ekg--header-line-format))
+    buf))
 
 ;;;###autoload
 (defun ekg-capture-url (&optional url title)
@@ -2447,11 +2453,12 @@ intended to be used in any context where a note might be available."
                (error "No task at point"))))
       (error "No current note found in context")))
 
-(defun ekg-respond-to-note (&optional note)
+(defun ekg-respond-to-note (&optional note tags)
   "Capture a Markdown response to NOTE.
 When NOTE is nil, use the note being edited or the note at point
 in an `ekg-notes-mode' buffer.  Unsaved edits to an existing note
-are saved before opening the response buffer."
+are saved before opening the response buffer.  TAGS supplies additional
+capture defaults, such as the tags of the notes view being used."
   (interactive)
   (let ((parent
          (or note
@@ -2465,14 +2472,14 @@ are saved before opening the response buffer."
     (unless (ekg-note-with-id-exists-p (ekg-note-id parent))
       (user-error "Save the note before responding to it"))
     (ekg-capture :mode 'markdown-mode
-                 :tags (ekg-response-inherited-tags parent)
+                 :tags (append tags (ekg-response-inherited-tags parent))
                  :properties (list :hierarchy/parent
                                    (ekg-note-id parent)))))
 
 (defun ekg-notes-respond ()
-  "Capture a Markdown response to the note at point."
+  "Capture a child of the note at point with the current view's tags."
   (interactive nil ekg-notes-mode)
-  (ekg-respond-to-note (ekg-current-note-or-error)))
+  (ekg-respond-to-note (ekg-current-note-or-error) ekg-notes-tags))
 
 (defun ekg-notes-tag (&optional tag)
   "Show notes associated with TAG.
@@ -2783,7 +2790,7 @@ cursor always lands on a note."
           (save-window-excursion
             (vui-mount (vui-component 'ekg-notes-root) (buffer-name))))
     ;; Notes use text prefixes and Emacs wrapping, not width-dependent VUI
-    ;; layouts.  A resize must not invalidate Org insertion placeholders.
+    ;; layouts, so a resize does not require rendering the notes again.
     (vui-cancel-rerender-on-resize))
   ekg-notes--instance)
 

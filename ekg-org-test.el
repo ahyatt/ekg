@@ -27,6 +27,213 @@
 (require 'ekg-agent)
 (require 'ekg-test-utils)
 
+(ekg-deftest-with-db ekg-org-test-view-inherits-notes-actions ()
+  "Task queries keep the standard notes UI and its key meanings."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (ekg-org-test--add-task "Task")
+  (ekg-org-view)
+  (dolist (key '("c" "n" "p" "o" "RET" "r" "t" "a" "b" "d" "g" "TAB"))
+    (should (eq (key-binding (kbd key))
+                (lookup-key ekg-notes-mode-map (kbd key))))))
+
+(ekg-deftest-with-db ekg-org-test-view-notes-capture-root-from-nested ()
+  "The normal create action captures a root even from a nested task."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (child (ekg-org-test--add-task "Child" parent))
+         (org-todo-keywords '((sequence "OPEN" "|" "CLOSED"))))
+    (ekg-org-view-task parent)
+    (ekg-org-view--goto-note-id child)
+    (call-interactively (key-binding "c"))
+    (should ekg-capture-mode)
+    (should (derived-mode-p 'org-mode))
+    (should (equal (ekg-org-task-state ekg-note) "OPEN"))
+    (should-not (ekg-note-parent-id ekg-note))
+    (let ((id (ekg-note-id ekg-note)))
+      (should-not (ekg-note-with-id-exists-p id))
+      (insert "New root body")
+      (ekg-capture-finalize)
+      (let ((note (ekg-get-note-with-id id)))
+        (should (equal (ekg-note-text note) "New root body"))
+        (should (member ekg-org-task-tag (ekg-note-tags note)))
+        (should-not (ekg-note-parent-id note))
+        (should-not (ekg-org--note-title note))
+        (should-not (org-element-property
+                     :title (ekg-org-task-to-element note nil)))
+        (should (string-match-p "New root body"
+                                (ekg-org-task-to-string note))))
+      (ekg-org-view)
+      (should (member id (ekg-notes-visible-ids))))))
+
+(ekg-deftest-with-db ekg-org-test-view-notes-capture-child-and-abort ()
+  "Child capture uses the shared editor and abort leaves siblings intact."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let* ((parent (ekg-org-test--add-task "Parent"))
+         (existing (ekg-org-test--add-task "Existing" parent))
+         (note (ekg-get-note-with-id parent)))
+    (push "project" (ekg-note-tags note))
+    (ekg-save-note note)
+    ;; Sparse orders must still append after existing children, not at count 1.
+    (ekg-org-view--set-sort-order existing 100)
+    (ekg-org-view)
+    (ekg-org-view--goto-note-id parent)
+    (let ((order (ekg-org-view--sort-order (ekg-get-note-with-id existing))))
+      (call-interactively (key-binding "r"))
+      (should (equal (ekg-note-parent-id ekg-note) parent))
+      (should (derived-mode-p 'markdown-mode))
+      (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
+      (should (equal (ekg-org-task-state ekg-note) "TODO"))
+      (should (member "project" (ekg-note-tags ekg-note)))
+      (let ((id (ekg-note-id ekg-note)))
+        (insert "Cancelled body")
+        (ekg-capture-abort)
+        (should-not (ekg-note-with-id-exists-p id)))
+      (should (= order (ekg-org-view--sort-order
+                        (ekg-get-note-with-id existing)))))
+    (ekg-org-view)
+    (ekg-org-view--goto-note-id parent)
+    (call-interactively (key-binding "r"))
+    (let ((id (ekg-note-id ekg-note)))
+      (insert "Child body")
+      (ekg-capture-finalize)
+      (should (equal (ekg-note-parent-id (ekg-get-note-with-id id)) parent))
+      (should (= (ekg-org-view--sort-order (ekg-get-note-with-id id)) 101))
+      (should (equal (mapcar #'ekg-note-id
+                            (ekg-org-view--sorted-children parent))
+                     (list existing id))))))
+
+(ekg-deftest-with-db ekg-org-test-view-notes-capture-archive-and-defaults ()
+  "Task capture rejects archives without leaking defaults to ordinary notes."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (ekg-org-archive-view)
+  (should-error (ekg-notes-create) :type 'user-error)
+  (ekg-org-view)
+  (let ((org-todo-keywords '((sequence "|" "CLOSED"))))
+    (should-error (ekg-notes-create) :type 'user-error))
+  (ekg-setup-notes-buffer "ordinary" (lambda () nil) '("topic"))
+  (ekg-notes-create)
+  (should (member "topic" (ekg-note-tags ekg-note)))
+  (should-not (member ekg-org-task-tag (ekg-note-tags ekg-note)))
+  (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
+  (ekg-capture-abort))
+
+(ekg-deftest-with-db ekg-org-test-capture-hook-defaults-outside-task-view ()
+  "Any capture with the task tag gets defaults without a view-specific handler."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let ((org-todo-keywords '((sequence "OPEN" "|" "CLOSED"))))
+    (ekg-capture :mode 'text-mode :tags '("org/task" "project"))
+    (should (eq major-mode 'text-mode))
+    (should (equal (ekg-org-task-state ekg-note) "OPEN"))
+    (should (member "project" (ekg-note-tags ekg-note)))
+    (let ((id (ekg-note-id ekg-note)))
+      (should-not (ekg-note-with-id-exists-p id))
+      (insert "Task from a normal capture")
+      (ekg-capture-finalize)
+      (should (equal (ekg-org-task-state (ekg-get-note-with-id id)) "OPEN")))))
+
+(ekg-deftest-with-db ekg-org-test-capture-hook-preserves-explicit-state ()
+  "Task defaults never replace an explicit state or order."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let ((org-todo-keywords '((sequence "|" "CLOSED"))))
+    (ekg-capture :tags '("org/task" "org/state/closed")
+                 :properties '(:org/sort-order 7))
+    (should (equal (seq-filter
+                    (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
+                    (ekg-note-tags ekg-note))
+                   '("org/state/closed")))
+    (should (= (plist-get (ekg-note-properties ekg-note) :org/sort-order) 7))
+    (let ((id (ekg-note-id ekg-note)))
+      (insert "An explicitly positioned completed task")
+      (ekg-capture-finalize)
+      (let ((saved (ekg-get-note-with-id id)))
+        (should (equal (ekg-org-task-state saved) "CLOSED"))
+        (should (= (plist-get (ekg-note-properties saved) :org/sort-order) 7))))))
+
+(ekg-deftest-with-db ekg-org-test-capture-header-after-setup-hooks ()
+  "Capture formats the header after mode hooks and initial tag hooks finish."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let ((ekg-capture-mode-hook
+         (append ekg-capture-mode-hook
+                 (list (lambda ()
+                         (should-not header-line-format)
+                         (push "mode-ready" (ekg-note-tags ekg-note))))))
+        (ekg-note-add-tag-hook
+         (list (lambda (tag)
+                 (should-not header-line-format)
+                 (when (equal tag ekg-org-task-tag)
+                   (push "tag-ready" (ekg-note-tags ekg-note)))))))
+    (ekg-capture :tags '("org/task"))
+    (should (string-match-p "tag-ready" header-line-format))
+    (should (member "mode-ready" (ekg-note-tags ekg-note)))
+    (should (equal (ekg-org-task-state ekg-note) "TODO"))
+    (ekg-capture-abort)))
+
+(ekg-deftest-with-db ekg-org-test-view-respond-to-ordinary-note ()
+  "Removing task defaults saves an ordinary child without Org properties."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let* ((parent (ekg-org-test--add-task "Task"))
+         (response (ekg-note-create :text "Discussion" :mode 'markdown-mode
+                                    :tags '("project")
+                                    :properties (list :hierarchy/parent parent))))
+    (ekg-save-note response)
+    (ekg-org-view)
+    (ekg-org-view--goto-note-id (ekg-note-id response))
+    (call-interactively (key-binding "r"))
+    (should (derived-mode-p 'markdown-mode))
+    (should (equal (ekg-note-parent-id ekg-note) (ekg-note-id response)))
+    (should (member ekg-org-task-tag (ekg-note-tags ekg-note)))
+    (should (member "project" (ekg-note-tags ekg-note)))
+    (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
+    (setf (ekg-note-tags ekg-note)
+          (seq-remove (lambda (tag) (string-prefix-p "org/" tag))
+                      (ekg-note-tags ekg-note)))
+    (let ((id (ekg-note-id ekg-note)))
+      (insert "An ordinary discussion reply")
+      (ekg-capture-finalize)
+      (let ((saved (ekg-get-note-with-id id)))
+        (should-not (ekg-org--org-note-p saved))
+        (should-not (triples-get-type ekg-db id 'org))
+        (should (equal (ekg-note-parent-id saved) (ekg-note-id response)))))))
+
+(ekg-deftest-with-db ekg-org-test-task-captures-order-by-save ()
+  "Open captures receive append orders when saved, not when opened."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let ((parent (ekg-org-test--add-task "Task")))
+    (ekg-org-view)
+    (ekg-notes-respond)
+    (let ((first (current-buffer)) (first-id (ekg-note-id ekg-note)))
+      (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
+      (ekg-org-view)
+      (ekg-org-view--goto-note-id parent)
+      (ekg-notes-respond)
+      (let ((second-id (ekg-note-id ekg-note)))
+        (insert "Saved first")
+        (ekg-capture-finalize)
+        (switch-to-buffer first)
+        (insert "Saved second")
+        (ekg-capture-finalize)
+        (should (equal (mapcar #'ekg-note-id
+                              (ekg-org-view--sorted-children parent))
+                       (list second-id first-id)))))))
+
+(ekg-deftest-with-db ekg-org-test-task-marker-overrides-old-properties ()
+  "Stale Org metadata cannot turn an untagged note back into a task."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let ((note (ekg-note-create :text "Discussion" :tags '("project")
+                               :properties '(:org/sort-order 5))))
+    (ekg-save-note note)
+    (should-not (ekg-org--org-note-p (ekg-get-note-with-id (ekg-note-id note))))))
+
 (defun ekg-org-test-parse-out-id (result-string)
   "Helper to parse out integer ID from RESULT-STRING."
   (when (string-match "\\([0-9]+\\)" result-string)
@@ -187,9 +394,7 @@
     (setq parent (ekg-get-note-with-id parent-id))
     (should (eq (ekg-org-dependency-type parent) 'sequential))
     (should (string-match-p "^:ORDERED: *t$"
-                            (ekg-org-task-to-string parent)))
-    (should (eq (lookup-key ekg-org-view-mode-map (kbd "s"))
-                #'ekg-org-view-set-dependency-type))))
+                            (ekg-org-task-to-string parent)))))
 
 (ekg-deftest-with-db ekg-org-test-save-with-virtual-reversed ()
   "Test that saving a parent note with hierarchy/children doesn't error.
@@ -411,8 +616,6 @@ Returns the note ID."
       (should-error (ekg-org-view-cycle-state) :type 'user-error)
       (should-error (ekg-org-view-set-property "OWNER" "Someone")
                     :type 'user-error)
-      (should (equal (mapcar #'cadr (ekg-org-view--collect-headings))
-                     (list task-id)))
       (goto-char (point-min))
       (ekg-org-view-respond)
       (should ekg-capture-mode)
@@ -646,146 +849,6 @@ Returns the note ID."
       (should (equal (ekg-org-task-state (ekg-current-note-or-error))
                      "DONE")))))
 
-(ekg-deftest-with-db ekg-org-test-view-insert-mode-sibling ()
-  "Test that insert mode creates a sibling after the current task."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "First")
-  (ekg-org-test--add-task "Third")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    ;; Enter insert mode and find the slot after "First" at level 1.
-    (ekg-org-view-create)
-    (let ((first-id (ekg-org-test--task-id-by-title "First"))
-          (target-slot nil))
-      (cl-loop for slot in ekg-org-view--insert-slots
-               when (and (= (plist-get slot :level) 1)
-                         (equal (plist-get slot :after-id) first-id))
-               do (setq target-slot slot))
-      (ekg-org-view--insert-cleanup)
-      (ekg-org-view--insert-create-task target-slot "Second")))
-  (let ((titles (ekg-org-test--view-titles)))
-    (should (equal titles '("First" "Second" "Third")))))
-
-(ekg-deftest-with-db ekg-org-test-view-insert-mode-child ()
-  "Test that insert mode creates a child task."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "Parent")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    (ekg-org-view-create)
-    (let ((parent-id (ekg-org-test--task-id-by-title "Parent"))
-          (target-slot nil))
-      (cl-loop for slot in ekg-org-view--insert-slots
-               when (and (= (plist-get slot :level) 2)
-                         (equal (plist-get slot :parent-id) parent-id))
-               do (setq target-slot slot))
-      (ekg-org-view--insert-cleanup)
-      (ekg-org-view--insert-create-task target-slot "Child")))
-  (let ((headings (ekg-org-test--view-headings)))
-    (should (equal headings '((1 "Parent") (2 "Child"))))))
-
-(ekg-deftest-with-db ekg-org-test-view-insert-mode-top-level ()
-  "Test that insert mode creates a top-level task at the beginning."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "Existing")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    (ekg-org-view-create)
-    (let ((target-slot nil))
-      (cl-loop for slot in ekg-org-view--insert-slots
-               when (and (= (plist-get slot :level) 1)
-                         (null (plist-get slot :after-id)))
-               do (progn (setq target-slot slot) (cl-return)))
-      (ekg-org-view--insert-cleanup)
-      (ekg-org-view--insert-create-task target-slot "New First")))
-  (let ((titles (ekg-org-test--view-titles)))
-    (should (equal (car titles) "New First"))
-    (should (= (length titles) 2))))
-
-(ekg-deftest-with-db ekg-org-test-view-insert-initial-position ()
-  "Test that insert mode defaults to first-child of the heading at point."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "Alpha")
-  (let ((alpha-id (ekg-org-test--task-id-by-title "Alpha")))
-    (ekg-org-test--add-task "Alpha Child" alpha-id))
-  (ekg-org-test--add-task "Beta")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    ;; Navigate to "Beta" heading.
-    (goto-char (point-min))
-    (while (not (equal (ekg-org-view--note-at-point)
-                       (ekg-org-test--task-id-by-title "Beta")))
-      (forward-line 1))
-    (ekg-org-view-create)
-    (let* ((slot (nth ekg-org-view--insert-index ekg-org-view--insert-slots))
-           (beta-id (ekg-org-test--task-id-by-title "Beta")))
-      (ekg-org-view--insert-cleanup)
-      (should (equal (plist-get slot :parent-id) beta-id))
-      (ekg-org-view--insert-create-task slot "Beta Child")))
-  (let ((headings (ekg-org-test--view-headings)))
-    (should (equal headings '((1 "Alpha") (2 "Alpha Child")
-                              (1 "Beta") (2 "Beta Child"))))))
-
-(ekg-deftest-with-db ekg-org-test-view-insert-point-on-new-item ()
-  "Test that point lands on the newly created item after insertion."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "First")
-  (ekg-org-test--add-task "Third")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    (ekg-org-view-create)
-    (let ((first-id (ekg-org-test--task-id-by-title "First"))
-          (target-slot nil))
-      (cl-loop for slot in ekg-org-view--insert-slots
-               when (and (= (plist-get slot :level) 1)
-                         (equal (plist-get slot :after-id) first-id))
-               do (setq target-slot slot))
-      (ekg-org-view--insert-cleanup)
-      (ekg-org-view--insert-create-task target-slot "Second"))
-    (should (ekg-org-view--on-heading-p))
-    (let* ((id (ekg-org-view--note-at-point))
-           (note (ekg-get-note-with-id id))
-           (title (car (plist-get (ekg-note-properties note)
-                                  :titled/title))))
-      (should (equal title "Second")))))
-
-(ekg-deftest-with-db ekg-org-test-view-insert-slot-after-subtree ()
-  "Test that the sibling-after slot is placed after the full subtree."
-  (ekg-org-add-schema)
-  (let* ((parent-id (ekg-org-test--add-task "Parent"))
-         (_child-id (ekg-org-test--add-task "Child" parent-id)))
-    (ekg-org-test--add-task "Next")
-    (ekg-org-view)
-    (with-current-buffer "*ekg-org-tasks*"
-      (goto-char (point-min))
-      (ekg-org-view-create)
-      ;; Find the sibling-after slot for "Parent" at level 1.
-      (let ((parent-note-id (ekg-org-test--task-id-by-title "Parent"))
-            (next-note-id (ekg-org-test--task-id-by-title "Next"))
-            (target-slot nil)
-            (next-heading-pos nil))
-        ;; Find the heading position for "Next".
-        (save-excursion
-          (goto-char (point-min))
-          (while (not (eobp))
-            (when (and (ekg-org-view--on-heading-p)
-                       (equal (ekg-org-view--note-at-point) next-note-id))
-              (setq next-heading-pos (point)))
-            (forward-line 1)))
-        (cl-loop for slot in ekg-org-view--insert-slots
-                 when (and (= (plist-get slot :level) 1)
-                           (equal (plist-get slot :after-id) parent-note-id))
-                 do (setq target-slot slot))
-        (ekg-org-view--insert-cleanup)
-        ;; The slot's buffer-pos should be at "Next", not at "Child".
-        (should target-slot)
-        (should (equal (plist-get target-slot :buffer-pos)
-                       next-heading-pos))))))
-
 (ekg-deftest-with-db ekg-org-test-view-trash ()
   "Test that trashing a task removes it from the view."
   (ekg-org-add-schema)
@@ -991,28 +1054,6 @@ An agent saving a new note should cause the view to update automatically."
             (should (= (length (ekg-notes-visible-ids)) 2))
             (should (string-match-p "New child" (buffer-string)))))))))
 
-(ekg-deftest-with-db ekg-org-test-view-insert-flushes-pending-vui-render ()
-  "Insertion positions account for scheduled updates before showing a slot."
-  (ekg-org-add-schema)
-  (let ((vui-render-delay 10)
-        (parent (ekg-org-test--add-task "Parent")))
-    (save-window-excursion
-      (ekg-org-view)
-      (let ((ekg-org--inhibit-view-refresh t))
-        (ekg-org-test--add-task "Queued child" parent))
-      (unwind-protect
-          (progn
-            (ekg-org-view-create)
-            (should (string-match-p "Queued child" (buffer-string)))
-            (let ((text (buffer-string))
-                  (slots (copy-tree ekg-org-view--insert-slots)))
-              (ekg-org-test--add-task "Deferred child" parent)
-              (should ekg-org-view--refresh-pending)
-              (should (equal text (buffer-string)))
-              (should (equal slots ekg-org-view--insert-slots))))
-        (ekg-org-view--insert-cleanup))
-      (should (string-match-p "Deferred child" (buffer-string))))))
-
 (ekg-deftest-with-db ekg-org-test-view-auto-refresh-on-external-delete ()
   "Test that the view refreshes when a note is deleted externally."
   (ekg-org-add-schema)
@@ -1146,40 +1187,6 @@ An agent saving a new note should cause the view to update automatically."
     (should (equal "other-branch" (ekg-org-get-property note "WORKTREE")))
     (should (= 1 (length (ekg-org-properties-alist note))))))
 
-(ekg-deftest-with-db ekg-org-test-view-insert-defers-refresh ()
-  "Test that refreshes during insert mode are deferred, not lost.
-When the user is positioning the insertion placeholder, an external
-note save must not re-render the buffer mid-interaction.  The
-deferred refresh should fire once insert mode ends."
-  (ekg-org-add-schema)
-  (ekg-org-test--add-task "Existing")
-  (ekg-org-view)
-  (with-current-buffer "*ekg-org-tasks*"
-    (goto-char (point-min))
-    ;; Enter insert mode — overlay and slots are now active.
-    (ekg-org-view-create)
-    (should ekg-org-view--insert-overlay)
-    (should (null ekg-org-view--refresh-pending))
-    ;; Simulate an external save while insert mode is active.
-    (let ((note (ekg-note-create
-                 :text ""
-                 :mode 'org-mode
-                 :tags (list ekg-org-task-tag
-                             (concat ekg-org-state-tag-prefix "todo"))
-                 :properties (list :titled/title '("Agent Task")))))
-      (ekg-save-note note))
-    ;; The refresh should have been deferred, not executed.
-    (should ekg-org-view--refresh-pending)
-    ;; The view should still show only the original task.
-    (should (= 1 (length (ekg-org-test--view-titles))))
-    ;; End insert mode — the deferred refresh should fire.
-    (ekg-org-view--insert-cleanup)
-    ;; Now both tasks should appear.
-    (let ((titles (ekg-org-test--view-titles)))
-      (should (= 2 (length titles)))
-      (should (member "Existing" titles))
-      (should (member "Agent Task" titles)))))
-
 (ekg-deftest-with-db ekg-org-test-scalar-title-and-string-id-sorting ()
   "Handle scalar titles and string note IDs safely in Org export and sorting."
   (ekg-org-add-schema)
@@ -1288,8 +1295,7 @@ deferred refresh should fire once insert mode ends."
     (ekg-org-view)
     (ekg-notes-toggle-collapse)
     (ekg-notes-toggle-collapse)
-    (ekg-org-view--insert-create-task
-     (list :parent-id parent :after-id nil) "Child")
+    (ekg-org-view-add-child "Child")
     (let ((note (ekg-current-note-or-error)))
       (should (equal (ekg-note-parent-id note) parent))
       (should (equal (ekg-org--note-title note) "Child")))))
@@ -1327,10 +1333,8 @@ deferred refresh should fire once insert mode ends."
     (ekg-save-note note)
     (ekg-org-archive-view)
     (should-error (ekg-org-view-add-child "Child") :type 'user-error)
-    (should-error (ekg-org-view-create) :type 'user-error)
-    (should-error (ekg-org-view--insert-create-task
-                   (list :parent-id parent :after-id nil) "Child")
-                  :type 'user-error)
+    (should-error (ekg-notes-create) :type 'user-error)
+    (should-error (ekg-notes-respond))
     (should-not (ekg-note-child-notes (ekg-get-note-with-id parent)))
     (should-not (ekg-org-get-tasks))))
 
@@ -1356,9 +1360,7 @@ deferred refresh should fire once insert mode ends."
     (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
       (ekg-org-view-archive))
     (should-not (ekg-notes-visible-ids))
-    (should-error (ekg-org-view--insert-create-task
-                   (list :parent-id parent :after-id nil) "Child")
-                  :type 'user-error)
+    (should-error (ekg-notes-respond))
     (should-not (ekg-note-child-notes (ekg-get-note-with-id parent)))))
 
 (ekg-deftest-with-db ekg-org-test-toggle-done-multiple-sequences ()
@@ -1484,8 +1486,7 @@ deferred refresh should fire once insert mode ends."
                  (lambda (_prompt initial &rest _)
                    (should (equal initial "Original owner"))
                    "New owner")))
-        (call-interactively (lookup-key ekg-org-view-mode-map
-                                       (kbd "C-c C-x p"))))
+        (call-interactively #'ekg-org-view-set-property))
       (should (equal (ekg-org-view--note-at-point) id))
       (setq note (ekg-get-note-with-id id))
       (should (equal (ekg-org-get-property note "OWNER") "New owner"))

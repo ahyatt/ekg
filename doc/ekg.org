@@ -608,11 +608,11 @@ also given):
 =ekg-notes-tag= (=t=), open another notes buffer showing notes with one of the
 tags of current note.
 
-=ekg-notes-open= (=o=), edit the currently selected note.
+=ekg-notes-open= (=o= or =RET=), edit the currently selected note.
 
 =ekg-notes-respond= (=r=), capture a Markdown response to the currently
 selected note.  Responses can themselves have responses and inherit the
-thread's topical tags.
+view's tags along with the thread's topical tags.
 
 =ekg-llm-notes-respond= (=.=, when =ekg-llm= is loaded), ask the configured
 LLM to respond to the currently selected note.  The command always prompts for
@@ -1544,12 +1544,13 @@ Tasks can set a =DIR= Org property to choose the working directory used by
 =ekg-agent-org-plan-task= and =ekg-agent-org-run-task=.  Child tasks inherit
 the nearest ancestor's =DIR= unless they define their own, so generated plans
 attached under a project task use that project's directory automatically.
-In the task view, put point on the task and press =C-c C-x p=
-(=ekg-org-view-set-property=).  Enter =DIR= as the property name, then
+In the task view, put point on the task and run
+=M-x ekg-org-view-set-property=.  Enter =DIR= as the property name, then
 choose the working directory using directory completion.  The command saves
 the task immediately.  It can also set other Org-style task properties.
-Use =C-u C-c C-x p= to remove a property; removing =DIR= restores inheritance
-from the parent task, or the invoking buffer's directory if no parent sets it.
+Use =C-u M-x ekg-org-view-set-property= to remove a property; removing =DIR=
+restores inheritance from the parent task, or the invoking buffer's directory
+if no parent sets it.
 
 The agent resolves this directory before starting, reads its =AGENTS.md=,
 and uses it as =default-directory= for synchronous and asynchronous tools,
@@ -1580,6 +1581,9 @@ Archived tasks are served from a separate virtual file =/ekg:tasks.org_archive=.
 
 *** Capturing tasks
 
+=ekg-org-view= is a normal notes view of tasks.  Use =ekg-org-archive-view=
+for archived tasks or =ekg-org-view-task= to focus on a task and its children.
+
 You can capture a new org task interactively with =ekg-org-capture=, which
 prompts for a title and creates a new note pre-tagged with =org/task= and
 =org/state/todo=.  You can also create tasks programmatically:
@@ -1598,109 +1602,6 @@ prompts for a title and creates a new note pre-tagged with =org/task= and
 The command =ekg-org-change-state= (available in note editing buffers and
 =ekg-notes-mode= buffers) prompts for a new TODO state from
 =org-todo-keywords= and updates the task's state tag accordingly.
-
-*** The ekg-org-view
-
-=ekg-org-view-mode= is a read-only, interactive view of your task hierarchy,
-using the normal EKG note UI.  Each note shows its title, user tags, and body.
-Tasks also show their TODO state, scheduled date, deadline, and immediate-child
-completion count.  Child notes are indented beneath their parent, and the
-current note is highlighted as the target of task commands.  Task control tags
-are omitted from this view's tag display.
-Loading =ekg-org= adds =org/task= to =ekg-hidden-tags=, so tasks are omitted
-from ordinary note lists unless that tag is explicitly requested.  The task
-views, Org export, and agenda integration still include them.  Draft, trashed,
-and other hidden notes remain excluded from task views.
-Non-task responses to tasks also appear as notes without a TODO state;
-press =RET= on one to open and edit its note.  Use =C-c C-r= to capture a
-response to the note at point.
-
-To open the view, call =ekg-org-view=.  For archived tasks, call
-=ekg-org-archive-view=.  To focus on a single task and its subtree, call
-=ekg-org-view-task=.
-
-The view refreshes automatically whenever any ekg note is saved, so changes
-made by you, by an agent, or by the command-line tools are reflected
-immediately.  Refreshes preserve folding and selection.  Creating or moving a
-task beneath a folded parent reveals the task so you can continue acting on it.
-
-The keybindings are modeled after org-mode's speed keys (the single-letter
-shortcuts available when point is at the beginning of a headline).  In this
-view they act on the current note, including when point is in its body.
-
-**** Navigation
-
-The following keybindings are available in =ekg-org-view-mode=:
-
-| Key     | Command                          | Description                       |
-|---------+----------------------------------+-----------------------------------|
-| =n=     | =ekg-org-view-next-heading=      | Move to the next note             |
-| =p=     | =ekg-org-view-previous-heading=  | Move to the previous note         |
-| =f=     | =ekg-org-view-next-sibling=      | Move to the next same-level note  |
-| =b=     | =ekg-org-view-previous-sibling=  | Move to the previous same-level note |
-| =u=     | =ekg-org-view-up-heading=        | Move to the parent note           |
-
-**** Actions
-
-| Key     | Command                          | Description                       |
-|---------+----------------------------------+-----------------------------------|
-| =t= / =C-c C-t= | =ekg-org-view-cycle-state= | Choose the TODO state           |
-| =x=     | =ekg-org-view-toggle-done=       | Complete or reopen the task       |
-| =+=     | =ekg-org-view-add-child=         | Append a child task               |
-| =s=     | =ekg-org-view-set-dependency-type= | Set children sequential or parallel |
-| =C-c C-x p= | =ekg-org-view-set-property=  | Set a task property; with prefix, remove it |
-| =TAB=   | =ekg-notes-toggle-collapse=   | Cycle full content, titles, folded |
-| =S-TAB= | =ekg-org-view-toggle-all=        | Fold all roots or expand all notes |
-| =RET= / =o= | =ekg-org-view-open-note=     | Open the note for editing in ekg  |
-| =c=     | =ekg-org-view-create=            | Enter insertion mode to create a new task |
-| =C-c C-r= | =ekg-org-view-respond=         | Capture a response to the task at point |
-| =a=     | =ekg-org-view-archive=           | Archive the task at point         |
-| =d=     | =ekg-org-view-delete=            | Trash (soft-delete) the task      |
-| =L= / =l= | =ekg-org-view-promote=         | Promote: make task a sibling of its parent |
-| =R= / =r= | =ekg-org-view-demote=          | Demote: make task a child of its previous sibling |
-| =U=     | =ekg-org-view-move-up=           | Move task up (swap with previous sibling) |
-| =D=     | =ekg-org-view-move-down=         | Move task down (swap with next sibling) |
-| =w=     | =ekg-org-view-refile=            | Refile task to a new location in hierarchy |
-| =g=     | =ekg-org-view-refresh=           | Manually refresh the view         |
-| =C-c C-s= | =ekg-org-set-schedule=         | Set the scheduled date of current task |
-| =C-c C-d= | =ekg-org-set-deadline=         | Set the deadline of current task  |
-| =?=     | =describe-mode=                 | Show available commands           |
-
-=x= uses the first completed or unfinished keyword from the sequence containing
-the task's current state in =org-todo-keywords=.  New tasks use the first
-configured unfinished keyword.  Create tasks in the active view; creation is
-unavailable in the archive view or beneath an archived parent.
-
-**** Querying task and view state
-
-=ekg-org-task-state= returns a note's TODO keyword, and =ekg-org-task-done-p=
-checks whether it is a configured completed state.  =ekg-org-task-summary=
-returns a plist with =:state=, =:done=, =:scheduled=, =:deadline=, =:children=,
-=:completed=, =:remaining=, and =:dependencies=.  Child counts include immediate
-task children in the note's archive scope.
-
-Within a task view, =ekg-org-view-state= returns =:current-id=, =:root-id=,
-=:archive=, =:visible-ids=, =:folded-ids=, and =:display-states=.
-=ekg-notes-display-state= returns the effective =full=, =outline= (titles), or
-=folded= state of a visible note, or nil if it is not visible.
-=ekg-notes-visible-ids= returns
-the visible note IDs in navigation order from any normal notes view.
-
-**** How it differs from org-mode
-
-=ekg-org-view= is intentionally simpler than a full org-mode buffer:
-
-- Tasks are stored in the ekg database, not in files.  This makes them
-  accessible to agents, command-line tools, and programmatic APIs without
-  needing to parse org syntax.
-- The view is read-only.  To edit a task's body text, press =RET= to open it in
-  ekg's normal note-editing buffer.
-- There is no in-buffer text editing, column view, clocking, or other advanced
-  org features.  The focus is on task organization (creating, reordering,
-  re-parenting, and state changes).
-- Because tasks live in the database, both a human in Emacs and an external
-  agent can modify tasks concurrently.  The view auto-refreshes to reflect all
-  changes.
 
 *** Agent integration
 
