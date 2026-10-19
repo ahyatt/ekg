@@ -72,6 +72,8 @@
          (note (ekg-get-note-with-id parent)))
     (push "project" (ekg-note-tags note))
     (ekg-save-note note)
+    ;; Sparse orders must still append after existing children, not at count 1.
+    (ekg-org-view--set-sort-order existing 100)
     (ekg-org-view)
     (ekg-org-view--goto-note-id parent)
     (let ((order (ekg-org-view--sort-order (ekg-get-note-with-id existing))))
@@ -93,6 +95,7 @@
       (insert "Child body")
       (ekg-capture-finalize)
       (should (equal (ekg-note-parent-id (ekg-get-note-with-id id)) parent))
+      (should (= (ekg-org-view--sort-order (ekg-get-note-with-id id)) 101))
       (should (equal (mapcar #'ekg-note-id
                             (ekg-org-view--sorted-children parent))
                      (list existing id))))))
@@ -138,6 +141,25 @@
                     (ekg-note-tags ekg-note))
                    '("org/state/closed")))
     (should (= (plist-get (ekg-note-properties ekg-note) :org/sort-order) 7))
+    (ekg-capture-abort)))
+
+(ekg-deftest-with-db ekg-org-test-capture-header-after-setup-hooks ()
+  "Capture formats the header after mode hooks and initial tag hooks finish."
+  (ekg-org-add-schema)
+  (let ((ekg-capture-mode-hook
+         (append ekg-capture-mode-hook
+                 (list (lambda ()
+                         (should-not header-line-format)
+                         (push "mode-ready" (ekg-note-tags ekg-note))))))
+        (ekg-note-add-tag-hook
+         (list (lambda (tag)
+                 (should-not header-line-format)
+                 (when (equal tag ekg-org-task-tag)
+                   (push "tag-ready" (ekg-note-tags ekg-note)))))))
+    (ekg-capture :tags '("org/task"))
+    (should (string-match-p "tag-ready" header-line-format))
+    (should (member "mode-ready" (ekg-note-tags ekg-note)))
+    (should (equal (ekg-org-task-state ekg-note) "TODO"))
     (ekg-capture-abort)))
 
 (ekg-deftest-with-db ekg-org-test-view-respond-to-ordinary-note ()

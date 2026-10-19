@@ -989,6 +989,20 @@ When insert mode is active, defer the refresh until insert mode ends."
                          (ekg-note-id (car (last children)))))
        title))))
 
+(defun ekg-org--initial-state ()
+  "Return the first configured unfinished TODO keyword, or signal an error."
+  (or (car (seq-difference (ekg-org--todo-keywords)
+                           (ekg-org--done-keywords)))
+      (user-error "No unfinished TODO keyword is configured")))
+
+(defun ekg-org--next-sort-order (&optional parent-id)
+  "Return an append order for children of PARENT-ID, or for root tasks.
+Use the highest stored order rather than the count: orders can have gaps."
+  (let ((siblings (if parent-id
+                      (ekg-org-view--sorted-children parent-id)
+                    (ekg-org-view--sorted-top-level))))
+    (1+ (apply #'max -1 (mapcar #'ekg-org-view--sort-order siblings)))))
+
 (defun ekg-org--capture-task-defaults ()
   "Initialize task captures through `ekg-capture-mode-hook'.
 Only notes tagged `org/task' receive an initial state and append order.
@@ -997,27 +1011,21 @@ Preserve explicit state and ordering, and leave ordinary notes unchanged."
              (member ekg-org-task-tag (ekg-note-tags ekg-note)))
     (let* ((parent-id (ekg-note-parent-id ekg-note))
            (parent (and parent-id (ekg-get-note-with-id parent-id))))
+      ;; Reject archived contexts before changing any defaults.
       (when (or (member ekg-org-archive-tag (ekg-note-tags ekg-note))
                 (and parent
                      (member ekg-org-archive-tag (ekg-note-tags parent))))
         (user-error "Create tasks in the active task view"))
-      (unless (seq-some (lambda (tag)
-                          (string-prefix-p ekg-org-state-tag-prefix tag))
-                        (ekg-note-tags ekg-note))
-        (let ((state (or (car (seq-difference (ekg-org--todo-keywords)
-                                             (ekg-org--done-keywords)))
-                         (user-error "No unfinished TODO keyword is configured"))))
-          (push (concat ekg-org-state-tag-prefix (downcase state))
-                (ekg-note-tags ekg-note))))
+      ;; Explicit states and positions always take precedence.
+      (unless (ekg-org-task-state ekg-note)
+        (push (concat ekg-org-state-tag-prefix
+                      (downcase (ekg-org--initial-state)))
+              (ekg-note-tags ekg-note)))
       (unless (plist-member (ekg-note-properties ekg-note) :org/sort-order)
-        (let* ((siblings (if parent-id
-                             (ekg-org-view--sorted-children parent-id)
-                           (ekg-org-view--sorted-top-level)))
-               (order (1+ (apply #'max -1
-                                (mapcar #'ekg-org-view--sort-order siblings)))))
-          (setf (ekg-note-properties ekg-note)
-                (plist-put (ekg-note-properties ekg-note) :org/sort-order order))))
-      (setq header-line-format (ekg--header-line-format)))))
+        ;; Assign only the draft's order; abort must not reorder saved siblings.
+        (setf (ekg-note-properties ekg-note)
+              (plist-put (ekg-note-properties ekg-note) :org/sort-order
+                         (ekg-org--next-sort-order parent-id)))))))
 
 (add-hook 'ekg-capture-mode-hook #'ekg-org--capture-task-defaults)
 
@@ -1570,10 +1578,7 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
          (_ (when (and parent
                        (member ekg-org-archive-tag (ekg-note-tags parent)))
               (user-error "Cannot create tasks under an archived parent")))
-         (initial-state
-          (or (car (seq-difference (ekg-org--todo-keywords)
-                                   (ekg-org--done-keywords)))
-              (user-error "No unfinished TODO keyword is configured")))
+         (initial-state (ekg-org--initial-state))
          (ekg-org--inhibit-view-refresh t)
          (siblings (if parent-id
                        (ekg-org-view--sorted-children parent-id)
