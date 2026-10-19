@@ -83,6 +83,7 @@ triples library is already installed.
   retaining Org-specific sibling ordering.
 - Preserve note identity and parent relationships in flat Logseq, Denote, and
   Apple Notes exports.
+- Fix image redisplay issue
 ** Version 0.9.2
 - Fix issue computing batch embeddings without =vecdb=.
 - Fix lack of inline tag normalization

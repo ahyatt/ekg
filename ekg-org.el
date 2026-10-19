@@ -228,7 +228,7 @@ active, unarchived, tasks."
          ;; the database just to discard them.
          (child-id-set (make-hash-table :test 'equal))
          (_ (dolist (row (triples-db-select ekg-db nil
-                                             'hierarchy/parent nil))
+                                            'hierarchy/parent nil))
               (puthash (car row) t child-id-set)))
          (top-ids (seq-remove (lambda (id) (gethash id child-id-set))
                               all-ids)))
@@ -577,15 +577,15 @@ unnecessary."
         (tags (mapcar #'ekg--normalize-tag (ekg-note-tags note))))
     (setf (ekg-note-tags note) tags)
     (triples-with-transaction
-     ekg-db
-     (triples-set-type ekg-db id 'tagged :tag tags)
-     (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
-     (let ((modified-time (time-convert (current-time) 'integer)))
-       (triples-set-type ekg-db id 'time-tracked
-                         :creation-time (ekg-note-creation-time note)
-                         :modified-time modified-time)
-       (setf (ekg-note-modified-time note) modified-time))
-     (run-hook-with-args 'ekg-note-save-hook note))))
+      ekg-db
+      (triples-set-type ekg-db id 'tagged :tag tags)
+      (mapc (lambda (tag) (triples-set-type ekg-db tag 'tag)) tags)
+      (let ((modified-time (time-convert (current-time) 'integer)))
+        (triples-set-type ekg-db id 'time-tracked
+                          :creation-time (ekg-note-creation-time note)
+                          :modified-time modified-time)
+        (setf (ekg-note-modified-time note) modified-time))
+      (run-hook-with-args 'ekg-note-save-hook note))))
 
 (defun ekg-org-view--sort-order (note)
   "Return the sort-order of NOTE, defaulting to creation time."
@@ -655,15 +655,15 @@ sibling."
         (insert-after nil)
         (found nil))
     (triples-with-transaction
-     ekg-db
-     (dolist (sib siblings)
-       (when (and found (not insert-after))
-         (setq insert-after order)
-         (cl-incf order))
-       (ekg-org-view--set-sort-order (ekg-note-id sib) order)
-       (when (equal (ekg-note-id sib) current-id)
-         (setq found t))
-       (cl-incf order)))
+      ekg-db
+      (dolist (sib siblings)
+        (when (and found (not insert-after))
+          (setq insert-after order)
+          (cl-incf order))
+        (ekg-org-view--set-sort-order (ekg-note-id sib) order)
+        (when (equal (ekg-note-id sib) current-id)
+          (setq found t))
+        (cl-incf order)))
     (or insert-after order)))
 
 (defun ekg-org-task-state (note)
@@ -721,8 +721,8 @@ and :display-states."
         :root-id ekg-org-view--root-id :archive ekg-org-view--archive
         :visible-ids (ekg-notes-visible-ids)
         :folded-ids (mapcar #'car (seq-filter
-                                  (lambda (entry) (eq (cdr entry) 'folded))
-                                  ekg-notes-display-states))
+                                   (lambda (entry) (eq (cdr entry) 'folded))
+                                   ekg-notes-display-states))
         :display-states (copy-tree ekg-notes-display-states)))
 
 (defun ekg-org-view--visible-tags (note)
@@ -908,7 +908,7 @@ When insert mode is active, defer the refresh until insert mode ends."
       (setq ekg-org-view--refresh-pending t)
     (let* ((restore-id (or target-id (ekg-org-view--note-at-point)))
            (ancestors (when-let* ((note (and restore-id
-                                            (ekg-get-note-with-id restore-id))))
+                                             (ekg-get-note-with-id restore-id))))
                         (mapcar #'ekg-note-id (ekg-note-ancestors note)))))
       ;; Actions that explicitly select a task must reveal it.  Background
       ;; refreshes retain folds and select the nearest visible ancestor.
@@ -1116,20 +1116,20 @@ among the new siblings."
                              (ekg-note-parent-id parent-note)))
            (ekg-org--inhibit-view-refresh t))
       (triples-with-transaction
-       ekg-db
-       (if grandparent-id
-           (ekg-note-set-parent note grandparent-id)
-         ;; Promoting to top-level: remove the parent property and the
-         ;; hierarchy/parent triple.
-         (ekg-note-set-parent note nil))
-       ;; Place right after the former parent among new siblings.
-       (let* ((new-siblings (if grandparent-id
-                                (ekg-org-view--sorted-children grandparent-id)
-                              (ekg-org-view--sorted-top-level)))
-              (sort-order (ekg-org-view--assign-order-after
-                           new-siblings parent-id)))
-         (ekg-org-view--set-sort-order id sort-order))
-       (ekg-save-note note)))
+        ekg-db
+        (if grandparent-id
+            (ekg-note-set-parent note grandparent-id)
+          ;; Promoting to top-level: remove the parent property and the
+          ;; hierarchy/parent triple.
+          (ekg-note-set-parent note nil))
+        ;; Place right after the former parent among new siblings.
+        (let* ((new-siblings (if grandparent-id
+                                 (ekg-org-view--sorted-children grandparent-id)
+                               (ekg-org-view--sorted-top-level)))
+               (sort-order (ekg-org-view--assign-order-after
+                            new-siblings parent-id)))
+          (ekg-org-view--set-sort-order id sort-order))
+        (ekg-save-note note)))
     (ekg-org-view--refresh id)))
 
 (defun ekg-org-view--descendant-ids (id)
@@ -1226,9 +1226,9 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-prev (ekg-org-view--sort-order prev))
                (ekg-org--inhibit-view-refresh t))
           (triples-with-transaction
-           ekg-db
-           (ekg-org-view--set-sort-order id order-prev)
-           (ekg-org-view--set-sort-order prev-id order-cur))
+            ekg-db
+            (ekg-org-view--set-sort-order id order-prev)
+            (ekg-org-view--set-sort-order prev-id order-cur))
           (ekg-org-view--refresh id))))))
 
 (defun ekg-org-view-move-down ()
@@ -1251,9 +1251,9 @@ of the target.  Selecting \"Top level\" makes it a top-level task."
                (order-next (ekg-org-view--sort-order next))
                (ekg-org--inhibit-view-refresh t))
           (triples-with-transaction
-           ekg-db
-           (ekg-org-view--set-sort-order id order-next)
-           (ekg-org-view--set-sort-order next-id order-cur))
+            ekg-db
+            (ekg-org-view--set-sort-order id order-next)
+            (ekg-org-view--set-sort-order next-id order-cur))
           (ekg-org-view--refresh id))))))
 
 (defun ekg-org-view-demote ()
@@ -1529,7 +1529,7 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
               (user-error "Cannot create tasks under an archived parent")))
          (initial-state
           (or (car (seq-difference (ekg-org--todo-keywords)
-                                  (ekg-org--done-keywords)))
+                                   (ekg-org--done-keywords)))
               (user-error "No unfinished TODO keyword is configured")))
          (ekg-org--inhibit-view-refresh t)
          (siblings (if parent-id
@@ -1540,14 +1540,16 @@ that note (the slot with :parent-id = PREFER-PARENT-ID and
                        ;; Inserting as first: renumber from 1 and take 0.
                        (when siblings
                          (triples-with-transaction
-                          ekg-db
-                          (let ((order 1))
-                            (dolist (sib siblings)
-                              (ekg-org-view--set-sort-order
-                               (ekg-note-id sib) order)
-                              (cl-incf order)))))
+                           ekg-db
+                           (let ((order 1))
+                             (dolist (sib siblings)
+                               (ekg-org-view--set-sort-order
+                                (ekg-note-id sib) order)
+                               (cl-incf order)))))
                        0))
-         (parent-tags (when parent (ekg-org-view--visible-tags parent)))
+         (parent-tags (when parent-id
+                        (ekg-org-view--visible-tags
+                         (ekg-get-note-with-id parent-id))))
          (note (ekg-note-create
                 :text ""
                 :mode 'org-mode
@@ -1812,6 +1814,7 @@ ARCHIVE selects archived tasks.  ROOT-ID focuses on a single task."
 
 This adds the necessary schema and, if `ekg-agent' is available,
 registers tools for interacting with org tasks."
+  (ekg-connect)
   (ekg-org-add-schema)
   (setf (alist-get :org/scheduled ekg-property-format-functions)
         #'ekg-org--format-epoch-as-date)
