@@ -1479,7 +1479,7 @@ This is used when editing existing notes.")
   "Holds the note information for buffers adding or changing notes.")
 
 (defun ekg--markdown-note-p (&optional note)
-  "Return non-nil when NOTE uses the Markdown format.
+  "Return non-nil for a NOTE in Markdown format.
 With no NOTE, check the current note buffer.  The stored format
 identifies Markdown even when its editing mode is independent of
 `markdown-mode' or the .md association has changed."
