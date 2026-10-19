@@ -63,7 +63,8 @@
   :group 'ekg)
 
 (defcustom ekg-acceptable-modes '(org-mode markdown-mode text-mode)
-  "Modes that make sense to use as note types."
+  "Modes that make sense to use as note types.
+For `markdown-mode', use the mode associated with .md files."
   :type '(set symbol)
   :group 'ekg)
 
@@ -752,6 +753,27 @@ Draft notes are not returned, unless TAGS contains the draft tag."
   (ekg-connect)
   (triples-get-subject ekg-db id))
 
+(defun ekg-note-active-p (note)
+  "Return non-nil if NOTE is active.
+This is similar to `ekg-active-id-p', but takes a note, which may
+be unsaved."
+  (not (seq-intersection ekg-hidden-tags (ekg-note-tags note))))
+
+(defun ekg-active-id-p (id)
+  "Return non-nil if the note with ID is active.
+This will return true if the note exists, is not a draft, and has
+at least one non-trash tag."
+  (ekg-connect)
+  (and (ekg-note-with-id-exists-p id)
+       (not (seq-intersection
+             ekg-hidden-tags
+             (plist-get (triples-get-type ekg-db id 'tagged) :tag)))))
+
+(defun ekg--hidden-tags-for (tags)
+  "Return `ekg-hidden-tags' excluding non-trash, non-draft tags in TAGS."
+  (seq-difference ekg-hidden-tags
+                  (seq-difference tags (list ekg-trash-tag ekg-draft-tag))))
+
 (defun ekg-get-note-with-id (id)
   "Get the note with ID, or nil if it does not exist."
   (ekg-connect)
@@ -780,7 +802,30 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                                      nconc (list (intern (format ":%s/%s" type
                                                                  (substring (symbol-name k) 1)))
                                                  v))))))
-                    (ekg-note-cotypes))))
+                    (ekg-note-cotypes)))
+           (props (append
+                   (map-into
+                    (map-filter
+                     (lambda (plist-key _)
+                       (not (member plist-key
+                                    '(:text/text
+                                      :text/mode
+                                      :text/inlines
+                                      :tagged/tag
+                                      :time-tracked/creation-time
+                                      :time-tracked/modified-time)))) v)
+                    'plist)
+                   extra-props))
+           (props (if (plist-member props :hierarchy/children)
+                      (let* ((ekg-hidden-tags
+                              (ekg--hidden-tags-for (plist-get v :tagged/tag)))
+                             (active-children
+                              (seq-filter #'ekg-active-id-p
+                                          (plist-get props :hierarchy/children))))
+                        (if active-children
+                            (plist-put props :hierarchy/children active-children)
+                          (ekg--plist-without-key props :hierarchy/children)))
+                    props)))
       (make-ekg-note :id id
                      :text (plist-get v :text/text)
                      :mode (plist-get v :text/mode)
@@ -788,19 +833,7 @@ Draft notes are not returned, unless TAGS contains the draft tag."
                      :tags (plist-get v :tagged/tag)
                      :creation-time (plist-get v :time-tracked/creation-time)
                      :modified-time (plist-get v :time-tracked/modified-time)
-                     :properties (append
-                                  (map-into
-                                   (map-filter
-                                    (lambda (plist-key _)
-                                      (not (member plist-key
-                                                   '(:text/text
-                                                     :text/mode
-                                                     :text/inlines
-                                                     :tagged/tag
-                                                     :time-tracked/creation-time
-                                                     :time-tracked/modified-time)))) v)
-                                   'plist)
-                                  extra-props)))))
+                     :properties props))))
 
 (defun ekg-note-parent-id (note)
   "Return the parent ID of NOTE, or nil when NOTE has no parent.
@@ -1004,25 +1037,11 @@ responses in an older thread to recover the thread's topical tags."
     (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
             (append (ekg-note-ancestors note) (list note))))))
 
-(defun ekg-note-active-p (note)
-  "Return non-nil if NOTE is active.
-This is similar to `ekg-active-id-p', but takes a note, which may
-be unsaved."
-  (not (seq-intersection ekg-hidden-tags (ekg-note-tags note))))
-
 (defun ekg-note-is-content-p (note)
   "Return non-nil if NOTE has no control-type tags.
 
 Those tags are things such as `ekg-draft-tag', or `ekg-function-tag'."
   (seq-every-p #'ekg-content-tag-p (ekg-note-tags note)))
-
-(defun ekg-active-id-p (id)
-  "Return non-nil if the note with ID is active.
-This will return true if the note exists, is not a draft, and has
-at least one non-trash tag."
-  (ekg-connect)
-  (let ((note (ekg-get-note-with-id id)))
-    (and note (ekg-note-active-p note))))
 
 (defun ekg-live-id-p (sub)
   "Return non-nil if SUB represents an undeleted note."
@@ -1204,6 +1223,23 @@ for details."
         ('plaintext (setq unformatted (substring-no-properties unformatted)))))
     unformatted))
 
+(defun ekg--resolve-mode (mode)
+  "Resolve note MODE to the major mode to use.
+For `markdown-mode', consult `auto-mode-alist' for a .md file,
+falling back to `markdown-mode'.  Honor major mode remapping when
+available.  Other note modes are returned unchanged."
+  (if (eq mode 'markdown-mode)
+      (let* ((entry (save-match-data
+                      (assoc-default "note.md" auto-mode-alist #'string-match)))
+             (mode (or (if (consp entry) (car entry) entry)
+                       'markdown-mode)))
+        (cond ((fboundp 'major-mode-remap) (major-mode-remap mode))
+              ((boundp 'major-mode-remap-alist)
+               (or (alist-get mode (symbol-value 'major-mode-remap-alist))
+                   mode))
+              (t mode)))
+    mode))
+
 (defun ekg-display-note-text (note &optional numwords &rest format)
   "Return text, with mode-specific properties, of NOTE.
 
@@ -1218,7 +1254,7 @@ NUMWORDS and FORMAT are standard options, see
     (when (and (not (member 'plaintext format)) (ekg-note-mode note))
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
-          (funcall (ekg-note-mode note)))))
+          (funcall (ekg--resolve-mode (ekg-note-mode note))))))
     (mapc #'funcall ekg-format-funcs)
     (unless (member 'plaintext format)
       (font-lock-ensure)
@@ -1365,8 +1401,9 @@ ARG is the prefix argument, if used it opens in another window."
                                    (markdown-wiki-link-link))))
     (markdown-follow-thing-at-point arg)))
 
-(defun ekg--set-local-variables ()
-  "Set some common local variables."
+(defun ekg--set-local-variables (&optional defer-header)
+  "Set common editing variables, deferring the header with DEFER-HEADER.
+Capture setup defers the header until its hooks have initialized the note."
   (setq-local
    default-directory (ekg--notes-directory)
    completion-at-point-functions
@@ -1375,10 +1412,11 @@ ARG is the prefix argument, if used it opens in another window."
            completion-at-point-functions)
    kill-buffer-query-functions
    (append (list #'ekg--kill-buffer-query-function)
-           kill-buffer-query-functions)
-   header-line-format (ekg--header-line-format))
+           kill-buffer-query-functions))
+  (unless defer-header
+    (setq-local header-line-format (ekg--header-line-format)))
 
-  (when (eq major-mode 'markdown-mode)
+  (when (derived-mode-p 'markdown-mode)
     (setq-local markdown-enable-wiki-links t
                 markdown-wiki-link-fontify-missing nil)
     ;; We can't redefine how wiki links are handled, and we shouldn't use
@@ -1415,7 +1453,7 @@ This is used when capturing new notes.")
   :init-value nil
   :lighter " EKG-CAP"
   :interactive nil
-  (ekg--set-local-variables))
+  (ekg--set-local-variables t))
 
 (defvar ekg-capture-mode-hook nil
   "Hook for `ekg-capture-mode'.")
@@ -1439,6 +1477,16 @@ This is used when editing existing notes.")
 
 (defvar-local ekg-note nil
   "Holds the note information for buffers adding or changing notes.")
+
+(defun ekg--markdown-note-p (&optional note)
+  "Return non-nil for a NOTE in Markdown format.
+With no NOTE, check the current note buffer.  The stored format
+identifies Markdown even when its editing mode is independent of
+`markdown-mode' or the .md association has changed."
+  (let ((mode (when-let* ((note (or note ekg-note)))
+                (ekg-note-mode note))))
+    (or (and mode (provided-mode-derived-p mode 'markdown-mode))
+        (and (null note) (derived-mode-p 'markdown-mode)))))
 
 (defvar-local ekg-note-orig-note nil
   "Holds the original note before edit.")
@@ -1567,6 +1615,7 @@ STATE is the note's display state."
     (define-key map (kbd "TAB") #'ekg-notes-toggle-collapse)
     (define-key map "n" #'ekg-notes-next)
     (define-key map "o" #'ekg-notes-open)
+    (define-key map (kbd "RET") #'ekg-notes-open)
     (define-key map "b" #'ekg-notes-browse)
     (define-key map "B" #'ekg-notes-select-and-browse-url)
     (define-key map "p" #'ekg-notes-previous)
@@ -1721,14 +1770,15 @@ non-nil."
       (setf (ekg-note-text note) (buffer-substring-no-properties (point-min) (point-max))))))
 
 (defun ekg--populate-inline-tags (note)
-  "Populae tags found in text of NOTE.
+  "Populate tags found in text of NOTE.
 Tags are prefixed by a hash symbol or a symbol in
 `ekg-inline-custom-tag-completion-symbols', and are enclosed in brackets
 if they have more than one word.  They aso can be org or markdown links,
 depending on the note mode.  The tags are added to the end of the tag
 list."
-  (let ((use-links (and (member (ekg-note-mode note) '(org-mode markdown-mode))
-                        ekg-linkify-inline-tags)))
+  (let* ((markdown (ekg--markdown-note-p note))
+         (use-links (and (or (eq (ekg-note-mode note) 'org-mode) markdown)
+                         ekg-linkify-inline-tags)))
     (with-temp-buffer
       (insert (ekg-note-text note))
       (goto-char (point-min))
@@ -1743,7 +1793,7 @@ list."
                           ?\[ ?\[ "ekg-tag:"
                           (group-n 3 (one-or-more (any word whitespace ?_ ?/ ?-)))
                           ?\]))
-                     ((eq (ekg-note-mode note) 'markdown-mode)
+                     (markdown
                       (rx (seq
                            ?\[ ?\[
                            (group-n 2 (? (regexp (ekg--possible-inline-tags-prefix-regexp))))
@@ -1809,7 +1859,7 @@ FINISHED is true if the completion has been finished."
             (cond
              ((eq major-mode 'org-mode)
               (replace-match (format "[%s]" completion)))
-             ((eq major-mode 'markdown-mode)
+             ((ekg--markdown-note-p)
               ;; Remove the symbol prefixing the tag
               (replace-match
                (format "[[%s%s]]"
@@ -1865,16 +1915,9 @@ rather than an auto-generated number."
   (not (numberp id)))
 
 (defun ekg--org-redisplay-inline-images ()
-  "Redisplay Org inline images, suppressing Org parser warnings.
-This avoids warnings when not in an `org-mode' buffer"
-  (if (derived-mode-p 'org-mode)
-      (org-redisplay-inline-images)
-    (let ((warning-suppress-types
-           (cons '(org-element org-element-parser) warning-suppress-types))
-          (warning-suppress-log-types
-           (cons '(org-element org-element-parser)
-                 warning-suppress-log-types)))
-      (org-redisplay-inline-images))))
+  "Redisplay Org inline images, suppressing Org parser warnings."
+  (when (derived-mode-p 'org-mode)
+    (org-redisplay-inline-images)))
 
 ;;;###autoload
 (cl-defun ekg-capture (&key text mode tags properties id)
@@ -1887,7 +1930,7 @@ If ID is given, force the triple subject to be that value."
          (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
          (tags (seq-uniq (append tags auto-tags))))
     (set-buffer buf)
-    (funcall (or mode ekg-capture-default-mode))
+    (funcall (ekg--resolve-mode (or mode ekg-capture-default-mode)))
     (setq ekg-note
           (ekg-note-create :id id
                            :text text
@@ -1909,7 +1952,10 @@ If ID is given, force the triple subject to be that value."
           (wrong-type-argument (message "Problem showing image for note ID %s (content: \"%s\")"
                                         id (ekg-truncate-at text 10)))))
     (set-buffer-modified-p nil)
-    (pop-to-buffer buf)))
+    (pop-to-buffer buf)
+    ;; Hooks and function tags may change metadata; format it only afterward.
+    (setq header-line-format (ekg--header-line-format))
+    buf))
 
 ;;;###autoload
 (defun ekg-capture-url (&optional url title)
@@ -1948,9 +1994,10 @@ file.  If not, an error will be thrown."
                ekg-capture-mode ekg-edit-mode)
   (let ((note ekg-note)
         (minor-mode (if ekg-capture-mode 'ekg-capture-mode 'ekg-edit-mode)))
-    (funcall mode)
+    (funcall (ekg--resolve-mode mode))
     (funcall minor-mode)
     (setq ekg-note note)
+    (setf (ekg-note-mode ekg-note) mode)
     (ekg--set-local-variables)))
 
 (defun ekg-note-available-properties (_note)
@@ -2112,7 +2159,7 @@ it.  If there are multiple titles, select which one to change."
     (set-buffer buf)
     (when (= 0 (buffer-size))
       (when (ekg-note-mode note)
-        (funcall (ekg-note-mode note)))
+        (funcall (ekg--resolve-mode (ekg-note-mode note))))
       (ekg-edit-mode 1)
       (setq-local ekg-note (copy-ekg-note note)       ; shallow copy
                   ekg-note-orig-note (copy-tree note) ; deep copy to avoid later change
@@ -2141,7 +2188,8 @@ to reflect the current state of the buffer."
          (ticons (ekg-extract-inlines text)))
     (setf (ekg-note-text ekg-note) (car ticons)
           (ekg-note-inlines ekg-note) (cdr ticons)
-          (ekg-note-mode ekg-note) major-mode
+          (ekg-note-mode ekg-note)
+          (if (ekg--markdown-note-p) 'markdown-mode major-mode)
           (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note)))))
 
 (defun ekg--save-note-in-buffer ()
@@ -2436,11 +2484,12 @@ intended to be used in any context where a note might be available."
                (error "No task at point"))))
       (error "No current note found in context")))
 
-(defun ekg-respond-to-note (&optional note)
+(defun ekg-respond-to-note (&optional note tags)
   "Capture a Markdown response to NOTE.
 When NOTE is nil, use the note being edited or the note at point
 in an `ekg-notes-mode' buffer.  Unsaved edits to an existing note
-are saved before opening the response buffer."
+are saved before opening the response buffer.  TAGS supplies additional
+capture defaults, such as the tags of the notes view being used."
   (interactive)
   (let ((parent
          (or note
@@ -2454,14 +2503,14 @@ are saved before opening the response buffer."
     (unless (ekg-note-with-id-exists-p (ekg-note-id parent))
       (user-error "Save the note before responding to it"))
     (ekg-capture :mode 'markdown-mode
-                 :tags (ekg-response-inherited-tags parent)
+                 :tags (append tags (ekg-response-inherited-tags parent))
                  :properties (list :hierarchy/parent
                                    (ekg-note-id parent)))))
 
 (defun ekg-notes-respond ()
-  "Capture a Markdown response to the note at point."
+  "Capture a child of the note at point with the current view's tags."
   (interactive nil ekg-notes-mode)
-  (ekg-respond-to-note (ekg-current-note-or-error)))
+  (ekg-respond-to-note (ekg-current-note-or-error) ekg-notes-tags))
 
 (defun ekg-notes-tag (&optional tag)
   "Show notes associated with TAG.
@@ -2772,7 +2821,7 @@ cursor always lands on a note."
           (save-window-excursion
             (vui-mount (vui-component 'ekg-notes-root) (buffer-name))))
     ;; Notes use text prefixes and Emacs wrapping, not width-dependent VUI
-    ;; layouts.  A resize must not invalidate Org insertion placeholders.
+    ;; layouts, so a resize does not require rendering the notes again.
     (vui-cancel-rerender-on-resize))
   ekg-notes--instance)
 
@@ -3181,7 +3230,10 @@ those look at all notes also tagged with COTAG.  We return a list
 of the text of all these notes for all tags and tag parents, etc."
   (flatten-list (mapcar (lambda (tag)
                           (ekg-get-notes-with-tags (list tag cotag)))
-                        (seq-mapcat #'ekg-tag-to-hierarchy tags))))
+                        (seq-mapcat #'ekg-tag-to-hierarchy
+                                    (seq-difference tags
+                                                    (list ekg-draft-tag
+                                                          ekg-trash-tag))))))
 
 (defun ekg-on-add-tag-insert-template (tag)
   "Look for templates for TAG, and insert into current buffer.

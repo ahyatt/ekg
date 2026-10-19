@@ -1593,17 +1593,27 @@ result when the agent finishes."
 ;; Complete Org plan import and agent stages.
 
 (defconst ekg-agent-test-plan--json
-  "{\"version\":1,\"tasks\":[
-{\"id\":\"root\",\"parent\":null,\"title\":\"Plan\",\"content\":\"Goal\",\"execution\":\"parallel\",\"depends_on\":[]},
-{\"id\":\"a\",\"parent\":\"root\",\"title\":\"A\",\"content\":\"First\",\"execution\":\"sequential\",\"depends_on\":[]},
-{\"id\":\"b\",\"parent\":\"root\",\"title\":\"B\",\"content\":\"Second\",\"execution\":\"parallel\",\"depends_on\":[\"a\"]}]}"
+  (json-serialize
+   '(:version 1
+     :tasks [(:id "root" :parent :null :title "Plan" :content "Goal"
+              :execution "parallel" :depends_on [])
+             (:id "a" :parent "root" :title "A" :content "First"
+              :execution "sequential" :depends_on [])
+             (:id "b" :parent "root" :title "B" :content "Second"
+              :execution "parallel" :depends_on ["a"])]))
   "Plan containing an explicit dependency between parallel children.")
 
 (defconst ekg-agent-test-plan-with-question--json
-  "{\"version\":1,\"tasks\":[
-{\"id\":\"root\",\"parent\":null,\"title\":\"Plan\",\"content\":\"Goal\",\"execution\":\"parallel\",\"depends_on\":[],\"tags\":[]},
-{\"id\":\"question\",\"parent\":\"root\",\"title\":\"Choose approach\",\"content\":\"Please respond with a child note\",\"execution\":\"parallel\",\"depends_on\":[],\"tags\":[\"org/needs-user-response\"]},
-{\"id\":\"revise\",\"parent\":\"root\",\"title\":\"Revise plan\",\"content\":\"Update original note\",\"execution\":\"parallel\",\"depends_on\":[\"question\"],\"tags\":[]}] }"
+  (json-serialize
+   '(:version 1
+     :tasks [(:id "root" :parent :null :title "Plan" :content "Goal"
+              :execution "parallel" :depends_on [] :tags [])
+             (:id "question" :parent "root" :title "Choose approach"
+              :content "Please respond with a child note"
+              :execution "parallel" :depends_on [] :tags ["org/user-task"])
+             (:id "revise" :parent "root" :title "Revise plan"
+              :content "Update original note"
+              :execution "parallel" :depends_on ["question"] :tags [])]))
   "Plan with a task requiring a response before revision.")
 
 (ekg-deftest-with-db ekg-agent-test-plan-import ()
@@ -1613,6 +1623,9 @@ result when the agent finishes."
          (a (ekg-get-note-with-id (cdr (assoc "a" ids))))
          (b (ekg-get-note-with-id (cdr (assoc "b" ids)))))
     (should (= (length ids) 3))
+    (should (equal (ekg-note-id root) "root"))
+    (should (equal (ekg-note-id a) "a"))
+    (should (equal (ekg-note-id b) "b"))
     (should (eq (ekg-org-dependency-type root) 'parallel))
     (should (eq (ekg-org-dependency-type a) 'sequential))
     (should (equal (ekg-note-parent-id b) (ekg-note-id root)))
@@ -1620,27 +1633,79 @@ result when the agent finishes."
                    (list (ekg-note-id a))))
     (should (member "project" (ekg-note-tags b)))
     (dolist (note (list root a b))
-      (should (member ekg-agent-author-tag (ekg-note-tags note))))))
+      (should (member ekg-agent-author-tag (ekg-note-tags note))))
+    ;; Importing the same IDs again should fail due to existing note IDs.
+    (should-error (ekg-org-plan-import ekg-agent-test-plan--json nil))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-import-under-task ()
   (let* ((parent (ekg-note-create
                   :text "Existing work" :mode 'org-mode
                   :tags '("org/task" "org/state/todo")
-                  :properties '(:titled/title ("Parent task")))))
+                  :properties '(:titled/title ("Parent task"))))
+         (parent-id-str (format "%s" (ekg-note-id parent)))
+         (subplan-json
+          (json-serialize
+           `(:version 1
+             :tasks [(:id ,(concat parent-id-str "-a")
+                      :parent ,parent-id-str
+                      :title "A" :content "First"
+                      :execution "sequential" :depends_on [] :tags [])
+                     (:id ,(concat parent-id-str "-b")
+                      :parent ,parent-id-str
+                      :title "B" :content "Second"
+                      :execution "parallel"
+                      :depends_on [,(concat parent-id-str "-a")]
+                      :tags [])]))))
     (ekg-save-note parent)
-    (let* ((ids (ekg-org-plan-import ekg-agent-test-plan--json nil
-                                     (ekg-note-id parent)))
-           (root (ekg-get-note-with-id (cdr (assoc "root" ids)))))
-      (should (equal (ekg-note-parent-id root) (ekg-note-id parent)))
+    ;; A plan with a null parent root is rejected when planning under an existing task.
+    (should-error
+     (ekg-org-plan-import ekg-agent-test-plan--json nil (ekg-note-id parent)))
+    ;; Under a sequential parent (the default), a forward dependency from A to B is a cycle.
+    (should-error
+     (ekg-org-plan-import
+      (json-serialize
+       `(:version 1
+         :tasks [(:id ,(concat parent-id-str "-cycle-a")
+                  :parent ,parent-id-str
+                  :title "A" :content "First"
+                  :execution "sequential"
+                  :depends_on [,(concat parent-id-str "-cycle-b")]
+                  :tags [])
+                 (:id ,(concat parent-id-str "-cycle-b")
+                  :parent ,parent-id-str
+                  :title "B" :content "Second"
+                  :execution "parallel" :depends_on [] :tags [])]))
+      nil (ekg-note-id parent)))
+    (let* ((ids (ekg-org-plan-import subplan-json nil (ekg-note-id parent)))
+           (a (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-a") ids))))
+           (b (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-b") ids)))))
+      (should (equal (ekg-note-id a) (concat parent-id-str "-a")))
+      (should (equal (ekg-note-id b) (concat parent-id-str "-b")))
+      (should (equal (ekg-note-parent-id a) (ekg-note-id parent)))
+      (should (equal (ekg-note-parent-id b) (ekg-note-id parent)))
       (should (= (length (ekg-org-get-child-notes-of-id
-                          (ekg-note-id parent))) 1)))))
+                          (ekg-note-id parent))) 2)))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-import-refreshes-views ()
   "A committed plan updates existing task views without moving its parent."
   (ekg-org-add-schema)
   (ekg-agent-org--save-item "Before" "Earlier task" nil nil nil nil nil)
-  (let ((parent (ekg-agent-org--save-item "Parent" "Body" nil
-                                         nil nil nil nil)))
+  (let* ((parent (ekg-agent-org--save-item "Parent" "Body" nil
+                                          nil nil nil nil))
+         (parent-id-str (format "%s" parent))
+         (subplan-json
+          (json-serialize
+           `(:version 1
+             :tasks [(:id ,(concat parent-id-str "-a")
+                      :parent ,parent-id-str
+                      :title "A" :content "First"
+                      :execution "sequential" :depends_on [] :tags [])
+                     (:id ,(concat parent-id-str "-b")
+                      :parent ,parent-id-str
+                      :title "B" :content "Second"
+                      :execution "parallel"
+                      :depends_on [,(concat parent-id-str "-a")]
+                      :tags [])]))))
     (save-window-excursion
       (ekg-org-view-task parent)
       (let ((focused (current-buffer)))
@@ -1650,12 +1715,12 @@ result when the agent finishes."
         (let ((start (window-start))
               (pos (point)))
           (with-temp-buffer
-            (ekg-org-plan-import ekg-agent-test-plan--json nil parent))
+            (ekg-org-plan-import subplan-json nil parent))
           (should (= (window-start) start))
           (should (= (point) pos))
-          (should (= (length (ekg-notes-visible-ids)) 5))
+          (should (= (length (ekg-notes-visible-ids)) 4))
           (with-current-buffer focused
-            (should (= (length (ekg-notes-visible-ids)) 4))))))))
+            (should (= (length (ekg-notes-visible-ids)) 3))))))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-import-under-task-with-existing-children ()
   (ekg-org-add-schema)
@@ -1664,6 +1729,20 @@ result when the agent finishes."
                   :tags '("org/task" "org/state/todo")
                   :properties '(:titled/title ("Parent task"))))
          (_ (ekg-save-note parent))
+         (parent-id-str (format "%s" (ekg-note-id parent)))
+         (subplan-json
+          (json-serialize
+           `(:version 1
+             :tasks [(:id ,(concat parent-id-str "-a")
+                      :parent ,parent-id-str
+                      :title "A" :content "First"
+                      :execution "sequential" :depends_on [] :tags [])
+                     (:id ,(concat parent-id-str "-b")
+                      :parent ,parent-id-str
+                      :title "B" :content "Second"
+                      :execution "parallel"
+                      :depends_on [,(concat parent-id-str "-a")]
+                      :tags [])])))
          (child1 (ekg-note-create
                   :text "Child 1" :mode 'org-mode
                   :tags '("org/task" "org/state/todo")
@@ -1671,36 +1750,47 @@ result when the agent finishes."
                                     :hierarchy/parent (ekg-note-id parent)
                                     :org/sort-order 5))))
     (ekg-save-note child1)
-    (let* ((ids (ekg-org-plan-import ekg-agent-test-plan--json nil
+    ;; Planning is disallowed when the task already has active children.
+    (should-error
+     (ekg-org-plan-import subplan-json nil (ekg-note-id parent)))
+    (with-temp-buffer
+      (setq major-mode 'ekg-note-mode)
+      (setq-local ekg-note parent)
+      (should-error (ekg-agent-org-plan-task) :type 'user-error))
+    ;; Once the existing child is trashed, planning under the task succeeds.
+    (ekg-note-trash child1)
+    (let* ((ids (ekg-org-plan-import subplan-json nil
                                      (ekg-note-id parent)))
-           (root (ekg-get-note-with-id (cdr (assoc "root" ids)))))
-      (should (equal (ekg-note-parent-id root) (ekg-note-id parent)))
-      (should (> (plist-get (ekg-note-properties root) :org/sort-order) 5)))))
+           (a (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-a") ids))))
+           (b (ekg-get-note-with-id (cdr (assoc (concat parent-id-str "-b") ids)))))
+      (should (equal (ekg-note-parent-id a) (ekg-note-id parent)))
+      (should (= (plist-get (ekg-note-properties a) :org/sort-order) 0))
+      (should (= (plist-get (ekg-note-properties b) :org/sort-order) 1)))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-question-tag ()
   (let* ((ids (ekg-org-plan-import ekg-agent-test-plan-with-question--json
                                     '("project")))
          (question (ekg-get-note-with-id (cdr (assoc "question" ids))))
          (revision (ekg-get-note-with-id (cdr (assoc "revise" ids)))))
-    (should (member "org/needs-user-response" (ekg-note-tags question)))
+    (should (member "org/user-task" (ekg-note-tags question)))
     (should (member "project" (ekg-note-tags question)))
-    (should-not (member "org/needs-user-response" (ekg-note-tags revision)))
+    (should-not (member "org/user-task" (ekg-note-tags revision)))
     (should (equal (plist-get (ekg-note-properties revision)
                               :org/depends-on)
                    (list (ekg-note-id question))))))
 
-(ekg-deftest-with-db ekg-agent-test-plan-custom-user-response-tag ()
+(ekg-deftest-with-db ekg-agent-test-plan-custom-user-task-tag ()
   (let* ((ekg-agent-author-tag "made-by-agent")
-         (ekg-agent-org-user-response-tag "org/ask-me")
-         (json (string-replace "org/needs-user-response" "org/ask-me"
+         (ekg-agent-org-user-task-tag "org/ask-me")
+         (json (string-replace "org/user-task" "org/ask-me"
                                ekg-agent-test-plan-with-question--json))
          (ids (ekg-org-plan-import json nil))
          (question (ekg-get-note-with-id (cdr (assoc "question" ids)))))
-    (should (member ekg-agent-org-user-response-tag
+    (should (member ekg-agent-org-user-task-tag
                     (ekg-note-tags question)))
     (should (member ekg-agent-author-tag (ekg-note-tags question)))
     (should-not (ekg-agent--response-inheritable-tag-p
-                 ekg-agent-org-user-response-tag question))
+                 ekg-agent-org-user-task-tag question))
     (should-error
      (ekg-org-plan-import ekg-agent-test-plan-with-question--json nil))))
 
@@ -1715,7 +1805,7 @@ result when the agent finishes."
 (ekg-deftest-with-db ekg-agent-test-plan-rejects-reserved-task-tags ()
   (should-error
    (ekg-org-plan-import
-    (string-replace "org/needs-user-response" "org/state/done"
+    (string-replace "org/user-task" "org/state/done"
                     ekg-agent-test-plan-with-question--json)
     nil))
   (should-not (triples-subjects-of-type ekg-db 'text)))
@@ -1779,8 +1869,15 @@ result when the agent finishes."
               (should-not (member "ask_user" names))
               (should-not (member "add_org_item" names))
               (should-not (member "run_elisp" names))
+              (should-not (member "run_subagent" names))
+              (should (member "emacs_help_symbol" names))
+              (should (member "emacs_help_search" names))
+              (should (member "search_buffer" names))
               (should (string-match-p
                        "unresolved questions"
+                       (llm-chat-prompt-context prompt)))
+              (should (string-match-p
+                       "verification commands"
                        (llm-chat-prompt-context prompt))))
             (funcall (llm-tool-function
                       (car (last (llm-chat-prompt-tools prompt))))
@@ -1796,10 +1893,13 @@ result when the agent finishes."
                            ekg-org-plan-schema))
             (should-not (llm-chat-prompt-tools prompt))
             (should (string-match-p
-                     "org/needs-user-response"
+                     "org/user-task"
                      (llm-chat-prompt-context prompt)))
             (should (string-match-p
-                     "update the original EKG"
+                     "single root task"
+                     (llm-chat-prompt-context prompt)))
+            (should (string-match-p
+                     "Prefix every task `id` with"
                      (llm-chat-prompt-context prompt)))
             (funcall success ekg-agent-test-plan--json))))
       (ekg-agent-org--create-plan (lambda (value) (setq result value))
@@ -1987,6 +2087,397 @@ result when the agent finishes."
           (should researched)
           (should (string-prefix-p "Error:" result)))
       (delete-directory directory t))))
+
+(ekg-deftest-with-db ekg-agent-test-execution-needs-user-response ()
+  (let* ((ekg-agent-org-user-task-tag "org/custom-review")
+         (task (ekg-note-create :id "review-task"
+                :text "Review the result" :mode 'org-mode
+                :tags '("org/task" "org/state/todo"))))
+    (ekg-save-note task)
+    (ekg-agent-org--tool-set-status (ekg-note-id task) "WAITING")
+    (should-not (member ekg-agent-org-user-task-tag
+                        (ekg-note-tags (ekg-get-note-with-id (ekg-note-id task)))))
+    (ekg-agent-org--tool-set-status (ekg-note-id task) "WAITING" t)
+    (let ((updated (ekg-get-note-with-id (ekg-note-id task))))
+      (should (equal (ekg-org-task-state updated) "WAITING"))
+      (should (member ekg-agent-org-user-task-tag (ekg-note-tags updated)))
+      (should (member "org/task" (ekg-note-tags updated))))))
+
+(ekg-deftest-with-db ekg-agent-test-execution-backends ()
+  "Both backends receive task context; external stdin needs no provider."
+  (ekg-org-add-schema)
+  (let* ((directory (make-temp-file "ekg-execution-" t))
+         (default-directory (file-name-as-directory directory))
+         (parent (ekg-note-create
+                  :text "Parent requirements" :mode 'org-mode
+                  :tags '("org/task" "org/state/todo")
+                  :properties '(:titled/title ("Parent"))))
+         (task (ekg-note-create
+                :text "Implement and verify the requested fix" :mode 'org-mode
+                :tags '("project/example" "org/task" "org/state/todo")
+                :properties '(:titled/title ("Fix the bug"))))
+         (child (ekg-note-create
+                 :text "Detailed acceptance criteria" :mode 'org-mode
+                 :tags '("org/task" "org/state/todo")
+                 :properties '(:titled/title ("Verify"))))
+         (prompt (ekg-note-create
+                  :text "Use the project formatter before finishing."
+                  :mode 'org-mode :tags (list ekg-llm-prompt-tag
+                                             "project/example")))
+         (ekg-llm-provider nil)
+         (ekg-agent-org-user-task-tag "org/custom-review")
+         (ekg-agent-org-execution-backend 'ekg-agent)
+         (ekg-agent-code-command "cat")
+         (ekg-agent-code-command-prompt-method 'stdin)
+         context output-buffer)
+    (unwind-protect
+        (progn
+          (with-temp-file (expand-file-name "AGENTS.md" directory)
+            (insert "Run the project's verification command."))
+          (ekg-save-note parent)
+          (ekg-note-set-parent task (ekg-note-id parent))
+          (ekg-org-set-property task "ORDERED" "t")
+          (ekg-save-note task)
+          (ekg-note-set-parent child (ekg-note-id task))
+          (ekg-save-note child)
+          (ekg-save-note prompt)
+          (cl-letf (((symbol-function 'ekg-current-note-or-error-expanded)
+                     (lambda () task))
+                    ((symbol-function 'ekg-agent--provider)
+                     (lambda () (ert-fail "Execution requested an API provider")))
+                    ((symbol-function 'ekg-agent--iterate)
+                     (lambda (chat _ &rest _options)
+                       (setq context (llm-chat-prompt-context chat))
+                       (should-not
+                        (member "ask_user"
+                                (mapcar #'llm-tool-name
+                                        (llm-chat-prompt-tools chat))))))
+                    ((symbol-function 'server-running-p) (lambda (_) t))
+                    ((symbol-function 'display-buffer)
+                     (lambda (buffer &rest _) (setq output-buffer buffer))))
+            (ekg-agent-org-run-task)
+            (let ((tools-directory
+                   (expand-file-name "agent_tools"
+                                     (file-name-directory (locate-library "ekg")))))
+              (dolist (script '("ekg-org-edit" "ekg-update-tags" "ekg-read"))
+                (should (file-executable-p (expand-file-name script tools-directory)))))
+            (let ((ekg-agent-org-execution-backend 'code-command))
+              (cl-letf (((symbol-function 'ekg-agent--agents-md-context)
+                         (lambda () (ert-fail "External execution read AGENTS.md"))))
+                (ekg-agent-org-run-task)))
+            ;; Read the actual subprocess input back through cat, rather
+            ;; than mocking the command runner or invoking an LLM.
+            (let ((deadline (+ (float-time) 5)))
+              (while (and (< (float-time) deadline)
+                          (with-current-buffer output-buffer
+                            (eq ekg-agent--execution-status 'running)))
+                (accept-process-output nil 0.05)))
+            (let ((output (with-current-buffer output-buffer (buffer-string))))
+              (should (eq (buffer-local-value 'ekg-agent--execution-status output-buffer)
+                          'finished))
+              (should (string-match-p "Run the project's verification command."
+                                      context))
+              (should-not (string-match-p "Run the project's verification command."
+                                          output))
+              (should-not (string-match-p "User instructions from AGENTS.md files:"
+                                          output))
+              (dolist (text '("Parent requirements"
+                              "Implement and verify the requested fix"
+                              "Detailed acceptance criteria" "ORDERED"
+                              "Use the project formatter before finishing."
+                              "ekg-org-edit" "--status DONE" "--status WAITING"
+                              "Never ask the user questions"
+                              "org/custom-review" "user clarification, action, or review"
+                              "ekg-update-tags <task-id> --add org/custom-review"
+                              "existing task ID"))
+                (should (string-match-p (regexp-quote text) output)))
+              (should (string-match-p
+                       (regexp-quote (format "note id: %s" (ekg-note-id task)))
+                       output))
+              (should (equal (buffer-local-value 'default-directory output-buffer)
+                             default-directory)))))
+      (delete-directory directory t))))
+
+(ekg-deftest-with-db ekg-agent-test-execution-concurrent-processes ()
+  "Live output, cancellation and buffer cleanup are isolated by task."
+  (let* ((script (make-temp-file "ekg-live-" nil ".sh"))
+         (ekg-agent-code-command (concat "sh " script))
+         (ekg-agent-code-command-prompt-method 'stdin)
+         (one (ekg-note-create :id "execution-first" :text "First" :mode 'org-mode
+                               :tags '("org/task" "org/state/todo")))
+         (two (ekg-note-create :id "execution-second" :text "Second" :mode 'org-mode
+                               :tags '("org/task" "org/state/todo")))
+         first second)
+    (unwind-protect
+        (progn
+          (with-temp-file script
+            (insert "request=$(cat)\nprintf 'stdout %s\\n' \"$request\"\n"
+                    "printf 'stderr ready\\n' >&2\nwhile :; do sleep 1; done\n"))
+          (ekg-save-note one)
+          (ekg-save-note two)
+          (cl-letf (((symbol-function 'server-running-p) (lambda (_) t))
+                    ((symbol-function 'display-buffer) #'ignore))
+            (setq first (ekg-agent-org--run-external
+                         "FIRST" (ekg-note-id one) "Same title")
+                  second (ekg-agent-org--run-external
+                          "SECOND" (ekg-note-id two) "Same title")))
+          (let ((deadline (+ (float-time) 5)))
+            (while (and (< (float-time) deadline)
+                        (not (seq-every-p
+                              (lambda (buffer)
+                                (with-current-buffer buffer
+                                  (string-match-p "stderr ready" (buffer-string))))
+                              (list first second))))
+              (accept-process-output nil 0.05)))
+          (should-not (equal (buffer-name first) (buffer-name second)))
+          (with-current-buffer first
+            (should (equal ekg-agent-task-id (ekg-note-id one)))
+            (should (string-match-p "stdout FIRST" (buffer-string)))
+            (should-not (string-match-p "stdout SECOND" (buffer-string)))
+            (should (process-live-p ekg-agent--execution-process))
+            (ekg-agent-org-execution-cancel)
+            (should (eq ekg-agent--execution-status 'cancelled))
+            (should-not (process-live-p ekg-agent--execution-process))
+            (should-not ekg-agent--execution-timer))
+          (let ((updated (ekg-get-note-with-id (ekg-note-id one))))
+            (should (equal (ekg-org-task-state updated) "WAITING"))
+            (should (string-match-p "Execution interrupted" (ekg-note-text updated))))
+          (with-current-buffer second
+            (should (equal ekg-agent-task-id (ekg-note-id two)))
+            (should (string-match-p "stdout SECOND" (buffer-string)))
+            (should (process-live-p ekg-agent--execution-process))
+            (should (eq ekg-agent--execution-status 'running)))
+          (should (equal (ekg-org-task-state
+                          (ekg-get-note-with-id (ekg-note-id two))) "TODO"))
+          (let ((process (buffer-local-value 'ekg-agent--execution-process second)))
+            (kill-buffer second)
+            (should-not (process-live-p process)))
+          (should (equal (ekg-org-task-state
+                          (ekg-get-note-with-id (ekg-note-id two))) "WAITING")))
+      (dolist (buffer (list first second))
+        (when (buffer-live-p buffer) (kill-buffer buffer)))
+      (delete-file script))))
+
+(ekg-deftest-with-db ekg-agent-test-execution-failure ()
+  "A nonzero exit preserves diagnostics without marking the task done."
+  (let* ((script (make-temp-file "ekg-fail-" nil ".sh"))
+         (ekg-agent-code-command (concat "sh " script))
+         (task (ekg-note-create :text "Work" :mode 'org-mode
+                                :tags '("org/task" "org/state/todo")))
+         buffer)
+    (unwind-protect
+        (progn
+          (ekg-save-note task)
+          (with-temp-file script
+            (insert "cat >/dev/null\nprintf 'command failed\\n' >&2\nexit 7\n"))
+          (cl-letf (((symbol-function 'server-running-p) (lambda (_) t))
+                    ((symbol-function 'display-buffer) #'ignore))
+            (setq buffer (ekg-agent-org--run-external
+                          "Work" (ekg-note-id task) "Failing task")))
+          (let ((deadline (+ (float-time) 5)))
+            (while (and (< (float-time) deadline)
+                        (eq (buffer-local-value 'ekg-agent--execution-status buffer)
+                            'running))
+              (accept-process-output nil 0.05)))
+          (with-current-buffer buffer
+            (should (eq ekg-agent--execution-status 'failed))
+            (should (string-match-p "command failed" (buffer-string)))
+            (should (string-match-p "exit 7" (buffer-string)))
+            (should-not ekg-agent--execution-timer))
+          (should (equal (ekg-org-task-state
+                          (ekg-get-note-with-id (ekg-note-id task))) "TODO")))
+      (when (buffer-live-p buffer) (kill-buffer buffer))
+      (delete-file script))))
+
+(ekg-deftest ekg-agent-test-execution-builtin-buffer-identity ()
+  "Built-in sessions with identical prompts get distinct task buffers."
+  (let ((iterate (symbol-function 'ekg-agent--iterate))
+        (ekg-agent-llm-name-log-buffer nil)
+        (prompt (llm-make-chat-prompt "Same task title")))
+    (cl-letf (((symbol-function 'ekg-agent--iterate)
+               (lambda (chat iteration &rest options)
+                 (when (zerop iteration)
+                   (apply iterate chat iteration options)))))
+      (ekg-agent--iterate prompt 0 :task-id 11)
+      (ekg-agent--iterate prompt 0 :task-id 22)
+      (ekg-agent--iterate prompt 0 :task-id 11))
+    (let ((buffers (seq-filter
+                    (lambda (buf)
+                      (memq (buffer-local-value 'ekg-agent-task-id buf) '(11 22)))
+                    (buffer-list))))
+      (should (= (length buffers) 3))
+      (dolist (buffer buffers)
+        (ekg-agent--rename-log-buffer buffer "same-name")
+        (with-current-buffer buffer
+          (should (string-match-p (format "task %s:" ekg-agent-task-id)
+                                  (buffer-name)))))
+      (let (shown)
+        (cl-letf (((symbol-function 'ekg-current-note-or-error-expanded)
+                   (lambda () (ekg-note-create :id 11)))
+                  ((symbol-function 'pop-to-buffer) (lambda (buf) (setq shown buf))))
+          (ekg-agent-org-show-execution))
+        (should (equal (buffer-local-value 'ekg-agent-task-id shown) 11))
+        (should (= (buffer-local-value 'ekg-agent--execution-start shown)
+                   (apply #'max (mapcar
+                                 (lambda (buf)
+                                   (buffer-local-value 'ekg-agent--execution-start buf))
+                                 (seq-filter
+                                  (lambda (buf)
+                                    (equal (buffer-local-value 'ekg-agent-task-id buf) 11))
+                                  buffers)))))))))
+
+(ekg-deftest ekg-agent-test-code-command-prompt-methods ()
+  "The coding tool still returns output with either prompt transport."
+  (dolist (method '(stdin argument))
+    (let ((ekg-agent-code-command
+           (if (eq method 'stdin) "cat" "printf %s"))
+          (ekg-agent-code-command-prompt-method method)
+          result)
+      (ekg-agent--run-code (lambda (output) (setq result output))
+                           "Prompt with spaces, quotes \" and newline\nend")
+      (let ((deadline (+ (float-time) 5)))
+        (while (and (not result) (< (float-time) deadline))
+          (accept-process-output nil 0.05)))
+      (should (equal result "Prompt with spaces, quotes \" and newline\nend")))))
+
+(ekg-deftest ekg-agent-test-code-command-prompt-delivery-failure ()
+  "A failed stdin write must not leave an untracked command running."
+  (let ((ekg-agent-code-command "cat")
+        (ekg-agent-code-command-prompt-method 'stdin)
+        (make-process (symbol-function 'make-process))
+        process result (calls 0))
+    (cl-letf (((symbol-function 'make-process)
+               (lambda (&rest args)
+                 (setq process (apply make-process args))))
+              ((symbol-function 'process-send-string)
+               (lambda (&rest _) (error "Prompt delivery failed"))))
+      (ekg-agent--run-code
+       (lambda (output) (cl-incf calls) (setq result output)) "Task"))
+    (should process)
+    (should-not (process-live-p process))
+    (should-not (memq process ekg-agent--tool-processes))
+    (should (string-match-p "Prompt delivery failed" result))
+    (should (= calls 1))))
+
+(ekg-deftest ekg-agent-test-code-command-completion-during-startup ()
+  "An error after an early completion must not invoke the callback twice."
+  (let ((ekg-agent-code-command "printf %s")
+        (ekg-agent-code-command-prompt-method 'argument)
+        (start (symbol-function 'ekg-agent--start-code-process))
+        result (calls 0))
+    (cl-letf (((symbol-function 'ekg-agent--start-code-process)
+               (lambda (&rest args)
+                 (let ((process (apply start args))
+                       (deadline (+ (float-time) 5)))
+                   (while (and (process-live-p process) (< (float-time) deadline))
+                     (accept-process-output process 0.05))
+                   (error "Late prompt delivery failure")))))
+      (ekg-agent--run-code
+       (lambda (output) (cl-incf calls) (setq result output)) "done"))
+    (should (equal result "done"))
+    (should (= calls 1))))
+
+(ekg-deftest-with-db ekg-agent-test-inactive-notes-excluded-from-context ()
+  "Inactive (trashed, draft, hidden) notes and child IDs never enter context."
+  (let* ((ekg-hidden-tags (cons "private" ekg-hidden-tags))
+         (parent (ekg-note-create :id "parent-task"
+                                  :text "Parent task"
+                                  :mode 'org-mode
+                                  :tags '("org/task" "org/state/todo" "topic")))
+         (live-child (ekg-note-create :id "parent-task-1"
+                                      :text "Live child"
+                                      :mode 'org-mode
+                                      :tags '("org/task" "org/state/todo" "topic")))
+         (trashed (ekg-note-create :id "parent-task-trash"
+                                   :text "Secret trashed"
+                                   :mode 'org-mode
+                                   :tags '("org/task" "org/state/todo" "topic")))
+         (draft (ekg-note-create :id "parent-task-draft"
+                                 :text "Secret draft"
+                                 :mode 'org-mode
+                                 :tags (list "org/task" "org/state/todo" "topic"
+                                             ekg-draft-tag)))
+         (private (ekg-note-create :id "parent-task-private"
+                                   :text "Secret private"
+                                   :mode 'org-mode
+                                   :tags '("org/task" "org/state/todo" "topic"
+                                           "private"))))
+    (ekg-save-note parent)
+    (dolist (child (list live-child trashed draft private))
+      (ekg-note-set-parent child (ekg-note-id parent))
+      (ekg-save-note child))
+    (ekg-note-trash trashed)
+    (let* ((reloaded-parent (ekg-get-note-with-id "parent-task"))
+           (children-prop (plist-get (ekg-note-properties reloaded-parent)
+                                     :hierarchy/children))
+           (llm-text (ekg-llm-note-to-text reloaded-parent))
+           (agent-json (ekg-agent--notes-to-json (list reloaded-parent))))
+      (should (equal children-prop '("parent-task-1")))
+      (dolist (inactive-id '("parent-task-trash"
+                             "parent-task-draft"
+                             "parent-task-private"))
+        (should-not (string-match-p inactive-id llm-text))
+        (should-not (string-match-p inactive-id agent-json))
+        (should-not (ekg-agent--get-note-with-id inactive-id))
+        (should-error (ekg-agent--get-notes :note-id inactive-id))
+        (should (string-prefix-p
+                 "Error:"
+                 (funcall (llm-tool-function ekg-agent-tool-get-note-by-id)
+                          inactive-id))))
+      ;; Tag queries never return inactive notes, even if hidden tags are requested.
+      (dolist (hidden-tag (list ekg-trash-tag ekg-draft-tag "private"))
+        (should-not (ekg-agent--get-notes :tags (list hidden-tag)))
+        (should-not (ekg-agent--get-notes :any-tags (list hidden-tag))))
+      (let ((topic-ids (mapcar #'ekg-note-id
+                               (ekg-agent--get-notes :tags '("topic")))))
+        (should-not (member "parent-task-trash" topic-ids))
+        (should-not (member "parent-task-draft" topic-ids))
+        (should-not (member "parent-task-private" topic-ids)))
+      ;; Co-tagged prompt lookup on Org tasks keeps org/task prompts while excluding inactive ones.
+      (let ((org-prompt (ekg-note-create :id "org-prompt"
+                                         :text "Org task prompt"
+                                         :mode 'org-mode
+                                         :tags (list "org/task" ekg-llm-prompt-tag)))
+            (trashed-prompt (ekg-note-create :id "trashed-prompt"
+                                             :text "Trashed prompt"
+                                             :mode 'org-mode
+                                             :tags (list "topic" ekg-llm-prompt-tag))))
+        (ekg-save-note org-prompt)
+        (ekg-save-note trashed-prompt)
+        (ekg-note-trash trashed-prompt)
+        (let ((prompt-ids (mapcar #'ekg-note-id
+                                  (ekg-get-notes-cotagged-with-tags
+                                   (ekg-note-tags reloaded-parent)
+                                   ekg-llm-prompt-tag))))
+          (should (member "org-prompt" prompt-ids))
+          (should-not (member "trashed-prompt" prompt-ids))))
+      ;; Vector search over-fetches when initial hits are inactive.
+      (let ((active-note (ekg-note-create :id "active-note"
+                                          :text "Active regular note"
+                                          :mode 'org-mode
+                                          :tags '("topic")))
+            (ekg-vecdb-provider '(fake-provider . fake-collection))
+            (limits nil))
+        (ekg-save-note active-note)
+        (cl-letf (((symbol-function 'vecdb-search-by-vector)
+                   (lambda (_provider _collection _vector limit)
+                     (push limit limits)
+                     (seq-take (list (list :payload '(:ekg-id "\"parent-task-trash\""))
+                                     (list :payload '(:ekg-id "\"parent-task-draft\""))
+                                     (list :payload '(:ekg-id "\"active-note\"")))
+                               limit)))
+                  ((symbol-function 'vecdb-item-payload)
+                   (lambda (item) (plist-get item :payload))))
+          (should (equal (ekg-embedding-n-most-similar-notes [1.0] 1)
+                         '("active-note")))
+          (should (equal (nreverse limits) '(1 2 4)))))
+      ;; Trashing the last live child removes :hierarchy/children completely.
+      (ekg-note-trash live-child)
+      (let ((empty-parent (ekg-get-note-with-id "parent-task")))
+        (should-not (plist-member (ekg-note-properties empty-parent)
+                                  :hierarchy/children))
+        (should-not (string-match-p "hierarchy/children"
+                                    (ekg-llm-note-to-text empty-parent)))))))
 
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here

@@ -177,11 +177,14 @@ buffer's `major-mode'."
 
 (defun ekg-llm--context-tags (note)
   "Return the tags relevant to prompting from NOTE and its ancestors."
-  (seq-uniq
-   (seq-remove
-    (lambda (tag) (equal tag ekg-llm-generated-tag))
-    (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
-            (append (ekg-note-ancestors note) (list note))))))
+  (let ((ekg-hidden-tags (ekg--hidden-tags-for (ekg-note-tags note))))
+    (seq-uniq
+     (seq-difference
+      (mapcan (lambda (entry) (copy-sequence (ekg-note-tags entry)))
+              (append (seq-filter #'ekg-note-active-p
+                                  (ekg-note-ancestors note))
+                      (list note)))
+      (cons ekg-llm-generated-tag ekg-hidden-tags)))))
 
 (defun ekg-llm-prompt-tags ()
   "Return tags that occur on notes tagged with `ekg-llm-prompt-tag'."
@@ -415,7 +418,9 @@ the focal note and omit its text, which is sent as the user message."
 Ancestors have negative depths, NOTE has depth zero, and descendants
 have positive depths.  The current note's text is omitted because it
 is supplied separately as the user interaction."
-  (let* ((ancestors (ekg-note-ancestors note))
+  (let* ((ekg-hidden-tags (ekg--hidden-tags-for (ekg-note-tags note)))
+         (ancestors (seq-filter #'ekg-note-active-p
+                                (ekg-note-ancestors note)))
          (ancestor-count (length ancestors))
          (visited (make-hash-table :test #'equal))
          (json-encoding-pretty-print t))
@@ -503,7 +508,8 @@ NUMWORDS specifies the maximum number of words to include."
 (defun ekg-llm-make-any-tag-generator (tags except-id)
   "Return a generator for notes with any of TAGS, not include EXCEPT-ID."
   (iter-lambda ()
-    (dolist (note (ekg-get-notes-with-any-tags tags))
+    (dolist (note (ekg-get-notes-with-any-tags
+                   (seq-difference tags ekg-hidden-tags)))
       (when (not (equal except-id (ekg-note-id note)))
         (iter-yield (ekg-llm-note-to-text note))))))
 

@@ -3,6 +3,8 @@
 (eldev-use-package-archive 'gnu-elpa)
 (eldev-use-package-archive 'melpa-unstable)
 (eldev-use-plugin 'maintainer)
+;; External task execution needs both the CLI scripts and their instructions.
+(setf eldev-files-to-package `(:or ,eldev-files-to-package "./agent_tools/"))
 (eldev-add-extra-dependencies 'build 'futur)
 (eldev-add-extra-dependencies 'build 'denote)
 (eldev-add-extra-dependencies 'test '(:package markdown-mode :archive melpa))
@@ -10,3 +12,4 @@
 (eldev-add-extra-dependencies 'test 'futur)
 (eldev-add-extra-dependencies 'test 'llm-test)
 (eldev-add-extra-dependencies 'test 'vui)
+(eldev-add-extra-dependencies 'test 'vecdb)

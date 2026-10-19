@@ -175,7 +175,7 @@ wait for the embedding to return and be set."
                               (ekg-display-note-text note ekg-embedding-max-words 'plaintext))))))
     (if (ekg-embedding-valid-p embedding)
         (if ekg-vecdb-provider
-            (ekg-embedding-batch-store
+            (ekg-embedding-batch-store-vecdb
              (list (ekg-embedding--note-to-embed-item note embedding)))
           (triples-set-type ekg-db (ekg-note-id note) 'embedding
                             :embedding embedding))
@@ -286,7 +286,7 @@ embeddings of notes with the given tag."
                     (seq-filter #'ekg-embedding-valid-p embeddings))))
           (if (ekg-embedding-valid-p avg)
               (if ekg-vecdb-provider
-                  (ekg-embedding-batch-store
+                  (ekg-embedding-batch-store-vecdb
                    (list (ekg-embedding--note-to-embed-item
                           (ekg-get-note-with-id tag) avg)))
                 (triples-set-type ekg-db tag 'embedding :embedding avg))
@@ -456,10 +456,22 @@ The results are in order of most similar to least similar."
 The results are in order of most similar to least similar."
   (if ekg-vecdb-provider
       (let ((provider (car ekg-vecdb-provider))
-            (collection (cdr ekg-vecdb-provider)))
-        (mapcar
-         (lambda (item) (read (plist-get (vecdb-item-payload item) :ekg-id)))
-         (vecdb-search-by-vector provider collection e n)))
+            (collection (cdr ekg-vecdb-provider))
+            (limit (max n 1))
+            active-ids items)
+        (while (progn
+                 (setq items (vecdb-search-by-vector provider collection e limit)
+                       active-ids
+                       (seq-filter
+                        #'ekg-active-id-p
+                        (mapcar
+                         (lambda (item)
+                           (read (plist-get (vecdb-item-payload item) :ekg-id)))
+                         items)))
+                 (and (< (length active-ids) n)
+                      (>= (length items) limit)))
+          (setq limit (* limit 2)))
+        (seq-take active-ids n))
     ;; Fallback to the triples database if no vecdb-provider is set.
     ;; This is less efficient, but works for smaller datasets.
     (let* ((embeddings (ekg-embedding-get-all-notes)))

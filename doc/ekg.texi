@@ -154,7 +154,6 @@ Org Tasks
 * Capturing tasks::
 * Changing task state::
 * Linear synchronization::
-* The ekg-org-view::
 * Agent integration::
 * Creating complete plans::
 * Command-line tools::
@@ -277,6 +276,8 @@ triples library is already installed.
 
 @itemize
 @item
+Fix tag embedding refresh and synchronous embedding generation with @samp{vecdb}.
+@item
 Add generic parent-child relationships between notes.  Note lists display
 these relationships hierarchically.
 @item
@@ -288,6 +289,8 @@ retaining Org-specific sibling ordering.
 @item
 Preserve note identity and parent relationships in flat Logseq@comma{} Denote@comma{} and
 Apple Notes exports.
+@item
+Fix image redisplay issue
 @end itemize
 
 @node Version 092
@@ -777,6 +780,16 @@ sure its a mode that makes sense for notes. The default mode is configured in
 @code{ekg-capture-default-mode}@comma{} but can be changed when capturing with the command
 @samp{ekg-change-mode}.
 
+For Markdown notes@comma{} EKG uses the mode associated with @samp{.md} files in
+@code{auto-mode-alist}@comma{} including major mode remapping when supported by Emacs.
+If no mode is associated with @samp{.md} files@comma{} EKG falls back to @samp{markdown-mode}.
+This applies when capturing@comma{} editing@comma{} or displaying Markdown notes@comma{} including
+responses to other notes.
+Inline tag completion and saving recognize the configured Markdown mode too@comma{}
+including modes that are not derived from @samp{markdown-mode}.
+Notes retain @samp{markdown-mode} as their stored format so that their Markdown
+tags remain recognizable after saving and reopening them.
+
 The note text provides various options for completions. The most common
 completion is typing tags inline while writing notes. These tags will be added
 to the note automatically upon saving@comma{} regardless of whether completion is used
@@ -1114,11 +1127,11 @@ also given):
 @samp{ekg-notes-tag} (@samp{t})@comma{} open another notes buffer showing notes with one of the
 tags of current note.
 
-@samp{ekg-notes-open} (@samp{o})@comma{} edit the currently selected note.
+@samp{ekg-notes-open} (@samp{o} or @samp{RET})@comma{} edit the currently selected note.
 
 @samp{ekg-notes-respond} (@samp{r})@comma{} capture a Markdown response to the currently
 selected note.  Responses can themselves have responses and inherit the
-thread's topical tags.
+view's tags along with the thread's topical tags.
 
 @samp{ekg-llm-notes-respond} (@samp{.}@comma{} when @samp{ekg-llm} is loaded)@comma{} ask the configured
 LLM to respond to the currently selected note.  The command always prompts for
@@ -2133,7 +2146,6 @@ separately@comma{} but it does need to be required:
 * Capturing tasks::
 * Changing task state::
 * Linear synchronization::
-* The ekg-org-view::
 * Agent integration::
 * Creating complete plans::
 * Command-line tools::
@@ -2190,12 +2202,13 @@ Tasks can set a @samp{DIR} Org property to choose the working directory used by
 @samp{ekg-agent-org-plan-task} and @samp{ekg-agent-org-run-task}.  Child tasks inherit
 the nearest ancestor's @samp{DIR} unless they define their own@comma{} so generated plans
 attached under a project task use that project's directory automatically.
-In the task view@comma{} put point on the task and press @samp{C-c C-x p}
-(@samp{ekg-org-view-set-property}).  Enter @samp{DIR} as the property name@comma{} then
+In the task view@comma{} put point on the task and run
+@samp{M-x ekg-org-view-set-property}.  Enter @samp{DIR} as the property name@comma{} then
 choose the working directory using directory completion.  The command saves
 the task immediately.  It can also set other Org-style task properties.
-Use @samp{C-u C-c C-x p} to remove a property; removing @samp{DIR} restores inheritance
-from the parent task@comma{} or the invoking buffer's directory if no parent sets it.
+Use @samp{C-u M-x ekg-org-view-set-property} to remove a property; removing @samp{DIR}
+restores inheritance from the parent task@comma{} or the invoking buffer's directory
+if no parent sets it.
 
 The agent resolves this directory before starting@comma{} reads its @samp{AGENTS.md}@comma{}
 and uses it as @samp{default-directory} for synchronous and asynchronous tools@comma{}
@@ -2227,6 +2240,9 @@ Archived tasks are served from a separate virtual file @samp{/ekg:tasks.org_arch
 
 @node Capturing tasks
 @subsection Capturing tasks
+
+@samp{ekg-org-view} is a normal notes view of tasks.  Use @samp{ekg-org-archive-view}
+for archived tasks or @samp{ekg-org-view-task} to focus on a task and its children.
 
 You can capture a new org task interactively with @samp{ekg-org-capture}@comma{} which
 prompts for a title and creates a new note pre-tagged with @samp{org/task} and
@@ -2333,184 +2349,6 @@ does not install background timers or perform network requests on note save.
 Deletion and archival are not propagated@comma{} and remote changes made during a
 sync can race with updates; avoid editing the same issue during a sync.
 
-@node The ekg-org-view
-@subsection The ekg-org-view
-
-@samp{ekg-org-view-mode} is a read-only@comma{} interactive view of your task hierarchy@comma{}
-using the normal EKG note UI@.  Each note shows its title@comma{} user tags@comma{} and body.
-Tasks also show their TODO state@comma{} scheduled date@comma{} deadline@comma{} and immediate-child
-completion count.  Child notes are indented beneath their parent@comma{} and the
-current note is highlighted as the target of task commands.  Task control tags
-are omitted from this view's tag display.
-Loading @samp{ekg-org} adds @samp{org/task} to @samp{ekg-hidden-tags}@comma{} so tasks are omitted
-from ordinary note lists unless that tag is explicitly requested.  The task
-views@comma{} Org export@comma{} and agenda integration still include them.  Draft@comma{} trashed@comma{}
-and other hidden notes remain excluded from task views.
-Non-task responses to tasks also appear as notes without a TODO state;
-press @samp{RET} on one to open and edit its note.  Use @samp{C-c C-r} to capture a
-response to the note at point.
-
-To open the view@comma{} call @samp{ekg-org-view}.  For archived tasks@comma{} call
-@samp{ekg-org-archive-view}.  To focus on a single task and its subtree@comma{} call
-@samp{ekg-org-view-task}.
-
-The view refreshes automatically whenever any ekg note is saved@comma{} so changes
-made by you@comma{} by an agent@comma{} or by the command-line tools are reflected
-immediately.  Refreshes preserve folding and selection.  Creating or moving a
-task beneath a folded parent reveals the task so you can continue acting on it.
-
-The keybindings are modeled after org-mode's speed keys (the single-letter
-shortcuts available when point is at the beginning of a headline).  In this
-view they act on the current note@comma{} including when point is in its body.
-
-@enumerate
-@item
-@anchor{Navigation}Navigation
-
-
-The following keybindings are available in @samp{ekg-org-view-mode}:
-
-@multitable {aaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
-@headitem Key
-@tab Command
-@tab Description
-@item @samp{n}
-@tab @samp{ekg-org-view-next-heading}
-@tab Move to the next note
-@item @samp{p}
-@tab @samp{ekg-org-view-previous-heading}
-@tab Move to the previous note
-@item @samp{f}
-@tab @samp{ekg-org-view-next-sibling}
-@tab Move to the next same-level note
-@item @samp{b}
-@tab @samp{ekg-org-view-previous-sibling}
-@tab Move to the previous same-level note
-@item @samp{u}
-@tab @samp{ekg-org-view-up-heading}
-@tab Move to the parent note
-@end multitable
-
-@item
-@anchor{Actions}Actions
-
-
-@multitable {aaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
-@headitem Key
-@tab Command
-@tab Description
-@item @samp{t} / @samp{C-c C-t}
-@tab @samp{ekg-org-view-cycle-state}
-@tab Choose the TODO state
-@item @samp{x}
-@tab @samp{ekg-org-view-toggle-done}
-@tab Complete or reopen the task
-@item @samp{+}
-@tab @samp{ekg-org-view-add-child}
-@tab Append a child task
-@item @samp{s}
-@tab @samp{ekg-org-view-set-dependency-type}
-@tab Set children sequential or parallel
-@item @samp{C-c C-x p}
-@tab @samp{ekg-org-view-set-property}
-@tab Set a task property; with prefix@comma{} remove it
-@item @samp{TAB}
-@tab @samp{ekg-notes-toggle-collapse}
-@tab Cycle full content@comma{} titles@comma{} folded
-@item @samp{S-TAB}
-@tab @samp{ekg-org-view-toggle-all}
-@tab Fold all roots or expand all notes
-@item @samp{RET} / @samp{o}
-@tab @samp{ekg-org-view-open-note}
-@tab Open the note for editing in ekg
-@item @samp{c}
-@tab @samp{ekg-org-view-create}
-@tab Enter insertion mode to create a new task
-@item @samp{C-c C-r}
-@tab @samp{ekg-org-view-respond}
-@tab Capture a response to the task at point
-@item @samp{a}
-@tab @samp{ekg-org-view-archive}
-@tab Archive the task at point
-@item @samp{d}
-@tab @samp{ekg-org-view-delete}
-@tab Trash (soft-delete) the task
-@item @samp{L} / @samp{l}
-@tab @samp{ekg-org-view-promote}
-@tab Promote: make task a sibling of its parent
-@item @samp{R} / @samp{r}
-@tab @samp{ekg-org-view-demote}
-@tab Demote: make task a child of its previous sibling
-@item @samp{U}
-@tab @samp{ekg-org-view-move-up}
-@tab Move task up (swap with previous sibling)
-@item @samp{D}
-@tab @samp{ekg-org-view-move-down}
-@tab Move task down (swap with next sibling)
-@item @samp{w}
-@tab @samp{ekg-org-view-refile}
-@tab Refile task to a new location in hierarchy
-@item @samp{g}
-@tab @samp{ekg-org-view-refresh}
-@tab Manually refresh the view
-@item @samp{C-c C-s}
-@tab @samp{ekg-org-set-schedule}
-@tab Set the scheduled date of current task
-@item @samp{C-c C-d}
-@tab @samp{ekg-org-set-deadline}
-@tab Set the deadline of current task
-@item @samp{?}
-@tab @samp{describe-mode}
-@tab Show available commands
-@end multitable
-
-@samp{x} uses the first completed or unfinished keyword from the sequence containing
-the task's current state in @samp{org-todo-keywords}.  New tasks use the first
-configured unfinished keyword.  Create tasks in the active view; creation is
-unavailable in the archive view or beneath an archived parent.
-
-@item
-@anchor{Querying task and view state}Querying task and view state
-
-
-@samp{ekg-org-task-state} returns a note's TODO keyword@comma{} and @samp{ekg-org-task-done-p}
-checks whether it is a configured completed state.  @samp{ekg-org-task-summary}
-returns a plist with @samp{:state}@comma{} @samp{:done}@comma{} @samp{:scheduled}@comma{} @samp{:deadline}@comma{} @samp{:children}@comma{}
-@samp{:completed}@comma{} @samp{:remaining}@comma{} and @samp{:dependencies}.  Child counts include immediate
-task children in the note's archive scope.
-
-Within a task view@comma{} @samp{ekg-org-view-state} returns @samp{:current-id}@comma{} @samp{:root-id}@comma{}
-@samp{:archive}@comma{} @samp{:visible-ids}@comma{} @samp{:folded-ids}@comma{} and @samp{:display-states}.
-@samp{ekg-notes-display-state} returns the effective @samp{full}@comma{} @samp{outline} (titles)@comma{} or
-@samp{folded} state of a visible note@comma{} or nil if it is not visible.
-@samp{ekg-notes-visible-ids} returns
-the visible note IDs in navigation order from any normal notes view.
-
-@item
-@anchor{How it differs from org-mode}How it differs from org-mode
-
-
-@samp{ekg-org-view} is intentionally simpler than a full org-mode buffer:
-
-@itemize
-@item
-Tasks are stored in the ekg database@comma{} not in files.  This makes them
-accessible to agents@comma{} command-line tools@comma{} and programmatic APIs without
-needing to parse org syntax.
-@item
-The view is read-only.  To edit a task's body text@comma{} press @samp{RET} to open it in
-ekg's normal note-editing buffer.
-@item
-There is no in-buffer text editing@comma{} column view@comma{} clocking@comma{} or other advanced
-org features.  The focus is on task organization (creating@comma{} reordering@comma{}
-re-parenting@comma{} and state changes).
-@item
-Because tasks live in the database@comma{} both a human in Emacs and an external
-agent can modify tasks concurrently.  The view auto-refreshes to reflect all
-changes.
-@end itemize
-@end enumerate
-
 @node Agent integration
 @subsection Agent integration
 
@@ -2537,8 +2375,8 @@ items done@comma{} and review your task list as part of its autonomous operation
 The @samp{create_org_plan} agent tool takes @samp{description} (the goal and its
 constraints) and @samp{tags} (topic tags applied to every created task).  It first
 runs a research agent with note/file/web read tools@comma{} but no @samp{ask_user} tool.
-Tasks requiring user action receive @code{ekg-agent-org-user-response-tag}
-(default @samp{org/needs-user-response}).  The user can answer question tasks with
+Tasks planned for the user to do receive @code{ekg-agent-org-user-task-tag}
+(default @samp{org/user-task}).  The user can answer question tasks with
 a child response note.  When questions exist@comma{}
 the plan includes a follow-up task to incorporate those responses@comma{} revise the
 plan@comma{} and update the original task note.  This follow-up is a task to execute@comma{}
@@ -2595,8 +2433,8 @@ prerequisites@comma{} stored as multi-valued @samp{:org/depends-on} note IDs.  T
 task has one display parent but may have multiple execution prerequisites.
 The per-task @samp{tags} array is required in newly generated plans but optional
 when importing older version 1 JSON@.  It adds task-specific topic tags; the
-only allowed internal tag is @code{ekg-agent-org-user-response-tag} (default
-@samp{org/needs-user-response}).  Use it for any task requiring user action.  For a
+only allowed internal tag is @code{ekg-agent-org-user-task-tag} (default
+@samp{org/user-task}).  Use it for any task planned for the user to do.  For a
 question@comma{} ask the user to add a child response note@comma{} and make work that
 requires the answer depend on that task.
 The importer rejects cycles@comma{} including those implied by sequential groups and
@@ -2631,6 +2469,60 @@ These complement the general @samp{ekg-add-note} and @samp{ekg-read} scripts.  S
 
 @node Agent
 @section Agent
+
+To execute the task at point@comma{} use @samp{M-x ekg-agent-org-run-task}.  This runs the
+backend selected by @code{ekg-agent-org-execution-backend}: @samp{ekg-agent} (the
+default) or @samp{code-command} to execute with @code{ekg-agent-code-command}. Both
+receive the task hierarchy@comma{} full child notes@comma{} task properties@comma{} working
+directory (including inherited @samp{DIR})@comma{} and co-tagged @code{ekg-llm-prompt-tag}
+instructions.  The built-in agent also receives @samp{AGENTS.md} context; external
+coding agents load their own project instructions.  They verify the work and
+set the task to DONE@comma{} or record a blocker and set WAITING@comma{} without asking
+questions.  If user clarification@comma{} action@comma{} or review is needed@comma{} they also add
+@code{ekg-agent-org-user-task-tag} (default @samp{org/user-task}) and record what is
+needed on the task.
+
+For Codex@comma{} configure:
+
+@lisp
+(setq ekg-agent-org-execution-backend 'code-command
+      ekg-agent-code-command
+      "codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -"
+      ekg-agent-code-command-prompt-method 'stdin)
+@end lisp
+
+For Claude Code@comma{} configure:
+
+@lisp
+(setq ekg-agent-org-execution-backend 'code-command
+      ekg-agent-code-command "claude --print --dangerously-skip-permissions"
+      ekg-agent-code-command-prompt-method 'stdin)
+@end lisp
+
+These commands run non-interactively and bypass permission prompts; the Codex
+command also disables its sandbox.  Start an Emacs server with
+@samp{M-x server-start} first; the external agent uses the bundled EKG CLI scripts
+to read notes@comma{} record progress@comma{} and update task status in that Emacs.
+External execution requires the agent's own authentication@comma{} but no
+@code{ekg-llm-provider} or Emacs API key.
+
+Each execution has a separate buffer named @samp{*ekg task <id>: <title>*}; the
+built-in agent also includes the task ID in its log buffer name.  The
+buffer-local variable @code{ekg-agent-task-id} associates the buffer with its task@comma{}
+without storing transient buffer names in the database.  Use
+@samp{M-x ekg-agent-org-show-execution} from a task to find its most recent
+execution buffer@comma{} or @samp{C-c C-o} in an execution buffer to open the associated
+task.
+
+External execution buffers stream standard output and error as the command
+produces them.  The header shows process state and elapsed time.  A successful
+process exit means the command finished; the task's status is managed by the
+agent.  Use @samp{C-c C-k} to stop that buffer's external process@comma{} record the
+interruption on its task@comma{} and leave the task WAITING@.  Killing a running
+execution buffer also stops its process.  Other executions are unaffected.
+The built-in agent retains its existing cancellation and continuation
+commands.  The coding tool remains available for delegation from the built-in
+agent.
 
 The @samp{ekg-agent} module provides an autonomous agent that can help you with your
 notes.  This agent can review your notes and org-mode agenda@comma{} searching across
@@ -2720,7 +2612,7 @@ The agent uses specific tags to organize its work:
 @item
 @code{ekg-agent-author-tag} (default "agent"): All notes created by the agent will have this tag.
 @item
-@code{ekg-agent-org-user-response-tag} (default "org/needs-user-response"): Org tasks requiring user action have this tag.
+@code{ekg-agent-org-user-task-tag} (default "org/user-task"): Org tasks planned for the user to do have this tag.
 @item
 @code{ekg-agent-self-info-tag} (default "agent/self-info"): The agent uses this tag to store information for itself about your preferences or its own past actions.
 @end itemize
