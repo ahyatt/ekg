@@ -347,9 +347,7 @@ an ekg-note and returns nil to exclude it."
 
 (defun ekg-org--org-note-p (note)
   "Return t if NOTE is an org task note."
-  (or
-   (triples-get-type ekg-db (ekg-note-id note) 'org)
-   (member ekg-org-task-tag (ekg-note-tags note))))
+  (member ekg-org-task-tag (ekg-note-tags note)))
 
 (defun ekg-org-change-state (new-state)
   "Change the current task to NEW-STATE from `org-todo-keywords'.
@@ -988,18 +986,43 @@ preserve the note at point, or its nearest visible ancestor if folded."
                            (ekg-org--done-keywords)))
       (user-error "No unfinished TODO keyword is configured")))
 
-(defun ekg-org--next-sort-order (&optional parent-id)
+(defun ekg-org--next-sort-order (&optional parent-id exclude-id)
   "Return an append order for children of PARENT-ID, or for root tasks.
-Use the highest stored order rather than the count: orders can have gaps."
+Use the highest stored order rather than the count: orders can have gaps.
+Exclude EXCLUDE-ID when assigning an order to an existing unordered note."
   (let ((siblings (if parent-id
                       (ekg-org-view--sorted-children parent-id)
                     (ekg-org-view--sorted-top-level))))
-    (1+ (apply #'max -1 (mapcar #'ekg-org-view--sort-order siblings)))))
+    (1+ (apply #'max -1
+               (mapcar #'ekg-org-view--sort-order
+                       (seq-remove (lambda (note)
+                                     (equal exclude-id (ekg-note-id note)))
+                                   siblings))))))
+
+(defun ekg-org--ensure-task-state (note)
+  "Supply an initial state for task NOTE when no state is present."
+  (unless (ekg-org-task-state note)
+    (push (concat ekg-org-state-tag-prefix
+                  (downcase (ekg-org--initial-state)))
+          (ekg-note-tags note))))
+
+(defun ekg-org--save-task-defaults (note)
+  "Assign defaults using NOTE's final task tags, just before saving.
+Preserve explicit order; ordinary response notes receive no Org properties."
+  (when (ekg-org--org-note-p note)
+    (ekg-org--ensure-task-state note)
+    (unless (plist-member (ekg-note-properties note) :org/sort-order)
+      (setf (ekg-note-properties note)
+            (plist-put (ekg-note-properties note) :org/sort-order
+                       (ekg-org--next-sort-order (ekg-note-parent-id note)
+                                                 (ekg-note-id note)))))))
+
+(add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
 
 (defun ekg-org--capture-task-defaults ()
   "Initialize task captures through `ekg-capture-mode-hook'.
-Only notes tagged `org/task' receive an initial state and append order.
-Preserve explicit state and ordering, and leave ordinary notes unchanged."
+Only notes tagged `org/task' receive an initial state.
+Ordering is deferred until save, after the user has finished editing tags."
   (when (and ekg-capture-mode ekg-note
              (member ekg-org-task-tag (ekg-note-tags ekg-note)))
     (let* ((parent-id (ekg-note-parent-id ekg-note))
@@ -1009,30 +1032,9 @@ Preserve explicit state and ordering, and leave ordinary notes unchanged."
                 (and parent
                      (member ekg-org-archive-tag (ekg-note-tags parent))))
         (user-error "Create tasks in the active task view"))
-      ;; Explicit states and positions always take precedence.
-      (unless (ekg-org-task-state ekg-note)
-        (push (concat ekg-org-state-tag-prefix
-                      (downcase (ekg-org--initial-state)))
-              (ekg-note-tags ekg-note)))
-      (unless (plist-member (ekg-note-properties ekg-note) :org/sort-order)
-        ;; Assign only the draft's order; abort must not reorder saved siblings.
-        (setf (ekg-note-properties ekg-note)
-              (plist-put (ekg-note-properties ekg-note) :org/sort-order
-                         (ekg-org--next-sort-order parent-id)))))))
+      (ekg-org--ensure-task-state ekg-note))))
 
 (add-hook 'ekg-capture-mode-hook #'ekg-org--capture-task-defaults)
-
-(defun ekg-org-view-capture-child ()
-  "Capture a child task in the normal note editor."
-  (interactive nil ekg-org-view-mode)
-  (ekg-org-view--capture-response (ekg-org-view--require-task-at-point)))
-
-(defun ekg-org-view--capture-response (note)
-  "Capture a child task of task NOTE, or a response to an ordinary note."
-  (if (ekg-org--org-note-p note)
-      (ekg-capture :tags (cons ekg-org-task-tag (ekg-org-view--visible-tags note))
-                   :properties (list :hierarchy/parent (ekg-note-id note)))
-    (ekg-respond-to-note note)))
 
 (defun ekg-org-view-set-dependency-type (dependency-type)
   "Set the dependency mode of the task's children.
@@ -1359,37 +1361,6 @@ timestamp in the note's `:org/deadline' property."
 
 ;; Major mode
 
-(defvar ekg-org-view-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "f") #'ekg-org-view-next-sibling)
-    (define-key map (kbd "u") #'ekg-org-view-up-heading)
-    (define-key map (kbd "C-c C-t") #'ekg-org-view-cycle-state)
-    (define-key map (kbd "x") #'ekg-org-view-toggle-done)
-    (define-key map (kbd "+") #'ekg-org-view-capture-child)
-    (define-key map (kbd "?") #'describe-mode)
-    (define-key map (kbd "C-c C-a") #'ekg-org-view-archive)
-    (define-key map (kbd "<backtab>") #'ekg-org-view-toggle-all)
-    (define-key map (kbd "S-<tab>") #'ekg-org-view-toggle-all)
-    (define-key map (kbd "S-TAB") #'ekg-org-view-toggle-all)
-    (define-key map (kbd "C-c C-r") #'ekg-org-view-respond)
-    (define-key map (kbd "L") #'ekg-org-view-promote)
-    (define-key map (kbd "l") #'ekg-org-view-promote)
-    (define-key map (kbd "R") #'ekg-org-view-demote)
-    (define-key map (kbd "U") #'ekg-org-view-move-up)
-    (define-key map (kbd "D") #'ekg-org-view-move-down)
-    (define-key map (kbd "w") #'ekg-org-view-refile)
-    (define-key map (kbd "C-c C-s") #'ekg-org-set-schedule)
-    (define-key map (kbd "C-c C-d") #'ekg-org-set-deadline)
-    map)
-  "Keymap for `ekg-org-view-mode'.")
-
-;; Keep this outside the `defvar' initializer so reloading ekg-org adds
-;; the command to an already existing mode map.
-(define-key ekg-org-view-mode-map (kbd "s")
-            #'ekg-org-view-set-dependency-type)
-(define-key ekg-org-view-mode-map (kbd "C-c C-x p")
-            #'ekg-org-view-set-property)
-
 (defun ekg-org-view--refresh-all (&rest _args)
   "Refresh all live `ekg-org-view-mode' buffers.
 During inhibited batches, let VUI coalesce updates to each mounted
@@ -1410,11 +1381,8 @@ so this can run on `ekg-note-save-hook' and `ekg-note-delete-hook'."
          (t (ekg-org-view--refresh)))))))
 
 (define-derived-mode ekg-org-view-mode ekg-notes-mode "EKG-Org"
-  "Major mode for viewing ekg org tasks in a hierarchical view.
-
-\\{ekg-org-view-mode-map}"
+  "Show a task query using the normal notes UI and keybindings."
   (setq-local ekg-notes-children-function #'ekg-org-view--children
-              ekg-notes-respond-function #'ekg-org-view--capture-response
               ekg-notes-include-descendants t
               ekg-notes-show-child-count nil
               ekg-display-note-template

@@ -1120,8 +1120,7 @@ tags of current note.
 
 @samp{ekg-notes-respond} (@samp{r})@comma{} capture a Markdown response to the currently
 selected note.  Responses can themselves have responses and inherit the
-thread's topical tags.  In a task view@comma{} responding to a task captures a
-child task instead.
+view's tags along with the thread's topical tags.
 
 @samp{ekg-llm-notes-respond} (@samp{.}@comma{} when @samp{ekg-llm} is loaded)@comma{} ask the configured
 LLM to respond to the currently selected note.  The command always prompts for
@@ -2191,12 +2190,13 @@ Tasks can set a @samp{DIR} Org property to choose the working directory used by
 @samp{ekg-agent-org-plan-task} and @samp{ekg-agent-org-run-task}.  Child tasks inherit
 the nearest ancestor's @samp{DIR} unless they define their own@comma{} so generated plans
 attached under a project task use that project's directory automatically.
-In the task view@comma{} put point on the task and press @samp{C-c C-x p}
-(@samp{ekg-org-view-set-property}).  Enter @samp{DIR} as the property name@comma{} then
+In the task view@comma{} put point on the task and run
+@samp{M-x ekg-org-view-set-property}.  Enter @samp{DIR} as the property name@comma{} then
 choose the working directory using directory completion.  The command saves
 the task immediately.  It can also set other Org-style task properties.
-Use @samp{C-u C-c C-x p} to remove a property; removing @samp{DIR} restores inheritance
-from the parent task@comma{} or the invoking buffer's directory if no parent sets it.
+Use @samp{C-u M-x ekg-org-view-set-property} to remove a property; removing @samp{DIR}
+restores inheritance from the parent task@comma{} or the invoking buffer's directory
+if no parent sets it.
 
 The agent resolves this directory before starting@comma{} reads its @samp{AGENTS.md}@comma{}
 and uses it as @samp{default-directory} for synchronous and asynchronous tools@comma{}

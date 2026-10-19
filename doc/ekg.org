@@ -612,8 +612,7 @@ tags of current note.
 
 =ekg-notes-respond= (=r=), capture a Markdown response to the currently
 selected note.  Responses can themselves have responses and inherit the
-thread's topical tags.  In a task view, responding to a task captures a
-child task instead.
+view's tags along with the thread's topical tags.
 
 =ekg-llm-notes-respond= (=.=, when =ekg-llm= is loaded), ask the configured
 LLM to respond to the currently selected note.  The command always prompts for
@@ -1545,12 +1544,13 @@ Tasks can set a =DIR= Org property to choose the working directory used by
 =ekg-agent-org-plan-task= and =ekg-agent-org-run-task=.  Child tasks inherit
 the nearest ancestor's =DIR= unless they define their own, so generated plans
 attached under a project task use that project's directory automatically.
-In the task view, put point on the task and press =C-c C-x p=
-(=ekg-org-view-set-property=).  Enter =DIR= as the property name, then
+In the task view, put point on the task and run
+=M-x ekg-org-view-set-property=.  Enter =DIR= as the property name, then
 choose the working directory using directory completion.  The command saves
 the task immediately.  It can also set other Org-style task properties.
-Use =C-u C-c C-x p= to remove a property; removing =DIR= restores inheritance
-from the parent task, or the invoking buffer's directory if no parent sets it.
+Use =C-u M-x ekg-org-view-set-property= to remove a property; removing =DIR=
+restores inheritance from the parent task, or the invoking buffer's directory
+if no parent sets it.
 
 The agent resolves this directory before starting, reads its =AGENTS.md=,
 and uses it as =default-directory= for synchronous and asynchronous tools,

@@ -2453,11 +2453,12 @@ intended to be used in any context where a note might be available."
                (error "No task at point"))))
       (error "No current note found in context")))
 
-(defun ekg-respond-to-note (&optional note)
+(defun ekg-respond-to-note (&optional note tags)
   "Capture a Markdown response to NOTE.
 When NOTE is nil, use the note being edited or the note at point
 in an `ekg-notes-mode' buffer.  Unsaved edits to an existing note
-are saved before opening the response buffer."
+are saved before opening the response buffer.  TAGS supplies additional
+capture defaults, such as the tags of the notes view being used."
   (interactive)
   (let ((parent
          (or note
@@ -2471,20 +2472,14 @@ are saved before opening the response buffer."
     (unless (ekg-note-with-id-exists-p (ekg-note-id parent))
       (user-error "Save the note before responding to it"))
     (ekg-capture :mode 'markdown-mode
-                 :tags (ekg-response-inherited-tags parent)
+                 :tags (append tags (ekg-response-inherited-tags parent))
                  :properties (list :hierarchy/parent
                                    (ekg-note-id parent)))))
 
-(defvar-local ekg-notes-respond-function #'ekg-respond-to-note
-  "Function used to capture a child of the selected note.
-Called with the parent note.  By default capture a Markdown response;
-specialized views can supply another kind of child capture.")
-
 (defun ekg-notes-respond ()
-  "Capture a child of the note at point.
-Use `ekg-notes-respond-function', normally a Markdown response capture."
+  "Capture a child of the note at point with the current view's tags."
   (interactive nil ekg-notes-mode)
-  (funcall ekg-notes-respond-function (ekg-current-note-or-error)))
+  (ekg-respond-to-note (ekg-current-note-or-error) ekg-notes-tags))
 
 (defun ekg-notes-tag (&optional tag)
   "Show notes associated with TAG.

@@ -30,17 +30,17 @@
 (ekg-deftest-with-db ekg-org-test-view-inherits-notes-actions ()
   "Task queries keep the standard notes UI and its key meanings."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (ekg-org-test--add-task "Task")
   (ekg-org-view)
   (dolist (key '("c" "n" "p" "o" "RET" "r" "t" "a" "b" "d" "g" "TAB"))
     (should (eq (key-binding (kbd key))
-                (lookup-key ekg-notes-mode-map (kbd key)))))
-  (should (eq (key-binding (kbd "C-c C-t")) #'ekg-org-view-cycle-state))
-  (should (eq (key-binding (kbd "+")) #'ekg-org-view-capture-child)))
+                (lookup-key ekg-notes-mode-map (kbd key))))))
 
 (ekg-deftest-with-db ekg-org-test-view-notes-capture-root-from-nested ()
   "The normal create action captures a root even from a nested task."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (let* ((parent (ekg-org-test--add-task "Parent"))
          (child (ekg-org-test--add-task "Child" parent))
          (org-todo-keywords '((sequence "OPEN" "|" "CLOSED"))))
@@ -67,6 +67,7 @@
 (ekg-deftest-with-db ekg-org-test-view-notes-capture-child-and-abort ()
   "Child capture uses the shared editor and abort leaves siblings intact."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (let* ((parent (ekg-org-test--add-task "Parent"))
          (existing (ekg-org-test--add-task "Existing" parent))
          (note (ekg-get-note-with-id parent)))
@@ -79,7 +80,8 @@
     (let ((order (ekg-org-view--sort-order (ekg-get-note-with-id existing))))
       (call-interactively (key-binding "r"))
       (should (equal (ekg-note-parent-id ekg-note) parent))
-      (should (derived-mode-p 'org-mode))
+      (should (derived-mode-p 'markdown-mode))
+      (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
       (should (equal (ekg-org-task-state ekg-note) "TODO"))
       (should (member "project" (ekg-note-tags ekg-note)))
       (let ((id (ekg-note-id ekg-note)))
@@ -103,13 +105,13 @@
 (ekg-deftest-with-db ekg-org-test-view-notes-capture-archive-and-defaults ()
   "Task capture rejects archives without leaking defaults to ordinary notes."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (ekg-org-archive-view)
   (should-error (ekg-notes-create) :type 'user-error)
   (ekg-org-view)
   (let ((org-todo-keywords '((sequence "|" "CLOSED"))))
     (should-error (ekg-notes-create) :type 'user-error))
   (ekg-setup-notes-buffer "ordinary" (lambda () nil) '("topic"))
-  (should (eq ekg-notes-respond-function #'ekg-respond-to-note))
   (ekg-notes-create)
   (should (member "topic" (ekg-note-tags ekg-note)))
   (should-not (member ekg-org-task-tag (ekg-note-tags ekg-note)))
@@ -119,6 +121,7 @@
 (ekg-deftest-with-db ekg-org-test-capture-hook-defaults-outside-task-view ()
   "Any capture with the task tag gets defaults without a view-specific handler."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (let ((org-todo-keywords '((sequence "OPEN" "|" "CLOSED"))))
     (ekg-capture :mode 'text-mode :tags '("org/task" "project"))
     (should (eq major-mode 'text-mode))
@@ -133,6 +136,7 @@
 (ekg-deftest-with-db ekg-org-test-capture-hook-preserves-explicit-state ()
   "Task defaults never replace an explicit state or order."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (let ((org-todo-keywords '((sequence "|" "CLOSED"))))
     (ekg-capture :tags '("org/task" "org/state/closed")
                  :properties '(:org/sort-order 7))
@@ -141,11 +145,17 @@
                     (ekg-note-tags ekg-note))
                    '("org/state/closed")))
     (should (= (plist-get (ekg-note-properties ekg-note) :org/sort-order) 7))
-    (ekg-capture-abort)))
+    (let ((id (ekg-note-id ekg-note)))
+      (insert "An explicitly positioned completed task")
+      (ekg-capture-finalize)
+      (let ((saved (ekg-get-note-with-id id)))
+        (should (equal (ekg-org-task-state saved) "CLOSED"))
+        (should (= (plist-get (ekg-note-properties saved) :org/sort-order) 7))))))
 
 (ekg-deftest-with-db ekg-org-test-capture-header-after-setup-hooks ()
   "Capture formats the header after mode hooks and initial tag hooks finish."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (let ((ekg-capture-mode-hook
          (append ekg-capture-mode-hook
                  (list (lambda ()
@@ -163,8 +173,9 @@
     (ekg-capture-abort)))
 
 (ekg-deftest-with-db ekg-org-test-view-respond-to-ordinary-note ()
-  "Responding to an ordinary note keeps Markdown response defaults."
+  "Removing task defaults saves an ordinary child without Org properties."
   (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
   (let* ((parent (ekg-org-test--add-task "Task"))
          (response (ekg-note-create :text "Discussion" :mode 'markdown-mode
                                     :tags '("project")
@@ -175,9 +186,50 @@
     (call-interactively (key-binding "r"))
     (should (derived-mode-p 'markdown-mode))
     (should (equal (ekg-note-parent-id ekg-note) (ekg-note-id response)))
-    (should-not (member ekg-org-task-tag (ekg-note-tags ekg-note)))
+    (should (member ekg-org-task-tag (ekg-note-tags ekg-note)))
     (should (member "project" (ekg-note-tags ekg-note)))
-    (ekg-capture-abort)))
+    (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
+    (setf (ekg-note-tags ekg-note)
+          (seq-remove (lambda (tag) (string-prefix-p "org/" tag))
+                      (ekg-note-tags ekg-note)))
+    (let ((id (ekg-note-id ekg-note)))
+      (insert "An ordinary discussion reply")
+      (ekg-capture-finalize)
+      (let ((saved (ekg-get-note-with-id id)))
+        (should-not (ekg-org--org-note-p saved))
+        (should-not (triples-get-type ekg-db id 'org))
+        (should (equal (ekg-note-parent-id saved) (ekg-note-id response)))))))
+
+(ekg-deftest-with-db ekg-org-test-task-captures-order-by-save ()
+  "Open captures receive append orders when saved, not when opened."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let ((parent (ekg-org-test--add-task "Task")))
+    (ekg-org-view)
+    (ekg-notes-respond)
+    (let ((first (current-buffer)) (first-id (ekg-note-id ekg-note)))
+      (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
+      (ekg-org-view)
+      (ekg-org-view--goto-note-id parent)
+      (ekg-notes-respond)
+      (let ((second-id (ekg-note-id ekg-note)))
+        (insert "Saved first")
+        (ekg-capture-finalize)
+        (switch-to-buffer first)
+        (insert "Saved second")
+        (ekg-capture-finalize)
+        (should (equal (mapcar #'ekg-note-id
+                              (ekg-org-view--sorted-children parent))
+                       (list second-id first-id)))))))
+
+(ekg-deftest-with-db ekg-org-test-task-marker-overrides-old-properties ()
+  "Stale Org metadata cannot turn an untagged note back into a task."
+  (ekg-org-add-schema)
+  (add-hook 'ekg-note-pre-save-hook #'ekg-org--save-task-defaults)
+  (let ((note (ekg-note-create :text "Discussion" :tags '("project")
+                               :properties '(:org/sort-order 5))))
+    (ekg-save-note note)
+    (should-not (ekg-org--org-note-p (ekg-get-note-with-id (ekg-note-id note))))))
 
 (defun ekg-org-test-parse-out-id (result-string)
   "Helper to parse out integer ID from RESULT-STRING."
@@ -339,9 +391,7 @@
     (setq parent (ekg-get-note-with-id parent-id))
     (should (eq (ekg-org-dependency-type parent) 'sequential))
     (should (string-match-p "^:ORDERED: *t$"
-                            (ekg-org-task-to-string parent)))
-    (should (eq (lookup-key ekg-org-view-mode-map (kbd "s"))
-                #'ekg-org-view-set-dependency-type))))
+                            (ekg-org-task-to-string parent)))))
 
 (ekg-deftest-with-db ekg-org-test-save-with-virtual-reversed ()
   "Test that saving a parent note with hierarchy/children doesn't error.
@@ -1281,7 +1331,7 @@ An agent saving a new note should cause the view to update automatically."
     (ekg-org-archive-view)
     (should-error (ekg-org-view-add-child "Child") :type 'user-error)
     (should-error (ekg-notes-create) :type 'user-error)
-    (should-error (ekg-org-view-capture-child) :type 'user-error)
+    (should-error (ekg-notes-respond))
     (should-not (ekg-note-child-notes (ekg-get-note-with-id parent)))
     (should-not (ekg-org-get-tasks))))
 
@@ -1307,7 +1357,7 @@ An agent saving a new note should cause the view to update automatically."
     (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
       (ekg-org-view-archive))
     (should-not (ekg-notes-visible-ids))
-    (should-error (ekg-org-view-capture-child) :type 'user-error)
+    (should-error (ekg-notes-respond))
     (should-not (ekg-note-child-notes (ekg-get-note-with-id parent)))))
 
 (ekg-deftest-with-db ekg-org-test-toggle-done-multiple-sequences ()
@@ -1433,8 +1483,7 @@ An agent saving a new note should cause the view to update automatically."
                  (lambda (_prompt initial &rest _)
                    (should (equal initial "Original owner"))
                    "New owner")))
-        (call-interactively (lookup-key ekg-org-view-mode-map
-                                       (kbd "C-c C-x p"))))
+        (call-interactively #'ekg-org-view-set-property))
       (should (equal (ekg-org-view--note-at-point) id))
       (setq note (ekg-get-note-with-id id))
       (should (equal (ekg-org-get-property note "OWNER") "New owner"))
