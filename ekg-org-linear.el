@@ -98,6 +98,76 @@ Signal on transport, HTTP or GraphQL errors; never treat errors as success."
             (or (alist-get 'data response) (error "Linear returned no data"))))
       (kill-buffer buffer))))
 
+(defun ekg-org-linear--editor-p ()
+  "Return non-nil in a live EKG note editor."
+  (and (or (bound-and-true-p ekg-edit-mode)
+           (bound-and-true-p ekg-capture-mode))
+       (bound-and-true-p ekg-note)))
+
+(defun ekg-org-linear--check-editors (&optional note-id except-buffer)
+  "Refuse to sync tasks with unsaved editor changes.
+When NOTE-ID is provided, check only that task, even if unlinked.
+Skip EXCEPT-BUFFER when marking from the editor that is being saved."
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (and (not (eq buffer except-buffer))
+                 (ekg-org-linear--editor-p)
+                 (if note-id
+                     (equal note-id (ekg-note-id ekg-note))
+                   (or (ekg-org-get-property ekg-note "LINEAR_ID")
+                       (ekg-org-get-property ekg-note "LINEAR_SYNC_ENABLED"))))
+        (let ((stored (ekg-get-note-with-id (ekg-note-id ekg-note))))
+          (when (or (buffer-modified-p)
+                    (not (equal (ekg-org-linear--local-values ekg-note)
+                                (ekg-org-linear--local-values stored)))
+                    (not (equal (ekg-note-tags ekg-note) (ekg-note-tags stored)))
+                    (not (equal (sort (ekg-org-properties-alist ekg-note)
+                                      (lambda (a b) (string< (car a) (car b))))
+                                (sort (ekg-org-properties-alist stored)
+                                      (lambda (a b) (string< (car a) (car b)))))))
+            (user-error "Save or close task editor %s before Linear sync"
+                        (buffer-name))))))))
+
+(defun ekg-org-linear--save-note (note)
+  "Save NOTE without changing the caller's buffer modification flag.
+Refresh matching clean task editors, including their link metadata, so a
+subsequent editor save cannot restore stale content or remove the link."
+  (with-temp-buffer (ekg-save-note note))
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (and (ekg-org-linear--editor-p)
+                 (equal (ekg-note-id ekg-note) (ekg-note-id note))
+                 (not (buffer-modified-p)))
+        (let ((text (ekg-insert-inlines-representation
+                     (ekg-note-text note) (ekg-note-inlines note)))
+              (position (point))
+              (inhibit-read-only t))
+          (unless (equal text (buffer-substring-no-properties
+                               (ekg--note-text-beginning) (point-max)))
+            (delete-region (ekg--note-text-beginning) (point-max))
+            (goto-char (point-max))
+            (insert text)
+            (goto-char (min position (point-max))))
+          ;; Read back the saved representation, including normalized tags.
+          (setq ekg-note (ekg-get-note-with-id (ekg-note-id note))
+                ekg-note-orig-note (copy-tree ekg-note)
+                ekg-note-orig-id (ekg-note-id note)
+                header-line-format (ekg--header-line-format))
+          (set-buffer-modified-p nil))))))
+
+(defun ekg-org-linear--find-issue (id)
+  "Find issue UUID ID across teams, including archived issues.
+Return nil only for an empty successful lookup, propagating API errors."
+  (let* ((data (ekg-org-linear--request
+                (format (concat "query($id: ID!) { issues(first: 1,"
+                                " includeArchived: true, filter: {id: {eq: $id}})"
+                                " { nodes { %s } } }")
+                        ekg-org-linear--fields)
+                `((id . ,id))))
+         (connection (or (alist-get 'issues data)
+                         (error "Linear returned no issue lookup connection"))))
+    (car (alist-get 'nodes connection))))
+
 (defun ekg-org-linear--issue (id)
   "Fetch issue ID (a UUID or identifier such as ENG-123)."
   (or (alist-get 'issue
@@ -207,6 +277,7 @@ The first sync imports Linear's text and state.  No issue is created."
                      (read-string "Linear issue ID (e.g. ENG-123): ")))
   (ekg-connect)
   (ekg-org-add-schema)
+  (ekg-org-linear--check-editors note-id)
   (let* ((note (ekg-get-note-with-id note-id))
          (issue (ekg-org-linear--issue issue-id))
          (id (alist-get 'id issue))
@@ -217,7 +288,7 @@ The first sync imports Linear's text and state.  No issue is created."
       (user-error "Linear issue is already linked to task %s" (ekg-note-id other)))
     (ekg-org-set-property note "LINEAR_ID" id)
     (ekg-org-remove-property note "LINEAR_SYNC")
-    (ekg-save-note note)))
+    (ekg-org-linear--save-note note)))
 
 ;;;###autoload
 (defun ekg-org-linear-mark-for-sync (note-id &optional unmark)
@@ -239,10 +310,17 @@ perform network requests.  Existing links continue syncing if unmarked."
                 (ekg-get-note-with-id note-id))))
     (unless (and note (member ekg-org-task-tag (ekg-note-tags note)))
       (user-error "Not an EKG Org task: %s" note-id))
+    (ekg-org-linear--check-editors
+     note-id (when (and (ekg-org-linear--editor-p) (eq note ekg-note))
+               (current-buffer)))
+    (when (and (ekg-org-linear--editor-p) (eq note ekg-note))
+      (ekg-note-update-from-buffer))
     (if unmark
         (ekg-org-remove-property note "LINEAR_SYNC_ENABLED")
       (ekg-org-set-property note "LINEAR_SYNC_ENABLED" "t"))
-    (ekg-save-note note)))
+    (ekg-org-linear--save-note note)
+    (when (and (ekg-org-linear--editor-p) (eq note ekg-note))
+      (set-buffer-modified-p nil))))
 
 (defun ekg-org-linear--create (note parent-id id)
   "Create a Linear issue for NOTE under PARENT-ID, using stable UUID ID."
@@ -305,14 +383,16 @@ Persist a client UUID before creation so retries cannot create duplicates."
                                    (or (ekg-org-get-property parent "LINEAR_ID")
                                        (export-one
                                         (gethash (ekg-note-id parent) pending)))))
-                      (id (or (ekg-org-get-property note "LINEAR_CREATE_ID")
-                              (org-id-uuid)))
-                      (existing (gethash id issues))
+                      (pending-id (ekg-org-get-property note "LINEAR_CREATE_ID"))
+                      (id (or pending-id (org-id-uuid)))
+                      (existing (or (gethash id issues)
+                                    (and pending-id
+                                         (ekg-org-linear--find-issue id))))
                       (values (ekg-org-linear--local-values note)))
                  (unless (ekg-org-get-property note "LINEAR_CREATE_ID")
                    (ekg-org-set-property note "LINEAR_CREATE_ID" id)
                    (ekg-org-set-property note "LINEAR_SYNC" (json-encode values))
-                   (ekg-save-note note))
+                   (ekg-org-linear--save-note note))
                  (let ((issue (or existing
                                   (ekg-org-linear--create note parent-id id))))
                    (ekg-org-set-property note "LINEAR_ID" id)
@@ -321,7 +401,7 @@ Persist a client UUID before creation so retries cannot create duplicates."
                    (unless existing
                      (ekg-org-set-property note "LINEAR_SYNC"
                                            (json-encode values)))
-                   (ekg-save-note note)
+                   (ekg-org-linear--save-note note)
                    (puthash id note notes)
                    (puthash id issue issues))
                  id))))
@@ -338,6 +418,7 @@ Marked local tasks are created in Linear, with their appropriate parent."
   (interactive)
   (ekg-connect)
   (ekg-org-add-schema)
+  (ekg-org-linear--check-editors)
   (let ((notes (ekg-org-linear--linked-notes))
         (issues (make-hash-table :test 'equal))
         (visiting (make-hash-table :test 'equal))
@@ -405,7 +486,7 @@ Marked local tasks are created in Linear, with their appropriate parent."
                                         (car pair) (cdr pair))))
                      (ekg-org-set-property note "LINEAR_ID" id)
                      (ekg-org-set-property note "LINEAR_SYNC" (json-encode values))
-                     (when save-needed (ekg-save-note note))
+                     (when save-needed (ekg-org-linear--save-note note))
                      (puthash id note notes)
                      (puthash id 'done visiting)))
                  (gethash id notes)))

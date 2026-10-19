@@ -1634,7 +1634,8 @@ To create a new Linear issue from a local task, put point on the task in
 =ekg-org-view= (or open its note) and run
 =M-x ekg-org-linear-mark-for-sync=.  Elsewhere, the command prompts for the
 EKG task ID.  Marking saves the =LINEAR_SYNC_ENABLED= Org property as =t=;
-it makes no network request.  Run =ekg-org-linear-sync= to create the issue
+it makes no network request.  In an editor, marking also saves the current
+body text.  Run =ekg-org-linear-sync= to create the issue
 in the configured team, using the task's title, text and TODO state.  The
 existing EKG task is linked to the resulting issue and continues syncing.
 
@@ -1649,8 +1650,10 @@ Use =C-u M-x ekg-org-linear-mark-for-sync= to cancel a pending mark.  This
 does not unlink an issue that has already been created.  Before creation,
 sync saves a client-generated UUID in =LINEAR_CREATE_ID= and a snapshot of
 the initial values.  If a creation response is lost, the next sync recovers
-the issue by that UUID and merges subsequent edits instead of creating a
-duplicate.  Keep these properties intact when retrying a failed creation.
+the issue by that UUID across teams (including archived issues) and merges
+subsequent edits instead of creating a duplicate.  A failed UUID lookup stops
+sync without attempting another creation.  Keep these properties intact when
+retrying a failed creation.
 
 Customize =ekg-org-linear-state-map= to map Linear workflow state types to
 Org TODO keywords.  By default triage, backlog, unstarted and started map to =TODO=;
@@ -1659,6 +1662,13 @@ matching Org keywords and, for example, map started to =DOING= and canceled
 to =CANCELED=.  Export preserves an issue's current workflow state when it
 already maps to the desired Org keyword; otherwise it chooses the first
 matching state in that issue's team.
+
+Save or close modified editors for linked or marked tasks before syncing.
+Sync checks for unsaved text, title, state and Org property changes before
+making requests.
+Clean editors are refreshed with synchronized text and link metadata, so
+saving them afterward preserves the Linear issue association.  Unrelated
+buffers keep their existing modified state.
 
 Sync compares each field with a stored =LINEAR_SYNC= snapshot.  Independent
 edits (for example a local description change and a remote title change)
