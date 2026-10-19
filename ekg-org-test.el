@@ -59,7 +59,10 @@
         (should (equal (ekg-note-text note) "New root body"))
         (should (member ekg-org-task-tag (ekg-note-tags note)))
         (should-not (ekg-note-parent-id note))
-        (should (string-match-p "Untitled task"
+        (should-not (ekg-org--note-title note))
+        (should-not (org-element-property
+                     :title (ekg-org-task-to-element note nil)))
+        (should (string-match-p "New root body"
                                 (ekg-org-task-to-string note))))
       (ekg-org-view)
       (should (member id (ekg-notes-visible-ids))))))

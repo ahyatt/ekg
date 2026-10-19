@@ -276,7 +276,7 @@ PARENT is the parent org-element node."
   (let* ((props (ekg-note-properties note))
          (task-p (ekg-org--org-note-p note))
          (title (or (ekg-org--note-title note)
-                    (if task-p "Untitled task" "Response")))
+                    (unless task-p "Response")))
          (id (format "%s" (ekg-note-id note)))
          (state (when task-p (ekg-org--state note)))
          (deadline (let ((d (plist-get props :org/deadline)))
