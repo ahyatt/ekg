@@ -2137,6 +2137,51 @@ result when the agent finishes."
         (when (memq termination '(research-error generation-error))
           (should (string-prefix-p "Error:" result)))))))
 
+(ekg-deftest ekg-agent-test-plan-progress-does-not-resume-old-timer ()
+  "Continuing or replacing a session must not revive old plan updates."
+  (dolist (restart '(continue replace))
+    (let* ((owner (get-buffer-create
+                   (format ekg-agent-log-buffer-name-format "progress-resume")))
+           (ekg-agent--current-log-buffer owner)
+           (ekg-agent-org-plan-provider 'strong-provider)
+           (ekg-agent-llm-name-log-buffer nil)
+           (iterate (symbol-function 'ekg-agent--iterate))
+           research-status tick cancelled)
+      (with-current-buffer owner
+        (setq ekg-agent--running-p t
+              ekg-agent--cancelled-p nil
+              ekg-agent--status-callback #'ignore
+              ekg-agent--prompt (llm-make-chat-prompt "Plan the task")))
+      (cl-letf (((symbol-function 'run-at-time)
+                 (lambda (_delay _repeat function &rest _)
+                   (setq tick function)
+                   'progress-timer))
+                ((symbol-function 'cancel-timer)
+                 (lambda (timer) (push timer cancelled)))
+                ((symbol-function 'ekg-agent--ensure-log-window) #'ignore)
+                ((symbol-function 'ekg-agent--iterate)
+                 (lambda (_prompt iteration &rest options)
+                   (when (zerop iteration)
+                     (setq research-status
+                           (plist-get options :status-callback))))))
+        (ekg-agent-org--create-plan #'ignore "Make a plan" [])
+        (with-current-buffer owner
+          (ekg-agent-force-cancel)
+          (if (eq restart 'continue)
+              (ekg-agent-continue "Resume")
+            ;; A new run may reuse both the log buffer and status callback.
+            ;; Run its actual setup, stubbing only the request iteration.
+            (cl-letf (((symbol-function 'ekg-agent--prompt-id)
+                       (lambda (_) "progress-resume"))
+                      ((symbol-function 'ekg-agent--iterate) #'ignore))
+              (funcall iterate (llm-make-chat-prompt "Another task") 0
+                       :status-callback #'ignore)))
+          (let ((before (buffer-string)))
+            (funcall tick)
+            (funcall research-status 'error)
+            (should (equal before (buffer-string))))
+          (should (equal cancelled '(progress-timer))))))))
+
 (ekg-deftest ekg-agent-test-plan-provider-fallback ()
              "Research uses the normal agent provider when none is configured."
              (let ((ekg-agent-plan-provider nil)

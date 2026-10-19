@@ -4483,6 +4483,25 @@ Call CALLBACK once with the created ID mapping or an error message."
                   (ekg-org-working-directory (ekg-get-note-with-id parent-id)))))
            (default-directory (or ekg-agent--task-directory default-directory))
            (owner ekg-agent--current-log-buffer)
+           (owner-start (when (buffer-live-p owner)
+                          (buffer-local-value 'ekg-agent--execution-start owner)))
+           (owner-status (when (buffer-live-p owner)
+                           (buffer-local-value 'ekg-agent--status-callback owner)))
+           ;; Continuing replaces the status callback; a new session also
+           ;; replaces the start time.  Neither may revive old progress.
+           (active-session
+            (lambda ()
+              (and (buffer-live-p owner)
+                   (buffer-local-value 'ekg-agent--running-p owner)
+                   (not (buffer-local-value 'ekg-agent--cancelled-p owner))
+                   (equal owner-start
+                          (buffer-local-value 'ekg-agent--execution-start owner))
+                   (eq owner-status
+                       (buffer-local-value 'ekg-agent--status-callback owner)))))
+           (report
+            (lambda (stage started &optional research)
+              (when (funcall active-session)
+                (ekg-agent-org--log-plan-progress owner stage started research))))
            (started (float-time))
            (stage-start started)
            (stage "Researching task requirements")
@@ -4495,10 +4514,10 @@ Call CALLBACK once with the created ID mapping or an error message."
                        (when progress-timer
                          (cancel-timer progress-timer)
                          (setq progress-timer nil))
-                       (ekg-agent-org--log-plan-progress
-                        owner (if (string-prefix-p "Error:" value)
-                                  value "Plan saved")
-                        started)
+                       (funcall report
+                                (if (string-prefix-p "Error:" value)
+                                    value "Plan saved")
+                                started)
                        (funcall callback value))))
            (end-tool
             (make-llm-tool
@@ -4533,20 +4552,18 @@ Call CALLBACK once with the created ID mapping or an error message."
                      (ekg-agent--agents-md-context))
              :tools (append ekg-agent-read-only-tools
                             (list ekg-agent-org-tool-list-items end-tool)))))
-      (ekg-agent-org--log-plan-progress owner stage stage-start prompt)
+      (funcall report stage stage-start prompt)
       (when (buffer-live-p owner)
         (setq progress-timer
               (run-at-time
                30 30
                (lambda ()
-                 (if (or finished (not (buffer-live-p owner))
-                         (buffer-local-value 'ekg-agent--cancelled-p owner)
-                         (not (buffer-local-value 'ekg-agent--running-p owner)))
+                 (if (or finished (not (funcall active-session)))
                      (when progress-timer
                        (cancel-timer progress-timer)
                        (setq progress-timer nil))
-                   (ekg-agent-org--log-plan-progress
-                    owner stage stage-start (unless ended prompt)))))))
+                   (funcall report stage stage-start
+                            (unless ended prompt)))))))
       (condition-case err
           (ekg-agent--iterate
            prompt 0
@@ -4560,7 +4577,7 @@ Call CALLBACK once with the created ID mapping or an error message."
                  (funcall finish "Error: Plan research stopped without completion")
                (setq stage "Research complete; generating task graph"
                      stage-start (float-time))
-               (ekg-agent-org--log-plan-progress owner stage stage-start)
+               (funcall report stage stage-start)
                (condition-case err
                    (let ((request
                            (llm-chat-async
@@ -4603,8 +4620,7 @@ tradeoffs in its content, and make dependent tasks list it in `depends_on`."
                                     (funcall finish "Error: Plan cancelled")
                                   (setq stage "Validating and saving plan"
                                         stage-start (float-time))
-                                  (ekg-agent-org--log-plan-progress
-                                   owner stage stage-start)
+                                  (funcall report stage stage-start)
                                   (condition-case err
                                       (funcall finish
                                                (json-encode
