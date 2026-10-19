@@ -2795,7 +2795,7 @@ cursor always lands on a note."
           (save-window-excursion
             (vui-mount (vui-component 'ekg-notes-root) (buffer-name))))
     ;; Notes use text prefixes and Emacs wrapping, not width-dependent VUI
-    ;; layouts.  A resize must not invalidate Org insertion placeholders.
+    ;; layouts, so a resize does not require rendering the notes again.
     (vui-cancel-rerender-on-resize))
   ekg-notes--instance)
 
