@@ -106,12 +106,39 @@
   (let ((org-todo-keywords '((sequence "|" "CLOSED"))))
     (should-error (ekg-notes-create) :type 'user-error))
   (ekg-setup-notes-buffer "ordinary" (lambda () nil) '("topic"))
-  (should (eq ekg-notes-create-function #'ekg-capture))
   (should (eq ekg-notes-respond-function #'ekg-respond-to-note))
   (ekg-notes-create)
   (should (member "topic" (ekg-note-tags ekg-note)))
   (should-not (member ekg-org-task-tag (ekg-note-tags ekg-note)))
+  (should-not (plist-member (ekg-note-properties ekg-note) :org/sort-order))
   (ekg-capture-abort))
+
+(ekg-deftest-with-db ekg-org-test-capture-hook-defaults-outside-task-view ()
+  "Any capture with the task tag gets defaults without a view-specific handler."
+  (ekg-org-add-schema)
+  (let ((org-todo-keywords '((sequence "OPEN" "|" "CLOSED"))))
+    (ekg-capture :mode 'text-mode :tags '("org/task" "project"))
+    (should (eq major-mode 'text-mode))
+    (should (equal (ekg-org-task-state ekg-note) "OPEN"))
+    (should (member "project" (ekg-note-tags ekg-note)))
+    (let ((id (ekg-note-id ekg-note)))
+      (should-not (ekg-note-with-id-exists-p id))
+      (insert "Task from a normal capture")
+      (ekg-capture-finalize)
+      (should (equal (ekg-org-task-state (ekg-get-note-with-id id)) "OPEN")))))
+
+(ekg-deftest-with-db ekg-org-test-capture-hook-preserves-explicit-state ()
+  "Task defaults never replace an explicit state or order."
+  (ekg-org-add-schema)
+  (let ((org-todo-keywords '((sequence "|" "CLOSED"))))
+    (ekg-capture :tags '("org/task" "org/state/closed")
+                 :properties '(:org/sort-order 7))
+    (should (equal (seq-filter
+                    (lambda (tag) (string-prefix-p ekg-org-state-tag-prefix tag))
+                    (ekg-note-tags ekg-note))
+                   '("org/state/closed")))
+    (should (= (plist-get (ekg-note-properties ekg-note) :org/sort-order) 7))
+    (ekg-capture-abort)))
 
 (ekg-deftest-with-db ekg-org-test-view-respond-to-ordinary-note ()
   "Responding to an ordinary note keeps Markdown response defaults."

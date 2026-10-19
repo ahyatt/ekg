@@ -913,7 +913,9 @@ When insert mode is active, defer the refresh until insert mode ends."
         (ekg-notes--unfold-ids ancestors))
       (ekg--show-notes
        (if ekg-org-view--archive "Archived tasks" "Org tasks")
-       #'ekg-org-view--fetch-notes nil)
+       #'ekg-org-view--fetch-notes
+       (append (list ekg-org-task-tag)
+               (when ekg-org-view--archive (list ekg-org-archive-tag))))
       (when (or (null target-id)
                 (seq-some #'ekg-org-view--goto-note-id
                           (cons restore-id (reverse ancestors))))
@@ -987,41 +989,48 @@ When insert mode is active, defer the refresh until insert mode ends."
                          (ekg-note-id (car (last children)))))
        title))))
 
-(cl-defun ekg-org-view--capture (&key tags parent)
-  "Capture a task with TAGS in the normal note editor.
-PARENT, when non-nil, is the parent task.  Otherwise create a root,
-regardless of the selected task or focused view.  Do not write any
-task or reorder siblings until the capture is saved."
-  (when ekg-org-view--archive
-    (user-error "Create tasks in the active task view"))
-  (when (and parent (member ekg-org-archive-tag (ekg-note-tags parent)))
-    (user-error "Cannot create tasks under an archived parent"))
-  (let* ((state (or (car (seq-difference (ekg-org--todo-keywords)
-                                       (ekg-org--done-keywords)))
-                    (user-error "No unfinished TODO keyword is configured")))
-         (siblings (if parent
-                       (ekg-org-view--sorted-children (ekg-note-id parent))
-                     (ekg-org-view--sorted-top-level)))
-         (order (1+ (apply #'max -1
-                          (mapcar #'ekg-org-view--sort-order siblings)))))
-    (ekg-capture
-     :mode 'org-mode
-     :tags (append (list ekg-org-task-tag
-                         (concat ekg-org-state-tag-prefix (downcase state)))
-                   tags (when parent (ekg-org-view--visible-tags parent)))
-     :properties (append (list :org/sort-order order)
-                         (when parent
-                           (list :hierarchy/parent (ekg-note-id parent)))))))
+(defun ekg-org--capture-task-defaults ()
+  "Initialize task captures through `ekg-capture-mode-hook'.
+Only notes tagged `org/task' receive an initial state and append order.
+Preserve explicit state and ordering, and leave ordinary notes unchanged."
+  (when (and ekg-capture-mode ekg-note
+             (member ekg-org-task-tag (ekg-note-tags ekg-note)))
+    (let* ((parent-id (ekg-note-parent-id ekg-note))
+           (parent (and parent-id (ekg-get-note-with-id parent-id))))
+      (when (or (member ekg-org-archive-tag (ekg-note-tags ekg-note))
+                (and parent
+                     (member ekg-org-archive-tag (ekg-note-tags parent))))
+        (user-error "Create tasks in the active task view"))
+      (unless (seq-some (lambda (tag)
+                          (string-prefix-p ekg-org-state-tag-prefix tag))
+                        (ekg-note-tags ekg-note))
+        (let ((state (or (car (seq-difference (ekg-org--todo-keywords)
+                                             (ekg-org--done-keywords)))
+                         (user-error "No unfinished TODO keyword is configured"))))
+          (push (concat ekg-org-state-tag-prefix (downcase state))
+                (ekg-note-tags ekg-note))))
+      (unless (plist-member (ekg-note-properties ekg-note) :org/sort-order)
+        (let* ((siblings (if parent-id
+                             (ekg-org-view--sorted-children parent-id)
+                           (ekg-org-view--sorted-top-level)))
+               (order (1+ (apply #'max -1
+                                (mapcar #'ekg-org-view--sort-order siblings)))))
+          (setf (ekg-note-properties ekg-note)
+                (plist-put (ekg-note-properties ekg-note) :org/sort-order order))))
+      (setq header-line-format (ekg--header-line-format)))))
+
+(add-hook 'ekg-capture-mode-hook #'ekg-org--capture-task-defaults)
 
 (defun ekg-org-view-capture-child ()
   "Capture a child task in the normal note editor."
   (interactive nil ekg-org-view-mode)
-  (ekg-org-view--capture :parent (ekg-org-view--require-task-at-point)))
+  (ekg-org-view--capture-response (ekg-org-view--require-task-at-point)))
 
 (defun ekg-org-view--capture-response (note)
   "Capture a child task of task NOTE, or a response to an ordinary note."
   (if (ekg-org--org-note-p note)
-      (ekg-org-view--capture :parent note)
+      (ekg-capture :tags (cons ekg-org-task-tag (ekg-org-view--visible-tags note))
+                   :properties (list :hierarchy/parent (ekg-note-id note)))
     (ekg-respond-to-note note)))
 
 (defun ekg-org-view-set-dependency-type (dependency-type)
@@ -1758,7 +1767,6 @@ so this can run on `ekg-note-save-hook' and `ekg-note-delete-hook'."
 
 \\{ekg-org-view-mode-map}"
   (setq-local ekg-notes-children-function #'ekg-org-view--children
-              ekg-notes-create-function #'ekg-org-view--capture
               ekg-notes-respond-function #'ekg-org-view--capture-response
               ekg-notes-include-descendants t
               ekg-notes-show-child-count nil

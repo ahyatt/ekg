@@ -1634,11 +1634,16 @@ without changing the meaning of its existing keys.
 Press =c= to capture a new top-level task, even when a nested task is selected.
 Press =r= to capture a child of the selected task (=+= is an alias).  Both
 creation actions open the normal capture
-editor in Org mode with task tags and the first unfinished TODO state supplied
+editor in =ekg-capture-default-mode= with task tags and the first unfinished TODO state supplied
 automatically.  Enter the body and edit metadata as for any note; save with
 =C-c C-c= or abort with =C-c C-k=.  There is no separate positioning step.
 Titles are optional, as for other notes.  Untitled tasks still appear in the
 view and are exported to Org with an =Untitled task= heading.
+The task view supplies =org/task= through the same view tags as other note
+lists.  =ekg-org--capture-task-defaults= on =ekg-capture-mode-hook= adds the
+initial state (normally =org/state/todo=) when no state was supplied.  This also
+works for task-tagged captures outside the task view, preserves explicit states,
+and leaves ordinary notes unchanged.
 New tasks append to their siblings.  A root created from a focused subtree is
 outside that query; use =ekg-org-view= to see all roots.  Use =w= to refile a task
 after capture, including moving it to the top level.
