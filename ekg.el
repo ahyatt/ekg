@@ -63,7 +63,8 @@
   :group 'ekg)
 
 (defcustom ekg-acceptable-modes '(org-mode markdown-mode text-mode)
-  "Modes that make sense to use as note types."
+  "Modes that make sense to use as note types.
+For `markdown-mode', use the mode associated with .md files."
   :type '(set symbol)
   :group 'ekg)
 
@@ -1222,6 +1223,23 @@ for details."
         ('plaintext (setq unformatted (substring-no-properties unformatted)))))
     unformatted))
 
+(defun ekg--resolve-mode (mode)
+  "Resolve note MODE to the major mode to use.
+For `markdown-mode', consult `auto-mode-alist' for a .md file,
+falling back to `markdown-mode'.  Honor major mode remapping when
+available.  Other note modes are returned unchanged."
+  (if (eq mode 'markdown-mode)
+      (let* ((entry (save-match-data
+                      (assoc-default "note.md" auto-mode-alist #'string-match)))
+             (mode (or (if (consp entry) (car entry) entry)
+                       'markdown-mode)))
+        (cond ((fboundp 'major-mode-remap) (major-mode-remap mode))
+              ((boundp 'major-mode-remap-alist)
+               (or (alist-get mode (symbol-value 'major-mode-remap-alist))
+                   mode))
+              (t mode)))
+    mode))
+
 (defun ekg-display-note-text (note &optional numwords &rest format)
   "Return text, with mode-specific properties, of NOTE.
 
@@ -1236,7 +1254,7 @@ NUMWORDS and FORMAT are standard options, see
     (when (and (not (member 'plaintext format)) (ekg-note-mode note))
       (let ((mode-func (intern (format "%s-mode" (ekg-note-mode note)))))
         (if (fboundp mode-func) (funcall mode-func)
-          (funcall (ekg-note-mode note)))))
+          (funcall (ekg--resolve-mode (ekg-note-mode note))))))
     (mapc #'funcall ekg-format-funcs)
     (unless (member 'plaintext format)
       (font-lock-ensure)
@@ -1398,7 +1416,7 @@ Capture setup defers the header until its hooks have initialized the note."
   (unless defer-header
     (setq-local header-line-format (ekg--header-line-format)))
 
-  (when (eq major-mode 'markdown-mode)
+  (when (derived-mode-p 'markdown-mode)
     (setq-local markdown-enable-wiki-links t
                 markdown-wiki-link-fontify-missing nil)
     ;; We can't redefine how wiki links are handled, and we shouldn't use
@@ -1459,6 +1477,16 @@ This is used when editing existing notes.")
 
 (defvar-local ekg-note nil
   "Holds the note information for buffers adding or changing notes.")
+
+(defun ekg--markdown-note-p (&optional note)
+  "Return non-nil for a NOTE in Markdown format.
+With no NOTE, check the current note buffer.  The stored format
+identifies Markdown even when its editing mode is independent of
+`markdown-mode' or the .md association has changed."
+  (let ((mode (when-let* ((note (or note ekg-note)))
+                (ekg-note-mode note))))
+    (or (and mode (provided-mode-derived-p mode 'markdown-mode))
+        (and (null note) (derived-mode-p 'markdown-mode)))))
 
 (defvar-local ekg-note-orig-note nil
   "Holds the original note before edit.")
@@ -1748,8 +1776,9 @@ Tags are prefixed by a hash symbol or a symbol in
 if they have more than one word.  They aso can be org or markdown links,
 depending on the note mode.  The tags are added to the end of the tag
 list."
-  (let ((use-links (and (member (ekg-note-mode note) '(org-mode markdown-mode))
-                        ekg-linkify-inline-tags)))
+  (let* ((markdown (ekg--markdown-note-p note))
+         (use-links (and (or (eq (ekg-note-mode note) 'org-mode) markdown)
+                         ekg-linkify-inline-tags)))
     (with-temp-buffer
       (insert (ekg-note-text note))
       (goto-char (point-min))
@@ -1764,7 +1793,7 @@ list."
                           ?\[ ?\[ "ekg-tag:"
                           (group-n 3 (one-or-more (any word whitespace ?_ ?/ ?-)))
                           ?\]))
-                     ((eq (ekg-note-mode note) 'markdown-mode)
+                     (markdown
                       (rx (seq
                            ?\[ ?\[
                            (group-n 2 (? (regexp (ekg--possible-inline-tags-prefix-regexp))))
@@ -1830,7 +1859,7 @@ FINISHED is true if the completion has been finished."
             (cond
              ((eq major-mode 'org-mode)
               (replace-match (format "[%s]" completion)))
-             ((eq major-mode 'markdown-mode)
+             ((ekg--markdown-note-p)
               ;; Remove the symbol prefixing the tag
               (replace-match
                (format "[[%s%s]]"
@@ -1901,7 +1930,7 @@ If ID is given, force the triple subject to be that value."
          (auto-tags (mapcan (lambda (f) (funcall f)) ekg-capture-auto-tag-funcs))
          (tags (seq-uniq (append tags auto-tags))))
     (set-buffer buf)
-    (funcall (or mode ekg-capture-default-mode))
+    (funcall (ekg--resolve-mode (or mode ekg-capture-default-mode)))
     (setq ekg-note
           (ekg-note-create :id id
                            :text text
@@ -1965,9 +1994,10 @@ file.  If not, an error will be thrown."
                ekg-capture-mode ekg-edit-mode)
   (let ((note ekg-note)
         (minor-mode (if ekg-capture-mode 'ekg-capture-mode 'ekg-edit-mode)))
-    (funcall mode)
+    (funcall (ekg--resolve-mode mode))
     (funcall minor-mode)
     (setq ekg-note note)
+    (setf (ekg-note-mode ekg-note) mode)
     (ekg--set-local-variables)))
 
 (defun ekg-note-available-properties (_note)
@@ -2129,7 +2159,7 @@ it.  If there are multiple titles, select which one to change."
     (set-buffer buf)
     (when (= 0 (buffer-size))
       (when (ekg-note-mode note)
-        (funcall (ekg-note-mode note)))
+        (funcall (ekg--resolve-mode (ekg-note-mode note))))
       (ekg-edit-mode 1)
       (setq-local ekg-note (copy-ekg-note note)       ; shallow copy
                   ekg-note-orig-note (copy-tree note) ; deep copy to avoid later change
@@ -2158,7 +2188,8 @@ to reflect the current state of the buffer."
          (ticons (ekg-extract-inlines text)))
     (setf (ekg-note-text ekg-note) (car ticons)
           (ekg-note-inlines ekg-note) (cdr ticons)
-          (ekg-note-mode ekg-note) major-mode
+          (ekg-note-mode ekg-note)
+          (if (ekg--markdown-note-p) 'markdown-mode major-mode)
           (ekg-note-tags ekg-note) (seq-uniq (ekg-note-tags ekg-note)))))
 
 (defun ekg--save-note-in-buffer ()
