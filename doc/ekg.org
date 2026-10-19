@@ -1562,12 +1562,9 @@ Use =C-u M-x ekg-org-view-set-property= to remove a property; removing =DIR=
 restores inheritance from the parent task, or the invoking buffer's directory
 if no parent sets it.
 
-The agent resolves this directory before starting, reads its =AGENTS.md=,
-and uses it as =default-directory= for synchronous and asynchronous tools,
-including planning research, relative file paths, and subprocesses.  The
-session retains the directory when continued or when the invoking buffer is
-closed.  Tool arguments that explicitly choose another directory still take
-precedence; =DIR= sets the working context rather than restricting file access.
+The agent uses this directory for project instructions, relative file paths,
+and commands, including when a session is resumed.  =DIR= does not restrict
+file access; the agent can still work in other directories when asked.
 Empty, missing, or inaccessible directories cause an error before work begins.
 Relative =DIR= paths are resolved against the invoking buffer's directory;
 absolute paths or =~/= paths are preferable for tasks run from multiple views.
@@ -1615,125 +1612,59 @@ The command =ekg-org-change-state= (available in note editing buffers and
 
 *** Agent integration
 
-When =ekg-agent= is loaded alongside =ekg-org=, the agent gains tools for
-working with org tasks:
-
-- *add_org_item*: Create a new task with a title, description, tags, optional
-  parent, state, deadline, and scheduled date.
-- *set_org_item_status*: Change the TODO state of an existing task.
-- *list_org_items*: List all active tasks, optionally filtered by state.
-
-These tools are registered automatically by =ekg-org-initialize= when
-=ekg-agent= is available.  This allows the agent to create sub-tasks, mark
-items done, and review your task list as part of its autonomous operation.
+Load =ekg-agent= alongside =ekg-org= to let the agent help plan tasks,
+create subtasks, and update task status.
 
 *** Creating complete plans
 
-The =create_org_plan= agent tool takes =description= (the goal and its
-constraints) and =tags= (topic tags applied to every created task).  It first
-runs a research agent with note/file/web read tools, but no =ask_user= tool.
-Tasks planned for the user to do receive ~ekg-agent-org-user-task-tag~
-(default =org/user-task=).  The user can answer question tasks with
-a child response note.  When questions exist,
-the plan includes a follow-up task to incorporate those responses, revise the
-plan, and update the original task note.  This follow-up is a task to execute,
-not an automatic revision triggered by saving a response.  After
-=finish_plan_research=, a separate structured-output call produces the plan.
-Configure a strong provider explicitly:
+Use =M-x ekg-agent-org-plan-task= on a task to create a plan beneath it.
+The agent researches the task and adds TODO subtasks with descriptions and
+dependencies.  Review and edit the plan before running its tasks.  Planning
+does not execute the work, and tasks with existing active children cannot be
+planned again.
+
+Configure a provider for planning first:
 
 #+begin_src emacs-lisp
-(setq ekg-agent-org-plan-provider my-strong-provider
-      ekg-agent-org-plan-reasoning 'maximum)
-;; Optional: use a different provider for the research agent.
-;; (setq ekg-agent-plan-provider my-research-provider)
-;; Optional provider-specific arguments:
-;; (setq ekg-agent-org-plan-parameters '((parameter . value)))
+(setq ekg-agent-org-plan-provider my-strong-provider)
 #+end_src
 
-When =ekg-agent-plan-provider= is nil, research uses the normal provider
-from =ekg-llm-provider=.  =maximum= is the llm library's highest thinking
-setting for the structured-output stage.  The final stage has no tools.  The
-existing =add_org_item= tool remains available for individual tasks.
-
-Both stages use the shared contract =ekg-org-plan-schema= and importer
-=ekg-org-plan-import=.  External agents can bypass the LLM stages:
-
-#+begin_src sh
-agent_tools/ekg-org-import-plan plan.json --tag my-project
-# Or: cat plan.json | agent_tools/ekg-org-import-plan - --tag my-project
-#+end_src
-
-The script supports =--daemon NAME= and prints a JSON mapping of document IDs
-to note IDs.  It requires Python 3 and a running Emacs with EKG installed.
-
-Version 1 JSON has exactly the following fields:
-
-#+begin_src json
-{"version":1,"tasks":[
-  {"id":"plan","parent":null,"title":"Release",
-   "content":"Release acceptance criteria","execution":"parallel",
-   "depends_on":[],"tags":[]},
-  {"id":"build","parent":"plan","title":"Build",
-   "content":"Produce the release artifact","execution":"sequential",
-   "depends_on":[],"tags":[]},
-  {"id":"publish","parent":"plan","title":"Publish",
-   "content":"Publish the validated artifact","execution":"parallel",
-   "depends_on":["build"],"tags":[]}
-]}
-#+end_src
-
-Exactly one task has a null parent.  IDs are nonempty unique strings local to
-the document; forward references are allowed.  =content= is Org text.
-=execution= controls a task's children, using the existing =ORDERED= Org
-property.  Array order determines sibling order.  =depends_on= adds explicit
-prerequisites, stored as multi-valued =:org/depends-on= note IDs.  Thus each
-task has one display parent but may have multiple execution prerequisites.
-The per-task =tags= array is required in newly generated plans but optional
-when importing older version 1 JSON.  It adds task-specific topic tags; the
-only allowed internal tag is ~ekg-agent-org-user-task-tag~ (default
-=org/user-task=).  Use it for any task planned for the user to do.  For a
-question, ask the user to add a child response note, and make work that
-requires the answer depend on that task.
-The importer rejects cycles, including those implied by sequential groups and
-parent/child completion.  Explicit prerequisite edges are stored for consumers;
-they do not automatically prevent manual TODO state changes in Org.
-
-All tasks start as TODO and receive the supplied topic tags and
-~ekg-agent-author-tag~; other internal
-=org/= tags cannot be overridden.  Validation happens before note creation.  Notes
-and relationships are saved in one triples transaction; a failed write rolls
-back the plan.  Save notifications run after commit.  Version 1 deliberately
-does not accept deadlines or arbitrary properties; unknown fields are rejected.
+Tasks that need your decisions or actions are tagged with
+~ekg-agent-org-user-task-tag~ (default =org/user-task=).  To answer a
+question task, press =C-c C-r= in the task view to add a response note.
+The plan includes a follow-up task to incorporate your answers and revise
+the plan; saving an answer does not run that task automatically.
 
 *** Command-line tools
 
-Two command-line scripts are provided in =agent_tools/= for use by external
-agents:
+External agents can create and edit tasks using scripts in =agent_tools/=:
 
-- =ekg-org-add-child=: Create a child task under an existing parent.  Supports
-  =--title=, =--note=, =--tag=, =--status=, and =--property KEY=VALUE= options.
-- =ekg-org-edit=: Edit an existing task's title, content, status, or org
-  properties.  Supports =--title=, =--note=, =--append=, =--status=,
-  =--set-property KEY=VALUE=, and =--remove-property KEY= options.
+- =ekg-org-add-child=: Create a child task under an existing parent.
+- =ekg-org-edit=: Edit a task's title, description, status, or Org properties.
+- =ekg-org-import-plan=: Import a complete plan from a JSON file.
 
-These complement the general =ekg-add-note= and =ekg-read= scripts.  See the
-=agent_tools/skill.md= file for complete usage documentation.
+For example:
+
+#+begin_src sh
+agent_tools/ekg-org-import-plan plan.json --tag my-project
+#+end_src
+
+These scripts require a running Emacs server.  See =agent_tools/skill.md=
+for usage, options, and the plan file format.
 
 ** Agent
 :PROPERTIES:
 :CUSTOM_ID: agent
 :END:
-To execute the task at point, use =M-x ekg-agent-org-run-task=.  This runs the
-backend selected by ~ekg-agent-org-execution-backend~: =ekg-agent= (the
-default) or =code-command= to execute with ~ekg-agent-code-command~. Both
-receive the task hierarchy, full child notes, task properties, working
-directory (including inherited =DIR=), and co-tagged ~ekg-llm-prompt-tag~
-instructions.  The built-in agent also receives =AGENTS.md= context; external
-coding agents load their own project instructions.  They verify the work and
-set the task to DONE, or record a blocker and set WAITING, without asking
-questions.  If user clarification, action, or review is needed, they also add
-~ekg-agent-org-user-task-tag~ (default =org/user-task=) and record what is
-needed on the task.
+Use =M-x ekg-agent-org-run-task= to work on the task at point.  The agent
+uses its description, child notes, project directory, and relevant saved
+instructions.  It marks completed work DONE or records a blocker and marks
+the task WAITING.  Tasks needing your input or review are also tagged with
+~ekg-agent-org-user-task-tag~ (default =org/user-task=).
+
+By default, tasks run with the built-in EKG agent.  To use an external coding
+agent instead, set ~ekg-agent-org-execution-backend~ to =code-command= and
+configure ~ekg-agent-code-command~.
 
 For Codex, configure:
 
@@ -1759,23 +1690,14 @@ to read notes, record progress, and update task status in that Emacs.
 External execution requires the agent's own authentication, but no
 ~ekg-llm-provider~ or Emacs API key.
 
-Each execution has a separate buffer named =*ekg task <id>: <title>*=; the
-built-in agent also includes the task ID in its log buffer name.  The
-buffer-local variable ~ekg-agent-task-id~ associates the buffer with its task,
-without storing transient buffer names in the database.  Use
-=M-x ekg-agent-org-show-execution= from a task to find its most recent
-execution buffer, or =C-c C-o= in an execution buffer to open the associated
-task.
+Each task execution has its own progress buffer.  Use
+=M-x ekg-agent-org-show-execution= from a task to view its latest run, or
+=C-c C-o= in an execution buffer to return to the task.
 
-External execution buffers stream standard output and error as the command
-produces them.  The header shows process state and elapsed time.  A successful
-process exit means the command finished; the task's status is managed by the
-agent.  Use =C-c C-k= to stop that buffer's external process, record the
-interruption on its task, and leave the task WAITING.  Killing a running
-execution buffer also stops its process.  Other executions are unaffected.
-The built-in agent retains its existing cancellation and continuation
-commands.  The coding tool remains available for delegation from the built-in
-agent.
+For external coding agents, =C-c C-k= stops the run and leaves the task
+WAITING with a record of the interruption.  Closing its execution buffer
+also stops the run.  Other tasks continue unaffected.  For the built-in
+agent, see [[*Agent log mode: continuing and cancelling][continuing and cancelling]].
 
 The =ekg-agent= module provides an autonomous agent that can help you with your
 notes.  This agent can review your notes and org-mode agenda, searching across
@@ -1786,11 +1708,7 @@ resources.
 =ekg-agent= is a separate package from =ekg= and must be installed separately.
 
 #+begin_src emacs-lisp
-(use-package ekg-agent
-  :init
-  (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
-  (add-to-list 'ekg-agent-extra-tools (list ekg-agent-tool-run-elisp
-                                            ekg-agent-tool-code)))
+(use-package ekg-agent)
 #+end_src
 
 To use this module, you must have an LLM provider configured as described in the
@@ -1806,24 +1724,15 @@ assistance.  It can create notes to you, or to itself, to help it work.
 
 You can also ask the agent to help with a specific note.  Select it in a notes
 buffer and call =ekg-agent-notes-respond=, which is bound to =.= when
-=ekg-agent= is loaded.  This replaces the plain =ekg-llm-notes-respond= binding
-with an agent loop that can use tools to research your other notes before
-saving a separate Markdown response tagged with both ~ekg-llm-generated-tag~
-and ~ekg-agent-author-tag~.  The command prompts for a request and reusable
-prompt tags.  A prefix argument additionally lets you select the provider when
-multiple providers are configured.
+=ekg-agent= is loaded.  The agent can consult your other notes and saves a
+separate Markdown response beneath the selected note.  The command prompts
+for a request and reusable prompt tags.  A prefix argument lets you select
+the provider when multiple providers are configured.
 
 You can also ask the agent a direct question at any time with the command
-=ekg-agent-ask=. This will prompt you for a question, which is then sent to the
-agent.  To provide context, ekg will automatically include lightweight
-information about the current buffer and short previews of your last 10 notes.
-The current buffer contents are not sent up front; the agent can use tools such
-as =search_buffer= or =read_buffer= when it needs specific text.  The agent will
-be able to search your notes and use any other tools available. It will then
-provide its response either by displaying it in a popup buffer or by creating a
-new note, choosing the method it deems most appropriate. Once the agent has
-provided a response, its
-task for that question is complete.  For example:
+=ekg-agent-ask=.  The agent receives information about the current buffer and
+previews of recent notes for context, and can search your notes or read buffer
+contents as needed.  It answers in a popup buffer or a new note.  For example:
 
 #+begin_src emacs-lisp
 (ekg-agent-ask "What are the main themes in my recent notes on 'systems thinking'?")
@@ -1857,8 +1766,7 @@ You can also have the agent run automatically every day.  To do this, customize
 (ekg-agent-schedule-daily)
 #+end_src
 
-This will set up a timer to run the agent daily.  You can cancel this schedule
-with =ekg-agent-cancel-daily=.
+Cancel the daily schedule with =ekg-agent-cancel-daily=.
 
 The agent uses specific tags to organize its work:
 - ~ekg-agent-author-tag~ (default "agent"): All notes created by the agent will have this tag.
@@ -1892,22 +1800,14 @@ Some agent tools are packaged as optional libraries because they expose data
 from local connected services.  These tools are not enabled by default.  Require
 the library you want and add its tool list to =ekg-agent-extra-tools=.
 
-The Gnus tool library provides tools for listing folders, fetching latest
-counts, searching messages, reading message headers, and reading full messages
-by an opaque =message_id= returned from header and search tools.  Search prompts
-are disabled while the tools run so a backend prompt fails instead of blocking
-the agent.
+The Gnus library lets the agent browse mail folders, check message counts,
+and search and read messages.
 
 #+begin_src emacs-lisp
 (require 'ekg-agent-tools-gnus)
 (setq ekg-agent-extra-tools
       (append ekg-agent-tools-gnus-tools ekg-agent-extra-tools))
 #+end_src
-
-For example, an agent can search for recent messages from a sender whose content
-matches a term by calling =gnus_search_messages= with structured arguments such
-as =from= set to "Stefan Monnier" and =body= set to "uuid".  It can then pass
-the returned =message_id= to =gnus_read_message= to read the message.
 
 The Elfeed tool library provides tools for listing feeds, searching entries
 using Elfeed filter syntax, and reading one entry by ID or link.
@@ -1918,67 +1818,30 @@ using Elfeed filter syntax, and reading one entry by ID or link.
       (append ekg-agent-tools-elfeed-tools ekg-agent-extra-tools))
 #+end_src
 
-The standard tool set also includes read-only Emacs reference tools.  The agent
-can use =emacs_help_search= and =emacs_help_symbol= to search and display Emacs
-help for functions, macros, variables, faces, and other symbols.  It can use
-=emacs_info_search= and =emacs_info_node= to search and read the installed Info
-manuals, including the Emacs, Emacs Lisp, and Common Lisp extension manuals.
-These tools let the agent look up Emacs and Elisp behavior directly instead of
-guessing from memory.
+The agent can also consult Emacs help and installed Info manuals when
+working on Emacs or Elisp questions.
+
 *** Agent log mode: continuing and cancelling
 
-When the agent starts a session, it creates a log buffer (named according to
-~ekg-agent-log-buffer-name-format~) and enables =ekg-agent-log-mode=, a minor
-mode that provides commands for controlling the agent.  The mode-line lighter
-shows =Agent:run= while the agent is active and =Agent:idle= when it has stopped.
+The agent displays its activity in a log buffer.  The mode line shows
+=Agent:run= while it is working and =Agent:idle= when it has stopped.
 
 The following commands are available in the log buffer:
 
-- =C-c C-c= (=ekg-agent-continue=): Continue the agent from where it left off.
-  The agent's full conversation history is preserved, so continuing resumes
-  exactly where the previous session stopped---whether it completed normally,
-  timed out, or was cancelled.  With a prefix argument (=C-u C-c C-c=), you are
-  prompted for a message to send to the agent, which lets you give it new
-  instructions or redirect its work.
-
-- =C-c C-k= (=ekg-agent-cancel=): Cancel the current agent run.  The agent will
-  stop after the current in-flight LLM call completes (it does not interrupt a
-  call in progress).  The conversation prompt is preserved in the buffer, so you
-  can resume later with =C-c C-c=.
-
-- =C-c C-d= (=ekg-agent-export-debug-json=): Export the stored prompt,
-  conversation interactions, tool definitions, successful tool history,
-  completion requirements, configuration, and visible log text to a temporary
-  JSON file.  The file path is copied to the kill ring and can be analyzed with
-  the =agent_tools/ekg-agent-debug-analyzer= skill.
-
-This makes it easy to supervise long-running agent sessions: you can cancel if
-the agent is going in the wrong direction, give it new guidance, and continue.
-
-For long-running work, the agent is also reminded to call
-=summarize_state= if it has gone too long without an explicit progress
-update.  You can control this with
-~ekg-agent-status-reminder-seconds~.
+- =C-c C-c= (=ekg-agent-continue=): Resume a stopped session with additional
+  instructions.  The previous conversation is retained.
+- =C-c C-k= (=ekg-agent-cancel=): Request cancellation.  The current operation
+  finishes before the agent stops; you can resume later with =C-c C-c=.
+- =C-c C-q= (=ekg-agent-force-cancel=): Stop immediately.
+- =C-c C-d= (=ekg-agent-export-debug-json=): Export a diagnostic report for
+  troubleshooting.  The JSON file's path is copied to the kill ring.
 
 *** AGENTS.md support
 
-The agent automatically reads =AGENTS.md= files to pick up user-specific
-instructions and preferences.  Two locations are checked when the agent's
-context is built:
-
-1. =~/AGENTS.md= --- your home directory, for global preferences that apply to
-   all projects.
-2. =<default-directory>/AGENTS.md= --- the current directory when the agent is
-   started, for project-specific instructions.
-
-If either file exists, its contents are appended to the agent's system prompt.
-If both exist (and are in different directories), both are included.
-
-In addition, the agent has access to the =read_agents_md= tool, which lets it
-read the =AGENTS.md= file from any directory.  This is part of the standard tool
-set and requires no configuration.  It allows the agent to discover instructions
-for a project directory it encounters during its work, even if that directory
-was not the starting directory.
+Put general instructions and preferences in =~/AGENTS.md= and
+project-specific instructions in =AGENTS.md= in the working directory.
+The agent follows both when present, and can consult instructions in other
+project directories as needed.
 
 *** Command-line tools for agent integration
 
@@ -2019,12 +1882,9 @@ ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
 This way, the agent always has up-to-date documentation for the ekg tools
 without needing to duplicate it.
 
-The directory =agent_tools/ekg-agent-debug-analyzer/= contains a separate skill
-for investigating JSON exports from =ekg-agent-export-debug-json=.  It includes
-a script that produces a first-pass Markdown report of inefficient tool use,
-errors, repeated calls, oversized tool results, completion blockers, and missing
-required actions.  Symlink its =SKILL.md= into an agent skill directory when you
-want an external agent to improve =ekg-agent= behavior from exported sessions.
+For help investigating a session, give its diagnostic export to an external
+agent with the =agent_tools/ekg-agent-debug-analyzer/SKILL.md= skill installed.
+
 **** Instructions for configuring agents
 
 When setting up an AI agent to use ekg for memory, the recommended approach is

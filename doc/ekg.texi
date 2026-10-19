@@ -2208,12 +2208,9 @@ Use @samp{C-u M-x ekg-org-view-set-property} to remove a property; removing @sam
 restores inheritance from the parent task@comma{} or the invoking buffer's directory
 if no parent sets it.
 
-The agent resolves this directory before starting@comma{} reads its @samp{AGENTS.md}@comma{}
-and uses it as @samp{default-directory} for synchronous and asynchronous tools@comma{}
-including planning research@comma{} relative file paths@comma{} and subprocesses.  The
-session retains the directory when continued or when the invoking buffer is
-closed.  Tool arguments that explicitly choose another directory still take
-precedence; @samp{DIR} sets the working context rather than restricting file access.
+The agent uses this directory for project instructions@comma{} relative file paths@comma{}
+and commands@comma{} including when a session is resumed.  @samp{DIR} does not restrict
+file access; the agent can still work in other directories when asked.
 Empty@comma{} missing@comma{} or inaccessible directories cause an error before work begins.
 Relative @samp{DIR} paths are resolved against the invoking buffer's directory;
 absolute paths or @samp{~/} paths are preferable for tasks run from multiple views.
@@ -2265,135 +2262,65 @@ The command @samp{ekg-org-change-state} (available in note editing buffers and
 @node Agent integration
 @subsection Agent integration
 
-When @samp{ekg-agent} is loaded alongside @samp{ekg-org}@comma{} the agent gains tools for
-working with org tasks:
-
-@itemize
-@item
-@strong{add@math{_org}@math{_item}}: Create a new task with a title@comma{} description@comma{} tags@comma{} optional
-parent@comma{} state@comma{} deadline@comma{} and scheduled date.
-@item
-@strong{set@math{_org}@math{_item}@math{_status}}: Change the TODO state of an existing task.
-@item
-@strong{list@math{_org}@math{_items}}: List all active tasks@comma{} optionally filtered by state.
-@end itemize
-
-These tools are registered automatically by @samp{ekg-org-initialize} when
-@samp{ekg-agent} is available.  This allows the agent to create sub-tasks@comma{} mark
-items done@comma{} and review your task list as part of its autonomous operation.
+Load @samp{ekg-agent} alongside @samp{ekg-org} to let the agent help plan tasks@comma{}
+create subtasks@comma{} and update task status.
 
 @node Creating complete plans
 @subsection Creating complete plans
 
-The @samp{create_org_plan} agent tool takes @samp{description} (the goal and its
-constraints) and @samp{tags} (topic tags applied to every created task).  It first
-runs a research agent with note/file/web read tools@comma{} but no @samp{ask_user} tool.
-Tasks planned for the user to do receive @code{ekg-agent-org-user-task-tag}
-(default @samp{org/user-task}).  The user can answer question tasks with
-a child response note.  When questions exist@comma{}
-the plan includes a follow-up task to incorporate those responses@comma{} revise the
-plan@comma{} and update the original task note.  This follow-up is a task to execute@comma{}
-not an automatic revision triggered by saving a response.  After
-@samp{finish_plan_research}@comma{} a separate structured-output call produces the plan.
-Configure a strong provider explicitly:
+Use @samp{M-x ekg-agent-org-plan-task} on a task to create a plan beneath it.
+The agent researches the task and adds TODO subtasks with descriptions and
+dependencies.  Review and edit the plan before running its tasks.  Planning
+does not execute the work@comma{} and tasks with existing active children cannot be
+planned again.
+
+Configure a provider for planning first:
 
 @lisp
-(setq ekg-agent-org-plan-provider my-strong-provider
-      ekg-agent-org-plan-reasoning 'maximum)
-;; Optional: use a different provider for the research agent.
-;; (setq ekg-agent-plan-provider my-research-provider)
-;; Optional provider-specific arguments:
-;; (setq ekg-agent-org-plan-parameters '((parameter . value)))
+(setq ekg-agent-org-plan-provider my-strong-provider)
 @end lisp
 
-When @samp{ekg-agent-plan-provider} is nil@comma{} research uses the normal provider
-from @samp{ekg-llm-provider}.  @samp{maximum} is the llm library's highest thinking
-setting for the structured-output stage.  The final stage has no tools.  The
-existing @samp{add_org_item} tool remains available for individual tasks.
-
-Both stages use the shared contract @samp{ekg-org-plan-schema} and importer
-@samp{ekg-org-plan-import}.  External agents can bypass the LLM stages:
-
-@example
-agent_tools/ekg-org-import-plan plan.json --tag my-project
-# Or: cat plan.json | agent_tools/ekg-org-import-plan - --tag my-project
-@end example
-
-The script supports @samp{--daemon NAME} and prints a JSON mapping of document IDs
-to note IDs.  It requires Python 3 and a running Emacs with EKG installed.
-
-Version 1 JSON has exactly the following fields:
-
-@example
-@{"version":1@comma{}"tasks":[
-  @{"id":"plan"@comma{}"parent":null@comma{}"title":"Release"@comma{}
-   "content":"Release acceptance criteria"@comma{}"execution":"parallel"@comma{}
-   "depends_on":[]@comma{}"tags":[]@}@comma{}
-  @{"id":"build"@comma{}"parent":"plan"@comma{}"title":"Build"@comma{}
-   "content":"Produce the release artifact"@comma{}"execution":"sequential"@comma{}
-   "depends_on":[]@comma{}"tags":[]@}@comma{}
-  @{"id":"publish"@comma{}"parent":"plan"@comma{}"title":"Publish"@comma{}
-   "content":"Publish the validated artifact"@comma{}"execution":"parallel"@comma{}
-   "depends_on":["build"]@comma{}"tags":[]@}
-]@}
-@end example
-
-Exactly one task has a null parent.  IDs are nonempty unique strings local to
-the document; forward references are allowed.  @samp{content} is Org text.
-@samp{execution} controls a task's children@comma{} using the existing @samp{ORDERED} Org
-property.  Array order determines sibling order.  @samp{depends_on} adds explicit
-prerequisites@comma{} stored as multi-valued @samp{:org/depends-on} note IDs.  Thus each
-task has one display parent but may have multiple execution prerequisites.
-The per-task @samp{tags} array is required in newly generated plans but optional
-when importing older version 1 JSON@.  It adds task-specific topic tags; the
-only allowed internal tag is @code{ekg-agent-org-user-task-tag} (default
-@samp{org/user-task}).  Use it for any task planned for the user to do.  For a
-question@comma{} ask the user to add a child response note@comma{} and make work that
-requires the answer depend on that task.
-The importer rejects cycles@comma{} including those implied by sequential groups and
-parent/child completion.  Explicit prerequisite edges are stored for consumers;
-they do not automatically prevent manual TODO state changes in Org.
-
-All tasks start as TODO and receive the supplied topic tags and
-@code{ekg-agent-author-tag}; other internal
-@samp{org/} tags cannot be overridden.  Validation happens before note creation.  Notes
-and relationships are saved in one triples transaction; a failed write rolls
-back the plan.  Save notifications run after commit.  Version 1 deliberately
-does not accept deadlines or arbitrary properties; unknown fields are rejected.
+Tasks that need your decisions or actions are tagged with
+@code{ekg-agent-org-user-task-tag} (default @samp{org/user-task}).  To answer a
+question task@comma{} press @samp{C-c C-r} in the task view to add a response note.
+The plan includes a follow-up task to incorporate your answers and revise
+the plan; saving an answer does not run that task automatically.
 
 @node Command-line tools
 @subsection Command-line tools
 
-Two command-line scripts are provided in @samp{agent_tools/} for use by external
-agents:
+External agents can create and edit tasks using scripts in @samp{agent_tools/}:
 
 @itemize
 @item
-@samp{ekg-org-add-child}: Create a child task under an existing parent.  Supports
-@samp{--title}@comma{} @samp{--note}@comma{} @samp{--tag}@comma{} @samp{--status}@comma{} and @samp{--property KEY=VALUE} options.
+@samp{ekg-org-add-child}: Create a child task under an existing parent.
 @item
-@samp{ekg-org-edit}: Edit an existing task's title@comma{} content@comma{} status@comma{} or org
-properties.  Supports @samp{--title}@comma{} @samp{--note}@comma{} @samp{--append}@comma{} @samp{--status}@comma{}
-@samp{--set-property KEY=VALUE}@comma{} and @samp{--remove-property KEY} options.
+@samp{ekg-org-edit}: Edit a task's title@comma{} description@comma{} status@comma{} or Org properties.
+@item
+@samp{ekg-org-import-plan}: Import a complete plan from a JSON file.
 @end itemize
 
-These complement the general @samp{ekg-add-note} and @samp{ekg-read} scripts.  See the
-@samp{agent_tools/skill.md} file for complete usage documentation.
+For example:
+
+@example
+agent_tools/ekg-org-import-plan plan.json --tag my-project
+@end example
+
+These scripts require a running Emacs server.  See @samp{agent_tools/skill.md}
+for usage@comma{} options@comma{} and the plan file format.
 
 @node Agent
 @section Agent
 
-To execute the task at point@comma{} use @samp{M-x ekg-agent-org-run-task}.  This runs the
-backend selected by @code{ekg-agent-org-execution-backend}: @samp{ekg-agent} (the
-default) or @samp{code-command} to execute with @code{ekg-agent-code-command}. Both
-receive the task hierarchy@comma{} full child notes@comma{} task properties@comma{} working
-directory (including inherited @samp{DIR})@comma{} and co-tagged @code{ekg-llm-prompt-tag}
-instructions.  The built-in agent also receives @samp{AGENTS.md} context; external
-coding agents load their own project instructions.  They verify the work and
-set the task to DONE@comma{} or record a blocker and set WAITING@comma{} without asking
-questions.  If user clarification@comma{} action@comma{} or review is needed@comma{} they also add
-@code{ekg-agent-org-user-task-tag} (default @samp{org/user-task}) and record what is
-needed on the task.
+Use @samp{M-x ekg-agent-org-run-task} to work on the task at point.  The agent
+uses its description@comma{} child notes@comma{} project directory@comma{} and relevant saved
+instructions.  It marks completed work DONE or records a blocker and marks
+the task WAITING@.  Tasks needing your input or review are also tagged with
+@code{ekg-agent-org-user-task-tag} (default @samp{org/user-task}).
+
+By default@comma{} tasks run with the built-in EKG agent.  To use an external coding
+agent instead@comma{} set @code{ekg-agent-org-execution-backend} to @samp{code-command} and
+configure @code{ekg-agent-code-command}.
 
 For Codex@comma{} configure:
 
@@ -2419,23 +2346,14 @@ to read notes@comma{} record progress@comma{} and update task status in that Ema
 External execution requires the agent's own authentication@comma{} but no
 @code{ekg-llm-provider} or Emacs API key.
 
-Each execution has a separate buffer named @samp{*ekg task <id>: <title>*}; the
-built-in agent also includes the task ID in its log buffer name.  The
-buffer-local variable @code{ekg-agent-task-id} associates the buffer with its task@comma{}
-without storing transient buffer names in the database.  Use
-@samp{M-x ekg-agent-org-show-execution} from a task to find its most recent
-execution buffer@comma{} or @samp{C-c C-o} in an execution buffer to open the associated
-task.
+Each task execution has its own progress buffer.  Use
+@samp{M-x ekg-agent-org-show-execution} from a task to view its latest run@comma{} or
+@samp{C-c C-o} in an execution buffer to return to the task.
 
-External execution buffers stream standard output and error as the command
-produces them.  The header shows process state and elapsed time.  A successful
-process exit means the command finished; the task's status is managed by the
-agent.  Use @samp{C-c C-k} to stop that buffer's external process@comma{} record the
-interruption on its task@comma{} and leave the task WAITING@.  Killing a running
-execution buffer also stops its process.  Other executions are unaffected.
-The built-in agent retains its existing cancellation and continuation
-commands.  The coding tool remains available for delegation from the built-in
-agent.
+For external coding agents@comma{} @samp{C-c C-k} stops the run and leaves the task
+WAITING with a record of the interruption.  Closing its execution buffer
+also stops the run.  Other tasks continue unaffected.  For the built-in
+agent@comma{} see @ref{Agent log mode continuing and cancelling, , continuing and cancelling}.
 
 The @samp{ekg-agent} module provides an autonomous agent that can help you with your
 notes.  This agent can review your notes and org-mode agenda@comma{} searching across
@@ -2446,11 +2364,7 @@ resources.
 @samp{ekg-agent} is a separate package from @samp{ekg} and must be installed separately.
 
 @lisp
-(use-package ekg-agent
-  :init
-  (setq ekg-agent-code-command "~/.local/bin/claude -p --dangerously-skip-permissions")
-  (add-to-list 'ekg-agent-extra-tools (list ekg-agent-tool-run-elisp
-                                            ekg-agent-tool-code)))
+(use-package ekg-agent)
 @end lisp
 
 To use this module@comma{} you must have an LLM provider configured as described in the
@@ -2466,24 +2380,15 @@ assistance.  It can create notes to you@comma{} or to itself@comma{} to help it 
 
 You can also ask the agent to help with a specific note.  Select it in a notes
 buffer and call @samp{ekg-agent-notes-respond}@comma{} which is bound to @samp{.} when
-@samp{ekg-agent} is loaded.  This replaces the plain @samp{ekg-llm-notes-respond} binding
-with an agent loop that can use tools to research your other notes before
-saving a separate Markdown response tagged with both @code{ekg-llm-generated-tag}
-and @code{ekg-agent-author-tag}.  The command prompts for a request and reusable
-prompt tags.  A prefix argument additionally lets you select the provider when
-multiple providers are configured.
+@samp{ekg-agent} is loaded.  The agent can consult your other notes and saves a
+separate Markdown response beneath the selected note.  The command prompts
+for a request and reusable prompt tags.  A prefix argument lets you select
+the provider when multiple providers are configured.
 
 You can also ask the agent a direct question at any time with the command
-@samp{ekg-agent-ask}. This will prompt you for a question@comma{} which is then sent to the
-agent.  To provide context@comma{} ekg will automatically include lightweight
-information about the current buffer and short previews of your last 10 notes.
-The current buffer contents are not sent up front; the agent can use tools such
-as @samp{search_buffer} or @samp{read_buffer} when it needs specific text.  The agent will
-be able to search your notes and use any other tools available. It will then
-provide its response either by displaying it in a popup buffer or by creating a
-new note@comma{} choosing the method it deems most appropriate. Once the agent has
-provided a response@comma{} its
-task for that question is complete.  For example:
+@samp{ekg-agent-ask}.  The agent receives information about the current buffer and
+previews of recent notes for context@comma{} and can search your notes or read buffer
+contents as needed.  It answers in a popup buffer or a new note.  For example:
 
 @lisp
 (ekg-agent-ask "What are the main themes in my recent notes on 'systems thinking'?")
@@ -2517,8 +2422,7 @@ You can also have the agent run automatically every day.  To do this@comma{} cus
 (ekg-agent-schedule-daily)
 @end lisp
 
-This will set up a timer to run the agent daily.  You can cancel this schedule
-with @samp{ekg-agent-cancel-daily}.
+Cancel the daily schedule with @samp{ekg-agent-cancel-daily}.
 
 The agent uses specific tags to organize its work:
 @itemize
@@ -2565,22 +2469,14 @@ Some agent tools are packaged as optional libraries because they expose data
 from local connected services.  These tools are not enabled by default.  Require
 the library you want and add its tool list to @samp{ekg-agent-extra-tools}.
 
-The Gnus tool library provides tools for listing folders@comma{} fetching latest
-counts@comma{} searching messages@comma{} reading message headers@comma{} and reading full messages
-by an opaque @samp{message_id} returned from header and search tools.  Search prompts
-are disabled while the tools run so a backend prompt fails instead of blocking
-the agent.
+The Gnus library lets the agent browse mail folders@comma{} check message counts@comma{}
+and search and read messages.
 
 @lisp
 (require 'ekg-agent-tools-gnus)
 (setq ekg-agent-extra-tools
       (append ekg-agent-tools-gnus-tools ekg-agent-extra-tools))
 @end lisp
-
-For example@comma{} an agent can search for recent messages from a sender whose content
-matches a term by calling @samp{gnus_search_messages} with structured arguments such
-as @samp{from} set to "Stefan Monnier" and @samp{body} set to "uuid".  It can then pass
-the returned @samp{message_id} to @samp{gnus_read_message} to read the message.
 
 The Elfeed tool library provides tools for listing feeds@comma{} searching entries
 using Elfeed filter syntax@comma{} and reading one entry by ID or link.
@@ -2591,79 +2487,38 @@ using Elfeed filter syntax@comma{} and reading one entry by ID or link.
       (append ekg-agent-tools-elfeed-tools ekg-agent-extra-tools))
 @end lisp
 
-The standard tool set also includes read-only Emacs reference tools.  The agent
-can use @samp{emacs_help_search} and @samp{emacs_help_symbol} to search and display Emacs
-help for functions@comma{} macros@comma{} variables@comma{} faces@comma{} and other symbols.  It can use
-@samp{emacs_info_search} and @samp{emacs_info_node} to search and read the installed Info
-manuals@comma{} including the Emacs@comma{} Emacs Lisp@comma{} and Common Lisp extension manuals.
-These tools let the agent look up Emacs and Elisp behavior directly instead of
-guessing from memory.
+The agent can also consult Emacs help and installed Info manuals when
+working on Emacs or Elisp questions.
 
 @node Agent log mode continuing and cancelling
 @subsection Agent log mode: continuing and cancelling
 
-When the agent starts a session@comma{} it creates a log buffer (named according to
-@code{ekg-agent-log-buffer-name-format}) and enables @samp{ekg-agent-log-mode}@comma{} a minor
-mode that provides commands for controlling the agent.  The mode-line lighter
-shows @samp{Agent:run} while the agent is active and @samp{Agent:idle} when it has stopped.
+The agent displays its activity in a log buffer.  The mode line shows
+@samp{Agent:run} while it is working and @samp{Agent:idle} when it has stopped.
 
 The following commands are available in the log buffer:
 
 @itemize
 @item
-@samp{C-c C-c} (@samp{ekg-agent-continue}): Continue the agent from where it left off.
-The agent's full conversation history is preserved@comma{} so continuing resumes
-exactly where the previous session stopped---whether it completed normally@comma{}
-timed out@comma{} or was cancelled.  With a prefix argument (@samp{C-u C-c C-c})@comma{} you are
-prompted for a message to send to the agent@comma{} which lets you give it new
-instructions or redirect its work.
-
+@samp{C-c C-c} (@samp{ekg-agent-continue}): Resume a stopped session with additional
+instructions.  The previous conversation is retained.
 @item
-@samp{C-c C-k} (@samp{ekg-agent-cancel}): Cancel the current agent run.  The agent will
-stop after the current in-flight LLM call completes (it does not interrupt a
-call in progress).  The conversation prompt is preserved in the buffer@comma{} so you
-can resume later with @samp{C-c C-c}.
-
+@samp{C-c C-k} (@samp{ekg-agent-cancel}): Request cancellation.  The current operation
+finishes before the agent stops; you can resume later with @samp{C-c C-c}.
 @item
-@samp{C-c C-d} (@samp{ekg-agent-export-debug-json}): Export the stored prompt@comma{}
-conversation interactions@comma{} tool definitions@comma{} successful tool history@comma{}
-completion requirements@comma{} configuration@comma{} and visible log text to a temporary
-JSON file.  The file path is copied to the kill ring and can be analyzed with
-the @samp{agent_tools/ekg-agent-debug-analyzer} skill.
+@samp{C-c C-q} (@samp{ekg-agent-force-cancel}): Stop immediately.
+@item
+@samp{C-c C-d} (@samp{ekg-agent-export-debug-json}): Export a diagnostic report for
+troubleshooting.  The JSON file's path is copied to the kill ring.
 @end itemize
-
-This makes it easy to supervise long-running agent sessions: you can cancel if
-the agent is going in the wrong direction@comma{} give it new guidance@comma{} and continue.
-
-For long-running work@comma{} the agent is also reminded to call
-@samp{summarize_state} if it has gone too long without an explicit progress
-update.  You can control this with
-@code{ekg-agent-status-reminder-seconds}.
 
 @node AGENTSmd support
 @subsection AGENTS.md support
 
-The agent automatically reads @samp{AGENTS.md} files to pick up user-specific
-instructions and preferences.  Two locations are checked when the agent's
-context is built:
-
-@enumerate
-@item
-@samp{~/AGENTS.md} --- your home directory@comma{} for global preferences that apply to
-all projects.
-@item
-@samp{<default-directory>/AGENTS.md} --- the current directory when the agent is
-started@comma{} for project-specific instructions.
-@end enumerate
-
-If either file exists@comma{} its contents are appended to the agent's system prompt.
-If both exist (and are in different directories)@comma{} both are included.
-
-In addition@comma{} the agent has access to the @samp{read_agents_md} tool@comma{} which lets it
-read the @samp{AGENTS.md} file from any directory.  This is part of the standard tool
-set and requires no configuration.  It allows the agent to discover instructions
-for a project directory it encounters during its work@comma{} even if that directory
-was not the starting directory.
+Put general instructions and preferences in @samp{~/AGENTS.md} and
+project-specific instructions in @samp{AGENTS.md} in the working directory.
+The agent follows both when present@comma{} and can consult instructions in other
+project directories as needed.
 
 @node Command-line tools for agent integration
 @subsection Command-line tools for agent integration
@@ -2718,12 +2573,8 @@ ln -s /path/to/ekg/agent_tools/skill.md ~/.my-agent/skills/ekg/SKILL.md
 This way@comma{} the agent always has up-to-date documentation for the ekg tools
 without needing to duplicate it.
 
-The directory @samp{agent_tools/ekg-agent-debug-analyzer/} contains a separate skill
-for investigating JSON exports from @samp{ekg-agent-export-debug-json}.  It includes
-a script that produces a first-pass Markdown report of inefficient tool use@comma{}
-errors@comma{} repeated calls@comma{} oversized tool results@comma{} completion blockers@comma{} and missing
-required actions.  Symlink its @samp{SKILL.md} into an agent skill directory when you
-want an external agent to improve @samp{ekg-agent} behavior from exported sessions.
+For help investigating a session@comma{} give its diagnostic export to an external
+agent with the @samp{agent_tools/ekg-agent-debug-analyzer/SKILL.md} skill installed.
 
 @item
 @anchor{Instructions for configuring agents}Instructions for configuring agents

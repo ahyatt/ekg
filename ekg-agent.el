@@ -3506,7 +3506,10 @@ session.  At iteration 0 the log buffer is created and
              (deadline (or deadline (ekg-agent--timeout-deadline)))
              (buf (if task-id
                       (generate-new-buffer (format "*ekg task %s: %s*" task-id id))
-                    (get-buffer-create (format ekg-agent-log-buffer-name-format id)))))
+                    (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
+             ;; A nested agent inherits its caller's dynamic binding.  Use
+             ;; this session's buffer for its first request and callbacks.
+             (ekg-agent--current-log-buffer buf))
         (with-current-buffer buf
           (erase-buffer)
           ;; Set up major mode first since it calls
@@ -3516,8 +3519,7 @@ session.  At iteration 0 the log buffer is created and
           (setq ekg-agent-task-id task-id
                 ekg-agent--execution-db ekg-db
                 ekg-agent--execution-start (float-time))
-          (let ((ekg-agent--current-log-buffer buf))
-            (ekg-agent--log-session-start (buffer-name)))
+          (ekg-agent--log-session-start (buffer-name))
           (insert (format "Agent session for: %s\n\n" id))
           (setq ekg-agent--prompt prompt)
           (setq ekg-agent--end-tools end-tools)
@@ -4435,6 +4437,29 @@ ordinary agent provider; this provider makes the final planning decision."
   :type '(alist :key-type symbol :value-type sexp)
   :group 'ekg)
 
+(defun ekg-agent-org--log-plan-progress (owner stage started &optional research)
+  "Log planning STAGE in OWNER with elapsed time since STARTED.
+When RESEARCH is a prompt, also report how many tool calls have returned."
+  (when (buffer-live-p owner)
+    (let ((message
+           (format "Plan: %s (%ds elapsed%s)."
+                   stage (max 0 (floor (- (float-time) started)))
+                   (if research
+                       (format "; research tool calls returned: %d"
+                               (cl-loop
+                                for interaction in
+                                (llm-chat-prompt-interactions research)
+                                sum (length
+                                     (llm-chat-prompt-interaction-tool-results
+                                      interaction))))
+                     "")))
+          (ekg-agent--current-log-buffer owner))
+      (with-current-buffer owner
+        (setq ekg-agent--current-activity message)
+        (ekg-agent--log "%s" message)
+        (ekg-agent--record-status-update)
+        (force-mode-line-update)))))
+
 (defun ekg-agent-org--create-plan (callback description tags &optional parent-id)
   "Research DESCRIPTION, synthesize a plan, and import it with TAGS.
 When PARENT-ID is non-nil, attach the plan root to that Org task.
@@ -4458,11 +4483,41 @@ Call CALLBACK once with the created ID mapping or an error message."
                   (ekg-org-working-directory (ekg-get-note-with-id parent-id)))))
            (default-directory (or ekg-agent--task-directory default-directory))
            (owner ekg-agent--current-log-buffer)
+           (owner-start (when (buffer-live-p owner)
+                          (buffer-local-value 'ekg-agent--execution-start owner)))
+           (owner-status (when (buffer-live-p owner)
+                           (buffer-local-value 'ekg-agent--status-callback owner)))
+           ;; Continuing replaces the status callback; a new session also
+           ;; replaces the start time.  Neither may revive old progress.
+           (active-session
+            (lambda ()
+              (and (buffer-live-p owner)
+                   (buffer-local-value 'ekg-agent--running-p owner)
+                   (not (buffer-local-value 'ekg-agent--cancelled-p owner))
+                   (equal owner-start
+                          (buffer-local-value 'ekg-agent--execution-start owner))
+                   (eq owner-status
+                       (buffer-local-value 'ekg-agent--status-callback owner)))))
+           (report
+            (lambda (stage started &optional research)
+              (when (funcall active-session)
+                (ekg-agent-org--log-plan-progress owner stage started research))))
+           (started (float-time))
+           (stage-start started)
+           (stage "Researching task requirements")
+           (progress-timer nil)
            (finished nil)
            (ended nil)
            (finish (lambda (value)
                      (unless finished
                        (setq finished t)
+                       (when progress-timer
+                         (cancel-timer progress-timer)
+                         (setq progress-timer nil))
+                       (funcall report
+                                (if (string-prefix-p "Error:" value)
+                                    value "Plan saved")
+                                started)
                        (funcall callback value))))
            (end-tool
             (make-llm-tool
@@ -4497,6 +4552,18 @@ Call CALLBACK once with the created ID mapping or an error message."
                      (ekg-agent--agents-md-context))
              :tools (append ekg-agent-read-only-tools
                             (list ekg-agent-org-tool-list-items end-tool)))))
+      (funcall report stage stage-start prompt)
+      (when (buffer-live-p owner)
+        (setq progress-timer
+              (run-at-time
+               30 30
+               (lambda ()
+                 (if (or finished (not (funcall active-session)))
+                     (when progress-timer
+                       (cancel-timer progress-timer)
+                       (setq progress-timer nil))
+                   (funcall report stage stage-start
+                            (unless ended prompt)))))))
       (condition-case err
           (ekg-agent--iterate
            prompt 0
@@ -4508,6 +4575,9 @@ Call CALLBACK once with the created ID mapping or an error message."
                               (buffer-local-value
                                'ekg-agent--cancelled-p owner))))
                  (funcall finish "Error: Plan research stopped without completion")
+               (setq stage "Research complete; generating task graph"
+                     stage-start (float-time))
+               (funcall report stage stage-start)
                (condition-case err
                    (let ((request
                            (llm-chat-async
@@ -4548,6 +4618,9 @@ tradeoffs in its content, and make dependent tasks list it in `depends_on`."
                                              (buffer-local-value
                                               'ekg-agent--cancelled-p owner)))
                                     (funcall finish "Error: Plan cancelled")
+                                  (setq stage "Validating and saving plan"
+                                        stage-start (float-time))
+                                  (funcall report stage stage-start)
                                   (condition-case err
                                       (funcall finish
                                                (json-encode
@@ -4571,7 +4644,9 @@ tradeoffs in its content, and make dependent tasks list it in `depends_on`."
   (make-llm-tool
    :name "create_org_plan" :async t
    :function #'ekg-agent-org--create-plan
-   :description "Research and create a complete Org task DAG atomically."
+   :description "Research and create a complete Org task DAG atomically.
+If plan validation fails, no tasks are created. Retry this tool with the
+validation error included in description so the new plan can correct it."
    :args '((:name "description" :type string
                   :description "Goal, requirements and constraints to plan.")
            (:name "tags" :type array :items (:type string)

@@ -1908,6 +1908,280 @@ result when the agent finishes."
     (should (string-match-p "root" result))
     (should (= (length (triples-subjects-of-type ekg-db 'text)) 3))))
 
+(ekg-deftest-with-db ekg-agent-test-plan-retries-validation-error ()
+  "Nested research leaves the caller running to retry a rejected plan."
+  (require 'llm-openai)
+  (let* ((ekg-llm-provider (make-llm-openai :chat-model "test"))
+         (ekg-agent-plan-provider ekg-llm-provider)
+         (ekg-agent-org-plan-provider ekg-llm-provider)
+         (ekg-agent--current-log-buffer nil)
+         (ekg-agent-timeout-seconds -1)
+         (ekg-agent-llm-name-log-buffer nil)
+         (prompt (llm-make-chat-prompt
+                  "Make a plan"
+                  :tools (list ekg-agent-org-tool-create-plan
+                               ekg-agent-tool-end)))
+         (outer-calls 0)
+         (research-calls 0)
+         (plan-calls 0)
+         pending statuses cancelled)
+    (cl-labels
+        ((execute-tool (active-prompt name args success failure)
+           ;; Use the provider's real tool dispatch and prompt updates.
+           (apply
+            #'llm-provider-utils-execute-tool-uses
+            ekg-llm-provider active-prompt
+            (list (make-llm-provider-utils-tool-use
+                   :id (format "call-%s-%s" name outer-calls)
+                   :name name :args args))
+            t nil success
+            ;; Older llm versions also require an error callback.
+            (when (= (car (func-arity
+                           #'llm-provider-utils-execute-tool-uses)) 7)
+              (list failure)))))
+      (cl-letf
+          (((symbol-function 'ekg-agent--prompt-id)
+            (lambda (active-prompt)
+              (if (eq active-prompt prompt) "outer-plan" "research-plan")))
+           ((symbol-function 'llm-cancel-request)
+            (lambda (request) (push request cancelled)))
+           ((symbol-function 'llm-chat-async)
+            (lambda (_provider active-prompt success failure &optional _multi)
+              ;; Deliver callbacks after the request returns, like a network
+              ;; provider, without keeping the caller's dynamic bindings.
+              (push
+               (lambda ()
+                 (cond
+                  ((llm-chat-prompt-response-format active-prompt)
+                   (cl-incf plan-calls)
+                   (funcall success
+                            (if (= plan-calls 1)
+                                (string-replace
+                                 "[\"a\"]" "[\"missing\"]"
+                                 ekg-agent-test-plan--json)
+                              ekg-agent-test-plan--json)))
+                  ((eq active-prompt prompt)
+                   (cl-incf outer-calls)
+                   (pcase outer-calls
+                     (1
+                      (execute-tool
+                       active-prompt "create_org_plan"
+                       '((description . "Make a plan") (tags . ["project"]))
+                       success failure))
+                     (2
+                      (let* ((interaction
+                              (car (last (llm-chat-prompt-interactions prompt))))
+                             (result
+                              (llm-chat-prompt-tool-result-result
+                               (car (llm-chat-prompt-interaction-tool-results
+                                     interaction)))))
+                        (should (string-match-p "Unknown dependency missing"
+                                                result))
+                        (should-not (triples-subjects-of-type ekg-db 'text))
+                        (should (buffer-local-value
+                                 'ekg-agent--running-p
+                                 (get-buffer "*ekg agent log: outer-plan*")))
+                        (should-not statuses)
+                        (execute-tool
+                         active-prompt "create_org_plan"
+                         `((description . ,(concat "Retry; correct " result))
+                           (tags . ["project"]))
+                         success failure)))
+                     (3
+                      (execute-tool active-prompt "end" nil success failure))
+                     (_ (ert-fail "Unexpected outer iteration"))))
+                  (t
+                   (cl-incf research-calls)
+                   (when (= research-calls 2)
+                     (should (string-match-p
+                              "Unknown dependency missing"
+                              (ekg-agent--prompt-user-text active-prompt))))
+                   (execute-tool
+                    active-prompt "finish_plan_research"
+                    '((summary . "Research complete")) success failure))))
+               pending)
+              'test-request)))
+        (ekg-agent--iterate prompt 0 :end-tools '("end")
+                            :status-callback
+                            (lambda (status) (push status statuses)))
+        ;; Bound the pump so a regression cannot hang the test suite.
+        (dotimes (_ 10)
+          (when pending (funcall (pop pending))))
+        (should-not pending)
+        (should (= outer-calls 3))
+        (should (= research-calls 2))
+        (should (= plan-calls 2))
+        (should (equal statuses '("done")))
+        (should-not cancelled)
+        (should (= (length (triples-subjects-of-type ekg-db 'text)) 3))
+        (should (equal (plist-get
+                        (ekg-note-properties (ekg-get-note-with-id "b"))
+                        :org/depends-on)
+                       '("a")))
+        (dolist (name '("outer-plan" "research-plan"))
+          (with-current-buffer
+              (get-buffer (format ekg-agent-log-buffer-name-format name))
+            (should-not ekg-agent--running-p)
+            (should-not ekg-agent--current-request)))))))
+
+(ekg-deftest ekg-agent-test-plan-progress ()
+  "The outer log reports research, generation, saving and elapsed time."
+  (let* ((owner (generate-new-buffer " *plan-progress-owner*"))
+         (ekg-agent--current-log-buffer owner)
+         (ekg-agent-org-plan-provider 'strong-provider)
+         (now 1000)
+         research research-status success tick result cancelled)
+    (with-current-buffer owner (setq ekg-agent--running-p t))
+    (cl-letf (((symbol-function 'float-time) (lambda (&rest _) now))
+              ((symbol-function 'run-at-time)
+               (lambda (delay repeat function &rest _)
+                 (should (= delay 30))
+                 (should (= repeat 30))
+                 (setq tick function)
+                 'progress-timer))
+              ((symbol-function 'cancel-timer)
+               (lambda (timer) (push timer cancelled)))
+              ((symbol-function 'ekg-agent--iterate)
+               (lambda (prompt _ &rest options)
+                 (setq research prompt
+                       research-status (plist-get options :status-callback))))
+              ((symbol-function 'llm-chat-async)
+               (lambda (_provider _prompt callback _error &rest _)
+                 (setq success callback)))
+              ((symbol-function 'ekg-org-plan-import)
+               (lambda (&rest _)
+                 (with-current-buffer owner
+                   (should (string-match-p "Validating and saving plan"
+                                           (buffer-string))))
+                 '(("root" . "root")))))
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Make a plan" [])
+      (setf (llm-chat-prompt-interactions research)
+            (append (llm-chat-prompt-interactions research)
+                    (list (make-llm-chat-prompt-interaction
+                           :role 'tool-results
+                           :tool-results
+                           (list (make-llm-chat-prompt-tool-result
+                                  :call-id "read" :tool-name "read_file"
+                                  :result "File contents"))))))
+      (setq now 1030)
+      ;; Timer callbacks must target the owner even from an unrelated buffer.
+      (with-temp-buffer
+        (funcall tick)
+        (should (equal (buffer-string) "")))
+      (with-current-buffer owner
+        (should (string-match-p
+                 "30s elapsed; research tool calls returned: 1" (buffer-string)))
+        (should (string-match-p "Researching" ekg-agent--current-activity)))
+      (funcall (llm-tool-function
+                (car (last (llm-chat-prompt-tools research)))) "Findings")
+      (funcall research-status "Findings")
+      (setq now 1090)
+      (funcall tick)
+      (with-current-buffer owner
+        (should (string-match-p "generating task graph (60s elapsed)"
+                                (buffer-string)))
+        (should (string-match-p "generating task graph"
+                                ekg-agent--current-activity)))
+      (funcall success "Plan JSON")
+      (should (string-match-p "root" result))
+      (should (equal cancelled '(progress-timer)))
+      (with-current-buffer owner
+        (should (string-match-p "Plan saved (90s elapsed)" (buffer-string)))
+        (let ((before (buffer-string)))
+          (funcall tick)
+          (should (equal before (buffer-string))))))))
+
+(ekg-deftest ekg-agent-test-plan-progress-cleanup ()
+  "Progress timers stop on failure, cancellation, stop or buffer death."
+  (dolist (termination '(research-error generation-error cancelled stopped killed))
+    (let* ((owner (generate-new-buffer " *plan-progress-owner*"))
+           (ekg-agent--current-log-buffer owner)
+           (ekg-agent-org-plan-provider 'strong-provider)
+           research research-status failure tick cancelled result)
+      (with-current-buffer owner (setq ekg-agent--running-p t))
+      (cl-letf (((symbol-function 'run-at-time)
+                 (lambda (_delay _repeat function &rest _)
+                   (setq tick function)
+                   'progress-timer))
+                ((symbol-function 'cancel-timer)
+                 (lambda (timer) (push timer cancelled)))
+                ((symbol-function 'ekg-agent--iterate)
+                 (lambda (prompt _ &rest options)
+                   (setq research prompt
+                         research-status (plist-get options :status-callback))))
+                ((symbol-function 'llm-chat-async)
+                 (lambda (_provider _prompt _success error &rest _)
+                   (setq failure error))))
+        (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                   "Make a plan" [])
+        (pcase termination
+          ('research-error (funcall research-status 'error))
+          ('generation-error
+           (funcall (llm-tool-function
+                     (car (last (llm-chat-prompt-tools research)))) "Findings")
+           (funcall research-status "Findings")
+           (funcall failure 'error "Model failed"))
+          ('cancelled (with-current-buffer owner
+                        (setq ekg-agent--cancelled-p t)))
+          ('stopped (with-current-buffer owner
+                      (setq ekg-agent--running-p nil)))
+          ('killed (kill-buffer owner)))
+        (let ((before (and (buffer-live-p owner)
+                           (with-current-buffer owner (buffer-string)))))
+          (funcall tick)
+          (should (equal cancelled '(progress-timer)))
+          (when before
+            (with-current-buffer owner
+              (should (equal before (buffer-string))))))
+        (when (memq termination '(research-error generation-error))
+          (should (string-prefix-p "Error:" result)))))))
+
+(ekg-deftest ekg-agent-test-plan-progress-does-not-resume-old-timer ()
+  "Continuing or replacing a session must not revive old plan updates."
+  (dolist (restart '(continue replace))
+    (let* ((owner (get-buffer-create
+                   (format ekg-agent-log-buffer-name-format "progress-resume")))
+           (ekg-agent--current-log-buffer owner)
+           (ekg-agent-org-plan-provider 'strong-provider)
+           (ekg-agent-llm-name-log-buffer nil)
+           (iterate (symbol-function 'ekg-agent--iterate))
+           research-status tick cancelled)
+      (with-current-buffer owner
+        (setq ekg-agent--running-p t
+              ekg-agent--cancelled-p nil
+              ekg-agent--status-callback #'ignore
+              ekg-agent--prompt (llm-make-chat-prompt "Plan the task")))
+      (cl-letf (((symbol-function 'run-at-time)
+                 (lambda (_delay _repeat function &rest _)
+                   (setq tick function)
+                   'progress-timer))
+                ((symbol-function 'cancel-timer)
+                 (lambda (timer) (push timer cancelled)))
+                ((symbol-function 'ekg-agent--ensure-log-window) #'ignore)
+                ((symbol-function 'ekg-agent--iterate)
+                 (lambda (_prompt iteration &rest options)
+                   (when (zerop iteration)
+                     (setq research-status
+                           (plist-get options :status-callback))))))
+        (ekg-agent-org--create-plan #'ignore "Make a plan" [])
+        (with-current-buffer owner
+          (ekg-agent-force-cancel)
+          (if (eq restart 'continue)
+              (ekg-agent-continue "Resume")
+            ;; A new run may reuse both the log buffer and status callback.
+            ;; Run its actual setup, stubbing only the request iteration.
+            (cl-letf (((symbol-function 'ekg-agent--prompt-id)
+                       (lambda (_) "progress-resume"))
+                      ((symbol-function 'ekg-agent--iterate) #'ignore))
+              (funcall iterate (llm-make-chat-prompt "Another task") 0
+                       :status-callback #'ignore)))
+          (let ((before (buffer-string)))
+            (funcall tick)
+            (funcall research-status 'error)
+            (should (equal before (buffer-string))))
+          (should (equal cancelled '(progress-timer))))))))
+
 (ekg-deftest ekg-agent-test-plan-provider-fallback ()
              "Research uses the normal agent provider when none is configured."
              (let ((ekg-agent-plan-provider nil)
