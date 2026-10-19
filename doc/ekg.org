@@ -323,6 +323,16 @@ sure its a mode that makes sense for notes. The default mode is configured in
 ~ekg-capture-default-mode~, but can be changed when capturing with the command
 =ekg-change-mode=.
 
+For Markdown notes, EKG uses the mode associated with =.md= files in
+~auto-mode-alist~, including major mode remapping when supported by Emacs.
+If no mode is associated with =.md= files, EKG falls back to =markdown-mode=.
+This applies when capturing, editing, or displaying Markdown notes, including
+responses to other notes.
+Inline tag completion and saving recognize the configured Markdown mode too,
+including modes that are not derived from =markdown-mode=.
+Notes retain =markdown-mode= as their stored format so that their Markdown
+tags remain recognizable after saving and reopening them.
+
 The note text provides various options for completions. The most common
 completion is typing tags inline while writing notes. These tags will be added
 to the note automatically upon saving, regardless of whether completion is used

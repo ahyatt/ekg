@@ -778,6 +778,16 @@ sure its a mode that makes sense for notes. The default mode is configured in
 @code{ekg-capture-default-mode}@comma{} but can be changed when capturing with the command
 @samp{ekg-change-mode}.
 
+For Markdown notes@comma{} EKG uses the mode associated with @samp{.md} files in
+@code{auto-mode-alist}@comma{} including major mode remapping when supported by Emacs.
+If no mode is associated with @samp{.md} files@comma{} EKG falls back to @samp{markdown-mode}.
+This applies when capturing@comma{} editing@comma{} or displaying Markdown notes@comma{} including
+responses to other notes.
+Inline tag completion and saving recognize the configured Markdown mode too@comma{}
+including modes that are not derived from @samp{markdown-mode}.
+Notes retain @samp{markdown-mode} as their stored format so that their Markdown
+tags remain recognizable after saving and reopening them.
+
 The note text provides various options for completions. The most common
 completion is typing tags inline while writing notes. These tags will be added
 to the note automatically upon saving@comma{} regardless of whether completion is used
