@@ -105,7 +105,7 @@ Signal on transport, HTTP or GraphQL errors; never treat errors as success."
        (bound-and-true-p ekg-note)))
 
 (defun ekg-org-linear--check-editors (&optional note-id except-buffer)
-  "Refuse to sync tasks with unsaved editor changes.
+  "Check task editors for unsaved edits before syncing.
 When NOTE-ID is provided, check only that task, even if unlinked.
 Skip EXCEPT-BUFFER when marking from the editor that is being saved."
   (dolist (buffer (buffer-list))
