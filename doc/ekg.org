@@ -1610,6 +1610,90 @@ The command =ekg-org-change-state= (available in note editing buffers and
 =ekg-notes-mode= buffers) prompts for a new TODO state from
 =org-todo-keywords= and updates the task's state tag accordingly.
 
+*** Linear synchronization
+
+The optional =ekg-org-linear= module synchronizes task titles, body text and
+TODO states with Linear issues.  Configure a personal Linear API key and the
+UUID of the team whose issues you want to import:
+
+#+begin_src emacs-lisp
+(require 'ekg-org-linear)
+(setq ekg-org-linear-api-key (lambda () (my-linear-api-key))
+      ekg-org-linear-team-id "your-team-uuid")
+#+end_src
+
+The key option accepts a string or a zero-argument function returning a key;
+=my-linear-api-key= above is your own credential lookup function, for example
+using =auth-source=.  The key needs read access to the team and write access
+to issues you edit.  Requests go directly to =https://api.linear.app/graphql=.
+
+Run =M-x ekg-org-linear-sync= to import all issues in the team, including
+all pages of results.  Each issue becomes one EKG task, with sub-issues nested
+beneath their Linear parent.  Missing ancestors are fetched too.  Linear owns
+the hierarchy: subsequent syncs import moves, including moves to the root.
+Imported tasks use Markdown bodies (Linear's description format) and parallel
+children.  Without =markdown-mode= installed, bodies use =text-mode=.  Sibling ordering, projects and initiatives are not imported.
+
+Use =M-x ekg-org-linear-link= to associate an existing EKG task ID with a
+Linear issue UUID or identifier such as =ENG-123=.  The first sync uses
+Linear's title, description and state, replacing those fields on the linked
+task.  Subsequent syncs send local edits back to Linear.  Unlinked EKG tasks
+remain local unless marked for creation as described below.  Explicitly linked
+issues remain in scope even outside the
+configured team.  Links use the =LINEAR_ID= Org property and remain stable
+when a title changes.  One Linear issue can be linked to only one EKG task.
+
+To create a new Linear issue from a local task, put point on the task in
+=ekg-org-view= (or open its note) and run
+=M-x ekg-org-linear-mark-for-sync=.  Elsewhere, the command prompts for the
+EKG task ID.  Marking saves the =LINEAR_SYNC_ENABLED= Org property as =t=;
+it makes no network request.  In an editor, marking also saves the current
+body text.  Run =ekg-org-linear-sync= to create the issue
+in the configured team, using the task's title, text and TODO state.  The
+existing EKG task is linked to the resulting issue and continues syncing.
+
+A top-level task creates a top-level Linear issue.  A child creates a
+sub-issue under its parent's linked Linear issue.  If the parent is also a
+new local task, mark it too: sync creates marked ancestors before their
+children, regardless of marking order.  An unlinked, unmarked parent causes
+an error before any issues are created; link or mark it and retry.  Unmarked
+siblings and children are not exported.  Hidden tasks are excluded.
+
+Use =C-u M-x ekg-org-linear-mark-for-sync= to cancel a pending mark.  This
+does not unlink an issue that has already been created.  Before creation,
+sync saves a client-generated UUID in =LINEAR_CREATE_ID= and a snapshot of
+the initial values.  If a creation response is lost, the next sync recovers
+the issue by that UUID across teams (including archived issues) and merges
+subsequent edits instead of creating a duplicate.  A failed UUID lookup stops
+sync without attempting another creation.  Keep these properties intact when
+retrying a failed creation.
+
+Customize =ekg-org-linear-state-map= to map Linear workflow state types to
+Org TODO keywords.  By default triage, backlog, unstarted and started map to =TODO=;
+completed and canceled map to =DONE=.  For finer distinctions, configure
+matching Org keywords and, for example, map started to =DOING= and canceled
+to =CANCELED=.  Export preserves an issue's current workflow state when it
+already maps to the desired Org keyword; otherwise it chooses the first
+matching state in that issue's team.
+
+Save or close modified editors for linked or marked tasks before syncing.
+Sync checks for unsaved text, title, state and Org property changes before
+making requests.
+Clean editors are refreshed with synchronized text and link metadata, so
+saving them afterward preserves the Linear issue association.  Unrelated
+buffers keep their existing modified state.
+
+Sync compares each field with a stored =LINEAR_SYNC= snapshot.  Independent
+edits (for example a local description change and a remote title change)
+merge.  If the same field changes differently on both sides, sync signals
+a conflict before writing that issue.  Resolve it by making that field equal
+on both sides, then rerun sync.  Earlier issues may already have synced;
+rerunning does not create duplicates.  Failed updates never advance the
+issue's snapshot.  Sync runs synchronously and is invoked explicitly; it
+does not install background timers or perform network requests on note save.
+Deletion and archival are not propagated, and remote changes made during a
+sync can race with updates; avoid editing the same issue during a sync.
+
 *** Agent integration
 
 Load =ekg-agent= alongside =ekg-org= to let the agent help plan tasks,
