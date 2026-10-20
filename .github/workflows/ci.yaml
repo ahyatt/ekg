@@ -14,7 +14,7 @@ jobs:
       matrix:
         emacs_version:
           - 29.1
-          - 29.2
+          - 30.1
     steps:
       - name: Set up Nix
         uses: cachix/install-nix-action@v31
