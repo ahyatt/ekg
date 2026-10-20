@@ -1613,22 +1613,26 @@ The command =ekg-org-change-state= (available in note editing buffers and
 *** Linear synchronization
 
 The optional =ekg-org-linear= module synchronizes task titles, body text and
-TODO states with Linear issues.  Configure a personal Linear API key and the
-UUID of the team whose issues you want to import:
+TODO states with Linear issues.  Configure a personal Linear API key:
 
 #+begin_src emacs-lisp
 (require 'ekg-org-linear)
-(setq ekg-org-linear-api-key (lambda () (my-linear-api-key))
-      ekg-org-linear-team-id "your-team-uuid")
+(setq ekg-org-linear-api-key (lambda () (my-linear-api-key)))
 #+end_src
 
 The key option accepts a string or a zero-argument function returning a key;
 =my-linear-api-key= above is your own credential lookup function, for example
-using =auth-source=.  The key needs read access to the team and write access
-to issues you edit.  Requests go directly to =https://api.linear.app/graphql=.
+using =auth-source=.  The key needs read access to issues you import and write
+access to issues you edit.  Requests go directly to
+=https://api.linear.app/graphql=.
 
-Run =M-x ekg-org-linear-sync= to import all issues in the team, including
-all pages of results.  Each issue becomes one EKG task, with sub-issues nested
+Run =M-x ekg-org-linear-sync= to import all matching issues, including
+all pages of results.  By default only issues assigned to the API key's
+user are imported.  Set =ekg-org-linear-assignee= to an assignee email
+address, or to =nil= to import everyone.  Set
+=ekg-org-linear-import-team-id= to restrict import to a single team; when
+it is =nil=, issues are imported across all teams, so keep an assignee
+filter configured.  Each issue becomes one EKG task, with sub-issues nested
 beneath their Linear parent.  Missing ancestors are fetched too.  Linear owns
 the hierarchy: subsequent syncs import moves, including moves to the root.
 Imported tasks use Markdown bodies (Linear's description format) and parallel
@@ -1639,8 +1643,8 @@ Linear issue UUID or identifier such as =ENG-123=.  The first sync uses
 Linear's title, description and state, replacing those fields on the linked
 task.  Subsequent syncs send local edits back to Linear.  Unlinked EKG tasks
 remain local unless marked for creation as described below.  Explicitly linked
-issues remain in scope even outside the
-configured team.  Links use the =LINEAR_ID= Org property and remain stable
+issues remain in scope even outside the import team.  Links use the
+=LINEAR_ID= Org property and remain stable
 when a title changes.  One Linear issue can be linked to only one EKG task.
 
 To create a new Linear issue from a local task, put point on the task in
@@ -1648,9 +1652,11 @@ To create a new Linear issue from a local task, put point on the task in
 =M-x ekg-org-linear-mark-for-sync=.  Elsewhere, the command prompts for the
 EKG task ID.  Marking saves the =LINEAR_SYNC_ENABLED= Org property as =t=;
 it makes no network request.  In an editor, marking also saves the current
-body text.  Run =ekg-org-linear-sync= to create the issue
-in the configured team, using the task's title, text and TODO state.  The
-existing EKG task is linked to the resulting issue and continues syncing.
+body text.  Run =ekg-org-linear-sync= to create the issue in the team
+named by =ekg-org-linear-creation-team-id=, using the task's title, text
+and TODO state.  Set it before creating any issues; it is independent of
+=ekg-org-linear-import-team-id=.  The existing EKG task is linked to the
+resulting issue and continues syncing.
 
 A top-level task creates a top-level Linear issue.  A child creates a
 sub-issue under its parent's linked Linear issue.  If the parent is also a
@@ -1670,7 +1676,7 @@ retrying a failed creation.
 
 Customize =ekg-org-linear-state-map= to map Linear workflow state types to
 Org TODO keywords.  By default triage, backlog, unstarted and started map to =TODO=;
-completed and canceled map to =DONE=.  For finer distinctions, configure
+completed, canceled and duplicate map to =DONE=.  For finer distinctions, configure
 matching Org keywords and, for example, map started to =DOING= and canceled
 to =CANCELED=.  Export preserves an issue's current workflow state when it
 already maps to the desired Org keyword; otherwise it chooses the first

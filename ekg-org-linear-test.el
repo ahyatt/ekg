@@ -37,6 +37,29 @@
                                                   '("Remote" "" "TODO")
                                                   '("Base" "" "TODO"))))
 
+(ekg-deftest ekg-org-linear-test-duplicate-state ()
+             (should (equal "DONE"
+                            (nth 2
+                                 (ekg-org-linear--remote-values
+                                  `((id . "i") (identifier . "I-1")
+                                    (title . "Title") (description . "")
+                                    (team . ((id . "team")))
+                                    (state . ((id . "d") (type . "duplicate")))))))))
+
+(ekg-deftest ekg-org-linear-test-issue-filter ()
+             (let ((ekg-org-linear-import-team-id "team")
+                   (ekg-org-linear-assignee "me"))
+               (should (equal (ekg-org-linear--issue-filter)
+                              '((assignee . ((isMe . ((eq . t)))))
+                                (team . ((id . ((eq . "team")))))))))
+             (let ((ekg-org-linear-import-team-id nil)
+                   (ekg-org-linear-assignee "a@b.com"))
+               (should (equal (ekg-org-linear--issue-filter)
+                              '((assignee . ((email . ((eq . "a@b.com")))))))))
+             (let ((ekg-org-linear-import-team-id nil)
+                   (ekg-org-linear-assignee nil))
+               (should-error (ekg-org-linear--issue-filter))))
+
 (ekg-deftest-with-db ekg-org-linear-test-sync-tree-and-edits ()
                      (let* ((parent (ekg-org-linear-test--issue "p" "Parent"))
                             (child (ekg-org-linear-test--issue "c" "Child" "p"))
@@ -76,16 +99,18 @@
                                         (gethash "c" (ekg-org-linear--linked-notes))))))))
 
 (ekg-deftest ekg-org-linear-test-pagination ()
-             (let ((ekg-org-linear-team-id "team") cursors)
+             (let ((ekg-org-linear-import-team-id "team") cursors)
                (cl-letf (((symbol-function 'ekg-org-linear--request)
-                          (lambda (_query variables)
-                            (let ((cursor (alist-get 'after variables)))
-                              (push cursor cursors)
-                              (if cursor
-                                  '((issues . ((nodes . (second)) (pageInfo . nil))))
-                                '((issues . ((nodes . (first))
-                                             (pageInfo . ((hasNextPage . t)
-                                                          (endCursor . "next")))))))))))
+                          (lambda (query variables)
+                            (if (string-match-p "team(" query)
+                                '((team . ((id . "team"))))
+                              (let ((cursor (alist-get 'after variables)))
+                                (push cursor cursors)
+                                (if cursor
+                                    '((issues . ((nodes . (second)) (pageInfo . nil))))
+                                  '((issues . ((nodes . (first))
+                                               (pageInfo . ((hasNextPage . t)
+                                                            (endCursor . "next"))))))))))))
                  (should (equal '(first second) (ekg-org-linear--issues)))
                  (should (equal '("next" nil) cursors)))))
 
@@ -170,7 +195,7 @@
 
 (ekg-deftest-with-db ekg-org-linear-test-create-marked-tree ()
                      (ekg-org-add-schema)
-                     (let* ((ekg-org-linear-team-id "team")
+                     (let* ((ekg-org-linear-creation-team-id "team")
                             (parent (ekg-org-linear-test--task "Parent"))
                             (child (ekg-org-linear-test--task "Child" parent))
                             (unmarked (ekg-org-linear-test--task "Leave local"))
