@@ -47,14 +47,33 @@ in your configuration.  The key is sent only to Linear's API."
   :type '(choice (const nil) string function)
   :group 'ekg-org-linear)
 
-(defcustom ekg-org-linear-team-id nil
-  "Linear team UUID whose issues are imported by sync."
+(defcustom ekg-org-linear-creation-team-id nil
+  "Linear team UUID in which marked EKG tasks are created.
+Required to create new issues; importing does not use this option."
   :type '(choice (const nil) string)
+  :group 'ekg-org-linear)
+
+(defcustom ekg-org-linear-import-team-id nil
+  "Optional Linear team UUID to restrict imported issues to.
+When nil, issues are imported from every team, so set
+`ekg-org-linear-assignee' or this option to limit the import."
+  :type '(choice (const nil) string)
+  :group 'ekg-org-linear)
+
+(defcustom ekg-org-linear-assignee "me"
+  "Limit imported Linear issues to a single assignee.
+The value `\"me\"' imports only issues assigned to the API key's user,
+a string is treated as an assignee email, and nil imports every issue
+matching the team filter."
+  :type '(choice (const :tag "Assigned to me" "me")
+                 (const :tag "Everyone" nil)
+                 (string :tag "Assignee email"))
   :group 'ekg-org-linear)
 
 (defcustom ekg-org-linear-state-map
   '(("triage" . "TODO") ("backlog" . "TODO") ("unstarted" . "TODO")
-    ("started" . "TODO") ("completed" . "DONE") ("canceled" . "DONE"))
+    ("started" . "TODO") ("completed" . "DONE") ("canceled" . "DONE")
+    ("duplicate" . "DONE"))
   "Map Linear workflow state types to Org TODO keywords.
 When several Linear states map to the same keyword, retain the issue's
 current state if possible, otherwise use the first matching team state.
@@ -177,21 +196,53 @@ Return nil only for an empty successful lookup, propagating API errors."
                   `((id . ,id))))
       (error "Linear issue not found: %s" id)))
 
+(defun ekg-org-linear--check-team (team-id)
+  "Signal a clear error unless TEAM-ID names an existing Linear team.
+Linear's issue filter returns an empty result for an unknown team, so a
+missing or mistyped team would otherwise make sync silently do nothing."
+  (condition-case err
+      (unless (alist-get 'team
+                         (ekg-org-linear--request
+                          "query($id: String!) { team(id: $id) { id } }"
+                          `((id . ,team-id))))
+        (user-error "Linear team %s not found; check `ekg-org-linear-import-team-id'"
+                    team-id))
+    (error
+     (user-error "Linear team %s not found; check `ekg-org-linear-import-team-id' (%s)"
+                 team-id (error-message-string err)))))
+
+(defun ekg-org-linear--issue-filter ()
+  "Build the GraphQL issue filter from the configured options."
+  (let (filter)
+    (when ekg-org-linear-import-team-id
+      (setq filter (cons `(team . ((id . ((eq . ,ekg-org-linear-import-team-id)))))
+                         filter)))
+    (when ekg-org-linear-assignee
+      (setq filter
+            (cons `(assignee . ,(if (equal ekg-org-linear-assignee "me")
+                                    '((isMe . ((eq . t))))
+                                  `((email . ((eq . ,ekg-org-linear-assignee))))))
+                  filter)))
+    (unless filter
+      (user-error "Configure `ekg-org-linear-import-team-id' or `ekg-org-linear-assignee'
+to limit sync"))
+    filter))
+
 (defun ekg-org-linear--issues ()
-  "Fetch all pages of issues for the configured team."
-  (unless ekg-org-linear-team-id
-    (user-error "Configure ekg-org-linear-team-id first"))
-  (let (cursor issues more)
+  "Fetch all pages of issues matching the configured team and assignee."
+  (when ekg-org-linear-import-team-id
+    (ekg-org-linear--check-team ekg-org-linear-import-team-id))
+  (let ((filter (ekg-org-linear--issue-filter))
+        cursor issues more)
     (setq more t)
     (while more
       (let* ((data (ekg-org-linear--request
-                    (format (concat "query($team: ID!, $after: String) {"
-                                    " issues(first: 100, after: $after,"
-                                    " filter: {team: {id: {eq: $team}}}) {"
+                    (format (concat "query($filter: IssueFilter!, $after: String) {"
+                                    " issues(first: 100, after: $after, filter: $filter) {"
                                     " nodes { %s }"
                                     " pageInfo { hasNextPage endCursor } } }")
                             ekg-org-linear--fields)
-                    `((team . ,ekg-org-linear-team-id) (after . ,cursor))))
+                    `((filter . ,filter) (after . ,cursor))))
              (connection (or (alist-get 'issues data)
                              (error "Linear returned no issues connection")))
              (page (alist-get 'pageInfo connection)))
@@ -324,9 +375,11 @@ perform network requests.  Existing links continue syncing if unmarked."
 
 (defun ekg-org-linear--create (note parent-id id)
   "Create a Linear issue for NOTE under PARENT-ID, using stable UUID ID."
+  (unless ekg-org-linear-creation-team-id
+    (user-error "Configure `ekg-org-linear-creation-team-id' to create Linear issues"))
   (let* ((values (ekg-org-linear--local-values note))
          (state-id (ekg-org-linear--state-id
-                    `((team . ((id . ,ekg-org-linear-team-id)))) (nth 2 values)))
+                    `((team . ((id . ,ekg-org-linear-creation-team-id)))) (nth 2 values)))
          (result
           (alist-get
            'issueCreate
@@ -334,7 +387,7 @@ perform network requests.  Existing links continue syncing if unmarked."
             (format (concat "mutation($input: IssueCreateInput!) {"
                             " issueCreate(input: $input) { success issue { %s } } }")
                     ekg-org-linear--fields)
-            `((input . ((id . ,id) (teamId . ,ekg-org-linear-team-id)
+            `((input . ((id . ,id) (teamId . ,ekg-org-linear-creation-team-id)
                         (title . ,(car values)) (description . ,(nth 1 values))
                         (stateId . ,state-id) (parentId . ,parent-id))))))))
     (unless (and (eq t (alist-get 'success result))
