@@ -107,6 +107,13 @@ Signal on transport, HTTP or GraphQL errors; never treat errors as success."
                        (<= 200 url-http-response-status 299))
             (error "Linear HTTP error: %s" url-http-response-status))
           (goto-char url-http-end-of-headers)
+          ;; `url-retrieve-synchronously' can leave the response body
+          ;; undecoded in a unibyte buffer, in which case UTF-8 text (for
+          ;; example an arrow) arrives as raw bytes.  Decode it before
+          ;; parsing so non-ASCII characters survive intact.
+          (unless enable-multibyte-characters
+            (set-buffer-multibyte t)
+            (decode-coding-region (point) (point-max) 'utf-8))
           (let* ((json-object-type 'alist) (json-array-type 'list)
                  (json-key-type 'symbol) (json-null nil) (json-false nil)
                  (response (json-read)))
