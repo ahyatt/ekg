@@ -162,6 +162,30 @@
                                 buffer))))
                    (should-error (ekg-org-linear--request "query" nil))))))
 
+(ekg-deftest ekg-org-linear-test-request-decodes-utf-8 ()
+             ;; `url-retrieve-synchronously' can return a unibyte buffer
+             ;; holding raw UTF-8 bytes; `ekg-org-linear--request' must
+             ;; decode them so non-ASCII text survives.
+             (let* ((ekg-org-linear-api-key "test-key")
+                    (expected (format "a %s b" (string ?\u2192)))
+                    (payload (format "{\"data\":{\"issue\":{\"description\":\"a %s b\"}}}"
+                                     (string ?\u2192))))
+               (cl-letf (((symbol-function 'url-retrieve-synchronously)
+                          (lambda (&rest _)
+                            (let ((buffer (generate-new-buffer " *linear-test*")))
+                              (with-current-buffer buffer
+                                (set-buffer-multibyte nil)
+                                (setq-local url-http-response-status 200)
+                                (insert "HTTP/1.1 200 OK\n\n")
+                                (setq-local url-http-end-of-headers (point-marker))
+                                (insert (encode-coding-string payload 'utf-8)))
+                              buffer))))
+                 (should (equal expected
+                                (alist-get 'description
+                                           (alist-get 'issue
+                                                      (ekg-org-linear--request
+                                                       "query" nil))))))))
+
 (ekg-deftest ekg-org-linear-test-workflow-state-resolution ()
              (let ((issue (ekg-org-linear-test--issue "i" "Title")))
                (should (equal "todo" (ekg-org-linear--state-id issue "TODO")))
