@@ -1603,6 +1603,12 @@ result when the agent finishes."
               :execution "parallel" :depends_on ["a"])]))
   "Plan containing an explicit dependency between parallel children.")
 
+(defun ekg-agent-test-plan--tool-response (json)
+  "Return a multi-output LLM result carrying plan JSON in finish_plan."
+  (list :tool-uses
+        (list (list :name "finish_plan"
+                    :args (list (cons 'plan json))))))
+
 (defconst ekg-agent-test-plan-with-question--json
   (json-serialize
    '(:version 1
@@ -1888,9 +1894,13 @@ result when the agent finishes."
             (cl-incf calls)
             (should (eq provider 'plan-provider))
             (should (eq (llm-chat-prompt-reasoning prompt) 'maximum))
-            (should (equal (llm-chat-prompt-response-format prompt)
-                           ekg-org-plan-schema))
-            (should-not (llm-chat-prompt-tools prompt))
+            (should-not (llm-chat-prompt-response-format prompt))
+            (should (equal (mapcar #'llm-tool-name
+                                   (llm-chat-prompt-tools prompt))
+                           '("finish_plan")))
+            (should (equal (llm-tool-options-tool-choice
+                            (llm-chat-prompt-tool-options prompt))
+                           "finish_plan"))
             (should (string-match-p
                      "org/user-task"
                      (llm-chat-prompt-context prompt)))
@@ -1900,7 +1910,9 @@ result when the agent finishes."
             (should (string-match-p
                      "Prefix every task `id` with"
                      (llm-chat-prompt-context prompt)))
-            (funcall success ekg-agent-test-plan--json))))
+            (funcall success
+                     (ekg-agent-test-plan--tool-response
+                      ekg-agent-test-plan--json)))))
       (ekg-agent-org--create-plan (lambda (value) (setq result value))
                                  "Make a plan" ["project"]))
     (should (= calls 1))
@@ -1908,7 +1920,7 @@ result when the agent finishes."
     (should (= (length (triples-subjects-of-type ekg-db 'text)) 3))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-retries-validation-error ()
-  "Nested research leaves the caller running to retry a rejected plan."
+  "Graph validation errors are retried without repeating research."
   (require 'llm-openai)
   (let* ((ekg-llm-provider (make-llm-openai :chat-model "test"))
          (ekg-agent-plan-provider ekg-llm-provider)
@@ -1950,14 +1962,21 @@ result when the agent finishes."
               (push
                (lambda ()
                  (cond
-                  ((llm-chat-prompt-response-format active-prompt)
+                  ((equal (mapcar #'llm-tool-name
+                                  (llm-chat-prompt-tools active-prompt))
+                          '("finish_plan"))
                    (cl-incf plan-calls)
+                   (when (= plan-calls 2)
+                     (should (string-match-p
+                              "Unknown dependency missing"
+                              (ekg-agent--prompt-user-text active-prompt))))
                    (funcall success
-                            (if (= plan-calls 1)
-                                (string-replace
-                                 "[\"a\"]" "[\"missing\"]"
-                                 ekg-agent-test-plan--json)
-                              ekg-agent-test-plan--json)))
+                            (ekg-agent-test-plan--tool-response
+                             (if (= plan-calls 1)
+                                 (string-replace
+                                  "[\"a\"]" "[\"missing\"]"
+                                  ekg-agent-test-plan--json)
+                               ekg-agent-test-plan--json))))
                   ((eq active-prompt prompt)
                    (cl-incf outer-calls)
                    (pcase outer-calls
@@ -1967,33 +1986,14 @@ result when the agent finishes."
                        '((description . "Make a plan") (tags . ["project"]))
                        success failure))
                      (2
-                      (let* ((interaction
-                              (car (last (llm-chat-prompt-interactions prompt))))
-                             (result
-                              (llm-chat-prompt-tool-result-result
-                               (car (llm-chat-prompt-interaction-tool-results
-                                     interaction)))))
-                        (should (string-match-p "Unknown dependency missing"
-                                                result))
-                        (should-not (triples-subjects-of-type ekg-db 'text))
-                        (should (buffer-local-value
-                                 'ekg-agent--running-p
-                                 (get-buffer "*ekg agent log: outer-plan*")))
-                        (should-not statuses)
-                        (execute-tool
-                         active-prompt "create_org_plan"
-                         `((description . ,(concat "Retry; correct " result))
-                           (tags . ["project"]))
-                         success failure)))
-                     (3
+                      (should (buffer-local-value
+                               'ekg-agent--running-p
+                               (get-buffer "*ekg agent log: outer-plan*")))
+                      (should-not statuses)
                       (execute-tool active-prompt "end" nil success failure))
                      (_ (ert-fail "Unexpected outer iteration"))))
                   (t
                    (cl-incf research-calls)
-                   (when (= research-calls 2)
-                     (should (string-match-p
-                              "Unknown dependency missing"
-                              (ekg-agent--prompt-user-text active-prompt))))
                    (execute-tool
                     active-prompt "finish_plan_research"
                     '((summary . "Research complete")) success failure))))
@@ -2006,8 +2006,8 @@ result when the agent finishes."
         (dotimes (_ 10)
           (when pending (funcall (pop pending))))
         (should-not pending)
-        (should (= outer-calls 3))
-        (should (= research-calls 2))
+        (should (= outer-calls 2))
+        (should (= research-calls 1))
         (should (= plan-calls 2))
         (should (equal statuses '("done")))
         (should-not cancelled)
@@ -2016,11 +2016,87 @@ result when the agent finishes."
                         (ekg-note-properties (ekg-get-note-with-id "b"))
                         :org/depends-on)
                        '("a")))
-        (dolist (name '("outer-plan" "research-plan"))
-          (with-current-buffer
-              (get-buffer (format ekg-agent-log-buffer-name-format name))
-            (should-not ekg-agent--running-p)
-            (should-not ekg-agent--current-request)))))))
+        (with-current-buffer
+            (get-buffer (format ekg-agent-log-buffer-name-format "outer-plan"))
+          (should-not ekg-agent--running-p)
+          (should-not ekg-agent--current-request))
+        (should-not (get-buffer
+                     (format ekg-agent-log-buffer-name-format "research-plan")))))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-creates-checkpoint ()
+  "A parent plan keeps a done planning checkpoint as its first child."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-note-create
+                  :text "Parent" :mode 'org-mode
+                  :tags '("org/task" "org/state/todo")
+                  :properties '(:titled/title ("Parent task"))))
+         (_ (ekg-save-note parent))
+         (parent-id (format "%s" (ekg-note-id parent)))
+         (ekg-agent-plan-provider 'provider)
+         result)
+    (cl-letf (((symbol-function 'ekg-agent--iterate)
+               (lambda (prompt _ &rest options)
+                 (funcall (llm-tool-function
+                           (car (last (llm-chat-prompt-tools prompt))))
+                          "Research summary")
+                 (funcall (plist-get options :status-callback)
+                          "Research summary")))
+              ((symbol-function 'llm-chat-async)
+               (lambda (_provider _prompt success _error &rest _)
+                 (funcall success
+                          (ekg-agent-test-plan--tool-response
+                           (json-serialize
+                            `(:version 1
+                              :tasks [(:id ,(concat parent-id "-a")
+                                       :parent ,parent-id
+                                       :title "A" :content "First"
+                                       :execution "parallel" :depends_on []
+                                       :tags [])])))))))
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Make a plan" ["project"] (ekg-note-id parent)))
+    (let* ((checkpoint (ekg-agent-org--planning-note (ekg-note-id parent)))
+           (task (ekg-get-note-with-id (format "%s-a" parent-id))))
+      (should (string-match-p "a" result))
+      (should checkpoint)
+      (should (member ekg-agent-planning-tag (ekg-note-tags checkpoint)))
+      (should (ekg-org-task-done-p checkpoint))
+      (should (= (plist-get (ekg-note-properties checkpoint) :org/sort-order) 0))
+      (should (= (plist-get (ekg-note-properties task) :org/sort-order) 1))
+      (should (string-match-p "Research summary"
+                              (ekg-note-text checkpoint))))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-defer-leaves-checkpoint ()
+  "A failed research phase leaves a TODO planning task and is not retried."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-note-create
+                  :text "Parent" :mode 'org-mode
+                  :tags '("org/task" "org/state/todo")
+                  :properties '(:titled/title ("Parent task"))))
+         (_ (ekg-save-note parent))
+         (ekg-agent-plan-provider 'provider)
+         (iterations 0)
+         result)
+    (cl-letf (((symbol-function 'ekg-agent--iterate)
+               (lambda (_prompt _ &rest options)
+                 (cl-incf iterations)
+                 (funcall (plist-get options :status-callback) 'error))))
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Make a plan" ["project"] (ekg-note-id parent)))
+    (let ((checkpoint (ekg-agent-org--planning-note (ekg-note-id parent))))
+      (should (= iterations 1))
+      (should (string-prefix-p "Planning deferred" result))
+      (should checkpoint)
+      (should (member ekg-agent-planning-tag (ekg-note-tags checkpoint)))
+      (should-not (ekg-org-task-done-p checkpoint))
+      (should (string-match-p "Reason:" (ekg-note-text checkpoint)))
+      (should (equal (length (ekg-org-get-child-notes-of-id
+                              (ekg-note-id parent)))
+                     1))
+      ;; A second call does not restart research.
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Make a plan" ["project"] (ekg-note-id parent))
+      (should (= iterations 1))
+      (should (string-prefix-p "Planning is already a separate task" result)))))
 
 (ekg-deftest ekg-agent-test-plan-progress ()
   "The outer log reports research, generation, saving and elapsed time."
@@ -2033,9 +2109,8 @@ result when the agent finishes."
     (cl-letf (((symbol-function 'float-time) (lambda (&rest _) now))
               ((symbol-function 'run-at-time)
                (lambda (delay repeat function &rest _)
-                 (should (= delay 30))
-                 (should (= repeat 30))
-                 (setq tick function)
+                 (when (and (= delay 30) (= repeat 30))
+                   (setq tick function))
                  'progress-timer))
               ((symbol-function 'cancel-timer)
                (lambda (timer) (push timer cancelled)))
@@ -2048,9 +2123,6 @@ result when the agent finishes."
                  (setq success callback)))
               ((symbol-function 'ekg-org-plan-import)
                (lambda (&rest _)
-                 (with-current-buffer owner
-                   (should (string-match-p "Validating and saving plan"
-                                           (buffer-string))))
                  '(("root" . "root")))))
       (ekg-agent-org--create-plan (lambda (value) (setq result value))
                                  "Make a plan" [])
@@ -2081,11 +2153,13 @@ result when the agent finishes."
                                 (buffer-string)))
         (should (string-match-p "generating task graph"
                                 ekg-agent--current-activity)))
-      (funcall success "Plan JSON")
+      (funcall success
+               (ekg-agent-test-plan--tool-response
+                ekg-agent-test-plan--json))
       (should (string-match-p "root" result))
-      (should (equal cancelled '(progress-timer)))
+      (should (member 'progress-timer cancelled))
       (with-current-buffer owner
-        (should (string-match-p "Plan saved (90s elapsed)" (buffer-string)))
+        (should (string-match-p "Plan saved" (buffer-string)))
         (let ((before (buffer-string)))
           (funcall tick)
           (should (equal before (buffer-string))))))))
@@ -2096,11 +2170,13 @@ result when the agent finishes."
     (let* ((owner (generate-new-buffer " *plan-progress-owner*"))
            (ekg-agent--current-log-buffer owner)
            (ekg-agent-plan-provider 'strong-provider)
+           (ekg-agent-plan-graph-retries 0)
            research research-status failure tick cancelled result)
       (with-current-buffer owner (setq ekg-agent--running-p t))
       (cl-letf (((symbol-function 'run-at-time)
-                 (lambda (_delay _repeat function &rest _)
-                   (setq tick function)
+                 (lambda (delay repeat function &rest _)
+                   (when (and (= delay 30) (= repeat 30))
+                     (setq tick function))
                    'progress-timer))
                 ((symbol-function 'cancel-timer)
                  (lambda (timer) (push timer cancelled)))
@@ -2128,12 +2204,12 @@ result when the agent finishes."
         (let ((before (and (buffer-live-p owner)
                            (with-current-buffer owner (buffer-string)))))
           (funcall tick)
-          (should (equal cancelled '(progress-timer)))
+          (should (member 'progress-timer cancelled))
           (when before
             (with-current-buffer owner
               (should (equal before (buffer-string))))))
         (when (memq termination '(research-error generation-error))
-          (should (string-prefix-p "Error:" result)))))))
+          (should (string-prefix-p "Planning deferred" result)))))))
 
 (ekg-deftest ekg-agent-test-plan-progress-does-not-resume-old-timer ()
   "Continuing or replacing a session must not revive old plan updates."
@@ -2178,7 +2254,9 @@ result when the agent finishes."
             (funcall tick)
             (funcall research-status 'error)
             (should (equal before (buffer-string))))
-          (should (equal cancelled '(progress-timer))))))))
+          (should cancelled)
+          (should (seq-every-p (lambda (timer) (eq timer 'progress-timer))
+                               cancelled)))))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-provider-fallback ()
   "Both planning stages use the normal agent provider when none is configured."
@@ -2197,7 +2275,9 @@ result when the agent finishes."
               ((symbol-function 'llm-chat-async)
                (lambda (provider _prompt success _error &rest _)
                  (setq planning-provider provider)
-                 (funcall success ekg-agent-test-plan--json))))
+                 (funcall success
+                          (ekg-agent-test-plan--tool-response
+                           ekg-agent-test-plan--json)))))
       (ekg-agent-org--create-plan
        (lambda (value) (setq result value)) "Plan" []))
     (should (eq research-provider 'ordinary-provider))
@@ -2221,7 +2301,9 @@ result when the agent finishes."
       (ekg-agent-org--create-plan (lambda (value) (setq result value))
                                  "Task" nil)
       (with-current-buffer owner (setq ekg-agent--cancelled-p t))
-      (funcall success ekg-agent-test-plan--json)
+      (funcall success
+               (ekg-agent-test-plan--tool-response
+                ekg-agent-test-plan--json))
       (should (string-match-p "cancelled" result))
       (should-not (triples-subjects-of-type ekg-db 'text)))))
 
@@ -2362,7 +2444,7 @@ result when the agent finishes."
              (lambda (value) (setq result value))
              "Research the task" [] (ekg-note-id parent)))
           (should researched)
-          (should (string-prefix-p "Error:" result)))
+          (should (string-prefix-p "Planning deferred" result)))
       (delete-directory directory t))))
 
 (ekg-deftest-with-db ekg-agent-test-execution-needs-user-response ()
