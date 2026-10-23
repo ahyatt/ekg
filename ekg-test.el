@@ -1035,6 +1035,13 @@
     (should (eq (ekg-notes-display-state) 'full))
     (should (= 2 (length (ekg-notes-visible-ids))))))
 
+(ekg-deftest-with-db ekg-test-notes-tab-key-events ()
+  "Both TAB event forms cycle display state in notes buffers."
+  (with-temp-buffer
+    (ekg-notes-mode)
+    (should (eq (key-binding (kbd "TAB")) #'ekg-notes-toggle-collapse))
+    (should (eq (key-binding (kbd "<tab>")) #'ekg-notes-toggle-collapse))))
+
 (ekg-deftest ekg-test-notes-title-text-fallback ()
   "Compact labels prefer titles and apply the word limit to fallback text."
   (dolist (case '((nil "First line\nSecond line" "First line Second line")
