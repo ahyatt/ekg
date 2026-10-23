@@ -3432,7 +3432,12 @@ This acts as a once-only guard to ensure status callbacks fire exactly once."
       (ignore-errors (futur-abort item "cancelled")))
      ((processp item)
       (when (process-live-p item)
-        (ignore-errors (delete-process item))))))
+        (ignore-errors (delete-process item))))
+     ((bufferp item)
+      (when (buffer-live-p item)
+        (with-current-buffer item
+          (setq ekg-agent--cancelled-p t)
+          (ekg-agent--cancel-current-work))))))
   (setq ekg-agent--tool-processes nil))
 
 (defun ekg-agent--make-deadline-timer (log-buf deadline status-callback)
@@ -3644,9 +3649,10 @@ session.  At iteration 0 the log buffer is created and
         (setf (llm-chat-prompt-max-tokens prompt)
               ekg-agent-llm-max-tokens))
       (when (and display-buf (buffer-live-p display-buf))
-        (with-current-buffer display-buf
-          (setq ekg-agent--current-activity "Waiting for LLM response…")
-          (force-mode-line-update))
+        (when (eq log-buf display-buf)
+          (with-current-buffer display-buf
+            (setq ekg-agent--current-activity "Waiting for LLM response…")
+            (force-mode-line-update)))
         (ekg-agent--log "⟳ Waiting for LLM response…"))
       (condition-case err
           (let* ((request
@@ -4648,6 +4654,12 @@ structured response without repeating research."
    :reasoning reasoning
    :non-standard-params parameters))
 
+(defun ekg-agent-org--plan-tool-arg (args name)
+  "Return the tool argument NAME from tool ARGS, tolerating alist forms."
+  (or (cdr (assq (intern name) args))
+      (cdr (assoc name args))
+      (plist-get args (intern name))))
+
 (defun ekg-agent-org--request-plan-graph (provider prompt timeout
                                                    on-success on-error state-buf)
   "Request one task graph from PROVIDER with PROMPT.
@@ -4657,40 +4669,46 @@ cancellation."
   (let* ((done nil)
          (request nil)
          (timer (when timeout
-                 (run-at-time
-                  timeout nil
-                  (lambda ()
-                    (unless done
-                      (setq done t)
-                      (when request
-                        (ignore-errors (llm-cancel-request request)))
-                      (funcall on-error 'timeout
-                               "Task-graph generation timed out")))))))
-    (setq request
-          (llm-chat-async
-           provider prompt
-           (lambda (result)
-             (unless done
-               (setq done t)
-               (when timer (cancel-timer timer))
-               (let* ((tool-uses (plist-get result :tool-uses))
-                      (tool-use (seq-find
-                                 (lambda (use)
-                                   (equal (plist-get use :name) "finish_plan"))
-                                 tool-uses))
-                      (args (plist-get tool-use :args))
-                      (json (cdr (assq 'plan args))))
-                 (if (and (stringp json) (not (string-empty-p json)))
-                     (funcall on-success json)
-                   (funcall on-error
-                            'error
-                            "The model did not call finish_plan with a plan")))))
-           (lambda (type err)
-             (unless done
-               (setq done t)
-               (when timer (cancel-timer timer))
-               (funcall on-error type err)))
-           t))
+                  (run-at-time
+                   timeout nil
+                   (lambda ()
+                     (unless done
+                       (setq done t)
+                       (when request
+                         (ignore-errors (llm-cancel-request request)))
+                       (funcall on-error 'timeout
+                                "Task-graph generation timed out")))))))
+    (condition-case sync-err
+        (setq request
+              (llm-chat-async
+               provider prompt
+               (lambda (result)
+                 (unless done
+                   (setq done t)
+                   (when timer (cancel-timer timer))
+                   (let* ((tool-uses (plist-get result :tool-uses))
+                          (tool-use (seq-find
+                                     (lambda (use)
+                                       (equal (plist-get use :name) "finish_plan"))
+                                     tool-uses))
+                          (args (plist-get tool-use :args))
+                          (json (ekg-agent-org--plan-tool-arg args "plan")))
+                     (if (and (stringp json) (not (string-empty-p json)))
+                         (funcall on-success json)
+                       (funcall on-error
+                                'invalid-response
+                                "The model did not call finish_plan with a plan")))))
+               (lambda (type err)
+                 (unless done
+                   (setq done t)
+                   (when timer (cancel-timer timer))
+                   (funcall on-error type err)))
+               t))
+      (error
+       (unless done
+         (setq done t)
+         (when timer (cancel-timer timer))
+         (funcall on-error 'error (error-message-string sync-err)))))
     (when (and state-buf (buffer-live-p state-buf))
       (with-current-buffer state-buf
         (push request ekg-agent--tool-processes)))
@@ -4715,24 +4733,26 @@ the imported ID mapping.  ON-FAILURE receives a reason string."
          (let ((ids nil)
                (import-error nil))
            (condition-case err
-             (let ((ekg-org-plan--sort-order-offset sort-offset))
-               (setq ids (ekg-org-plan-import json (append tags nil) parent-id)))
-           (error (setq import-error err)))
-         (if import-error
-             (if (< attempt max-attempts)
-                 (ekg-agent-org--attempt-plan-graph
-                  provider description research-summary parent-id tags context
-                  reasoning parameters sort-offset max-attempts (1+ attempt)
-                  (error-message-string import-error) on-success on-failure state-buf
-                  cancelled-p)
-               (funcall on-failure
-                        (format "Task-graph generation failed after %d attempt(s): %s"
-                                attempt (error-message-string import-error))))
+               (let ((ekg-org-plan--sort-order-offset sort-offset))
+                 (setq ids (ekg-org-plan-import json (append tags nil)
+                                                parent-id)))
+             (error (setq import-error err)))
+           (if import-error
+               (if (< attempt max-attempts)
+                   (ekg-agent-org--attempt-plan-graph
+                    provider description research-summary parent-id tags
+                    context reasoning parameters sort-offset max-attempts
+                    (1+ attempt) (error-message-string import-error)
+                    on-success on-failure state-buf cancelled-p)
+                 (funcall on-failure
+                          (format "Task-graph generation failed after %d attempt(s): %s"
+                                  attempt (error-message-string import-error))))
              (funcall on-success ids)))))
      (lambda (type err)
        (let ((message (format "%s" err)))
          (if (and (< attempt max-attempts)
                   (or (eq type 'timeout)
+                      (eq type 'invalid-response)
                       (ekg-agent--transient-error-p message)))
              (ekg-agent-org--attempt-plan-graph
               provider description research-summary parent-id tags context
@@ -4821,6 +4841,7 @@ ID mapping or an error/deferred message."
              (progress-timer nil)
              (finished nil)
              (checkpoint-content nil)
+             (checkpoint-last-content nil)
              (checkpoint-done nil)
              (finish
               (lambda (value)
@@ -4847,6 +4868,10 @@ ID mapping or an error/deferred message."
                          checkpoint checkpoint-content checkpoint-done)
                       (error
                        (warn "Could not save planning checkpoint: %s" err))))
+                  (when (and owner (buffer-live-p owner) state-buf)
+                    (with-current-buffer owner
+                      (setq ekg-agent--tool-processes
+                            (delq state-buf ekg-agent--tool-processes))))
                   (funcall callback value)
                   (when (and state-buf (buffer-live-p state-buf))
                     (run-at-time
@@ -4930,18 +4955,24 @@ The research above is the starting point; do not repeat it.")))
                      (funcall report stage stage-start
                               (unless ended research-prompt))
                      (when checkpoint
-                       (setq checkpoint-content
-                             (ekg-agent-org--planning-note-content
-                              description stage started
-                              (unless ended research-prompt)))
-                       (condition-case err
-                           (ekg-agent-org--save-planning-note
-                            checkpoint checkpoint-content)
-                         (error
-                          (warn "Could not update planning checkpoint: %s"
-                                err))))))))
+                       (let ((content
+                              (ekg-agent-org--planning-note-content
+                               description stage started
+                               (unless ended research-prompt))))
+                         (unless (equal content checkpoint-last-content)
+                           (setq checkpoint-content content
+                                 checkpoint-last-content content)
+                           (condition-case err
+                               (ekg-agent-org--save-planning-note
+                                checkpoint checkpoint-content)
+                             (error
+                              (warn "Could not update planning checkpoint: %s"
+                                    err))))))))))
           (with-current-buffer owner
             (push progress-timer ekg-agent--plan-progress-timers)))
+        (when (and owner (buffer-live-p owner) state-buf)
+          (with-current-buffer owner
+            (cl-pushnew state-buf ekg-agent--tool-processes)))
         (condition-case err
             (ekg-agent--iterate
              research-prompt 0
@@ -4988,15 +5019,7 @@ The research above is the starting point; do not repeat it.")))
                     (lambda (reason)
                       (funcall defer reason status))
                     state-buf
-                    (lambda ()
-                      (or (and owner (not (buffer-live-p owner)))
-                          (and owner
-                               (buffer-local-value
-                                'ekg-agent--cancelled-p owner))
-                          (and state-buf
-                               (buffer-live-p state-buf)
-                               (buffer-local-value
-                                'ekg-agent--cancelled-p state-buf))))))))
+                    (lambda () (not (funcall active-session)))))))
              :end-tools '("finish_plan_research")
              :provider provider
              :log-buffer owner
