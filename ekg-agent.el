@@ -4415,14 +4415,9 @@ notes start as TODO.  Validate the whole graph before creating notes."
         (error (warn "Plan committed; %s failed: %s" action err))))
     (nreverse result)))
 
-(defvar ekg-agent-plan-provider nil
-  "Provider for researching Org plans.
-When nil, use the normal agent provider selected from `ekg-llm-provider'.")
-
-(defcustom ekg-agent-org-plan-provider nil
-  "Strong LLM provider for structured task-plan generation.
-Configure explicitly before using `create_org_plan'.  Research uses the
-ordinary agent provider; this provider makes the final planning decision."
+(defcustom ekg-agent-plan-provider nil
+  "Provider for researching and generating Org task plans.
+When nil, use the normal agent provider selected from `ekg-llm-provider'."
   :type 'sexp
   :group 'ekg)
 
@@ -4465,8 +4460,6 @@ When RESEARCH is a prompt, also report how many tool calls have returned."
 When PARENT-ID is non-nil, attach the plan root to that Org task.
 Call CALLBACK once with the created ID mapping or an error message."
   (cond
-   ((null ekg-agent-org-plan-provider)
-    (funcall callback "Error: Configure ekg-agent-org-plan-provider first"))
    ((and parent-id
          (when-let* ((parent (ekg-get-note-with-id parent-id)))
            (plist-get (ekg-note-properties parent) :hierarchy/children)))
@@ -4474,7 +4467,7 @@ Call CALLBACK once with the created ID mapping or an error message."
              (format "Error: Cannot plan task %s because it already has active children"
                      parent-id)))
    (t
-    (let* ((provider ekg-agent-org-plan-provider)
+    (let* ((provider (or ekg-agent-plan-provider (ekg-agent--provider)))
            (reasoning ekg-agent-org-plan-reasoning)
            (parameters (copy-tree ekg-agent-org-plan-parameters))
            (ekg-agent--task-directory
@@ -4636,8 +4629,7 @@ tradeoffs in its content, and make dependent tasks list it in `depends_on`."
                          (push request ekg-agent--tool-processes))))
                  (error (funcall finish (format "Error: %s" err))))))
            :end-tools '("finish_plan_research")
-           :provider (or ekg-agent-plan-provider
-                         (ekg-agent--provider)))
+           :provider provider)
         (error (funcall finish (format "Error: %s" err))))))))
 
 (defconst ekg-agent-org-tool-create-plan

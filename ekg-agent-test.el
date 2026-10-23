@@ -1856,14 +1856,13 @@ result when the agent finishes."
     (should-not (triples-subjects-of-type ekg-db 'text))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-stages ()
-  (let ((ekg-agent-org-plan-provider 'strong-provider)
-        (ekg-agent-plan-provider 'research-provider)
+  (let ((ekg-agent-plan-provider 'plan-provider)
         (ekg-agent--current-log-buffer nil)
         (calls 0) result)
     (cl-letf
         (((symbol-function 'ekg-agent--iterate)
           (lambda (prompt _iteration &rest options)
-            (should (eq (plist-get options :provider) 'research-provider))
+            (should (eq (plist-get options :provider) 'plan-provider))
             (let ((names (mapcar #'llm-tool-name
                                  (llm-chat-prompt-tools prompt))))
               (should-not (member "ask_user" names))
@@ -1887,7 +1886,7 @@ result when the agent finishes."
          ((symbol-function 'llm-chat-async)
           (lambda (provider prompt success _error &rest _)
             (cl-incf calls)
-            (should (eq provider 'strong-provider))
+            (should (eq provider 'plan-provider))
             (should (eq (llm-chat-prompt-reasoning prompt) 'maximum))
             (should (equal (llm-chat-prompt-response-format prompt)
                            ekg-org-plan-schema))
@@ -1913,7 +1912,6 @@ result when the agent finishes."
   (require 'llm-openai)
   (let* ((ekg-llm-provider (make-llm-openai :chat-model "test"))
          (ekg-agent-plan-provider ekg-llm-provider)
-         (ekg-agent-org-plan-provider ekg-llm-provider)
          (ekg-agent--current-log-buffer nil)
          (ekg-agent-timeout-seconds -1)
          (ekg-agent-llm-name-log-buffer nil)
@@ -2028,7 +2026,7 @@ result when the agent finishes."
   "The outer log reports research, generation, saving and elapsed time."
   (let* ((owner (generate-new-buffer " *plan-progress-owner*"))
          (ekg-agent--current-log-buffer owner)
-         (ekg-agent-org-plan-provider 'strong-provider)
+         (ekg-agent-plan-provider 'strong-provider)
          (now 1000)
          research research-status success tick result cancelled)
     (with-current-buffer owner (setq ekg-agent--running-p t))
@@ -2097,7 +2095,7 @@ result when the agent finishes."
   (dolist (termination '(research-error generation-error cancelled stopped killed))
     (let* ((owner (generate-new-buffer " *plan-progress-owner*"))
            (ekg-agent--current-log-buffer owner)
-           (ekg-agent-org-plan-provider 'strong-provider)
+           (ekg-agent-plan-provider 'strong-provider)
            research research-status failure tick cancelled result)
       (with-current-buffer owner (setq ekg-agent--running-p t))
       (cl-letf (((symbol-function 'run-at-time)
@@ -2143,7 +2141,7 @@ result when the agent finishes."
     (let* ((owner (get-buffer-create
                    (format ekg-agent-log-buffer-name-format "progress-resume")))
            (ekg-agent--current-log-buffer owner)
-           (ekg-agent-org-plan-provider 'strong-provider)
+           (ekg-agent-plan-provider 'strong-provider)
            (ekg-agent-llm-name-log-buffer nil)
            (iterate (symbol-function 'ekg-agent--iterate))
            research-status tick cancelled)
@@ -2182,27 +2180,34 @@ result when the agent finishes."
             (should (equal before (buffer-string))))
           (should (equal cancelled '(progress-timer))))))))
 
-(ekg-deftest ekg-agent-test-plan-provider-fallback ()
-             "Research uses the normal agent provider when none is configured."
-             (let ((ekg-agent-plan-provider nil)
-                   (ekg-agent-org-plan-provider 'strong-provider)
-                   used result)
-               (cl-letf (((symbol-function 'ekg-agent--provider)
-                          (lambda () 'ordinary-provider))
-                         ((symbol-function 'ekg-agent--iterate)
-                          (lambda (_prompt _iteration &rest options)
-                            (setq used (plist-get options :provider))
-                            (funcall (plist-get options :status-callback)
-                                     'error))))
-                 (ekg-agent-org--create-plan
-                  (lambda (value) (setq result value)) "Plan" []))
-               (should (eq used 'ordinary-provider))
-               (should (string-match-p "research stopped" result))))
+(ekg-deftest-with-db ekg-agent-test-plan-provider-fallback ()
+  "Both planning stages use the normal agent provider when none is configured."
+  (let ((ekg-agent-plan-provider nil)
+        research-provider planning-provider result)
+    (cl-letf (((symbol-function 'ekg-agent--provider)
+               (lambda () 'ordinary-provider))
+              ((symbol-function 'ekg-agent--iterate)
+               (lambda (prompt _iteration &rest options)
+                 (setq research-provider (plist-get options :provider))
+                 (funcall (llm-tool-function
+                           (car (last (llm-chat-prompt-tools prompt))))
+                          "Research complete")
+                 (funcall (plist-get options :status-callback)
+                          "Research complete")))
+              ((symbol-function 'llm-chat-async)
+               (lambda (provider _prompt success _error &rest _)
+                 (setq planning-provider provider)
+                 (funcall success ekg-agent-test-plan--json))))
+      (ekg-agent-org--create-plan
+       (lambda (value) (setq result value)) "Plan" []))
+    (should (eq research-provider 'ordinary-provider))
+    (should (eq planning-provider 'ordinary-provider))
+    (should (string-match-p "root" result))))
 
 (ekg-deftest-with-db ekg-agent-test-plan-no-import-after-cancel ()
   (let* ((owner (generate-new-buffer " *plan-test-owner*"))
          (ekg-agent--current-log-buffer owner)
-         (ekg-agent-org-plan-provider 'strong-provider)
+         (ekg-agent-plan-provider 'strong-provider)
          success result)
     (cl-letf
         (((symbol-function 'ekg-agent--iterate)
@@ -2297,7 +2302,6 @@ result when the agent finishes."
          (child (ekg-note-create :text "Child" :mode 'org-mode))
          (default-directory temporary-file-directory)
          (original-directory default-directory)
-         (ekg-agent-org-plan-provider 'provider)
          (ekg-agent-plan-provider 'provider)
          planned (executed 0))
     (unwind-protect
@@ -2337,7 +2341,6 @@ result when the agent finishes."
   (let* ((directory (file-name-as-directory
                      (make-temp-file "ekg-plan-dir-" t)))
          (parent (ekg-note-create :text "Parent" :mode 'org-mode))
-         (ekg-agent-org-plan-provider 'provider)
          (ekg-agent-plan-provider 'provider)
          researched result)
     (unwind-protect

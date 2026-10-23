@@ -2367,11 +2367,14 @@ dependencies.  Review and edit the plan before running its tasks.  Planning
 does not execute the work@comma{} and tasks with existing active children cannot be
 planned again.
 
-Configure a provider for planning first:
+Optionally configure a separate provider for planning:
 
 @lisp
-(setq ekg-agent-org-plan-provider my-strong-provider)
+(setq ekg-agent-plan-provider my-strong-provider)
 @end lisp
+
+When @code{ekg-agent-plan-provider} is nil@comma{} planning uses the normal agent
+provider selected from @code{ekg-llm-provider}.
 
 Tasks that need your decisions or actions are tagged with
 @code{ekg-agent-org-user-task-tag} (default @samp{org/user-task}).  To answer a

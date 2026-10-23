@@ -1713,11 +1713,14 @@ dependencies.  Review and edit the plan before running its tasks.  Planning
 does not execute the work, and tasks with existing active children cannot be
 planned again.
 
-Configure a provider for planning first:
+Optionally configure a separate provider for planning:
 
 #+begin_src emacs-lisp
-(setq ekg-agent-org-plan-provider my-strong-provider)
+(setq ekg-agent-plan-provider my-strong-provider)
 #+end_src
+
+When ~ekg-agent-plan-provider~ is nil, planning uses the normal agent
+provider selected from ~ekg-llm-provider~.
 
 Tasks that need your decisions or actions are tagged with
 ~ekg-agent-org-user-task-tag~ (default =org/user-task=).  To answer a
