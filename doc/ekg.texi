@@ -2367,14 +2367,16 @@ dependencies.  Review and edit the plan before running its tasks.  Planning
 does not execute the work@comma{} and tasks with existing active children cannot be
 planned again.
 
-Planning keeps a @samp{Plan:} checkpoint as the first child task.  The checkpoint
-is updated while research runs and is marked DONE when the plan is saved.  If
-research exceeds @code{ekg-agent-plan-research-timeout-seconds}@comma{} or task-graph
-generation fails after its retries@comma{} planning stops and leaves the checkpoint
-as a TODO task containing the research summary and the reason.  Planning that
-already has such a checkpoint is treated as a separate task and is not
-restarted automatically.  All planning output is written to the parent agent
-log buffer rather than a new log buffer for each attempt.
+Planning keeps a @samp{Plan:} checkpoint as the first child task.  The
+checkpoint saves new research findings as they arrive and is marked
+DONE when the plan is saved.  Elapsed time is shown in the log without
+rewriting the checkpoint.  If research exceeds
+@code{ekg-agent-plan-research-timeout-seconds}@comma{} or task-graph generation
+fails after its retries@comma{} planning stops and leaves the checkpoint as a
+TODO task containing the available research and the reason.  Planning
+that already has such a checkpoint is treated as a separate task and
+is not restarted automatically.  All planning output is written to the
+parent agent log buffer rather than a new log buffer for each attempt.
 
 Optionally configure a separate provider for planning:
 

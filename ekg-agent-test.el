@@ -2023,6 +2023,162 @@ result when the agent finishes."
         (should-not (get-buffer
                      (format ekg-agent-log-buffer-name-format "research-plan")))))))
 
+(ekg-deftest ekg-agent-test-plan-root-force-cancel ()
+  "Force-cancelling an owner cancels research without a parent task."
+  (let* ((owner (generate-new-buffer " *plan-owner*"))
+         (ekg-agent--current-log-buffer owner)
+         (ekg-agent-plan-provider 'provider)
+         (ekg-agent-timeout-seconds -1)
+         (ekg-agent-plan-research-timeout-seconds nil)
+         cancelled)
+    (with-current-buffer owner (setq ekg-agent--running-p t))
+    (cl-letf (((symbol-function 'llm-chat-async)
+               (lambda (&rest _) 'research-request))
+              ((symbol-function 'llm-cancel-request)
+               (lambda (request) (push request cancelled)))
+              ((symbol-function 'run-at-time) (lambda (&rest _) nil)))
+      (ekg-agent-org--create-plan #'ignore "Plan a root task" nil)
+      (let ((session (car (buffer-local-value
+                          'ekg-agent--tool-processes owner))))
+        (should (buffer-live-p session))
+        (should (buffer-local-value 'ekg-agent--running-p session))
+        (with-current-buffer owner (ekg-agent-force-cancel))
+        (should (equal cancelled '(research-request)))
+        (should (buffer-local-value 'ekg-agent--cancelled-p session))
+        (should-not (buffer-local-value 'ekg-agent--running-p session))
+        (should-not (buffer-local-value 'ekg-agent--current-request session))))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-timeout-preserves-research ()
+  "A research timeout saves findings even before the first progress tick."
+  (ekg-org-add-schema)
+  (let ((parent (ekg-note-create :text "Task" :mode 'org-mode
+                                 :tags '("org/task" "org/state/todo")))
+        (ekg-agent-plan-provider 'provider)
+        result)
+    (ekg-save-note parent)
+    (cl-letf (((symbol-function 'ekg-agent--iterate)
+               (lambda (prompt _ &rest options)
+                 (setf (llm-chat-prompt-interactions prompt)
+                       (append (llm-chat-prompt-interactions prompt)
+                               (list (make-llm-chat-prompt-interaction
+                                      :role 'tool-results
+                                      :tool-results
+                                      (list (make-llm-chat-prompt-tool-result
+                                             :call-id "read"
+                                             :tool-name "read_file"
+                                             :result "Research before timeout"))))))
+                 (funcall (plist-get options :status-callback)
+                          "stopped by timeout"))))
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Plan task" nil (ekg-note-id parent)))
+    (let* ((checkpoint (ekg-agent-org--planning-note (ekg-note-id parent)))
+           (text (ekg-note-text checkpoint)))
+      (should (string-prefix-p "Planning deferred" result))
+      (should-not (ekg-org-task-done-p checkpoint))
+      (should (string-match-p "Research before timeout" text))
+      (should (string-match-p "stopped by timeout" text)))))
+
+(ekg-deftest ekg-agent-test-plan-graph-cancel-stops-retries ()
+  "Cancellation prevents initial graph requests and transient retries."
+  (dolist (failure '((timeout "Timed out")
+                     (invalid-response "Missing plan")
+                     (error "connection reset")))
+    (let ((ekg-agent-plan-graph-timeout-seconds nil)
+          (requests 0)
+          cancelled on-error result)
+      (cl-letf (((symbol-function 'llm-chat-async)
+                 (lambda (_provider _prompt _success error &rest _)
+                   (cl-incf requests)
+                   (setq on-error error))))
+        (cl-labels
+            ((attempt ()
+               (ekg-agent-org--attempt-plan-graph
+                'provider "Task" "Research" nil nil "Context" nil nil
+                0 3 1 nil
+                (lambda (_) (ert-fail "Cancelled plan was imported"))
+                (lambda (reason) (setq result reason)) nil
+                (lambda () cancelled))))
+          (attempt)
+          (should (= requests 1))
+          (setq cancelled t)
+          (apply on-error failure)
+          (should (= requests 1))
+          (should (equal result "Plan cancelled"))
+          ;; An already cancelled session must not start its first request.
+          (setq result nil)
+          (attempt)
+          (should (= requests 1))
+          (should (equal result "Plan cancelled")))))))
+
+(ekg-deftest-with-db ekg-agent-test-plan-checkpoint-saves-research ()
+  "Save new research, skip idle writes, and preserve findings on timeout."
+  (ekg-org-add-schema)
+  (let* ((parent (ekg-note-create :text "Task" :mode 'org-mode
+                                  :tags '("org/task" "org/state/todo")))
+         (owner (generate-new-buffer " *plan-owner*"))
+         (ekg-agent--current-log-buffer owner)
+         (ekg-agent-plan-provider 'provider)
+         (now 1000)
+         (saves 0)
+         (ekg-note-save-hook (list (lambda (_) (cl-incf saves))))
+         research status tick result)
+    (ekg-save-note parent)
+    (with-current-buffer owner (setq ekg-agent--running-p t))
+    (cl-letf (((symbol-function 'float-time) (lambda (&rest _) now))
+              ((symbol-function 'run-at-time)
+               (lambda (delay repeat function &rest _)
+                 (when (and (equal delay 30) (equal repeat 30))
+                   (setq tick function))
+                 nil))
+              ((symbol-function 'ekg-agent--iterate)
+               (lambda (prompt _ &rest options)
+                 (with-current-buffer (plist-get options :state-buffer)
+                   (setq ekg-agent--running-p t))
+                 (setq research prompt
+                       status (plist-get options :status-callback)))))
+      (ekg-agent-org--create-plan (lambda (value) (setq result value))
+                                 "Plan task" nil (ekg-note-id parent))
+      (let ((initial-saves saves))
+        (setq now 1030)
+        (funcall tick)
+        (should (= saves initial-saves))
+        (setf (llm-chat-prompt-interactions research)
+              (append (llm-chat-prompt-interactions research)
+                      (list
+                       (make-llm-chat-prompt-interaction
+                        :role 'assistant :content "Use the existing importer.")
+                       (make-llm-chat-prompt-interaction
+                        :role 'tool-results
+                        :tool-results
+                        (list (make-llm-chat-prompt-tool-result
+                               :call-id "read" :tool-name "read_file"
+                               :result "Importer implementation"))))))
+        (setq now 1060)
+        (funcall tick)
+        (should (= saves (1+ initial-saves)))
+        (let ((text (ekg-note-text (ekg-agent-org--planning-note
+                                    (ekg-note-id parent)))))
+          (should (string-match-p "Use the existing importer" text))
+          (should (string-match-p "Importer implementation" text)))
+        (setq now 1090)
+        (funcall tick)
+        (should (= saves (1+ initial-saves)))
+        ;; Include findings received since the last checkpoint tick, too.
+        (setf (llm-chat-prompt-interactions research)
+              (append (llm-chat-prompt-interactions research)
+                      (list (make-llm-chat-prompt-interaction
+                             :role 'assistant
+                             :content "Add a transaction regression test."))))
+        (funcall status "stopped by timeout")
+        (should (= saves (+ initial-saves 2)))
+        (should (string-prefix-p "Planning deferred" result))
+        (let* ((checkpoint (ekg-agent-org--planning-note (ekg-note-id parent)))
+               (text (ekg-note-text checkpoint)))
+          (should-not (ekg-org-task-done-p checkpoint))
+          (should (string-match-p "stopped by timeout" text))
+          (should (string-match-p "Importer implementation" text))
+          (should (string-match-p "transaction regression test" text)))))))
+
 (ekg-deftest-with-db ekg-agent-test-plan-creates-checkpoint ()
   "A parent plan keeps a done planning checkpoint as its first child."
   (ekg-org-add-schema)
@@ -2289,6 +2445,7 @@ result when the agent finishes."
          (ekg-agent--current-log-buffer owner)
          (ekg-agent-plan-provider 'strong-provider)
          success result)
+    (with-current-buffer owner (setq ekg-agent--running-p t))
     (cl-letf
         (((symbol-function 'ekg-agent--iterate)
           (lambda (prompt _ &rest options)

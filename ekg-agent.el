@@ -3437,7 +3437,10 @@ This acts as a once-only guard to ensure status callbacks fire exactly once."
       (when (buffer-live-p item)
         (with-current-buffer item
           (setq ekg-agent--cancelled-p t)
-          (ekg-agent--cancel-current-work))))))
+          (ekg-agent--cancel-current-work)
+          (when (ekg-agent--set-stopped item)
+            (when ekg-agent--status-callback
+              (funcall ekg-agent--status-callback "stopped by user"))))))))
   (setq ekg-agent--tool-processes nil))
 
 (defun ekg-agent--make-deadline-timer (log-buf deadline status-callback)
@@ -4549,27 +4552,45 @@ When RESEARCH is a prompt, also report how many tool calls have returned."
               (member ekg-agent-planning-tag (ekg-note-tags note)))
             (ekg-org-get-child-notes-of-id parent-id)))
 
+(defun ekg-agent-org--plan-research-text (prompt)
+  "Return the available research notes and tool results from PROMPT."
+  (string-join
+   (cl-loop for interaction in (llm-chat-prompt-interactions prompt)
+            for content = (llm-chat-prompt-interaction-content interaction)
+            append
+            (append
+             (when (and (eq (llm-chat-prompt-interaction-role interaction)
+                            'assistant)
+                        (stringp content)
+                        (not (string-empty-p content)))
+               (list content))
+             (mapcar
+              (lambda (result)
+                (format "** %s\n\n%s"
+                        (llm-chat-prompt-tool-result-tool-name result)
+                        (llm-chat-prompt-tool-result-result result)))
+              (llm-chat-prompt-interaction-tool-results interaction))))
+   "\n\n"))
+
 (defun ekg-agent-org--planning-note-content (description stage started
                                                          &optional research detail)
   "Build planning checkpoint content for DESCRIPTION.
 STAGE and STARTED describe progress.  RESEARCH optionally supplies a
-prompt whose tool results are counted.  DETAIL optionally adds notes."
+prompt whose available findings are saved.  DETAIL optionally adds notes."
   (concat
    "* Planning checkpoint\n\n"
    (format "Task: %s\n\n" description)
    (format "Stage: %s\n" stage)
    (format "Started: %s\n" (format-time-string "%F %T" (seconds-to-time started)))
-   (format "Elapsed: %ds\n" (max 0 (floor (- (float-time) started))))
-   (when research
-     (format "Research tool calls: %d\n"
-             (cl-loop for interaction in (llm-chat-prompt-interactions research)
-                      sum (length (llm-chat-prompt-interaction-tool-results
-                                   interaction)))))
    (when detail (format "\n%s\n" detail))
+   (when research
+     (let ((text (ekg-agent-org--plan-research-text research)))
+       (unless (string-empty-p text)
+         (format "\n* Research so far\n\n%s\n" text))))
    "\nThis note is the planning checkpoint.  It is updated while planning runs.\n"))
 
 (defun ekg-agent-org--save-planning-note (note content &optional done)
-  "Save planning NOTE with CONTENT and set its state."
+  "Save planning NOTE with CONTENT and set its state to DONE or TODO."
   (setf (ekg-note-text note) content)
   (setf (ekg-note-tags note)
         (cons (concat ekg-org-state-tag-prefix (if done "done" "todo"))
@@ -4719,49 +4740,55 @@ cancellation."
                                                    parameters sort-offset max-attempts
                                                    attempt parse-error on-success
                                                    on-failure state-buf cancelled-p)
-  "Generate and import a task graph, retrying invalid responses.
-The research summary is reused on every attempt.  ON-SUCCESS receives
-the imported ID mapping.  ON-FAILURE receives a reason string."
-  (let ((prompt (ekg-agent-org--plan-graph-prompt
-                 description research-summary parent-id context reasoning
-                 parameters parse-error)))
-    (ekg-agent-org--request-plan-graph
-     provider prompt ekg-agent-plan-graph-timeout-seconds
-     (lambda (json)
-       (if (funcall cancelled-p)
-           (funcall on-failure "Plan cancelled")
-         (let ((ids nil)
-               (import-error nil))
-           (condition-case err
-               (let ((ekg-org-plan--sort-order-offset sort-offset))
-                 (setq ids (ekg-org-plan-import json (append tags nil)
-                                                parent-id)))
-             (error (setq import-error err)))
-           (if import-error
-               (if (< attempt max-attempts)
-                   (ekg-agent-org--attempt-plan-graph
-                    provider description research-summary parent-id tags
-                    context reasoning parameters sort-offset max-attempts
-                    (1+ attempt) (error-message-string import-error)
-                    on-success on-failure state-buf cancelled-p)
-                 (funcall on-failure
-                          (format "Task-graph generation failed after %d attempt(s): %s"
-                                  attempt (error-message-string import-error))))
-             (funcall on-success ids)))))
-     (lambda (type err)
-       (let ((message (format "%s" err)))
-         (if (and (< attempt max-attempts)
-                  (or (eq type 'timeout)
-                      (eq type 'invalid-response)
-                      (ekg-agent--transient-error-p message)))
-             (ekg-agent-org--attempt-plan-graph
-              provider description research-summary parent-id tags context
-              reasoning parameters sort-offset max-attempts (1+ attempt)
-              message on-success on-failure state-buf cancelled-p)
-           (funcall on-failure
-                    (format "Task-graph request failed after %d attempt(s): %s"
-                            attempt message)))))
-     state-buf)))
+  "Generate a graph with PROVIDER for DESCRIPTION and RESEARCH-SUMMARY.
+PARENT-ID and TAGS configure import, with SORT-OFFSET added to task order.
+CONTEXT, REASONING and PARAMETERS configure the prompt.  Retry up to
+MAX-ATTEMPTS, starting at ATTEMPT, reporting PARSE-ERROR to the model.
+ON-SUCCESS receives the imported ID mapping; ON-FAILURE receives a reason.
+STATE-BUF tracks requests.  CANCELLED-P prevents requests and imports
+when the session has stopped.  Reuse research on every attempt."
+  (if (funcall cancelled-p)
+      (funcall on-failure "Plan cancelled")
+    (let ((prompt (ekg-agent-org--plan-graph-prompt
+                   description research-summary parent-id context reasoning
+                   parameters parse-error)))
+      (ekg-agent-org--request-plan-graph
+       provider prompt ekg-agent-plan-graph-timeout-seconds
+       (lambda (json)
+         (if (funcall cancelled-p)
+             (funcall on-failure "Plan cancelled")
+           (let ((ids nil)
+                 (import-error nil))
+             (condition-case err
+                 (let ((ekg-org-plan--sort-order-offset sort-offset))
+                   (setq ids (ekg-org-plan-import json (append tags nil)
+                                                  parent-id)))
+               (error (setq import-error err)))
+             (if import-error
+                 (if (< attempt max-attempts)
+                     (ekg-agent-org--attempt-plan-graph
+                      provider description research-summary parent-id tags
+                      context reasoning parameters sort-offset max-attempts
+                      (1+ attempt) (error-message-string import-error)
+                      on-success on-failure state-buf cancelled-p)
+                   (funcall on-failure
+                            (format "Task-graph generation failed after %d attempt(s): %s"
+                                    attempt (error-message-string import-error))))
+               (funcall on-success ids)))))
+       (lambda (type err)
+         (let ((message (format "%s" err)))
+           (if (and (< attempt max-attempts)
+                    (or (eq type 'timeout)
+                        (eq type 'invalid-response)
+                        (ekg-agent--transient-error-p message)))
+               (ekg-agent-org--attempt-plan-graph
+                provider description research-summary parent-id tags context
+                reasoning parameters sort-offset max-attempts (1+ attempt)
+                message on-success on-failure state-buf cancelled-p)
+             (funcall on-failure
+                      (format "Task-graph request failed after %d attempt(s): %s"
+                              attempt message)))))
+       state-buf))))
 
 (defun ekg-agent-org--create-plan (callback description tags &optional parent-id)
   "Research DESCRIPTION, synthesize a plan, and import it with TAGS.
@@ -4801,7 +4828,7 @@ ID mapping or an error/deferred message."
                             (buffer-local-value 'ekg-agent--execution-start owner)))
              (owner-status (when (buffer-live-p owner)
                              (buffer-local-value 'ekg-agent--status-callback owner)))
-             (state-buf (and parent-id (generate-new-buffer " *ekg agent plan session*")))
+             (state-buf (generate-new-buffer " *ekg agent plan session*"))
              (checkpoint (when parent-id
                            (condition-case err
                                (or planning
@@ -4813,13 +4840,11 @@ ID mapping or an error/deferred message."
              (ended nil)
              (active-session
               (lambda ()
-                (and (or (null state-buf)
-                         (and (buffer-live-p state-buf)
-                              (not (buffer-local-value
-                                    'ekg-agent--cancelled-p state-buf))
-                              (or ended
-                                  (buffer-local-value
-                                   'ekg-agent--running-p state-buf))))
+                (and (buffer-live-p state-buf)
+                     (not (buffer-local-value
+                           'ekg-agent--cancelled-p state-buf))
+                     (or ended (buffer-local-value
+                                'ekg-agent--running-p state-buf))
                      (or (null owner)
                          (and (buffer-live-p owner)
                               (buffer-local-value 'ekg-agent--running-p owner)
@@ -4868,23 +4893,23 @@ ID mapping or an error/deferred message."
                          checkpoint checkpoint-content checkpoint-done)
                       (error
                        (warn "Could not save planning checkpoint: %s" err))))
-                  (when (and owner (buffer-live-p owner) state-buf)
+                  (when (buffer-live-p owner)
                     (with-current-buffer owner
                       (setq ekg-agent--tool-processes
                             (delq state-buf ekg-agent--tool-processes))))
                   (funcall callback value)
-                  (when (and state-buf (buffer-live-p state-buf))
+                  (when (buffer-live-p state-buf)
                     (run-at-time
                      0 nil
                      (lambda ()
                        (when (buffer-live-p state-buf)
                          (kill-buffer state-buf))))))))
              (defer
-              (lambda (reason &optional research-summary)
+              (lambda (reason &optional research-summary research)
                 (setq checkpoint-done nil
                       checkpoint-content
                       (ekg-agent-org--planning-note-content
-                       description "Planning deferred" started nil
+                       description "Planning deferred" started research
                        (concat (format "Reason: %s\n" reason)
                                (when research-summary
                                  (format "\n* Research summary\n\n%s\n"
@@ -4931,10 +4956,14 @@ The research above is the starting point; do not repeat it.")))
         (when checkpoint
           (setq checkpoint-content
                 (ekg-agent-org--planning-note-content
-                 description stage started))
+                 description stage started research-prompt))
           (condition-case err
-              (ekg-agent-org--save-planning-note checkpoint checkpoint-content)
+              (progn
+                (ekg-agent-org--save-planning-note checkpoint checkpoint-content)
+                (setq checkpoint-last-content checkpoint-content))
             (error (warn "Could not update planning checkpoint: %s" err))))
+        (with-current-buffer state-buf
+          (setq ekg-agent--running-p t))
         (ekg-agent-org--cancel-plan-timers owner)
         (funcall report stage stage-start research-prompt)
         (when (buffer-live-p owner)
@@ -4957,20 +4986,20 @@ The research above is the starting point; do not repeat it.")))
                      (when checkpoint
                        (let ((content
                               (ekg-agent-org--planning-note-content
-                               description stage started
-                               (unless ended research-prompt))))
+                               description stage started research-prompt)))
                          (unless (equal content checkpoint-last-content)
-                           (setq checkpoint-content content
-                                 checkpoint-last-content content)
+                           (setq checkpoint-content content)
                            (condition-case err
-                               (ekg-agent-org--save-planning-note
-                                checkpoint checkpoint-content)
+                               (progn
+                                 (ekg-agent-org--save-planning-note
+                                  checkpoint checkpoint-content)
+                                 (setq checkpoint-last-content content))
                              (error
                               (warn "Could not update planning checkpoint: %s"
                                     err))))))))))
           (with-current-buffer owner
             (push progress-timer ekg-agent--plan-progress-timers)))
-        (when (and owner (buffer-live-p owner) state-buf)
+        (when (buffer-live-p owner)
           (with-current-buffer owner
             (cl-pushnew state-buf ekg-agent--tool-processes)))
         (condition-case err
@@ -4993,7 +5022,8 @@ The research above is the starting point; do not repeat it.")))
                                            (and err (format "%s: %s"
                                                             (car err) (cdr err)))))
                                     "Plan research stopped without completion")
-                              "Plan research stopped without completion"))
+                              (format "Plan research %s" status))
+                            nil research-prompt)
                  (setq stage "Research complete; generating task graph"
                        stage-start (float-time))
                  (funcall report stage stage-start)
@@ -5029,7 +5059,7 @@ The research above is the starting point; do not repeat it.")))
                             (+ (float-time)
                                ekg-agent-plan-research-timeout-seconds)))
           (error
-           (funcall defer (error-message-string err)))))))))
+           (funcall defer (error-message-string err) nil research-prompt))))))))
 
 (defconst ekg-agent-org-tool-create-plan
   (make-llm-tool
