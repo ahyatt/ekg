@@ -131,6 +131,34 @@ If non-positive, no timeout is applied."
   :type 'integer
   :group 'ekg-agent)
 
+(defcustom ekg-agent-plan-research-timeout-seconds 600
+  "Maximum time in seconds to spend researching one task plan.
+When the limit is reached, planning is left as a child task instead of
+continuing to retry research."
+  :type '(choice (const :tag "No limit" nil)
+                 (number :tag "Seconds"))
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-plan-graph-timeout-seconds 240
+  "Maximum time in seconds to wait for one task-graph LLM response.
+When the limit is reached, the graph request is cancelled and planning
+is left as a child task."
+  :type '(choice (const :tag "No limit" nil)
+                 (number :tag "Seconds"))
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-plan-graph-retries 2
+  "Maximum number of retries when a task-graph response is invalid.
+The research summary is reused; research is never repeated just because
+graph generation failed."
+  :type 'integer
+  :group 'ekg-agent)
+
+(defcustom ekg-agent-planning-tag "agent/planning"
+  "Tag marking a child task that holds the plan research checkpoint."
+  :type 'string
+  :group 'ekg-agent)
+
 (defcustom ekg-agent-status-reminder-seconds 50
   "Maximum quiet time before the agent is reminded to summarize state.
 
@@ -335,6 +363,15 @@ Shown in the header line; updated by tool wrappers and the iterate loop.")
 (defvar-local ekg-agent--last-status-reminder-time nil
   "Float time when the agent was last reminded to summarize state.")
 
+(defvar-local ekg-agent--plan-progress-timers nil
+  "Plan progress timers owned by this log buffer.")
+
+(defvar-local ekg-agent--display-log-buffer nil
+  "Buffer that receives this session's log output, or nil for itself.")
+
+(defvar ekg-agent--current-session-buffer nil
+  "Dynamically bound to the current nested agent session buffer.")
+
 (defvar-local ekg-agent--origin-buffer nil
   "The buffer from which the agent was originally invoked.
 Tool functions execute in this buffer so that `major-mode',
@@ -517,7 +554,14 @@ overloaded servers, rate limits, and temporary network failures."
              (string-match-p "529" lower)
              (string-match-p "503" lower)
              (string-match-p "server.*error" lower)
-             (string-match-p "temporarily unavailable" lower)))))
+             (string-match-p "temporarily unavailable" lower)
+             (string-match-p "failure in receiving network data" lower)
+             (string-match-p "connection reset" lower)
+             (string-match-p "connection refused" lower)
+             (string-match-p "recv failure" lower)
+             (string-match-p "curl error code 56" lower)
+             (string-match-p "curl error code 52" lower)
+             (string-match-p "could not resolve host" lower)))))
 
 (defun ekg-agent--llm-chat-async-with-retry (provider prompt on-success on-error
                                                       multi-output log-buf)
@@ -540,7 +584,8 @@ handle from the current attempt."
                        (not (buffer-local-value
                              'ekg-agent--cancelled-p log-buf)))
                   (let* ((delay (* base-delay (expt 2 attempt)))
-                         (ekg-agent--current-log-buffer log-buf))
+                         (ekg-agent--current-log-buffer
+                          (ekg-agent--log-target-buffer log-buf)))
                     (cl-incf attempt)
                     (ekg-agent--log
                      "Transient error (attempt %d/%d): %s — retrying in %ds…"
@@ -972,6 +1017,12 @@ EXTRA-TOOLS is a list of additional tools beyond
    :args '((:name "instructions" :type string :description "Detailed instructions for the sub-agent to follow."))
    :async t))
 
+(defun ekg-agent--log-target-buffer (session-buffer)
+  "Return the buffer that should receive logs for SESSION-BUFFER."
+  (or (and (buffer-live-p session-buffer)
+           (buffer-local-value 'ekg-agent--display-log-buffer session-buffer))
+      session-buffer))
+
 (defun ekg-agent--ensure-log-window ()
   "Ensure the agent log buffer is displayed in a side window.
 `ekg-agent--current-log-buffer' must be bound to the log buffer."
@@ -1144,114 +1195,105 @@ only for this call, preserving the origin buffer's own directory."
             (apply function args))
         (apply function args)))))
 
-(defun ekg-agent--wrap-tool-function (tool log-buf origin-buf)
+(defun ekg-agent--wrap-tool-function (tool log-buf origin-buf &optional session-buf)
   "Return a copy of TOOL with its function wrapped for resilience.
 
 LOG-BUF is the buffer to log to.  ORIGIN-BUF is the buffer from
-which the agent was invoked; tool functions execute there so that
-buffer-local state such as `major-mode' and `default-directory'
-are correct.  When `ekg-agent--task-directory' is set, capture it
-and bind `default-directory' for every tool call, including nested agents.
+which the agent was invoked.  SESSION-BUF is the buffer that holds the
+session state; it defaults to LOG-BUF.
 
-The wrapper provides four layers of protection:
-
-1. ORIGIN BUFFER: Tool functions run in ORIGIN-BUF while
-   `ekg-agent--current-log-buffer' is dynamically bound to LOG-BUF,
-   so that any logging from within the tool targets the log buffer.
-
-2. LOGGING: Logs STARTED when the tool is called and DONE when it
-   returns (sync) or calls back (async).
-
-3. ONCE-ONLY CALLBACK: For async tools, the callback is guarded so
-   it can only fire once.  If a tool\\'s error handling accidentally
-   calls the callback a second time, it is silently ignored.
-
-4. RESULT SANITIZATION: All tool results are passed through
-   `ekg-agent--sanitize-tool-result' to strip characters that would
-   cause `json-serialize' to fail downstream."
+Tool functions execute in ORIGIN-BUF so that buffer-local state such as
+`major-mode' and `default-directory' are correct.  When
+`ekg-agent--task-directory' is set, capture it and bind
+`default-directory' for every tool call, including nested agents."
   (let* ((original-fn (llm-tool-function tool))
          (tool-name (llm-tool-name tool))
          (async-p (llm-tool-async tool))
+         (session-buf (or session-buf log-buf))
          (task-directory ekg-agent--task-directory))
     (make-llm-tool
-     :function (if async-p
-                   (lambda (callback &rest args)
-                     (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
-                           (called nil)
-                           (ekg-agent--current-log-buffer log-buf))
-                       (condition-case err
-                           (if-let* ((blocked
-                                      (ekg-agent--blocked-tool-error
-                                       log-buf tool-name args)))
-                               (error "%s" blocked)
-                             (ekg-agent--call-tool-function
-                              original-fn
-                              (cons (lambda (result)
-                                      (unless called
-                                        (setq called t)
-                                        (let ((sanitized
-                                               (ekg-agent--sanitize-tool-result result)))
-                                          (ekg-agent--log-tool-done log-buf marker)
-                                          (ekg-agent--log-tool-error-result
-                                           tool-name sanitized args)
-                                          (ekg-agent--record-tool-completion
-                                           log-buf tool-name sanitized args)
-                                          (funcall callback sanitized))))
-                                    args)
-                              origin-buf task-directory))
-                         (error
-                          (unless called
-                            (setq called t)
-                            (let ((sanitized
-                                   (format "Error: %s"
-                                           (error-message-string err))))
-                              (ekg-agent--log-tool-done log-buf marker)
-                              (ekg-agent--log-tool-error-result
-                               tool-name sanitized args)
-                              (ekg-agent--record-tool-completion
-                               log-buf tool-name sanitized args)
-                              (funcall callback sanitized)))))))
-                 (lambda (&rest args)
-                   (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
-                         (ekg-agent--current-log-buffer log-buf))
-                     (condition-case err
-                         (let ((result (if-let* ((blocked
-                                                  (ekg-agent--blocked-tool-error
-                                                   log-buf tool-name args)))
-                                           (error "%s" blocked)
-                                         (ekg-agent--call-tool-function
-                                          original-fn args origin-buf
-                                          task-directory))))
-                           (let ((sanitized
-                                  (ekg-agent--sanitize-tool-result result)))
-                             (ekg-agent--log-tool-done log-buf marker)
-                             (ekg-agent--log-tool-error-result
-                              tool-name sanitized args)
-                             (ekg-agent--record-tool-completion
-                              log-buf tool-name sanitized args)
-                             sanitized))
-                       (error
-                        (let ((sanitized
-                               (format "Error: %s"
-                                       (error-message-string err))))
-                          (ekg-agent--log-tool-done log-buf marker)
-                          (ekg-agent--log-tool-error-result
-                           tool-name sanitized args)
-                          (ekg-agent--record-tool-completion
-                           log-buf tool-name sanitized args)
-                          sanitized))))))
+     :function
+     (if async-p
+         (lambda (callback &rest args)
+           (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
+                 (called nil)
+                 (ekg-agent--current-log-buffer log-buf))
+             (condition-case err
+                 (if-let* ((blocked
+                            (ekg-agent--blocked-tool-error
+                             log-buf tool-name args)))
+                     (error "%s" blocked)
+                   (ekg-agent--call-tool-function
+                    original-fn
+                    (cons (lambda (result)
+                            (unless called
+                              (setq called t)
+                              (let ((sanitized
+                                     (ekg-agent--sanitize-tool-result result)))
+                                (ekg-agent--log-tool-done log-buf marker)
+                                (ekg-agent--log-tool-error-result
+                                 tool-name sanitized args)
+                                (ekg-agent--record-tool-completion
+                                 log-buf tool-name sanitized args)
+                                (let ((ekg-agent--current-session-buffer
+                                       session-buf))
+                                  (funcall callback sanitized)))))
+                          args)
+                    origin-buf task-directory))
+               (error
+                (unless called
+                  (setq called t)
+                  (let ((sanitized
+                         (format "Error: %s" (error-message-string err))))
+                    (ekg-agent--log-tool-done log-buf marker)
+                    (ekg-agent--log-tool-error-result
+                     tool-name sanitized args)
+                    (ekg-agent--record-tool-completion
+                     log-buf tool-name sanitized args)
+                    (let ((ekg-agent--current-session-buffer session-buf))
+                      (funcall callback sanitized))))))))
+       (lambda (&rest args)
+         (let ((marker (ekg-agent--log-tool-start log-buf tool-name))
+               (ekg-agent--current-log-buffer log-buf))
+           (condition-case err
+               (let ((result
+                      (let ((ekg-agent--current-session-buffer session-buf))
+                        (if-let* ((blocked
+                                   (ekg-agent--blocked-tool-error
+                                    log-buf tool-name args)))
+                            (error "%s" blocked)
+                          (ekg-agent--call-tool-function
+                           original-fn args origin-buf task-directory)))))
+                 (let ((sanitized
+                        (ekg-agent--sanitize-tool-result result)))
+                   (ekg-agent--log-tool-done log-buf marker)
+                   (ekg-agent--log-tool-error-result
+                    tool-name sanitized args)
+                   (ekg-agent--record-tool-completion
+                    log-buf tool-name sanitized args)
+                   sanitized))
+             (error
+              (let ((sanitized
+                     (format "Error: %s" (error-message-string err))))
+                (ekg-agent--log-tool-done log-buf marker)
+                (ekg-agent--log-tool-error-result
+                 tool-name sanitized args)
+                (ekg-agent--record-tool-completion
+                 log-buf tool-name sanitized args)
+                sanitized))))))
      :name (llm-tool-name tool)
      :description (llm-tool-description tool)
      :args (llm-tool-args tool)
      :async async-p)))
 
-(defun ekg-agent--wrap-prompt-tools (prompt log-buf origin-buf)
+(defun ekg-agent--wrap-prompt-tools (prompt log-buf origin-buf &optional session-buf)
   "Wrap all tools on PROMPT for logging and origin-buffer execution.
-LOG-BUF is the agent log buffer.  ORIGIN-BUF is the buffer from
-which the agent was invoked; tool functions execute there."
+LOG-BUF is the buffer to log to.  ORIGIN-BUF is the buffer from which
+the agent was invoked.  SESSION-BUF holds the session state."
   (setf (llm-chat-prompt-tools prompt)
         (mapcar (lambda (tool)
-                  (ekg-agent--wrap-tool-function tool log-buf origin-buf))
+                  (ekg-agent--wrap-tool-function
+                   tool log-buf origin-buf session-buf))
                 (llm-chat-prompt-tools prompt))))
 
 (defun ekg-agent--log-status (status)
@@ -3390,7 +3432,15 @@ This acts as a once-only guard to ensure status callbacks fire exactly once."
       (ignore-errors (futur-abort item "cancelled")))
      ((processp item)
       (when (process-live-p item)
-        (ignore-errors (delete-process item))))))
+        (ignore-errors (delete-process item))))
+     ((bufferp item)
+      (when (buffer-live-p item)
+        (with-current-buffer item
+          (setq ekg-agent--cancelled-p t)
+          (ekg-agent--cancel-current-work)
+          (when (ekg-agent--set-stopped item)
+            (when ekg-agent--status-callback
+              (funcall ekg-agent--status-callback "stopped by user"))))))))
   (setq ekg-agent--tool-processes nil))
 
 (defun ekg-agent--make-deadline-timer (log-buf deadline status-callback)
@@ -3404,7 +3454,8 @@ stops a still-running agent."
        (when (and (buffer-live-p log-buf)
                   (buffer-local-value 'ekg-agent--running-p log-buf))
          (with-current-buffer log-buf
-           (let ((ekg-agent--current-log-buffer log-buf))
+           (let ((ekg-agent--current-log-buffer
+                  (ekg-agent--log-target-buffer log-buf)))
              (ekg-agent--log "Timeout reached; stopping agent.")
              (ekg-agent--cancel-current-work)
              (when ekg-agent--prompt
@@ -3419,57 +3470,64 @@ stops a still-running agent."
                                             log-buf provider)
   "Handle async LLM RESULT for PROMPT at ITERATION-NUM.
 STATUS-CALLBACK, END-TOOLS, DEADLINE, TIMEOUT-FINAL, LOG-BUF, and
-PROVIDER are the active loop state."
-  (if (and (buffer-live-p log-buf)
-           (buffer-local-value 'ekg-agent--cancelled-p log-buf))
-      (when (ekg-agent--set-stopped log-buf)
-        (ekg-agent--log "Agent stopped (cancelled by user)")
-        (when status-callback
-          (funcall status-callback "stopped by user")))
-    (let ((result-alist (plist-get result :tool-results))
-          (end-tools (or end-tools '("end"))))
-      (unless result-alist
-        ;; Everything must be a tool call.  If the model emits plain
-        ;; text, log it and continue with a direct instruction to use a
-        ;; completion tool.
-        (ekg-agent--log "%s" (plist-get result :text))
-        (llm-chat-prompt-append-response
-         prompt
-         (format "That has been communicated to the user. Please always call tools. This session cannot end until you call one of the following tools: %s."
-                 (string-join end-tools ", "))))
-      (cond
-       (timeout-final
+PROVIDER are the active loop state.  LOG-BUF is the session buffer;
+log output may be redirected to a shared display buffer."
+  (let ((display-buf (ekg-agent--log-target-buffer log-buf)))
+    (if (and (buffer-live-p log-buf)
+             (buffer-local-value 'ekg-agent--cancelled-p log-buf))
         (when (ekg-agent--set-stopped log-buf)
+          (let ((ekg-agent--current-log-buffer display-buf))
+            (ekg-agent--log "Agent stopped (cancelled by user)"))
           (when status-callback
-            (funcall status-callback "stopped by timeout"))))
-       ((seq-find (lambda (end-tool)
-                    (assoc-default end-tool result-alist))
-                  end-tools)
-        (when (ekg-agent--set-stopped log-buf)
-          (when status-callback
-            (funcall
-             status-callback
-             (mapconcat (lambda (end-tool)
-                          (format "%s"
-                                  (assoc-default end-tool result-alist)))
-                        (seq-filter
-                         (lambda (end-tool)
-                           (assoc-default end-tool result-alist))
-                         end-tools)
-                        ", ")))))
-       (t
-        (with-current-buffer log-buf
-          (ekg-agent--iterate
-           prompt (+ 1 iteration-num)
-           :status-callback status-callback
-           :end-tools end-tools
-           :deadline deadline
-           :timeout-final timeout-final
-           :provider provider)))))))
+            (funcall status-callback "stopped by user")))
+      (let ((result-alist (plist-get result :tool-results))
+            (end-tools (or end-tools '("end"))))
+        (unless result-alist
+          ;; Everything must be a tool call.  If the model emits plain
+          ;; text, log it and continue with a direct instruction to use a
+          ;; completion tool.
+          (let ((ekg-agent--current-log-buffer display-buf))
+            (ekg-agent--log "%s" (plist-get result :text)))
+          (llm-chat-prompt-append-response
+           prompt
+           (format "That has been communicated to the user. Please always call tools. This session cannot end until you call one of the following tools: %s."
+                   (string-join end-tools ", "))))
+        (cond
+         (timeout-final
+          (when (ekg-agent--set-stopped log-buf)
+            (when status-callback
+              (funcall status-callback "stopped by timeout"))))
+         ((seq-find (lambda (end-tool)
+                      (assoc-default end-tool result-alist))
+                    end-tools)
+          (when (ekg-agent--set-stopped log-buf)
+            (when status-callback
+              (funcall
+               status-callback
+               (mapconcat (lambda (end-tool)
+                            (format "%s"
+                                    (assoc-default end-tool result-alist)))
+                          (seq-filter
+                           (lambda (end-tool)
+                             (assoc-default end-tool result-alist))
+                           end-tools)
+                          ", ")))))
+         (t
+          (with-current-buffer log-buf
+            (let ((ekg-agent--current-log-buffer display-buf)
+                  (ekg-agent--current-session-buffer log-buf))
+              (ekg-agent--iterate
+               prompt (+ 1 iteration-num)
+               :status-callback status-callback
+               :end-tools end-tools
+               :deadline deadline
+               :timeout-final timeout-final
+               :provider provider)))))))))
 
 (cl-defun ekg-agent--iterate (prompt iteration-num
                                      &key status-callback end-tools deadline
-                                     timeout-final provider task-id)
+                                     timeout-final provider task-id
+                                     log-buffer state-buffer)
   "Run an iteration of the ekg agent with PROMPT and ITERATION-NUM.
 
 PROMPT is the chat prompt for the LLM.
@@ -3494,33 +3552,49 @@ PROVIDER is the LLM provider to use.  If nil, use
 TASK-ID associates a new session with an EKG task note and gives it a
 separate buffer, even when other tasks have the same prompt or title.
 
+LOG-BUFFER, when non-nil, receives this session's log output instead of
+the session buffer.  STATE-BUFFER, when non-nil, is the buffer that
+holds the session state; otherwise a hidden buffer is created when
+LOG-BUFFER is supplied.
+
 This is to start, and after every tool call to continue the agent
 session.  At iteration 0 the log buffer is created and
 `ekg-agent-log-mode' is enabled."
   (if (= iteration-num 0)
       ;; Set up everything.  Capture the current buffer as the origin
-      ;; buffer before switching to the log buffer.
+      ;; buffer before switching to the session/log buffer.
       (let* ((origin-buf (current-buffer))
              (directory (or ekg-agent--task-directory default-directory))
              (id (ekg-agent--prompt-id prompt))
              (deadline (or deadline (ekg-agent--timeout-deadline)))
-             (buf (if task-id
-                      (generate-new-buffer (format "*ekg task %s: %s*" task-id id))
-                    (get-buffer-create (format ekg-agent-log-buffer-name-format id))))
+             (shared-log (and log-buffer (buffer-live-p log-buffer) log-buffer))
+             (buf (cond
+                   ((and state-buffer (buffer-live-p state-buffer)) state-buffer)
+                   (shared-log (generate-new-buffer " *ekg agent session*"))
+                   (task-id (generate-new-buffer
+                             (format "*ekg task %s: %s*" task-id id)))
+                   (t (get-buffer-create
+                       (format ekg-agent-log-buffer-name-format id)))))
+             (display-buf (or shared-log buf))
+             (shared-p (not (eq buf display-buf)))
              ;; A nested agent inherits its caller's dynamic binding.  Use
-             ;; this session's buffer for its first request and callbacks.
-             (ekg-agent--current-log-buffer buf))
+             ;; this session's display buffer for its first request and logs.
+             (ekg-agent--current-log-buffer display-buf))
         (with-current-buffer buf
-          (erase-buffer)
+          (unless shared-p
+            (erase-buffer))
           ;; Set up major mode first since it calls
           ;; `kill-all-local-variables'.
           (ekg-agent--markdown-mode-no-hooks)
           (setq default-directory directory)
           (setq ekg-agent-task-id task-id
                 ekg-agent--execution-db ekg-db
-                ekg-agent--execution-start (float-time))
-          (ekg-agent--log-session-start (buffer-name))
-          (insert (format "Agent session for: %s\n\n" id))
+                ekg-agent--execution-start (float-time)
+                ekg-agent--display-log-buffer (and shared-p display-buf))
+          (let ((ekg-agent--current-log-buffer display-buf))
+            (ekg-agent--log-session-start (buffer-name display-buf)))
+          (unless shared-p
+            (insert (format "Agent session for: %s\n\n" id)))
           (setq ekg-agent--prompt prompt)
           (setq ekg-agent--end-tools end-tools)
           (setq ekg-agent--session-provider provider)
@@ -3538,24 +3612,32 @@ session.  At iteration 0 the log buffer is created and
           (ekg-agent-log-mode 1)
           (setq header-line-format
                 '(:eval (ekg-agent--format-header-line)))
-          (ekg-agent--wrap-prompt-tools prompt buf origin-buf)
+          (ekg-agent--wrap-prompt-tools prompt display-buf origin-buf buf)
           (goto-char (point-min))
-          (ekg-agent--iterate
-           prompt 1
-           :status-callback status-callback
-           :end-tools end-tools
-           :deadline deadline
-           :timeout-final timeout-final
-           :provider provider)
-          (ekg-agent--schedule-prompt-id-async prompt buf provider)))
+          (let ((ekg-agent--current-log-buffer display-buf)
+                (ekg-agent--current-session-buffer buf))
+            (ekg-agent--iterate
+             prompt 1
+             :status-callback status-callback
+             :end-tools end-tools
+             :deadline deadline
+             :timeout-final timeout-final
+             :provider provider))
+          (unless shared-p
+            (ekg-agent--schedule-prompt-id-async prompt buf provider))))
     ;; iteration > 0: run the agent loop.  Prefer the dynamically
-    ;; bound log buffer when present; async tools such as sub-agents can
-    ;; enter here while `current-buffer' is the origin buffer.
-    (let* ((log-buf (if (and ekg-agent--current-log-buffer
-                             (buffer-live-p ekg-agent--current-log-buffer))
-                        ekg-agent--current-log-buffer
-                      (current-buffer)))
-           (ekg-agent--current-log-buffer log-buf)
+    ;; bound session buffer when present; async tools such as sub-agents
+    ;; can enter here while `current-buffer' is the origin buffer.
+    (let* ((log-buf (or (and ekg-agent--current-session-buffer
+                             (buffer-live-p ekg-agent--current-session-buffer)
+                             ekg-agent--current-session-buffer)
+                        (and ekg-agent--current-log-buffer
+                             (buffer-live-p ekg-agent--current-log-buffer)
+                             ekg-agent--current-log-buffer)
+                        (current-buffer)))
+           (display-buf (ekg-agent--log-target-buffer log-buf))
+           (ekg-agent--current-log-buffer display-buf)
+           (ekg-agent--current-session-buffer log-buf)
            (expired (and deadline (> (float-time) deadline)))
            (deadline-timer nil))
       (when (and expired (not timeout-final))
@@ -3569,11 +3651,12 @@ session.  At iteration 0 the log buffer is created and
                  (not (llm-chat-prompt-max-tokens prompt)))
         (setf (llm-chat-prompt-max-tokens prompt)
               ekg-agent-llm-max-tokens))
-      (when (and log-buf (buffer-live-p log-buf))
-        (with-current-buffer log-buf
-          (setq ekg-agent--current-activity "Waiting for LLM response…")
-          (force-mode-line-update)
-          (ekg-agent--log "⟳ Waiting for LLM response…")))
+      (when (and display-buf (buffer-live-p display-buf))
+        (when (eq log-buf display-buf)
+          (with-current-buffer display-buf
+            (setq ekg-agent--current-activity "Waiting for LLM response…")
+            (force-mode-line-update)))
+        (ekg-agent--log "⟳ Waiting for LLM response…"))
       (condition-case err
           (let* ((request
                    (progn
@@ -3587,7 +3670,8 @@ session.  At iteration 0 the log buffer is created and
                         (when deadline-timer
                           (cancel-timer deadline-timer)
                           (setq deadline-timer nil))
-                        (let ((ekg-agent--current-log-buffer log-buf))
+                        (let ((ekg-agent--current-log-buffer display-buf)
+                              (ekg-agent--current-session-buffer log-buf))
                           (condition-case err
                               (ekg-agent--handle-llm-result
                                result
@@ -3609,7 +3693,8 @@ session.  At iteration 0 the log buffer is created and
                         (when deadline-timer
                           (cancel-timer deadline-timer)
                           (setq deadline-timer nil))
-                        (let ((ekg-agent--current-log-buffer log-buf))
+                        (let ((ekg-agent--current-log-buffer display-buf)
+                              (ekg-agent--current-session-buffer log-buf))
                           (if (ekg-agent--recover-unknown-tool-error
                                err prompt log-buf)
                               (with-current-buffer log-buf
@@ -3622,10 +3707,10 @@ session.  At iteration 0 the log buffer is created and
                                  :provider provider))
                             (when (ekg-agent--set-stopped log-buf)
                               (with-current-buffer log-buf
-                                (setq ekg-agent--last-error (cons type err))
-                                (ekg-agent--log "LLM error (%s): %s" type err)
-                                (when status-callback
-                                  (funcall status-callback 'error)))))))
+                                (setq ekg-agent--last-error (cons type err)))
+                              (ekg-agent--log "LLM error (%s): %s" type err)
+                              (when status-callback
+                                (funcall status-callback 'error))))))
                       t
                       log-buf))))
             (when (buffer-live-p log-buf)
@@ -4211,6 +4296,9 @@ SCHEDULED is the scheduled timestamp string (ignored if empty)."
 
 ;; Shared plan contract and transactional importer for the agent and CLI.
 
+(defvar ekg-org-plan--sort-order-offset 0
+  "Offset added to plan task sort orders during import.")
+
 (defconst ekg-org-plan-schema
   '(:type "object" :additionalProperties :json-false
           :required ["version" "tasks"]
@@ -4333,7 +4421,10 @@ notes start as TODO.  Validate the whole graph before creating notes."
     (let ((parent (ekg-get-note-with-id parent-id)))
       (unless (and parent (ekg-org--org-note-p parent))
         (error "Parent %s is not an Org task" parent-id))
-      (when (plist-get (ekg-note-properties parent) :hierarchy/children)
+      (when (seq-find
+             (lambda (child)
+               (not (member ekg-agent-planning-tag (ekg-note-tags child))))
+             (ekg-org-get-child-notes-of-id parent-id))
         (error "Cannot plan task %s because it already has active children"
                parent-id))))
   (let* ((plan (json-parse-string json :null-object nil :false-object :json-false))
@@ -4370,7 +4461,7 @@ notes start as TODO.  Validate the whole graph before creating notes."
              do
              (setf (ekg-note-properties note)
                    (append (ekg-note-properties note)
-                           (list :org/sort-order order
+                           (list :org/sort-order (+ order ekg-org-plan--sort-order-offset)
                                  :org/depends-on
                                  (append (gethash "depends_on" task) nil))
                            (when task-parent
@@ -4455,182 +4546,520 @@ When RESEARCH is a prompt, also report how many tool calls have returned."
         (ekg-agent--record-status-update)
         (force-mode-line-update)))))
 
-(defun ekg-agent-org--create-plan (callback description tags &optional parent-id)
-  "Research DESCRIPTION, synthesize a plan, and import it with TAGS.
-When PARENT-ID is non-nil, attach the plan root to that Org task.
-Call CALLBACK once with the created ID mapping or an error message."
-  (cond
-   ((and parent-id
-         (when-let* ((parent (ekg-get-note-with-id parent-id)))
-           (plist-get (ekg-note-properties parent) :hierarchy/children)))
-    (funcall callback
-             (format "Error: Cannot plan task %s because it already has active children"
-                     parent-id)))
-   (t
-    (let* ((provider (or ekg-agent-plan-provider (ekg-agent--provider)))
-           (reasoning ekg-agent-org-plan-reasoning)
-           (parameters (copy-tree ekg-agent-org-plan-parameters))
-           (ekg-agent--task-directory
-            (or ekg-agent--task-directory
-                (when parent-id
-                  (ekg-org-working-directory (ekg-get-note-with-id parent-id)))))
-           (default-directory (or ekg-agent--task-directory default-directory))
-           (owner ekg-agent--current-log-buffer)
-           (owner-start (when (buffer-live-p owner)
-                          (buffer-local-value 'ekg-agent--execution-start owner)))
-           (owner-status (when (buffer-live-p owner)
-                           (buffer-local-value 'ekg-agent--status-callback owner)))
-           ;; Continuing replaces the status callback; a new session also
-           ;; replaces the start time.  Neither may revive old progress.
-           (active-session
-            (lambda ()
-              (and (buffer-live-p owner)
-                   (buffer-local-value 'ekg-agent--running-p owner)
-                   (not (buffer-local-value 'ekg-agent--cancelled-p owner))
-                   (equal owner-start
-                          (buffer-local-value 'ekg-agent--execution-start owner))
-                   (eq owner-status
-                       (buffer-local-value 'ekg-agent--status-callback owner)))))
-           (report
-            (lambda (stage started &optional research)
-              (when (funcall active-session)
-                (ekg-agent-org--log-plan-progress owner stage started research))))
-           (started (float-time))
-           (stage-start started)
-           (stage "Researching task requirements")
-           (progress-timer nil)
-           (finished nil)
-           (ended nil)
-           (finish (lambda (value)
-                     (unless finished
-                       (setq finished t)
-                       (when progress-timer
-                         (cancel-timer progress-timer)
-                         (setq progress-timer nil))
-                       (funcall report
-                                (if (string-prefix-p "Error:" value)
-                                    value "Plan saved")
-                                started)
-                       (funcall callback value))))
-           (end-tool
-            (make-llm-tool
-             :name "finish_plan_research"
-             :description "Finish research with requirements and decisions."
-             :args '((:name "summary" :type string
-                            :description "Requirements, answers and decisions."))
-             :function (lambda (summary) (setq ended t) summary)))
-           (prompt
-            (llm-make-chat-prompt
-             description
-             :context
-             (concat "Research a task plan. Inspect the relevant files, symbols, "
-                     "and notes yourself now so the plan is based on concrete "
-                     "findings rather than deferring code auditing or "
-                     "environment discovery into planned tasks. Do not ask the "
-                     "user questions directly, execute tasks, or create notes. "
-                     "Only record genuine ambiguities, tradeoffs, or actions "
-                     "requiring human judgment (with concrete options and "
-                     "tradeoffs) as unresolved questions—never questions "
-                     "answerable from the codebase or notes. The final plan "
-                     "will turn them into tasks "
-                     (format "tagged %s, so the user can act or answer "
-                             ekg-agent-org-user-task-tag)
-                     "with a response note. Do not include meta-instructions "
-                     "(such as reading AGENTS.md or recording executables/"
-                     "versions) in the requirements. Finish by calling "
-                     "finish_plan_research with requirements, decisions, "
-                     "files/functions/patterns to follow, verification commands, "
-                     "and unresolved questions."
-                     (format "\nWorking directory: %s" default-directory)
-                     (ekg-agent--agents-md-context))
-             :tools (append ekg-agent-read-only-tools
-                            (list ekg-agent-org-tool-list-items end-tool)))))
-      (funcall report stage stage-start prompt)
-      (when (buffer-live-p owner)
-        (setq progress-timer
-              (run-at-time
-               30 30
-               (lambda ()
-                 (if (or finished (not (funcall active-session)))
-                     (when progress-timer
-                       (cancel-timer progress-timer)
-                       (setq progress-timer nil))
-                   (funcall report stage stage-start
-                            (unless ended prompt)))))))
-      (condition-case err
-          (ekg-agent--iterate
-           prompt 0
-           :status-callback
-           (lambda (status)
-             (if (or (eq status 'error) (not ended)
-                     (and owner
-                          (or (not (buffer-live-p owner))
-                              (buffer-local-value
-                               'ekg-agent--cancelled-p owner))))
-                 (funcall finish "Error: Plan research stopped without completion")
-               (setq stage "Research complete; generating task graph"
-                     stage-start (float-time))
-               (funcall report stage stage-start)
-               (condition-case err
-                   (let ((request
-                           (llm-chat-async
-                            provider
-                            (llm-make-chat-prompt
-                             (format "Original EKG task ID: %s\nTask: %s\nResearch: %s\nConversation: %S"
-                                     (or parent-id "none") description status
-                                     (llm-chat-prompt-interactions prompt))
-                             :context
-                             (let ((parent-key (when parent-id
-                                                 (format "%s" parent-id)))
-                                   (id-prefix (if parent-id
-                                                  (format "%s-%s" parent-id
-                                                          (ekg--generate-id))
-                                                (format "%s" (ekg--generate-id)))))
-                               (concat ekg-agent-plan-instructions
-                                       "\n\n"
-                                       (if parent-key
-                                           (format
-                                            "Do not generate a top-level wrapper task for the task being planned. Instead, top-level tasks in the plan must be direct children of the existing task and set `parent` to %S.\n"
-                                            parent-key)
-                                         "Include a single root task with `parent` set to null, and make all other tasks descend from it.\n")
-                                       (format
-                                        "Prefix every task `id` with \"%s-\" (for example, \"%s-1\") so that task IDs are globally unique.\n"
-                                        id-prefix id-prefix)
-                                       (format
-                                        "If you need a human to do work, such as answer a design or tradeoff
+(defun ekg-agent-org--planning-note (parent-id)
+  "Return the planning checkpoint child of PARENT-ID, if it exists."
+  (seq-find (lambda (note)
+              (member ekg-agent-planning-tag (ekg-note-tags note)))
+            (ekg-org-get-child-notes-of-id parent-id)))
+
+(defun ekg-agent-org--plan-research-text (prompt)
+  "Return the available research notes and tool results from PROMPT."
+  (string-join
+   (cl-loop for interaction in (llm-chat-prompt-interactions prompt)
+            for content = (llm-chat-prompt-interaction-content interaction)
+            append
+            (append
+             (when (and (eq (llm-chat-prompt-interaction-role interaction)
+                            'assistant)
+                        (stringp content)
+                        (not (string-empty-p content)))
+               (list content))
+             (mapcar
+              (lambda (result)
+                (format "** %s\n\n%s"
+                        (llm-chat-prompt-tool-result-tool-name result)
+                        (llm-chat-prompt-tool-result-result result)))
+              (llm-chat-prompt-interaction-tool-results interaction))))
+   "\n\n"))
+
+(defun ekg-agent-org--planning-note-content (description stage started
+                                                         &optional research detail)
+  "Build planning checkpoint content for DESCRIPTION.
+STAGE and STARTED describe progress.  RESEARCH optionally supplies a
+prompt whose available findings are saved.  DETAIL optionally adds notes."
+  (concat
+   "* Planning checkpoint\n\n"
+   (format "Task: %s\n\n" description)
+   (format "Stage: %s\n" stage)
+   (format "Started: %s\n" (format-time-string "%F %T" (seconds-to-time started)))
+   (when detail (format "\n%s\n" detail))
+   (when research
+     (let ((text (ekg-agent-org--plan-research-text research)))
+       (unless (string-empty-p text)
+         (format "\n* Research so far\n\n%s\n" text))))
+   "\nThis note is the planning checkpoint.  It is updated while planning runs.\n"))
+
+(defun ekg-agent-org--save-planning-note (note content &optional done)
+  "Save planning NOTE with CONTENT and set its state to DONE or TODO."
+  (setf (ekg-note-text note) content)
+  (setf (ekg-note-tags note)
+        (cons (concat ekg-org-state-tag-prefix (if done "done" "todo"))
+              (seq-remove (lambda (tag)
+                            (string-prefix-p ekg-org-state-tag-prefix tag))
+                          (ekg-note-tags note))))
+  (ekg-save-note note)
+  note)
+
+(defun ekg-agent-org--create-planning-note (parent-id tags)
+  "Create a planning checkpoint child under PARENT-ID with TAGS."
+  (let* ((parent (ekg-get-note-with-id parent-id))
+         (title (format "Plan: %s" (ekg-org--note-title parent)))
+         (note (ekg-note-create
+                :text "Planning started.\n" :mode 'org-mode
+                :tags (seq-uniq
+                       (append (list "org/task" "org/state/todo"
+                                     ekg-agent-author-tag ekg-agent-planning-tag)
+                               (mapcar #'ekg--normalize-tag tags)))
+                :properties (list :titled/title (list title)
+                                  :hierarchy/parent parent-id
+                                  :org/sort-order 0))))
+    (ekg-save-note note)
+    note))
+
+(defun ekg-agent-org--cancel-plan-timers (owner)
+  "Cancel all plan progress timers owned by OWNER."
+  (when (buffer-live-p owner)
+    (dolist (timer (buffer-local-value 'ekg-agent--plan-progress-timers owner))
+      (ignore-errors (cancel-timer timer)))
+    (with-current-buffer owner
+      (setq ekg-agent--plan-progress-timers nil))))
+
+(defconst ekg-agent-org-tool-finish-plan
+  (make-llm-tool
+   :name "finish_plan"
+   :description "Return the complete task plan as structured JSON."
+   :args
+   '((:name "plan" :type string
+            :description "Complete version 1 plan JSON object: {\"version\":1,\"tasks\":[{\"id\":\"...\",\"parent\":\"... or null\",\"title\":\"...\",\"content\":\"...\",\"execution\":\"sequential|parallel\",\"depends_on\":[\"...\"],\"tags\":[\"...\"]}]}."))
+   :function (lambda (&rest _) "Plan received."))
+  "Tool used to collect the final structured plan from the model.")
+
+(defun ekg-agent-org--plan-graph-context (parent-id id-prefix)
+  "Return the context for the task-graph request.
+PARENT-ID is the existing task ID, or nil.  ID-PREFIX is the unique
+prefix for generated task IDs."
+  (concat ekg-agent-plan-instructions
+          "\n\n"
+          (if parent-id
+              (format
+               "Do not generate a top-level wrapper task for the task being planned. Instead, top-level tasks in the plan must be direct children of the existing task and set `parent` to %S.\n"
+               (format "%s" parent-id))
+            "Include a single root task with `parent` set to null, and make all other tasks descend from it.\n")
+          (format
+           "Prefix every task `id` with \"%s-\" (for example, \"%s-1\") so that task IDs are globally unique.\n"
+           id-prefix id-prefix)
+          (format
+           "If you need a human to do work, such as answer a design or tradeoff
 question that cannot be resolved from the codebase, or perform an action
 an agent cannot, tag the task with the %s tag, state the options and
 tradeoffs in its content, and make dependent tasks list it in `depends_on`."
-                                        ekg-agent-org-user-task-tag)))
-                             :response-format ekg-org-plan-schema
-                             :reasoning reasoning :non-standard-params parameters)
-                            (lambda (json)
-                              (unless finished
-                                (if (and owner
-                                         (or (not (buffer-live-p owner))
-                                             (buffer-local-value
-                                              'ekg-agent--cancelled-p owner)))
-                                    (funcall finish "Error: Plan cancelled")
-                                  (setq stage "Validating and saving plan"
-                                        stage-start (float-time))
-                                  (funcall report stage stage-start)
-                                  (condition-case err
-                                      (funcall finish
-                                               (json-encode
-                                                (ekg-org-plan-import
-                                                 json (append tags nil)
-                                                 parent-id)))
-                                    (error (funcall finish
-                                                    (format "Error: %s" err)))))))
-                            (lambda (_ message)
-                              (funcall finish (format "Error: %s" message))))))
-                     (when (buffer-live-p owner)
-                       (with-current-buffer owner
-                         (push request ekg-agent--tool-processes))))
-                 (error (funcall finish (format "Error: %s" err))))))
-           :end-tools '("finish_plan_research")
-           :provider provider)
-        (error (funcall finish (format "Error: %s" err))))))))
+           ekg-agent-org-user-task-tag)))
+
+(defun ekg-agent-org--plan-graph-prompt (description research-summary
+                                                     parent-id context reasoning
+                                                     parameters parse-error)
+  "Build the task-graph prompt for DESCRIPTION and RESEARCH-SUMMARY.
+PARENT-ID, CONTEXT, REASONING, and PARAMETERS configure the request.
+PARSE-ERROR, when non-nil, tells the model to repair its previous
+structured response without repeating research."
+  (llm-make-chat-prompt
+   (concat
+    (format "Original EKG task ID: %s\nTask: %s\n\nResearch summary:\n%s\n"
+            (or parent-id "none") description research-summary)
+    (when parse-error
+      (format "\nThe previous graph response could not be used: %s\nReturn a complete JSON object matching the schema. Do not repeat research.\n"
+              parse-error)))
+   :context context
+   :tools (list ekg-agent-org-tool-finish-plan)
+   :tool-options (make-llm-tool-options :tool-choice "finish_plan")
+   :reasoning reasoning
+   :non-standard-params parameters))
+
+(defun ekg-agent-org--plan-tool-arg (args name)
+  "Return the tool argument NAME from tool ARGS, tolerating alist forms."
+  (or (cdr (assq (intern name) args))
+      (cdr (assoc name args))
+      (plist-get args (intern name))))
+
+(defun ekg-agent-org--request-plan-graph (provider prompt timeout
+                                                   on-success on-error state-buf)
+  "Request one task graph from PROVIDER with PROMPT.
+TIMEOUT limits the request.  ON-SUCCESS receives the response and
+ON-ERROR receives a type and message.  STATE-BUF tracks the request for
+cancellation."
+  (let* ((done nil)
+         (request nil)
+         (timer (when timeout
+                  (run-at-time
+                   timeout nil
+                   (lambda ()
+                     (unless done
+                       (setq done t)
+                       (when request
+                         (ignore-errors (llm-cancel-request request)))
+                       (funcall on-error 'timeout
+                                "Task-graph generation timed out")))))))
+    (condition-case sync-err
+        (setq request
+              (llm-chat-async
+               provider prompt
+               (lambda (result)
+                 (unless done
+                   (setq done t)
+                   (when timer (cancel-timer timer))
+                   (let* ((tool-uses (plist-get result :tool-uses))
+                          (tool-use (seq-find
+                                     (lambda (use)
+                                       (equal (plist-get use :name) "finish_plan"))
+                                     tool-uses))
+                          (args (plist-get tool-use :args))
+                          (json (ekg-agent-org--plan-tool-arg args "plan")))
+                     (if (and (stringp json) (not (string-empty-p json)))
+                         (funcall on-success json)
+                       (funcall on-error
+                                'invalid-response
+                                "The model did not call finish_plan with a plan")))))
+               (lambda (type err)
+                 (unless done
+                   (setq done t)
+                   (when timer (cancel-timer timer))
+                   (funcall on-error type err)))
+               t))
+      (error
+       (unless done
+         (setq done t)
+         (when timer (cancel-timer timer))
+         (funcall on-error 'error (error-message-string sync-err)))))
+    (when (and state-buf (buffer-live-p state-buf))
+      (with-current-buffer state-buf
+        (push request ekg-agent--tool-processes)))
+    request))
+
+(defun ekg-agent-org--attempt-plan-graph (provider description research-summary
+                                                   parent-id tags context reasoning
+                                                   parameters sort-offset max-attempts
+                                                   attempt parse-error on-success
+                                                   on-failure state-buf cancelled-p)
+  "Generate a graph with PROVIDER for DESCRIPTION and RESEARCH-SUMMARY.
+PARENT-ID and TAGS configure import, with SORT-OFFSET added to task order.
+CONTEXT, REASONING and PARAMETERS configure the prompt.  Retry up to
+MAX-ATTEMPTS, starting at ATTEMPT, reporting PARSE-ERROR to the model.
+ON-SUCCESS receives the imported ID mapping; ON-FAILURE receives a reason.
+STATE-BUF tracks requests.  CANCELLED-P prevents requests and imports
+when the session has stopped.  Reuse research on every attempt."
+  (if (funcall cancelled-p)
+      (funcall on-failure "Plan cancelled")
+    (let ((prompt (ekg-agent-org--plan-graph-prompt
+                   description research-summary parent-id context reasoning
+                   parameters parse-error)))
+      (ekg-agent-org--request-plan-graph
+       provider prompt ekg-agent-plan-graph-timeout-seconds
+       (lambda (json)
+         (if (funcall cancelled-p)
+             (funcall on-failure "Plan cancelled")
+           (let ((ids nil)
+                 (import-error nil))
+             (condition-case err
+                 (let ((ekg-org-plan--sort-order-offset sort-offset))
+                   (setq ids (ekg-org-plan-import json (append tags nil)
+                                                  parent-id)))
+               (error (setq import-error err)))
+             (if import-error
+                 (if (< attempt max-attempts)
+                     (ekg-agent-org--attempt-plan-graph
+                      provider description research-summary parent-id tags
+                      context reasoning parameters sort-offset max-attempts
+                      (1+ attempt) (error-message-string import-error)
+                      on-success on-failure state-buf cancelled-p)
+                   (funcall on-failure
+                            (format "Task-graph generation failed after %d attempt(s): %s"
+                                    attempt (error-message-string import-error))))
+               (funcall on-success ids)))))
+       (lambda (type err)
+         (let ((message (format "%s" err)))
+           (if (and (< attempt max-attempts)
+                    (or (eq type 'timeout)
+                        (eq type 'invalid-response)
+                        (ekg-agent--transient-error-p message)))
+               (ekg-agent-org--attempt-plan-graph
+                provider description research-summary parent-id tags context
+                reasoning parameters sort-offset max-attempts (1+ attempt)
+                message on-success on-failure state-buf cancelled-p)
+             (funcall on-failure
+                      (format "Task-graph request failed after %d attempt(s): %s"
+                              attempt message)))))
+       state-buf))))
+
+(defun ekg-agent-org--create-plan (callback description tags &optional parent-id)
+  "Research DESCRIPTION, synthesize a plan, and import it with TAGS.
+When PARENT-ID is non-nil, attach the plan root to that Org task and
+keep a planning checkpoint child.  Call CALLBACK once with the created
+ID mapping or an error/deferred message."
+  (let* ((parent (and parent-id (ekg-get-note-with-id parent-id)))
+         (children (and parent-id (ekg-org-get-child-notes-of-id parent-id)))
+         (planning (and parent-id (ekg-agent-org--planning-note parent-id)))
+         (other-children (seq-remove
+                          (lambda (note)
+                            (member ekg-agent-planning-tag
+                                    (ekg-note-tags note)))
+                          children)))
+    (cond
+     ((and parent-id (not parent))
+      (funcall callback (format "Error: No task found with ID %s" parent-id)))
+     ((and parent-id other-children)
+      (funcall callback
+               (format "Error: Cannot plan task %s because it already has active children"
+                       parent-id)))
+     ((and planning (not (ekg-org-task-done-p planning)))
+      (funcall callback
+               (format "Planning is already a separate task: %s (%s).  It was left for a focused planning pass; no new planning was started."
+                       (ekg-note-id planning) (ekg-org--note-title planning))))
+     (t
+      (let* ((provider (or ekg-agent-plan-provider (ekg-agent--provider)))
+             (reasoning ekg-agent-org-plan-reasoning)
+             (parameters (copy-tree ekg-agent-org-plan-parameters))
+             (ekg-agent--task-directory
+              (or ekg-agent--task-directory
+                  (when parent-id
+                    (ekg-org-working-directory (ekg-get-note-with-id parent-id)))))
+             (default-directory (or ekg-agent--task-directory default-directory))
+             (owner ekg-agent--current-log-buffer)
+             (owner-start (when (buffer-live-p owner)
+                            (buffer-local-value 'ekg-agent--execution-start owner)))
+             (owner-status (when (buffer-live-p owner)
+                             (buffer-local-value 'ekg-agent--status-callback owner)))
+             (state-buf (generate-new-buffer " *ekg agent plan session*"))
+             (checkpoint (when parent-id
+                           (condition-case err
+                               (or planning
+                                   (ekg-agent-org--create-planning-note
+                                    parent-id tags))
+                             (error
+                              (warn "Could not create planning checkpoint: %s" err)
+                              nil))))
+             (ended nil)
+             (active-session
+              (lambda ()
+                (and (buffer-live-p state-buf)
+                     (not (buffer-local-value
+                           'ekg-agent--cancelled-p state-buf))
+                     (or ended (buffer-local-value
+                                'ekg-agent--running-p state-buf))
+                     (or (null owner)
+                         (and (buffer-live-p owner)
+                              (buffer-local-value 'ekg-agent--running-p owner)
+                              (not (buffer-local-value 'ekg-agent--cancelled-p
+                                                       owner))
+                              (equal owner-start
+                                     (buffer-local-value
+                                      'ekg-agent--execution-start owner))
+                              (eq owner-status
+                                  (buffer-local-value
+                                   'ekg-agent--status-callback owner)))))))
+             (report
+              (lambda (stage started &optional research)
+                (when (funcall active-session)
+                  (ekg-agent-org--log-plan-progress owner stage started research))))
+             (started (float-time))
+             (stage-start started)
+             (stage "Researching task requirements")
+             (progress-timer nil)
+             (finished nil)
+             (checkpoint-content nil)
+             (checkpoint-last-content nil)
+             (checkpoint-done nil)
+             (finish
+              (lambda (value)
+                (unless finished
+                  (setq finished t)
+                  (when progress-timer
+                    (cancel-timer progress-timer)
+                    (when (buffer-live-p owner)
+                      (with-current-buffer owner
+                        (setq ekg-agent--plan-progress-timers
+                              (delq progress-timer
+                                    ekg-agent--plan-progress-timers))))
+                    (setq progress-timer nil))
+                  (funcall report
+                           (cond
+                            ((string-prefix-p "Error:" value) value)
+                            ((string-prefix-p "Planning deferred" value)
+                             "Planning deferred")
+                            (t "Plan saved"))
+                           started)
+                  (when (and checkpoint checkpoint-content)
+                    (condition-case err
+                        (ekg-agent-org--save-planning-note
+                         checkpoint checkpoint-content checkpoint-done)
+                      (error
+                       (warn "Could not save planning checkpoint: %s" err))))
+                  (when (buffer-live-p owner)
+                    (with-current-buffer owner
+                      (setq ekg-agent--tool-processes
+                            (delq state-buf ekg-agent--tool-processes))))
+                  (funcall callback value)
+                  (when (buffer-live-p state-buf)
+                    (run-at-time
+                     0 nil
+                     (lambda ()
+                       (when (buffer-live-p state-buf)
+                         (kill-buffer state-buf))))))))
+             (defer
+              (lambda (reason &optional research-summary research)
+                (setq checkpoint-done nil
+                      checkpoint-content
+                      (ekg-agent-org--planning-note-content
+                       description "Planning deferred" started research
+                       (concat (format "Reason: %s\n" reason)
+                               (when research-summary
+                                 (format "\n* Research summary\n\n%s\n"
+                                         research-summary))
+                               "\nContinue this task with a focused planning pass.  \
+The research above is the starting point; do not repeat it.")))
+                (funcall finish
+                         (format "Planning deferred as child task %s: %s"
+                                 (if checkpoint (ekg-note-id checkpoint) "none")
+                                 reason))))
+             (end-tool
+              (make-llm-tool
+               :name "finish_plan_research"
+               :description "Finish research with requirements and decisions."
+               :args '((:name "summary" :type string
+                              :description "Requirements, answers and decisions."))
+               :function (lambda (summary) (setq ended t) summary)))
+             (research-prompt
+              (llm-make-chat-prompt
+               description
+               :context
+               (concat "Research a task plan. Inspect the relevant files, symbols, "
+                       "and notes yourself now so the plan is based on concrete "
+                       "findings rather than deferring code auditing or "
+                       "environment discovery into planned tasks. Do not ask the "
+                       "user questions directly, execute tasks, or create notes. "
+                       "Only record genuine ambiguities, tradeoffs, or actions "
+                       "requiring human judgment (with concrete options and "
+                       "tradeoffs) as unresolved questions—never questions "
+                       "answerable from the codebase or notes. The final plan "
+                       "will turn them into tasks "
+                       (format "tagged %s, so the user can act or answer "
+                               ekg-agent-org-user-task-tag)
+                       "with a response note. Do not include meta-instructions "
+                       "(such as reading AGENTS.md or recording executables/"
+                       "versions) in the requirements. Finish by calling "
+                       "finish_plan_research with requirements, decisions, "
+                       "files/functions/patterns to follow, verification commands, "
+                       "and unresolved questions."
+                       (format "\nWorking directory: %s" default-directory)
+                       (ekg-agent--agents-md-context))
+               :tools (append ekg-agent-read-only-tools
+                              (list ekg-agent-org-tool-list-items end-tool)))))
+        (when checkpoint
+          (setq checkpoint-content
+                (ekg-agent-org--planning-note-content
+                 description stage started research-prompt))
+          (condition-case err
+              (progn
+                (ekg-agent-org--save-planning-note checkpoint checkpoint-content)
+                (setq checkpoint-last-content checkpoint-content))
+            (error (warn "Could not update planning checkpoint: %s" err))))
+        (with-current-buffer state-buf
+          (setq ekg-agent--running-p t))
+        (ekg-agent-org--cancel-plan-timers owner)
+        (funcall report stage stage-start research-prompt)
+        (when (buffer-live-p owner)
+          (setq progress-timer
+                (run-at-time
+                 30 30
+                 (lambda ()
+                   (if (or finished (not (funcall active-session)))
+                       (progn
+                         (when progress-timer
+                           (cancel-timer progress-timer)
+                           (setq progress-timer nil))
+                         (when (buffer-live-p owner)
+                           (with-current-buffer owner
+                             (setq ekg-agent--plan-progress-timers
+                                   (delq progress-timer
+                                         ekg-agent--plan-progress-timers)))))
+                     (funcall report stage stage-start
+                              (unless ended research-prompt))
+                     (when checkpoint
+                       (let ((content
+                              (ekg-agent-org--planning-note-content
+                               description stage started research-prompt)))
+                         (unless (equal content checkpoint-last-content)
+                           (setq checkpoint-content content)
+                           (condition-case err
+                               (progn
+                                 (ekg-agent-org--save-planning-note
+                                  checkpoint checkpoint-content)
+                                 (setq checkpoint-last-content content))
+                             (error
+                              (warn "Could not update planning checkpoint: %s"
+                                    err))))))))))
+          (with-current-buffer owner
+            (push progress-timer ekg-agent--plan-progress-timers)))
+        (when (buffer-live-p owner)
+          (with-current-buffer owner
+            (cl-pushnew state-buf ekg-agent--tool-processes)))
+        (condition-case err
+            (ekg-agent--iterate
+             research-prompt 0
+             :status-callback
+             (lambda (status)
+               (if (or (eq status 'error) (not ended)
+                       (and owner
+                            (or (not (buffer-live-p owner))
+                                (buffer-local-value
+                                 'ekg-agent--cancelled-p owner))))
+                   (funcall defer
+                            (if (eq status 'error)
+                                (or (and (buffer-live-p state-buf)
+                                         (let ((err
+                                                (buffer-local-value
+                                                 'ekg-agent--last-error
+                                                 state-buf)))
+                                           (and err (format "%s: %s"
+                                                            (car err) (cdr err)))))
+                                    "Plan research stopped without completion")
+                              (format "Plan research %s" status))
+                            nil research-prompt)
+                 (setq stage "Research complete; generating task graph"
+                       stage-start (float-time))
+                 (funcall report stage stage-start)
+                 (let* ((id-prefix (if parent-id
+                                       (format "%s-%s" parent-id
+                                               (ekg--generate-id))
+                                     (format "%s" (ekg--generate-id))))
+                        (context (ekg-agent-org--plan-graph-context
+                                  parent-id id-prefix))
+                        (max-attempts
+                         (max 1 (1+ ekg-agent-plan-graph-retries))))
+                   (ekg-agent-org--attempt-plan-graph
+                    provider description status parent-id tags context
+                    reasoning parameters (if checkpoint 1 0) max-attempts 1
+                    nil
+                    (lambda (ids)
+                      (setq checkpoint-done t
+                            checkpoint-content
+                            (ekg-agent-org--planning-note-content
+                             description "Plan saved" started nil
+                             (format "\n* Research summary\n\n%s\n" status)))
+                      (funcall finish (json-encode ids)))
+                    (lambda (reason)
+                      (funcall defer reason status))
+                    state-buf
+                    (lambda () (not (funcall active-session)))))))
+             :end-tools '("finish_plan_research")
+             :provider provider
+             :log-buffer owner
+             :state-buffer state-buf
+             :deadline (and (numberp ekg-agent-plan-research-timeout-seconds)
+                            (> ekg-agent-plan-research-timeout-seconds 0)
+                            (+ (float-time)
+                               ekg-agent-plan-research-timeout-seconds)))
+          (error
+           (funcall defer (error-message-string err) nil research-prompt))))))))
 
 (defconst ekg-agent-org-tool-create-plan
   (make-llm-tool
@@ -4712,8 +5141,11 @@ Returns text in Org format, as if they were in an Org file."
   (let* ((ekg-note (ekg-current-note-or-error-expanded))
          (parent-id (ekg-note-id ekg-note))
          (parent-note (ekg-get-note-with-id parent-id))
-         (_ (when (plist-get (ekg-note-properties parent-note)
-                             :hierarchy/children)
+         (_ (when (seq-find
+                   (lambda (child)
+                     (not (member ekg-agent-planning-tag
+                                  (ekg-note-tags child))))
+                   (ekg-org-get-child-notes-of-id parent-id))
               (user-error "Cannot plan a task that already has active children")))
          (ekg-agent--task-directory (ekg-org-working-directory parent-note))
          (default-directory (or ekg-agent--task-directory default-directory))
