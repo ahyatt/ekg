@@ -1550,13 +1550,16 @@ STATE is the note's display state."
             (_ prefix)))
          (heading
           (when (and children (> children 0))
-            (concat (propertize (if (eq ekg-notes-hierarchy-style 'inset)
-                                    body-prefix prefix) 'face guide-face)
-                    (propertize
-                     (format "%d %s" children
-                             (if (= children 1) "child" "children"))
-                     'face heading-face)
-                    "\n"))))
+            (propertize
+             (concat (propertize
+                      (format "%d %s" children
+                              (if (= children 1) "child" "children"))
+                      'face heading-face)
+                     "\n")
+             'line-prefix
+             (propertize (if (eq ekg-notes-hierarchy-style 'inset)
+                             body-prefix prefix)
+                         'face guide-face)))))
     (with-temp-buffer
       (when heading (insert heading))
       (let ((start (point)))
