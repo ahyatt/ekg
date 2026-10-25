@@ -263,6 +263,27 @@
           (should (equal (ekg-note-id nested)
                          (ekg-note-id (ekg-current-note-or-error)))))))))
 
+(ekg-deftest-with-db ekg-test-notes-child-heading-guide-alignment ()
+  "Child-count headings keep their guides aligned with the note body."
+  (let ((ekg-display-note-template "%n(text)")
+        (ekg-notes-hierarchy-style 'inset)
+        (note (ekg-note-create :id 1 :text "Body\nSecond line"
+                               :mode 'text-mode)))
+    (dolist (depth '(0 1 2))
+      (with-temp-buffer
+        (insert (ekg--indent-displayed-note
+                 note depth (make-list depth t) 1 'full))
+        (goto-char (point-min))
+        ;; The disclosure marker must follow the heading's guide,
+        ;; rather than shifting a literal guide to its right.
+        (should (looking-at "▾ 1 child\n"))
+        (let ((heading-prefix (get-text-property (point) 'line-prefix)))
+          (forward-line 1)
+          (should (equal heading-prefix
+                         (get-text-property (point) 'line-prefix)))
+          (should (equal heading-prefix
+                         (get-text-property (point) 'wrap-prefix))))))))
+
 (ekg-deftest-with-db ekg-test-notes-action-target-at-point ()
   "Note commands target point, including separators and empty results."
   (let ((parent (ekg-note-create :text "Parent text" :mode 'text-mode))
