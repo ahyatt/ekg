@@ -2419,19 +2419,49 @@ tags)."
                         (point))))
       (cons start end))))
 
-(defun ekg--note-highlight ()
-  "Mark the entire current note and identify it in the header line."
+(defun ekg--note-subtree-region-at-point ()
+  "Return (START . END) covering the visible subtree at point, or nil."
+  (when-let* ((id (get-text-property (point) :ekg-note-id)))
+    (let ((ids (list id))
+          (seen (make-hash-table :test #'equal))
+          start end)
+      (cl-labels ((collect (note-id)
+                    (unless (gethash note-id seen)
+                      (puthash note-id t seen)
+                      (dolist (child (ekg-note-child-notes note-id))
+                        (push (ekg-note-id child) ids)
+                        (collect (ekg-note-id child))))))
+        (collect id))
+      (dolist (note-id ids)
+        (when-let* ((pos (text-property-any (point-min) (point-max)
+                                            :ekg-note-id note-id))
+                    (content-start (text-property-any
+                                    pos (point-max) 'ekg-note-id note-id)))
+          (setq start (if start (min start content-start) content-start)
+                end (max (or end content-start)
+                         (or (next-single-property-change
+                              content-start 'ekg-note-id)
+                             (point-max))))))
+      (when start (cons start end)))))
+
+(defun ekg--note-highlight (&optional subtree)
+  "Mark the entire current note and identify it in the header line.
+With SUBTREE, include the current note's visible descendants."
   (when (overlayp ekg-notes-hl)
-    (if-let* ((region (ekg--note-region-at-point)))
+    (if-let* ((region (if subtree
+                         (ekg--note-subtree-region-at-point)
+                       (ekg--note-region-at-point))))
         (let* ((id (get-text-property (point) :ekg-note-id))
                ;; Gaps belong to a note for navigation, but should not be
                ;; shaded.  The unprefixed property marks actual content.
                (start (or (text-property-any (car region) (cdr region)
                                              'ekg-note-id id)
                           (car region)))
-               (end (min (cdr region)
-                         (or (next-single-property-change start 'ekg-note-id)
-                             (point-max)))))
+               (end (if subtree
+                        (cdr region)
+                      (min (cdr region)
+                           (or (next-single-property-change start 'ekg-note-id)
+                               (point-max))))))
           (move-overlay ekg-notes-hl start end)
           (overlay-put ekg-notes-hl 'before-string
                        (propertize
@@ -2543,7 +2573,10 @@ With a `C-u' prefix or when ARG is non-nil, silently delete the
 current note without a prompt."
   (interactive "P" ekg-notes-mode)
   (let ((note (ekg-current-note-or-error)))
-    (when (or arg (y-or-n-p "Are you sure you want to delete this note?"))
+    (when (or arg
+              (progn
+                (ekg--note-highlight t)
+                (y-or-n-p "Are you sure you want to delete this note?")))
       (ekg-note-trash note)
       (ekg-notes-refresh))))
 
@@ -2708,6 +2741,8 @@ Folded notes retain a title handle and hide their descendants."
     (lambda () (setq ekg-notes--request-refresh nil)))
   :render
   (let* ((notes (funcall ekg-notes-fetch-notes-function))
+         (full-template ekg-display-note-template)
+         (summary-template ekg-display-note-summary-template)
          (include-descendants ekg-notes-include-descendants)
          (fetched-ids (make-hash-table :test #'equal))
          (visited (make-hash-table :test #'equal))
@@ -2756,8 +2791,8 @@ Folded notes retain a title handle and hide their descendants."
                                  (if outline 'outline 'full)))
                       (ekg-display-note-template
                        (if (not (eq state 'full))
-                           ekg-display-note-summary-template
-                         ekg-display-note-template))
+                           summary-template
+                         full-template))
                       (text (ekg--indent-displayed-note
                              note depth branches
                              (when (and ekg-notes-show-child-count

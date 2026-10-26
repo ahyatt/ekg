@@ -1029,7 +1029,9 @@
 (ekg-deftest-with-db ekg-test-notes-display-cycle ()
   "Cycling a subtree preserves selection and independently controls children."
   (let* ((parent (ekg-note-create :text "Parent body" :tags '("cycle")))
-         (child (ekg-note-create :text "Child body" :tags '("cycle"))))
+         (child (ekg-note-create :text "Child body" :tags '("cycle")))
+         (ekg-display-note-template "%n(text)\nFULL-CONTENT")
+         (ekg-display-note-summary-template "%n(text 2 oneline)"))
     (ekg-save-note parent)
     (ekg-save-note child)
     (ekg-note-set-parent child (ekg-note-id parent))
@@ -1046,6 +1048,7 @@
     (should (eq (ekg-notes-display-state) 'folded))
     (ekg-notes-toggle-collapse)
     (should (eq (ekg-notes-display-state) 'full))
+    (should (string-match-p "FULL-CONTENT" (buffer-string)))
     (ekg-notes--goto-id (ekg-note-id parent))
     (ekg-notes-toggle-collapse)
     (should (eq (ekg-notes-display-state) 'folded))

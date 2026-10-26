@@ -676,6 +676,24 @@ Returns the note ID."
     (should (equal (ekg-org-test--view-headings)
                    '((1 "Parent"))))))
 
+(ekg-deftest-with-db ekg-org-test-view-expand-child-under-titles ()
+  "Expanding a child under a titles-only parent shows its full content."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (child-id (ekg-org-test--add-task "Child" parent-id)))
+    (let ((child (ekg-get-note-with-id child-id)))
+      (setf (ekg-note-text child) "Child full body")
+      (ekg-save-note child))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (ekg-notes--goto-id parent-id)
+      (ekg-notes-toggle-collapse)
+      (ekg-notes--goto-id child-id)
+      (ekg-notes-toggle-collapse)
+      (ekg-notes-toggle-collapse)
+      (should (eq (ekg-notes-display-state child-id) 'full))
+      (should (string-match-p "Child full body" (buffer-string))))))
+
 (ekg-deftest-with-db ekg-org-test-view-archive-removes-from-view ()
   "Test that archiving a task removes it from the active view."
   (ekg-org-add-schema)
@@ -864,6 +882,30 @@ Returns the note ID."
   (let ((titles (ekg-org-test--view-titles)))
     (should (= (length titles) 1))
     (should (equal (car titles) "Keep"))))
+
+(ekg-deftest-with-db ekg-org-test-view-delete-highlights-subtree ()
+  "Deleting a task highlights its subtree, not the whole buffer."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (child-id (ekg-org-test--add-task "Child" parent-id))
+         (keep-id (ekg-org-test--add-task "Keep")))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (goto-char (point-min))
+      (let (highlighted)
+        (cl-letf (((symbol-function 'y-or-n-p)
+                   (lambda (_)
+                     (setq highlighted (cons (overlay-start ekg-notes-hl)
+                                             (overlay-end ekg-notes-hl)))
+                     nil)))
+          (ekg-org-view-delete))
+        (let ((child-start (text-property-any (point-min) (point-max)
+                                              :ekg-note-id child-id))
+              (keep-start (text-property-any (point-min) (point-max)
+                                             :ekg-note-id keep-id)))
+          (should (= (car highlighted) (point-min)))
+          (should (> (cdr highlighted) child-start))
+          (should (<= (cdr highlighted) keep-start)))))))
 
 (ekg-deftest-with-db ekg-org-test-view-trash-with-children ()
   "Test that trashing a task also trashes its children."
