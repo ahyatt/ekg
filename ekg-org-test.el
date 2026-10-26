@@ -676,6 +676,24 @@ Returns the note ID."
     (should (equal (ekg-org-test--view-headings)
                    '((1 "Parent"))))))
 
+(ekg-deftest-with-db ekg-org-test-view-expand-child-under-titles ()
+  "Expanding a child under a titles-only parent shows its full content."
+  (ekg-org-add-schema)
+  (let* ((parent-id (ekg-org-test--add-task "Parent"))
+         (child-id (ekg-org-test--add-task "Child" parent-id)))
+    (let ((child (ekg-get-note-with-id child-id)))
+      (setf (ekg-note-text child) "Child full body")
+      (ekg-save-note child))
+    (ekg-org-view)
+    (with-current-buffer "*ekg-org-tasks*"
+      (ekg-notes--goto-id parent-id)
+      (ekg-notes-toggle-collapse)
+      (ekg-notes--goto-id child-id)
+      (ekg-notes-toggle-collapse)
+      (ekg-notes-toggle-collapse)
+      (should (eq (ekg-notes-display-state child-id) 'full))
+      (should (string-match-p "Child full body" (buffer-string))))))
+
 (ekg-deftest-with-db ekg-org-test-view-archive-removes-from-view ()
   "Test that archiving a task removes it from the active view."
   (ekg-org-add-schema)

@@ -2708,6 +2708,8 @@ Folded notes retain a title handle and hide their descendants."
     (lambda () (setq ekg-notes--request-refresh nil)))
   :render
   (let* ((notes (funcall ekg-notes-fetch-notes-function))
+         (full-template ekg-display-note-template)
+         (summary-template ekg-display-note-summary-template)
          (include-descendants ekg-notes-include-descendants)
          (fetched-ids (make-hash-table :test #'equal))
          (visited (make-hash-table :test #'equal))
@@ -2756,8 +2758,8 @@ Folded notes retain a title handle and hide their descendants."
                                  (if outline 'outline 'full)))
                       (ekg-display-note-template
                        (if (not (eq state 'full))
-                           ekg-display-note-summary-template
-                         ekg-display-note-template))
+                           summary-template
+                         full-template))
                       (text (ekg--indent-displayed-note
                              note depth branches
                              (when (and ekg-notes-show-child-count
