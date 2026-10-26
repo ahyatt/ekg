@@ -808,9 +808,10 @@ With `state-only', omit dates and child completion counts."
   (when-let* ((id (ekg-org-view--note-at-point)))
     (ekg-notes--goto-id id)))
 
-(defun ekg-org-view--highlight ()
-  "Update the current note's normal selection indicator."
-  (ekg--note-highlight))
+(defun ekg-org-view--highlight (&optional subtree)
+  "Update the current note's normal selection indicator.
+With SUBTREE, include the current note's visible descendants."
+  (ekg--note-highlight subtree))
 
 (defun ekg-org-view--goto-heading (direction &optional same-level)
   "Move to the next note in DIRECTION, optionally at the SAME-LEVEL."
@@ -1110,6 +1111,7 @@ are case-insensitive.  Prompt with directory completion for DIR."
   (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
+    (ekg-org-view--highlight t)
     (when (y-or-n-p (format "Archive \"%s\" and all children? "
                             (or (ekg-org--note-title note) "Untitled")))
       (let ((ekg-org--inhibit-view-refresh t))
@@ -1127,6 +1129,7 @@ trashed, they are permanently deleted."
   (interactive nil ekg-org-view-mode)
   (when-let* ((id (ekg-org-view--note-at-point))
               (note (ekg-get-note-with-id id)))
+    (ekg-org-view--highlight t)
     (when (y-or-n-p (format "Delete \"%s\" and all children? "
                             (or (ekg-org--note-title note) "Untitled")))
       (let ((ekg-org--inhibit-view-refresh t))
