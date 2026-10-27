@@ -162,6 +162,39 @@
                                 buffer))))
                    (should-error (ekg-org-linear--request "query" nil))))))
 
+(ekg-deftest ekg-org-linear-test-request-uses-unibyte-parts ()
+             ;; A multibyte credential or body would make `url-http' reject
+             ;; the concatenated request and print it, secrets included.
+             (let ((ekg-org-linear-api-key (string-to-multibyte "test-key"))
+                   data headers)
+               (cl-letf (((symbol-function 'url-retrieve-synchronously)
+                          (lambda (&rest _)
+                            (setq data url-request-data
+                                  headers url-request-extra-headers)
+                            (let ((buffer (generate-new-buffer " *linear-test*")))
+                              (with-current-buffer buffer
+                                (setq-local url-http-response-status 200)
+                                (insert "HTTP/1.1 200 OK\n\n")
+                                (setq-local url-http-end-of-headers (point-marker))
+                                (insert "{\"data\":{\"ok\":true}}"))
+                              buffer))))
+                 (ekg-org-linear--request "query" `((text . ,(string ?\u2192))))
+                 (should-not (multibyte-string-p data))
+                 (dolist (header headers)
+                   (should-not (multibyte-string-p (car header)))
+                   (should-not (multibyte-string-p (cdr header)))))))
+
+(ekg-deftest ekg-org-linear-test-request-error-does-not-leak-key ()
+             (let ((ekg-org-linear-api-key "super-secret"))
+               (cl-letf (((symbol-function 'url-retrieve-synchronously)
+                          (lambda (&rest _)
+                            (error (concat "Request rejected: POST /graphql "
+                                           "Authorization: "
+                                           ekg-org-linear-api-key)))))
+                 (let ((err (should-error (ekg-org-linear--request "query" nil))))
+                   (should-not (string-match-p "super-secret"
+                                               (error-message-string err)))))))
+
 (ekg-deftest ekg-org-linear-test-request-decodes-utf-8 ()
              ;; `url-retrieve-synchronously' can return a unibyte buffer
              ;; holding raw UTF-8 bytes; `ekg-org-linear--request' must

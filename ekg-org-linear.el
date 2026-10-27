@@ -85,6 +85,14 @@ Customize this to distinguish in-progress and canceled tasks."
   "id identifier title description state { id type } team { id } parent { id }"
   "GraphQL fields needed for an issue.")
 
+(defun ekg-org-linear--unibyte (string)
+  "Return STRING in a unibyte representation.
+`url-http' concatenates headers and body, so a multibyte header turns
+non-ASCII body bytes into raw-byte characters and rejects the whole
+request.  Credentials from `auth-source' are often multibyte even when
+they contain only ASCII."
+  (if (multibyte-string-p string) (string-make-unibyte string) string))
+
 (defun ekg-org-linear--request (query variables)
   "Execute Linear GraphQL QUERY with VARIABLES, returning its data.
 Signal on transport, HTTP or GraphQL errors; never treat errors as success."
@@ -94,12 +102,27 @@ Signal on transport, HTTP or GraphQL errors; never treat errors as success."
               (user-error "Configure ekg-org-linear-api-key first")))
          (url-request-method "POST")
          (url-request-extra-headers
-          `(("Authorization" . ,key) ("Content-Type" . "application/json")))
+          (mapcar (lambda (header)
+                    (cons (ekg-org-linear--unibyte (car header))
+                          (ekg-org-linear--unibyte (cdr header))))
+                  `(("Authorization" . ,key)
+                    ("Content-Type" . "application/json"))))
          (url-request-data
-          (encode-coding-string
-           (json-encode `((query . ,query) (variables . ,variables))) 'utf-8))
-         (buffer (url-retrieve-synchronously "https://api.linear.app/graphql"
-                                             t t 60)))
+          (ekg-org-linear--unibyte
+           (encode-coding-string
+            (json-encode `((query . ,query) (variables . ,variables))) 'utf-8)))
+         (buffer
+          (condition-case err
+              (url-retrieve-synchronously "https://api.linear.app/graphql"
+                                          t t 60)
+            (error
+             (let ((message (error-message-string err)))
+               (cond
+                ((string-match-p "\\`Multibyte text in HTTP request" message)
+                 (error "Linear request could not be encoded"))
+                ((string-match-p (regexp-quote key) message)
+                 (error "Linear request failed; details omitted to protect the API key"))
+                (t (signal (car err) (cdr err)))))))))
     (unless buffer (error "Linear request failed"))
     (unwind-protect
         (with-current-buffer buffer
