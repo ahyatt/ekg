@@ -25,6 +25,7 @@
 (defun ekg-org-linear-test--issue (id title &optional parent)
   "Make a Linear issue with ID, TITLE and PARENT."
   (copy-tree `((id . ,id) (identifier . ,id) (title . ,title) (description . "Body")
+               (url . ,(format "https://linear.app/issue/%s" id))
                (team . ((id . "team"))) (state . ((id . "todo") (type . "unstarted")))
                (parent . ,(when parent `((id . ,parent)))))))
 
@@ -76,6 +77,8 @@
                          (let* ((notes (ekg-org-linear--linked-notes))
                                 (p (gethash "p" notes)) (c (gethash "c" notes)))
                            (should (= 2 (hash-table-count notes)))
+                           (should (equal (ekg-note-id p) "https://linear.app/issue/p"))
+                           (should (equal (ekg-note-id c) "https://linear.app/issue/c"))
                            (should (equal (ekg-note-parent-id c) (ekg-note-id p)))
                            (should (eq 'parallel (ekg-org-dependency-type p)))
                            (should (equal "TODO" (ekg-org-task-state c)))
@@ -146,6 +149,10 @@
                                   (lambda (_) (ekg-org-linear-test--issue "uuid" "Remote"))))
                          (ekg-org-linear-link (ekg-note-id a) "ENG-123")
                          (should (gethash "uuid" (ekg-org-linear--linked-notes)))
+                         (should (equal "https://linear.app/issue/uuid"
+                                        (ekg-note-id
+                                         (gethash "uuid"
+                                                  (ekg-org-linear--linked-notes)))))
                          (should-error (ekg-org-linear-link (ekg-note-id b) "ENG-123")))))
 
 (ekg-deftest ekg-org-linear-test-request-errors ()
@@ -206,6 +213,10 @@
                          (setf (alist-get 'parent parent) '((id . "c")))
                          (should-error (ekg-org-linear-sync)))))
 
+(defun ekg-org-linear-test--note-by-title (title)
+  "Return the sole note with TITLE."
+  (car (ekg-get-notes-with-title title)))
+
 (defun ekg-org-linear-test--task (title &optional parent)
   "Save and return a local task with TITLE and optional PARENT."
   (let ((note (ekg-note-create
@@ -242,8 +253,8 @@
                                       (push issue remote)
                                       `((issueCreate . ((success . t) (issue . ,issue))))))))
                          (ekg-org-linear-sync)
-                         (let* ((p (ekg-get-note-with-id (ekg-note-id parent)))
-                                (c (ekg-get-note-with-id (ekg-note-id child)))
+                         (let* ((p (ekg-org-linear-test--note-by-title "Parent"))
+                                (c (ekg-org-linear-test--note-by-title "Child"))
                                 (parent-id (ekg-org-get-property p "LINEAR_ID")))
                            (should (= 2 (length inputs)))
                            (should-not (alist-get 'parentId (cadr inputs)))
@@ -251,6 +262,8 @@
                            (should (equal "team" (alist-get 'teamId (car inputs))))
                            (should (equal "Local body" (ekg-note-text c)))
                            (should (equal (ekg-note-id p) (ekg-note-parent-id c)))
+                           (should (string-prefix-p "https://linear.app/issue/"
+                                                    (ekg-note-id p)))
                            (should-not (ekg-org-get-property unmarked "LINEAR_ID"))
                            (ekg-org-linear-sync)
                            (should (= 2 (length inputs)))))))
@@ -284,8 +297,12 @@
                                       (setf (alist-get 'description issue) "Local body")
                                       issue))))
                          (ekg-org-linear-sync)
+                         (should (equal "https://linear.app/issue/p"
+                                        (ekg-note-id
+                                         (ekg-org-linear-test--note-by-title "Parent"))))
                          (should (ekg-org-get-property
-                                  (ekg-get-note-with-id (ekg-note-id child)) "LINEAR_ID")))))
+                                  (ekg-org-linear-test--note-by-title "Child")
+                                  "LINEAR_ID")))))
 
 (ekg-deftest-with-db ekg-org-linear-test-recover-ambiguous-creation ()
                      (ekg-org-add-schema)
@@ -362,7 +379,8 @@
         (should-not (buffer-modified-p))
         (ekg--save-note-in-buffer)
         (should (equal "Remote body"
-                       (ekg-note-text (ekg-get-note-with-id (ekg-note-id task)))))))))
+                       (ekg-note-text
+                        (ekg-get-note-with-id (ekg-note-id ekg-note)))))))))
 
 (ekg-deftest-with-db ekg-org-linear-test-sync-refuses-unsaved-task-editor ()
   (ekg-org-add-schema)
@@ -419,7 +437,7 @@
       (should (= 1 creates))
       (should (equal (alist-get 'id created)
                      (ekg-org-get-property
-                      (ekg-get-note-with-id (ekg-note-id task)) "LINEAR_ID"))))))
+                      (ekg-org-linear-test--note-by-title "Title") "LINEAR_ID"))))))
 
 (ekg-deftest-with-db ekg-org-linear-test-recovery-errors-do-not-create ()
   (ekg-org-add-schema)
@@ -453,7 +471,7 @@
       (ekg-org-linear-sync)
       (should (equal "pending-uuid"
                      (ekg-org-get-property
-                      (ekg-get-note-with-id (ekg-note-id task)) "LINEAR_ID"))))))
+                      (ekg-org-linear-test--note-by-title "Title") "LINEAR_ID"))))))
 
 (ekg-deftest-with-db ekg-org-linear-test-mark-from-another-buffer ()
   (ekg-org-add-schema)

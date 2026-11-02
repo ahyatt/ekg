@@ -82,7 +82,7 @@ Customize this to distinguish in-progress and canceled tasks."
   :group 'ekg-org-linear)
 
 (defconst ekg-org-linear--fields
-  "id identifier title description state { id type } team { id } parent { id }"
+  "id identifier title description url state { id type } team { id } parent { id }"
   "GraphQL fields needed for an issue.")
 
 (defun ekg-org-linear--request (query variables)
@@ -154,15 +154,18 @@ Skip EXCEPT-BUFFER when marking from the editor that is being saved."
             (user-error "Save or close task editor %s before Linear sync"
                         (buffer-name))))))))
 
-(defun ekg-org-linear--save-note (note)
+(defun ekg-org-linear--save-note (note &optional previous-id)
   "Save NOTE without changing the caller's buffer modification flag.
 Refresh matching clean task editors, including their link metadata, so a
-subsequent editor save cannot restore stale content or remove the link."
+subsequent editor save cannot restore stale content or remove the link.
+PREVIOUS-ID matches editors opened before NOTE's ID changed."
   (with-temp-buffer (ekg-save-note note))
   (dolist (buffer (buffer-list))
     (with-current-buffer buffer
       (when (and (ekg-org-linear--editor-p)
-                 (equal (ekg-note-id ekg-note) (ekg-note-id note))
+                 (or (equal (ekg-note-id ekg-note) (ekg-note-id note))
+                     (and previous-id
+                          (equal (ekg-note-id ekg-note) previous-id)))
                  (not (buffer-modified-p)))
         (let ((text (ekg-insert-inlines-representation
                      (ekg-note-text note) (ekg-note-inlines note)))
@@ -316,6 +319,25 @@ to limit sync"))
     (unless (eq t (alist-get 'success result))
       (error "Linear issue update failed"))))
 
+(defun ekg-org-linear--issue-url (issue)
+  "Return the web URL of ISSUE."
+  (or (alist-get 'url issue)
+      (error "Linear issue %s has no URL"
+             (or (alist-get 'identifier issue) (alist-get 'id issue)))))
+
+(defun ekg-org-linear--assign-url-id (note issue)
+  "Make NOTE's EKG ID the web URL of ISSUE.
+Return non-nil when the ID changed.  Keep the current ID if another
+subject already uses the URL."
+  (let ((url (ekg-org-linear--issue-url issue))
+        (id (ekg-note-id note)))
+    (unless (equal id url)
+      (unless (ekg-note-with-id-exists-p url)
+        (triples-with-transaction ekg-db
+          (triples-move-subject ekg-db id url))
+        (setf (ekg-note-id note) url)
+        t))))
+
 (defun ekg-org-linear--linked-notes ()
   "Return a hash table mapping Linear UUIDs to EKG notes."
   (let ((table (make-hash-table :test 'equal)))
@@ -346,7 +368,9 @@ The first sync imports Linear's text and state.  No issue is created."
       (user-error "Linear issue is already linked to task %s" (ekg-note-id other)))
     (ekg-org-set-property note "LINEAR_ID" id)
     (ekg-org-remove-property note "LINEAR_SYNC")
-    (ekg-org-linear--save-note note)))
+    (let ((previous-id (ekg-note-id note)))
+      (ekg-org-linear--assign-url-id note issue)
+      (ekg-org-linear--save-note note previous-id))))
 
 ;;;###autoload
 (defun ekg-org-linear-mark-for-sync (note-id &optional unmark)
@@ -522,13 +546,21 @@ Marked local tasks are created in Linear, with their appropriate parent."
                      (unless (equal values remote)
                        (ekg-org-linear--update issue values))
                      (unless note
-                       (setq note
-                             (ekg-note-create
-                              :text ""
-                              :mode (if (fboundp 'markdown-mode)
-                                        'markdown-mode 'text-mode)
-                              :tags (list ekg-org-task-tag)))
-                       (ekg-org-set-dependency-type note 'parallel))
+                       (let ((url (ekg-org-linear--issue-url issue)))
+                         (setq note (or (ekg-get-note-with-id url)
+                                        (ekg-note-create
+                                         :text ""
+                                         :mode (if (fboundp 'markdown-mode)
+                                                   'markdown-mode 'text-mode)
+                                         :tags (list ekg-org-task-tag)
+                                         :id url)))
+                         (let ((linked (ekg-org-get-property note "LINEAR_ID")))
+                           (when (and linked (not (equal linked id)))
+                             (error "EKG note %s is already linked to Linear issue %s"
+                                    url linked)))
+                         (unless (member ekg-org-task-tag (ekg-note-tags note))
+                           (push ekg-org-task-tag (ekg-note-tags note)))
+                         (ekg-org-set-dependency-type note 'parallel)))
                      (setf (ekg-note-text note) (nth 1 values)
                            (ekg-note-tags note)
                            (cons (concat ekg-org-state-tag-prefix
@@ -546,7 +578,11 @@ Marked local tasks are created in Linear, with their appropriate parent."
                                         (car pair) (cdr pair))))
                      (ekg-org-set-property note "LINEAR_ID" id)
                      (ekg-org-set-property note "LINEAR_SYNC" (json-encode values))
-                     (when save-needed (ekg-org-linear--save-note note))
+                     (let ((previous-id (ekg-note-id note)))
+                       (when (ekg-org-linear--assign-url-id note issue)
+                         (setq save-needed t))
+                       (when save-needed
+                         (ekg-org-linear--save-note note previous-id)))
                      (puthash id note notes)
                      (puthash id 'done visiting)))
                  (gethash id notes)))

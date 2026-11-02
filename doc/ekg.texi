@@ -2285,8 +2285,10 @@ address@comma{} or to @samp{nil} to import everyone.  Set
 @samp{ekg-org-linear-import-team-id} to restrict import to a single team; when
 it is @samp{nil}@comma{} issues are imported across all teams@comma{} so keep an assignee
 filter configured.  Each issue becomes one EKG task@comma{} with sub-issues nested
-beneath their Linear parent.  Missing ancestors are fetched too.  Linear owns
-the hierarchy: subsequent syncs import moves@comma{} including moves to the root.
+beneath their Linear parent.  The task's EKG ID is the issue's Linear URL@comma{} so
+@samp{ekg-notes-browse} (@samp{b}) opens the issue in a browser.  Missing ancestors are
+fetched too.  Linear owns the hierarchy: subsequent syncs import moves@comma{}
+including moves to the root.
 Imported tasks use Markdown bodies (Linear's description format) and parallel
 children.  Without @samp{markdown-mode} installed@comma{} bodies use @samp{text-mode}.  Sibling ordering@comma{} projects and initiatives are not imported.
 
@@ -2296,8 +2298,11 @@ Linear's title@comma{} description and state@comma{} replacing those fields on t
 task.  Subsequent syncs send local edits back to Linear.  Unlinked EKG tasks
 remain local unless marked for creation as described below.  Explicitly linked
 issues remain in scope even outside the import team.  Links use the
-@samp{LINEAR_ID} Org property and remain stable
-when a title changes.  One Linear issue can be linked to only one EKG task.
+@samp{LINEAR_ID} Org property and remain stable when a title changes.  Linking
+moves the task to the issue's URL as its EKG ID@comma{} and the next sync moves any
+previously linked task whose ID is not yet that URL@.  If another subject
+already uses the URL@comma{} the task keeps its current ID@.  One Linear issue can be
+linked to only one EKG task.
 
 To create a new Linear issue from a local task@comma{} put point on the task in
 @samp{ekg-org-view} (or open its note) and run
