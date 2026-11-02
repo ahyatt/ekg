@@ -2348,12 +2348,16 @@ buffers keep their existing modified state.
 
 Sync compares each field with a stored @samp{LINEAR_SYNC} snapshot.  Independent
 edits (for example a local description change and a remote title change)
-merge.  If the same field changes differently on both sides@comma{} sync signals
-a conflict before writing that issue.  Resolve it by making that field equal
-on both sides@comma{} then rerun sync.  Earlier issues may already have synced;
-rerunning does not create duplicates.  Failed updates never advance the
-issue's snapshot.  Sync runs synchronously and is invoked explicitly; it
-does not install background timers or perform network requests on note save.
+merge.  Markdown link formatting that represents the same URL@comma{} Linear issue
+or GitHub pull request is treated as equivalent.  If the same field changes
+differently on both sides@comma{} sync opens the @samp{*EKG Linear Sync Conflict*} buffer
+with the issue@comma{} field@comma{} and local and remote values.  The error message points
+to that buffer rather than printing the values.  Resolve a conflict by making
+that field equal on both sides@comma{} then rerun sync.  Earlier issues may already
+have synced; rerunning does not create duplicates.  Failed updates never
+advance the issue's snapshot.  Sync runs synchronously and is invoked
+explicitly; it does not install background timers or perform network requests
+on note save.
 Deletion and archival are not propagated@comma{} and remote changes made during a
 sync can race with updates; avoid editing the same issue during a sync.
 

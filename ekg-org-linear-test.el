@@ -34,9 +34,50 @@
                                                    '("Title" "Remote" "TODO")
                                                    '("Title" "Body" "TODO"))
                             '("Local" "Remote" "TODO")))
+             (let* ((local (concat "Doc https://docs.google.com/document/d/id/edit"
+                                   "\nPR https://github.com/soundcloud/mono/pull/4121"
+                                   "\nIssue CORBE-500"))
+                    (remote (concat "Doc [https://docs.google.com/document/d/id/edit]"
+                                    "(<https://docs.google.com/document/d/id/edit>)"
+                                    "\nPR [soundcloud/mono#4121]"
+                                    "(https://linear.app/soundcloud/review/pr-4121)"
+                                    "\nIssue [CORBE-500]"
+                                    "(https://linear.app/soundcloud/issue/CORBE-500/slug)")))
+               (should (equal (ekg-org-linear--normalize-markdown-links local)
+                              (ekg-org-linear--normalize-markdown-links remote)))
+               (should (equal (ekg-org-linear--merge
+                               (list "Title" local "TODO")
+                               (list "Title" remote "TODO")
+                               '("Title" "Before edit" "TODO"))
+                              (list "Title" remote "TODO")))
+               (should-error (ekg-org-linear--merge
+                              '("Title" "[link](https://example.com/local)" "TODO")
+                              '("Title" "[link](https://example.com/remote)" "TODO")
+                              '("Title" "Before edit" "TODO"))))
              (should-error (ekg-org-linear--merge '("Local" "" "TODO")
                                                   '("Remote" "" "TODO")
                                                   '("Base" "" "TODO"))))
+
+(ekg-deftest ekg-org-linear-test-conflict-report ()
+  (let ((buffer-name ekg-org-linear--conflict-buffer-name))
+    (unwind-protect
+        (let* ((issue (ekg-org-linear-test--issue "ENG-123" "Issue title"))
+               (err (should-error
+                     (ekg-org-linear--merge '("Title" "local body" "TODO")
+                                            '("Title" "remote body" "TODO")
+                                            '("Title" "base body" "TODO")
+                                            issue)))
+               (message (error-message-string err)))
+          (should (string-match-p "Description.*ENG-123" message))
+          (should-not (string-match-p "local body\\|remote body" message))
+          (with-current-buffer buffer-name
+            (should (string-match-p "Issue: ENG-123 — Issue title"
+                                    (buffer-string)))
+            (should (string-match-p "Field: Description" (buffer-string)))
+            (should (string-match-p "local body" (buffer-string)))
+            (should (string-match-p "remote body" (buffer-string)))))
+      (when (get-buffer buffer-name)
+        (kill-buffer buffer-name)))))
 
 (ekg-deftest ekg-org-linear-test-duplicate-state ()
              (should (equal "DONE"

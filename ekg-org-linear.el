@@ -30,6 +30,7 @@
 (require 'ekg-org)
 (require 'json)
 (require 'org-id)
+(require 'rx)
 (require 'url)
 (require 'url-http)
 
@@ -277,14 +278,89 @@ to limit sync"))
   (list (ekg-org--note-title note) (or (ekg-note-text note) "")
         (ekg-org-task-state note)))
 
-(defun ekg-org-linear--merge (local remote base)
-  "Merge LOCAL and REMOTE against BASE, signaling on conflicting fields."
+(defun ekg-org-linear--normalize-markdown-links (text)
+  "Normalize Linear's Markdown link forms in TEXT for comparison."
+  (let ((regexp
+         (rx "[" (group (+ (not (any "]" "\n")))) "]("
+             (or (seq "<" (group (seq "https://" (+ (not (any ">" "\n"))))) ">")
+                 (group (seq "https://" (+ (not (any ")" " " "\n"))))))
+             ")")))
+    (replace-regexp-in-string
+     regexp
+     (lambda (link)
+       (save-match-data
+         (let* ((label (match-string 1 link))
+                (url (or (match-string 2 link) (match-string 3 link)))
+                (issue (and (string-match-p
+                             "\\`[[:upper:]][[:upper:][:digit:]]+-[0-9]+\\'"
+                             label)
+                            (string-match-p
+                             (format "\\`https://linear\\.app/[^/]+/issue/%s\\(?:/\\|\\'\\)"
+                                     (regexp-quote label))
+                             url)))
+                (pull (and (string-match
+                            "\\`\\([^/ ]+\\)/\\([^/ ]+\\)#\\([0-9]+\\)\\'"
+                            label)
+                           (let ((parts (list (match-string 1 label)
+                                              (match-string 2 label)
+                                              (match-string 3 label))))
+                             (and (string-match-p
+                                   "\\`https://linear\\.app/[^/]+/review/"
+                                   url)
+                                  parts)))))
+           (cond (issue label)
+                 (pull (format "https://github.com/%s/%s/pull/%s"
+                               (nth 0 pull) (nth 1 pull) (nth 2 pull)))
+                 ((equal label url) url)
+                 (t link)))))
+     text t t)))
+
+(defconst ekg-org-linear--conflict-buffer-name "*EKG Linear Sync Conflict*"
+  "Buffer name used to show Linear sync conflicts.")
+
+(defun ekg-org-linear--report-conflict (issue field local remote)
+  "Display ISSUE's FIELD conflict between LOCAL and REMOTE, then signal."
+  (let* ((identifier (or (alist-get 'identifier issue) (alist-get 'id issue)
+                         "unknown"))
+         (title (alist-get 'title issue))
+         (url (alist-get 'url issue))
+         (buffer (get-buffer-create ekg-org-linear--conflict-buffer-name)))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (format "Linear sync conflict\n\nIssue: %s" identifier))
+        (when title (insert " — " title))
+        (insert "\n")
+        (when url (insert (format "URL: %s\n" url)))
+        (insert (format "Field: %s\n\n" field)
+                "Local value\n-----------\n"
+                (if (equal local "") "(empty)" (format "%s" local))
+                "\n\nRemote value\n------------\n"
+                (if (equal remote "") "(empty)" (format "%s" remote))
+                "\n\nResolve this by making the field identical in EKG and Linear, then "
+                "run `M-x ekg-org-linear-sync' again. Save or close any modified "
+                "EKG task editor first.\n")
+        (special-mode)
+        (goto-char (point-min))))
+    (unless noninteractive
+      (display-buffer buffer))
+    (user-error "Linear sync conflict in %s for %s; see %s"
+                field identifier ekg-org-linear--conflict-buffer-name)))
+
+(defun ekg-org-linear--merge (local remote base &optional issue)
+  "Merge LOCAL and REMOTE against BASE, signaling on conflicting fields.
+ISSUE supplies the Linear issue details for a conflict report."
   (if (null base) remote
-    (cl-mapcar (lambda (l r b)
+    (cl-mapcar (lambda (field l r b)
                  (cond ((equal l r) l) ((equal l b) r) ((equal r b) l)
-                       (t (error "Linear sync conflict; local: %S; remote: %S"
-                                 l r))))
-               local remote base)))
+                       ((and (stringp l) (stringp r)
+                             (equal (ekg-org-linear--normalize-markdown-links l)
+                                    (ekg-org-linear--normalize-markdown-links r)))
+                        r)
+                       (t (if issue
+                              (ekg-org-linear--report-conflict issue field l r)
+                            (user-error "Linear sync conflict in %s" field)))))
+               '("Title" "Description" "State") local remote base)))
 
 (defun ekg-org-linear--state-id (issue keyword)
   "Resolve Org KEYWORD to a workflow state ID for ISSUE's team."
@@ -535,7 +611,7 @@ Marked local tasks are created in Linear, with their appropriate parent."
                                     (json-read-from-string snapshot))))
                           (values (ekg-org-linear--merge
                                    (when note (ekg-org-linear--local-values note))
-                                   remote base))
+                                   remote base issue))
                           (save-needed
                            (or (null note)
                                (not (equal values
