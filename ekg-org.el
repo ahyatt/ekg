@@ -700,7 +700,7 @@ Keys are :current-id, :root-id, :archive, :visible-ids, :folded-ids
 and :display-states."
   (unless (derived-mode-p 'ekg-org-view-mode)
     (user-error "This command requires an Org task view"))
-  (list :current-id (get-text-property (point) :ekg-note-id)
+  (list :current-id (get-text-property (point) 'ekg-note-id)
         :root-id ekg-org-view--root-id :archive ekg-org-view--archive
         :visible-ids (ekg-notes-visible-ids)
         :folded-ids (mapcar #'car (seq-filter
@@ -778,7 +778,7 @@ With `state-only', omit dates and child completion counts."
 
 (defun ekg-org-view--note-at-point ()
   "Return the note ID at point, or nil."
-  (get-text-property (point) :ekg-note-id))
+  (get-text-property (point) 'ekg-note-id))
 
 (defun ekg-org-view--require-task-at-point ()
   "Return the task at point, or signal a user-facing error."
@@ -792,16 +792,16 @@ With `state-only', omit dates and child completion counts."
   "Return the task hierarchy level at point, or nil."
   (when-let* ((id (ekg-org-view--note-at-point))
               (start (text-property-any (point-min) (point-max)
-                                        :ekg-note-id id))
-              (depth (get-text-property start :ekg-note-depth)))
+                                        'ekg-note-id id))
+              (depth (get-text-property start 'ekg-note-depth)))
     (1+ depth)))
 
 (defun ekg-org-view--on-heading-p ()
   "Return non-nil at the beginning of a displayed note."
   (and (get-text-property (point) 'ekg-note-id)
        (or (bobp)
-           (not (equal (get-text-property (point) :ekg-note-id)
-                       (get-text-property (1- (point)) :ekg-note-id))))))
+           (not (equal (get-text-property (point) 'ekg-note-id)
+                       (get-text-property (1- (point)) 'ekg-note-id))))))
 
 (defun ekg-org-view--ensure-on-heading ()
   "Move to the beginning of the current note."
@@ -867,7 +867,7 @@ With SUBTREE, include the current note's visible descendants."
       (save-excursion
         (while (and (not found) (not (bobp)))
           (forward-line -1)
-          (let ((id (get-text-property (point) :ekg-note-id)))
+          (let ((id (get-text-property (point) 'ekg-note-id)))
             (when (and (ekg-org-view--on-heading-p)
                        (not (equal id current-id)))
               (let ((level (ekg-org-view--level-at-point)))

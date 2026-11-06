@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/ekg
-;; Package-Requires: ((triples "0.6.1") (emacs "29.1") (llm "0.30.0") (vui "20261017.1157"))
+;; Package-Requires: ((triples "0.6.1") (emacs "29.1") (llm "0.30.0") (vui "20261030.946"))
 ;; Keywords: outlines, hypermedia
 ;; Version: 0.10.0
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -2407,21 +2407,21 @@ tags)."
 
 (defun ekg--note-region-at-point ()
   "Return (START . END) of the note region at point, or nil."
-  (when-let* ((id (get-text-property (point) :ekg-note-id)))
-    (let ((start (or (previous-single-property-change (point) :ekg-note-id)
+  (when-let* ((id (get-text-property (point) 'ekg-note-id)))
+    (let ((start (or (previous-single-property-change (point) 'ekg-note-id)
                      (point-min)))
-          (end (or (next-single-property-change (point) :ekg-note-id)
+          (end (or (next-single-property-change (point) 'ekg-note-id)
                    (point-max))))
       ;; previous-single-property-change lands on the prior note (or
       ;; gap); scan forward to find where our note actually begins.
-      (unless (equal (get-text-property start :ekg-note-id) id)
-        (setq start (or (next-single-property-change start :ekg-note-id)
+      (unless (equal (get-text-property start 'ekg-note-id) id)
+        (setq start (or (next-single-property-change start 'ekg-note-id)
                         (point))))
       (cons start end))))
 
 (defun ekg--note-subtree-region-at-point ()
   "Return (START . END) covering the visible subtree at point, or nil."
-  (when-let* ((id (get-text-property (point) :ekg-note-id)))
+  (when-let* ((id (get-text-property (point) 'ekg-note-id)))
     (let ((ids (list id))
           (seen (make-hash-table :test #'equal))
           start end)
@@ -2434,7 +2434,7 @@ tags)."
         (collect id))
       (dolist (note-id ids)
         (when-let* ((pos (text-property-any (point-min) (point-max)
-                                            :ekg-note-id note-id))
+                                            'ekg-note-id note-id))
                     (content-start (text-property-any
                                     pos (point-max) 'ekg-note-id note-id)))
           (setq start (if start (min start content-start) content-start)
@@ -2451,7 +2451,7 @@ With SUBTREE, include the current note's visible descendants."
     (if-let* ((region (if subtree
                          (ekg--note-subtree-region-at-point)
                        (ekg--note-region-at-point))))
-        (let* ((id (get-text-property (point) :ekg-note-id))
+        (let* ((id (get-text-property (point) 'ekg-note-id))
                ;; Gaps belong to a note for navigation, but should not be
                ;; shaded.  The unprefixed property marks actual content.
                (start (or (text-property-any (car region) (cdr region)
@@ -2495,7 +2495,7 @@ With SUBTREE, include the current note's visible descendants."
 Raise an error if there is no current note."
   (unless (derived-mode-p 'ekg-notes-mode)
     (error "This command can only be used in `ekg-notes-mode'"))
-  (if-let* ((id (get-text-property (point) :ekg-note-id)))
+  (if-let* ((id (get-text-property (point) 'ekg-note-id)))
       (or (ekg-get-note-with-id id)
           (error "Note with ID %s no longer exists" id))
     (error "No current note is available to act on!  Create a new note first with `ekg-capture'")))
@@ -2563,7 +2563,7 @@ tags."
 Note is not deleted from the database and will reappear when the
 view is refreshed."
   (interactive nil ekg-notes-mode)
-  (when-let* ((id (get-text-property (point) :ekg-note-id)))
+  (when-let* ((id (get-text-property (point) 'ekg-note-id)))
     (push id ekg-notes--hidden-ids)
     (ekg--notes-mount)))
 
@@ -2623,8 +2623,8 @@ TITLE is the title of the URL to browse to."
   "Return visible note ID's effective `full', `outline', or `folded' state.
 Without ID, use the current note.  Return nil when ID is not visible."
   (let* ((id (or id (ekg-note-id (ekg-current-note-or-error))))
-         (pos (text-property-any (point-min) (point-max) :ekg-note-id id)))
-    (when pos (get-text-property pos :ekg-note-display-state))))
+         (pos (text-property-any (point-min) (point-max) 'ekg-note-id id)))
+    (when pos (get-text-property pos 'ekg-note-display-state))))
 
 (defun ekg-notes--unfold-ids (ids)
   "Expand folded notes in IDS, preserving other display states."
@@ -2640,9 +2640,9 @@ an ancestor, does not change its action target."
   (cl-labels
       ((anchor (pos)
          (let* ((id (get-text-property
-                     (min pos (max (point-min) (1- (point-max)))) :ekg-note-id))
+                     (min pos (max (point-min) (1- (point-max)))) 'ekg-note-id))
                 (start (and id (text-property-any (point-min) (point-max)
-                                                  :ekg-note-id id)))
+                                                  'ekg-note-id id)))
                 (note (and id (ekg-get-note-with-id id))))
            (list id (if start (- pos start) 0)
                  (when note
@@ -2651,13 +2651,13 @@ an ancestor, does not change its action target."
          (pcase-let ((`(,id ,offset ,ancestors) anchor))
            (cl-loop for candidate in (delq nil (cons id ancestors))
                     for start = (text-property-any (point-min) (point-max)
-                                                   :ekg-note-id candidate)
+                                                   'ekg-note-id candidate)
                     when start return
                     (let ((exact (equal candidate id)))
                       (cons (if exact
                                 (min (+ start offset)
                                      (1- (or (next-single-property-change
-                                              start :ekg-note-id)
+                                              start 'ekg-note-id)
                                              (point-max))))
                               start)
                             exact))))))
@@ -2700,16 +2700,16 @@ The mounted notes component preserves other windows independently."
   "Return the visible note IDs in navigation order in this notes buffer."
   (let ((pos (point-min)) ids)
     (while (< pos (point-max))
-      (when-let* ((id (get-text-property pos :ekg-note-id)))
+      (when-let* ((id (get-text-property pos 'ekg-note-id)))
         (push id ids))
-      (setq pos (or (next-single-property-change pos :ekg-note-id)
+      (setq pos (or (next-single-property-change pos 'ekg-note-id)
                     (point-max))))
     (seq-uniq (nreverse ids))))
 
 (defun ekg-notes--goto-id (id)
   "Move to note ID in the current buffer, returning non-nil if found."
   (when-let* ((pos (text-property-any (point-min) (point-max)
-                                    :ekg-note-id id)))
+                                    'ekg-note-id id)))
     (goto-char pos)
     (ekg--note-highlight)
     t))
@@ -2728,8 +2728,8 @@ Folded notes retain a title handle and hide their descendants."
   "One keyed note in a notes view, including its following separator."
   :memo t
   :render
-  (vui-text text :ekg-note-id id :ekg-note-depth depth
-            :ekg-note-display-state display-state))
+  (vui-text text 'ekg-note-id id 'ekg-note-depth depth
+            'ekg-note-display-state display-state))
 
 (vui-defcomponent ekg-notes-root ()
   "Root component for the notes list view."
@@ -2826,24 +2826,24 @@ Folded notes retain a title handle and hide their descendants."
                                                        "\n\n" "\n"))))))))
 
 (defun ekg--notes-fill-id-gaps ()
-  "Extend `:ekg-note-id' properties to cover gaps between notes.
+  "Extend `ekg-note-id' properties to cover gaps between notes.
 This ensures that every buffer position belongs to a note, so the
 cursor always lands on a note."
   (let ((pos (point-min)))
     (while (< pos (point-max))
-      (if (get-text-property pos :ekg-note-id)
-          (setq pos (or (next-single-property-change pos :ekg-note-id)
+      (if (get-text-property pos 'ekg-note-id)
+          (setq pos (or (next-single-property-change pos 'ekg-note-id)
                         (point-max)))
         ;; In a gap — assign it to the preceding note, or the next one
         ;; if there is no preceding note.
-        (let ((gap-end (or (next-single-property-change pos :ekg-note-id)
+        (let ((gap-end (or (next-single-property-change pos 'ekg-note-id)
                            (point-max)))
               (prev-id (and (> pos (point-min))
-                            (get-text-property (1- pos) :ekg-note-id))))
+                            (get-text-property (1- pos) 'ekg-note-id))))
           (if prev-id
-              (put-text-property pos gap-end :ekg-note-id prev-id)
-            (when-let* ((next-id (get-text-property gap-end :ekg-note-id)))
-              (put-text-property pos gap-end :ekg-note-id next-id)))
+              (put-text-property pos gap-end 'ekg-note-id prev-id)
+            (when-let* ((next-id (get-text-property gap-end 'ekg-note-id)))
+              (put-text-property pos gap-end 'ekg-note-id next-id)))
           (setq pos gap-end))))))
 
 (defun ekg--notes-mount ()
@@ -2930,34 +2930,34 @@ Returns the position of the start of the note, or nil."
         (result nil))
     (save-excursion
       (goto-char pos)
-      (let ((current-id (get-text-property (point) :ekg-note-id)))
+      (let ((current-id (get-text-property (point) 'ekg-note-id)))
         ;; First, move past the current note (or gap).
         ;; When going backward, previous-single-property-change can
         ;; return nil if the preceding note extends to point-min (no
         ;; further property change exists).  Fall back to point-min.
-        (when-let* ((boundary (or (funcall search-fn (point) :ekg-note-id)
+        (when-let* ((boundary (or (funcall search-fn (point) 'ekg-note-id)
                                   (and (eq direction :backward)
                                        (> (point) (point-min))
                                        (point-min)))))
           (goto-char boundary)
           ;; If we landed in a gap, move past it.
-          (unless (get-text-property (point) :ekg-note-id)
-            (when-let* ((next (funcall search-fn (point) :ekg-note-id)))
+          (unless (get-text-property (point) 'ekg-note-id)
+            (when-let* ((next (funcall search-fn (point) 'ekg-note-id)))
               (goto-char next)))
           ;; Now we should be on a different note.
-          (when (and (get-text-property (point) :ekg-note-id)
-                     (not (equal (get-text-property (point) :ekg-note-id)
+          (when (and (get-text-property (point) 'ekg-note-id)
+                     (not (equal (get-text-property (point) 'ekg-note-id)
                                  current-id)))
             (if (eq direction :backward)
                 ;; Find the start of this note.  If
                 ;; previous-single-property-change returns a gap
                 ;; position (happens when point is already at the first
                 ;; char), use point itself.
-                (let ((target-id (get-text-property (point) :ekg-note-id))
+                (let ((target-id (get-text-property (point) 'ekg-note-id))
                       (start (previous-single-property-change
-                              (point) :ekg-note-id)))
+                              (point) 'ekg-note-id)))
                   (setq result
-                        (if (and start (equal (get-text-property start :ekg-note-id)
+                        (if (and start (equal (get-text-property start 'ekg-note-id)
                                               target-id))
                             start
                           (point))))
