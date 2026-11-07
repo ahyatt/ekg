@@ -302,7 +302,7 @@
       (should (equal (ekg-note-id parent)
                      (ekg-note-id (ekg-current-note-or-error))))
       ;; A separator retains the preceding note's action target.
-      (goto-char (next-single-property-change (point) 'ekg-note-id))
+      (forward-line 1)
       (should (equal (ekg-note-id parent)
                      (ekg-note-id (ekg-current-note-or-error))))
       (ekg--show-notes "Empty" (lambda () nil) nil)
@@ -813,29 +813,29 @@
     (unwind-protect
         (with-current-buffer buf
           (goto-char (point-min))
-          (let ((note1-id (get-text-property (point) :ekg-note-id)))
+          (let ((note1-id (get-text-property (point) 'ekg-note-id)))
             (should note1-id)
             ;; Move forward to note 2.
             (ekg-notes-next)
-            (let ((note2-id (get-text-property (point) :ekg-note-id)))
+            (let ((note2-id (get-text-property (point) 'ekg-note-id)))
               (should note2-id)
               (should-not (equal note1-id note2-id))
               ;; Move back to note 1 — this is the bug scenario.
               (ekg-notes-previous)
-              (should (equal (get-text-property (point) :ekg-note-id)
+              (should (equal (get-text-property (point) 'ekg-note-id)
                              note1-id))
               ;; Move forward twice to note 3.
               (ekg-notes-next)
               (ekg-notes-next)
-              (let ((note3-id (get-text-property (point) :ekg-note-id)))
+              (let ((note3-id (get-text-property (point) 'ekg-note-id)))
                 (should-not (equal note2-id note3-id))
                 ;; Move back to note 2.
                 (ekg-notes-previous)
-                (should (equal (get-text-property (point) :ekg-note-id)
+                (should (equal (get-text-property (point) 'ekg-note-id)
                                note2-id))
                 ;; Move back to note 1.
                 (ekg-notes-previous)
-                (should (equal (get-text-property (point) :ekg-note-id)
+                (should (equal (get-text-property (point) 'ekg-note-id)
                                note1-id))))))
       (kill-buffer buf))))
 
@@ -1095,7 +1095,7 @@
       (should-not (text-properties-at 0 text)))))
 
 (ekg-deftest-with-db ekg-test-notes-rendered-properties ()
-  "Note metadata keeps its keyword names on mount and refresh."
+  "Note metadata remains available on mount and refresh."
   (let* ((parent (ekg-note-create :text "Parent"))
          (child (ekg-note-create :text "Child"))
          (notes (list parent child)))
@@ -1114,10 +1114,10 @@
         (cl-loop for note in notes
                  for depth from 0
                  do (should (ekg-notes--goto-id (ekg-note-id note)))
-                 (should (equal (get-text-property (point) :ekg-note-depth)
+                 (should (equal (get-text-property (point) 'ekg-note-depth)
                                 depth))
                  (should (eq (get-text-property
-                              (point) :ekg-note-display-state)
+                              (point) 'ekg-note-display-state)
                              'full)))))))
 
 (ekg-deftest-with-db ekg-test-notes-refresh-reuses-vui-items ()
@@ -1216,17 +1216,17 @@
       (let* ((action (selected-window))
              (other (split-window-right))
              (other-pos (text-property-any (point-min) (point-max)
-                                            :ekg-note-id (ekg-note-id second))))
+                                            'ekg-note-id (ekg-note-id second))))
         (set-window-point other other-pos)
         (set-window-start other other-pos t)
         (ekg-notes--goto-id (ekg-note-id first))
         (dotimes (_ 3)
           (ekg-notes-toggle-collapse)
-          (should (equal (get-text-property (window-point action) :ekg-note-id)
+          (should (equal (get-text-property (window-point action) 'ekg-note-id)
                          (ekg-note-id first)))
-          (should (equal (get-text-property (window-point other) :ekg-note-id)
+          (should (equal (get-text-property (window-point other) 'ekg-note-id)
                          (ekg-note-id second)))
-          (should (equal (get-text-property (window-start other) :ekg-note-id)
+          (should (equal (get-text-property (window-start other) 'ekg-note-id)
                          (ekg-note-id second))))))))
 
 (ekg-deftest-with-db ekg-test-notes-state-query-hidden-descendants ()

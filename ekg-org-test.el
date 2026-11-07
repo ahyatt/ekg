@@ -565,7 +565,7 @@ Returns the note ID."
       (while (not (eobp))
         (when (ekg-org-view--on-heading-p)
           (let* ((level (ekg-org-view--level-at-point))
-                 (id (get-text-property (point) :ekg-note-id))
+                 (id (get-text-property (point) 'ekg-note-id))
                  (note (ekg-get-note-with-id id))
                  (title (car (plist-get (ekg-note-properties note)
                                         :titled/title))))
@@ -721,7 +721,7 @@ Returns the note ID."
       (let (titles)
         (while (not (eobp))
           (when (ekg-org-view--on-heading-p)
-            (let* ((nid (get-text-property (point) :ekg-note-id))
+            (let* ((nid (get-text-property (point) 'ekg-note-id))
                    (note (ekg-get-note-with-id nid))
                    (title (car (plist-get (ekg-note-properties note)
                                           :titled/title))))
@@ -900,9 +900,9 @@ Returns the note ID."
                      nil)))
           (ekg-org-view-delete))
         (let ((child-start (text-property-any (point-min) (point-max)
-                                              :ekg-note-id child-id))
+                                              'ekg-note-id child-id))
               (keep-start (text-property-any (point-min) (point-max)
-                                             :ekg-note-id keep-id)))
+                                             'ekg-note-id keep-id)))
           (should (= (car highlighted) (point-min)))
           (should (> (cdr highlighted) child-start))
           (should (<= (cdr highlighted) keep-start)))))))
@@ -970,14 +970,14 @@ Returns the note ID."
       ;; Up → back to "Parent 1"
       (ekg-org-view-up-heading)
       (should (equal (ekg-org-view--level-at-point) 1))
-      (let* ((id (get-text-property (point) :ekg-note-id))
+      (let* ((id (get-text-property (point) 'ekg-note-id))
              (title (car (plist-get (ekg-note-properties
                                      (ekg-get-note-with-id id))
                                     :titled/title))))
         (should (equal title "Parent 1")))
       ;; Next sibling → "Parent 2"
       (ekg-org-view-next-sibling)
-      (let* ((id (get-text-property (point) :ekg-note-id))
+      (let* ((id (get-text-property (point) 'ekg-note-id))
              (title (car (plist-get (ekg-note-properties
                                      (ekg-get-note-with-id id))
                                     :titled/title))))
@@ -1068,7 +1068,7 @@ An agent saving a new note should cause the view to update automatically."
             (should (member "New child" (ekg-org-test--view-titles))))
           (with-current-buffer view
             (let ((later-start (text-property-any
-                                (point-min) (point-max) :ekg-note-id later)))
+                                (point-min) (point-max) 'ekg-note-id later)))
               (should (= (window-start second) later-start))
               (should (= (window-point second) (+ later-start 3)))))
           (ekg-org-view--goto-note-id parent)

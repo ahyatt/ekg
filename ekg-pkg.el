@@ -9,8 +9,8 @@
   "A sqlite-based note-taking package based on tags."
   '((triples "0.6.1")
     (emacs   "29.1")
-    (llm "0.18.0")
-    (vui "20261017.1157")))
+    (llm "0.30.0")
+    (vui "20261030.946")))
 
 (provide 'ekg-pkg)
 ;;; ekg-pkg.el ends here
