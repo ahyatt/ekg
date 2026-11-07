@@ -2728,8 +2728,10 @@ Folded notes retain a title handle and hide their descendants."
   "One keyed note in a notes view, including its following separator."
   :memo t
   :render
-  (vui-text text :ekg-note-id id :ekg-note-depth depth
-            :ekg-note-display-state display-state))
+  ;; VUI normalizes keyword props to plain symbols.  Keep EKG's keyword
+  ;; properties on the string itself so navigation can find them.
+  (vui-text (propertize text :ekg-note-id id :ekg-note-depth depth
+                        :ekg-note-display-state display-state)))
 
 (vui-defcomponent ekg-notes-root ()
   "Root component for the notes list view."
