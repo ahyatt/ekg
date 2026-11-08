@@ -1633,8 +1633,10 @@ address, or to =nil= to import everyone.  Set
 =ekg-org-linear-import-team-id= to restrict import to a single team; when
 it is =nil=, issues are imported across all teams, so keep an assignee
 filter configured.  Each issue becomes one EKG task, with sub-issues nested
-beneath their Linear parent.  Missing ancestors are fetched too.  Linear owns
-the hierarchy: subsequent syncs import moves, including moves to the root.
+beneath their Linear parent.  The task's EKG ID is the issue's Linear URL, so
+=ekg-notes-browse= (=b=) opens the issue in a browser.  Missing ancestors are
+fetched too.  Linear owns the hierarchy: subsequent syncs import moves,
+including moves to the root.
 Imported tasks use Markdown bodies (Linear's description format) and parallel
 children.  Without =markdown-mode= installed, bodies use =text-mode=.  Sibling ordering, projects and initiatives are not imported.
 
@@ -1644,8 +1646,11 @@ Linear's title, description and state, replacing those fields on the linked
 task.  Subsequent syncs send local edits back to Linear.  Unlinked EKG tasks
 remain local unless marked for creation as described below.  Explicitly linked
 issues remain in scope even outside the import team.  Links use the
-=LINEAR_ID= Org property and remain stable
-when a title changes.  One Linear issue can be linked to only one EKG task.
+=LINEAR_ID= Org property and remain stable when a title changes.  Linking
+moves the task to the issue's URL as its EKG ID, and the next sync moves any
+previously linked task whose ID is not yet that URL.  If another subject
+already uses the URL, the task keeps its current ID.  One Linear issue can be
+linked to only one EKG task.
 
 To create a new Linear issue from a local task, put point on the task in
 =ekg-org-view= (or open its note) and run
@@ -1691,12 +1696,16 @@ buffers keep their existing modified state.
 
 Sync compares each field with a stored =LINEAR_SYNC= snapshot.  Independent
 edits (for example a local description change and a remote title change)
-merge.  If the same field changes differently on both sides, sync signals
-a conflict before writing that issue.  Resolve it by making that field equal
-on both sides, then rerun sync.  Earlier issues may already have synced;
-rerunning does not create duplicates.  Failed updates never advance the
-issue's snapshot.  Sync runs synchronously and is invoked explicitly; it
-does not install background timers or perform network requests on note save.
+merge.  Markdown link formatting that represents the same URL, Linear issue
+or GitHub pull request is treated as equivalent.  If the same field changes
+differently on both sides, sync opens the =*EKG Linear Sync Conflict*= buffer
+with the issue, field, and local and remote values.  The error message points
+to that buffer rather than printing the values.  Resolve a conflict by making
+that field equal on both sides, then rerun sync.  Earlier issues may already
+have synced; rerunning does not create duplicates.  Failed updates never
+advance the issue's snapshot.  Sync runs synchronously and is invoked
+explicitly; it does not install background timers or perform network requests
+on note save.
 Deletion and archival are not propagated, and remote changes made during a
 sync can race with updates; avoid editing the same issue during a sync.
 

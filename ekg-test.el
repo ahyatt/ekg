@@ -1094,6 +1094,32 @@
            (text (ekg-display-note-titled note 12 'text-fallback 'plaintext)))
       (should-not (text-properties-at 0 text)))))
 
+(ekg-deftest-with-db ekg-test-notes-rendered-properties ()
+  "Note metadata remains available on mount and refresh."
+  (let* ((parent (ekg-note-create :text "Parent"))
+         (child (ekg-note-create :text "Child"))
+         (notes (list parent child)))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child (ekg-note-id parent))
+    (ekg-save-note child)
+    (with-temp-buffer
+      (ekg--show-notes "Notes" (lambda () notes) nil)
+      (dotimes (pass 2)
+        (when (> pass 0)
+          (setf (ekg-note-text child) "Updated child")
+          (ekg-save-note child)
+          (ekg-notes-refresh))
+        (should (equal (ekg-notes-visible-ids)
+                       (mapcar #'ekg-note-id notes)))
+        (cl-loop for note in notes
+                 for depth from 0
+                 do (should (ekg-notes--goto-id (ekg-note-id note)))
+                 (should (equal (get-text-property (point) 'ekg-note-depth)
+                                depth))
+                 (should (eq (get-text-property
+                              (point) 'ekg-note-display-state)
+                             'full)))))))
+
 (ekg-deftest-with-db ekg-test-notes-refresh-reuses-vui-items ()
   "Refreshing retains the mounted tree and skips unchanged note regions."
   (let ((first (ekg-note-create :text "Unchanged"))
