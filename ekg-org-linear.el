@@ -65,26 +65,111 @@ When nil, issues are imported from every team, so set
   "Limit imported Linear issues to a single assignee.
 The value `\"me\"' imports only issues assigned to the API key's user,
 a string is treated as an assignee email, and nil imports every issue
-matching the team filter."
+matching the team filter.  With `ekg-org-linear-unassigned-state' set,
+unassigned issues are imported too and marked with that state."
   :type '(choice (const :tag "Assigned to me" "me")
                  (const :tag "Everyone" nil)
                  (string :tag "Assignee email"))
   :group 'ekg-org-linear)
 
+(defcustom ekg-org-linear-unassigned-state nil
+  "Org TODO keyword for unassigned Linear issues.
+When nil, unassigned issues are ignored, and only issues matching the
+assignee are imported.  A keyword such as \"TRIAGE\" or \"DELEGATED\"
+also imports unassigned issues and marks them with this keyword.  The
+keyword must be an Org-only state from `ekg-org-linear-org-only-states'
+or map to a Linear state in `ekg-org-linear-state-map'.  Has no effect
+when `ekg-org-linear-assignee' is nil, since every issue then matches."
+  :type '(choice (const :tag "Ignore" nil)
+                 (const "TRIAGE")
+                 (const "DELEGATED")
+                 (string :tag "Other Org keyword"))
+  :group 'ekg-org-linear)
+
+(defcustom ekg-org-linear-other-assignee-state nil
+  "Org TODO keyword for sub-issues of imported issues that are assigned to someone else.
+When nil, such issues are ignored even when their parent is imported.  A
+keyword such as \"DELEGATED\" imports them beneath their parent, marked
+with this keyword, so an imported parent's whole sub-tree appears.  The
+keyword must be an Org-only state from `ekg-org-linear-org-only-states'
+or map to a Linear state in `ekg-org-linear-state-map'."
+  :type '(choice (const :tag "Ignore" nil)
+                 (const "DELEGATED")
+                 (string :tag "Other Org keyword"))
+  :group 'ekg-org-linear)
+
+(defcustom ekg-org-linear-org-only-states '("DELEGATED")
+  "Org TODO keywords that have no Linear workflow state equivalent.
+Sync never changes the Linear state of a task in one of these states, and
+keeps the keyword locally when the remote state cannot express it.  Use
+DELEGATED for work owned by someone else; Linear represents that with
+the assignee rather than the workflow state."
+  :type '(repeat string)
+  :group 'ekg-org-linear)
+
 (defcustom ekg-org-linear-state-map
-  '(("triage" . "TODO") ("backlog" . "TODO") ("unstarted" . "TODO")
-    ("started" . "TODO") ("completed" . "DONE") ("canceled" . "DONE")
+  '(("triage" . "TRIAGE") ("backlog" . "TODO") ("unstarted" . "TODO")
+    ("started" . "STARTED") ("completed" . "DONE") ("canceled" . "DONE")
     ("duplicate" . "DONE"))
   "Map Linear workflow state types to Org TODO keywords.
 When several Linear states map to the same keyword, retain the issue's
 current state if possible, otherwise use the first matching team state.
-Customize this to distinguish in-progress and canceled tasks."
+Customize this to distinguish in-progress and canceled tasks.  Org-only
+states such as DELEGATED belong in `ekg-org-linear-org-only-states'
+instead."
   :type '(alist :key-type string :value-type string)
   :group 'ekg-org-linear)
 
 (defconst ekg-org-linear--fields
-  "id identifier title description url state { id type } team { id } parent { id }"
+  "id identifier title description url state { id type } team { id } parent { id } assignee { id email }"
   "GraphQL fields needed for an issue.")
+
+(defvar ekg-org-linear--viewer-id-cache nil
+  "Cached Linear user ID of the configured API key for this sync.")
+
+(defun ekg-org-linear--viewer-id ()
+  "Return the Linear user ID of the configured API key."
+  (or ekg-org-linear--viewer-id-cache
+      (setq ekg-org-linear--viewer-id-cache
+            (alist-get 'id (alist-get 'viewer
+                                      (ekg-org-linear--request
+                                       "query { viewer { id } }" nil))))))
+
+(defun ekg-org-linear--issue-assignee-matches-p (issue)
+  "Return non-nil when ISSUE's assignee matches `ekg-org-linear-assignee'.
+A nil assignee option matches every issue."
+  (pcase ekg-org-linear-assignee
+    ((pred null) t)
+    ("me" (equal (alist-get 'id (alist-get 'assignee issue))
+                 (ekg-org-linear--viewer-id)))
+    (email (equal (alist-get 'email (alist-get 'assignee issue)) email))))
+
+(defun ekg-org-linear--issue-has-other-owner-p (issue)
+  "Return non-nil when ISSUE is assigned to someone other than the assignee."
+  (and (alist-get 'assignee issue)
+       (not (ekg-org-linear--issue-assignee-matches-p issue))))
+
+(defun ekg-org-linear--org-only-state-p (keyword)
+  "Return non-nil when KEYWORD has no Linear workflow state equivalent.
+Such states, listed in `ekg-org-linear-org-only-states', describe
+ownership rather than workflow progress."
+  (member keyword ekg-org-linear-org-only-states))
+
+(defun ekg-org-linear--check-state-keyword (keyword variable)
+  "Signal unless KEYWORD is Org-only or maps to a Linear state.
+VARIABLE names the configured option, for the error message."
+  (when (and keyword
+             (not (or (ekg-org-linear--org-only-state-p keyword)
+                      (member keyword (mapcar #'cdr ekg-org-linear-state-map)))))
+    (user-error "`%s' %s is neither an Org-only state nor mapped to a Linear state"
+                variable keyword)))
+
+(defun ekg-org-linear--needs-owner-p (issue state)
+  "Return non-nil when STATE is an Org-only state and ISSUE has no other owner.
+A DELEGATED task only takes effect once the issue is reassigned in
+Linear, so warn about it until an owner exists."
+  (and (ekg-org-linear--org-only-state-p state)
+       (not (ekg-org-linear--issue-has-other-owner-p issue))))
 
 (defun ekg-org-linear--request (query variables)
   "Execute Linear GraphQL QUERY with VARIABLES, returning its data.
@@ -223,28 +308,31 @@ missing or mistyped team would otherwise make sync silently do nothing."
                  team-id (error-message-string err)))))
 
 (defun ekg-org-linear--issue-filter ()
-  "Build the GraphQL issue filter from the configured options."
+  "Build the GraphQL issue filter from the configured options.
+When `ekg-org-linear-unassigned-state' is set, unassigned issues are
+included as well, so they can be imported with that state."
   (let (filter)
     (when ekg-org-linear-import-team-id
       (setq filter (cons `(team . ((id . ((eq . ,ekg-org-linear-import-team-id)))))
                          filter)))
     (when ekg-org-linear-assignee
-      (setq filter
-            (cons `(assignee . ,(if (equal ekg-org-linear-assignee "me")
-                                    '((isMe . ((eq . t))))
-                                  `((email . ((eq . ,ekg-org-linear-assignee))))))
-                  filter)))
+      (let ((assignee (if (equal ekg-org-linear-assignee "me")
+                          '((isMe . ((eq . t))))
+                        `((email . ((eq . ,ekg-org-linear-assignee)))))))
+        (setq filter
+              (cons (if ekg-org-linear-unassigned-state
+                        `(or . ((assignee . ,assignee)
+                                (assignee . ((null . t)))))
+                      `(assignee . ,assignee))
+                    filter))))
     (unless filter
       (user-error "Configure `ekg-org-linear-import-team-id' or `ekg-org-linear-assignee'
 to limit sync"))
     filter))
 
-(defun ekg-org-linear--issues ()
-  "Fetch all pages of issues matching the configured team and assignee."
-  (when ekg-org-linear-import-team-id
-    (ekg-org-linear--check-team ekg-org-linear-import-team-id))
-  (let ((filter (ekg-org-linear--issue-filter))
-        cursor issues more)
+(defun ekg-org-linear--paged-issues (filter)
+  "Fetch all pages of issues matching FILTER."
+  (let (cursor issues more)
     (setq more t)
     (while more
       (let* ((data (ekg-org-linear--request
@@ -266,12 +354,89 @@ to limit sync"))
             (setq cursor next)))))
     issues))
 
+(defun ekg-org-linear--issues ()
+  "Fetch all pages of issues matching the configured team, assignee and state options."
+  (when ekg-org-linear-import-team-id
+    (ekg-org-linear--check-team ekg-org-linear-import-team-id))
+  (ekg-org-linear--paged-issues (ekg-org-linear--issue-filter)))
+
+(defun ekg-org-linear--fetch-other-children (issues)
+  "Add sub-issues of ISSUES assigned to someone else.
+When `ekg-org-linear-other-assignee-state' is set, sync imports the
+sub-tree beneath imported issues even where other people own the work,
+so each imported parent's whole hierarchy appears.  Only unknown issues
+assigned to someone other than the configured assignee are added; their
+own sub-issues are then fetched in turn."
+  (let (queue)
+    (maphash (lambda (_id issue) (push issue queue)) issues)
+    (while queue
+      (let* ((issue (pop queue))
+             (children (ekg-org-linear--paged-issues
+                        `((parent . ((id . ((eq . ,(alist-get 'id issue))))))))))
+        (dolist (child children)
+          (unless (gethash (alist-get 'id child) issues)
+            (when (ekg-org-linear--issue-has-other-owner-p child)
+              (puthash (alist-get 'id child) child issues)
+              (push child queue))))))))
+
+(defun ekg-org-linear--imported-p (note)
+  "Return non-nil when NOTE was auto-imported by sync rather than linked."
+  (equal (ekg-org-get-property note "LINEAR_IMPORTED") "t"))
+
+(defun ekg-org-linear--unlink (note)
+  "Remove NOTE's Linear association so sync no longer manages it."
+  (when (ekg-org-get-property note "LINEAR_ID")
+    (ekg-org-remove-property note "LINEAR_ID")
+    (ekg-org-remove-property note "LINEAR_SYNC")
+    (ekg-org-linear--save-note note)))
+
+(defun ekg-org-linear--trash-note (note)
+  "Trash NOTE, moving any children onto NOTE's own parent first.
+Trashing hides a whole sub-tree, so children that stay behind must
+survive on their own before the note disappears."
+  (let ((parent (ekg-note-parent-id note)))
+    (dolist (child (ekg-note-child-notes (ekg-note-id note)))
+      (unless (member ekg-trash-tag (ekg-note-tags child))
+        (ekg-note-set-parent child parent)
+        (ekg-save-note child)))
+    (ekg-note-trash note)))
+
+(defun ekg-org-linear--prune-out-of-scope (notes issues)
+  "Trash auto-imported NOTES whose issue is no longer in ISSUES.
+Tasks deliberately kept with an Org-only state such as DELEGATED, or
+unassigned ones marked TRIAGE, are left alone.  Children are re-parented
+onto the trashed task's own parent first."
+  (maphash (lambda (id note)
+             (unless (gethash id issues)
+               (when (and (ekg-org-linear--imported-p note)
+                          (not (member ekg-trash-tag (ekg-note-tags note)))
+                          (not (member (ekg-org-task-state note)
+                                       (cons "TRIAGE" ekg-org-linear-org-only-states))))
+                 (ekg-org-linear--trash-note note))))
+           notes))
+
+(defun ekg-org-linear--mapped-state (issue)
+  "Return the Org keyword for ISSUE's Linear workflow state."
+  (or (cdr (assoc (alist-get 'type (alist-get 'state issue))
+                  ekg-org-linear-state-map))
+      (error "Unmapped Linear state for %s" (alist-get 'identifier issue))))
+
 (defun ekg-org-linear--remote-values (issue)
-  "Return synchronized title, description and Org state for ISSUE."
+  "Return synchronized title, description and Org state for ISSUE.
+An issue not assigned to `ekg-org-linear-assignee' uses the configured
+state instead of its workflow state: `ekg-org-linear-unassigned-state'
+for unassigned issues, `ekg-org-linear-other-assignee-state' for issues
+assigned to someone else."
   (list (alist-get 'title issue) (or (alist-get 'description issue) "")
-        (or (cdr (assoc (alist-get 'type (alist-get 'state issue))
-                        ekg-org-linear-state-map))
-            (error "Unmapped Linear state for %s" (alist-get 'identifier issue)))))
+        (if (and (or ekg-org-linear-unassigned-state
+                     ekg-org-linear-other-assignee-state)
+                 (not (ekg-org-linear--issue-assignee-matches-p issue)))
+            (or (and (not (alist-get 'assignee issue))
+                     ekg-org-linear-unassigned-state)
+                (and (alist-get 'assignee issue)
+                     ekg-org-linear-other-assignee-state)
+                (ekg-org-linear--mapped-state issue))
+          (ekg-org-linear--mapped-state issue))))
 
 (defun ekg-org-linear--local-values (note)
   "Return synchronized values from NOTE."
@@ -352,7 +517,11 @@ to limit sync"))
 ISSUE supplies the Linear issue details for a conflict report."
   (if (null base) remote
     (cl-mapcar (lambda (field l r b)
-                 (cond ((equal l r) l) ((equal l b) r) ((equal r b) l)
+                 (cond ((equal l r) l)
+                       ((and (equal field "State") (equal l b)
+                             (ekg-org-linear--org-only-state-p l))
+                        l)
+                       ((equal l b) r) ((equal r b) l)
                        ((and (stringp l) (stringp r)
                              (equal (ekg-org-linear--normalize-markdown-links l)
                                     (ekg-org-linear--normalize-markdown-links r)))
@@ -363,35 +532,37 @@ ISSUE supplies the Linear issue details for a conflict report."
                '("Title" "Description" "State") local remote base)))
 
 (defun ekg-org-linear--state-id (issue keyword)
-  "Resolve Org KEYWORD to a workflow state ID for ISSUE's team."
-  (if (and (alist-get 'state issue)
-           (equal keyword (nth 2 (ekg-org-linear--remote-values issue))))
-      (alist-get 'id (alist-get 'state issue))
-    (let* ((team (alist-get 'team
-                            (ekg-org-linear--request
-                             (concat "query($id: String!) { team(id: $id) {"
-                                     " states { nodes { id type } } } }")
-                             `((id . ,(alist-get 'id (alist-get 'team issue)))))))
-           (state (seq-find
-                   (lambda (s)
-                     (equal keyword (cdr (assoc (alist-get 'type s)
-                                                ekg-org-linear-state-map))))
-                   (alist-get 'nodes (alist-get 'states team)))))
-      (or (alist-get 'id state)
-          (error "No Linear workflow state maps to %s" keyword)))))
+  "Resolve Org KEYWORD to a workflow state ID for ISSUE's team.
+Return nil for Org-only states, which have no Linear workflow state."
+  (if (ekg-org-linear--org-only-state-p keyword)
+      nil
+    (if (and (alist-get 'state issue)
+             (equal keyword (nth 2 (ekg-org-linear--remote-values issue))))
+        (alist-get 'id (alist-get 'state issue))
+      (let* ((team (alist-get 'team
+                              (ekg-org-linear--request
+                               (concat "query($id: String!) { team(id: $id) {"
+                                       " states { nodes { id type } } } }")
+                               `((id . ,(alist-get 'id (alist-get 'team issue)))))))
+             (state (seq-find
+                     (lambda (s)
+                       (equal keyword (cdr (assoc (alist-get 'type s)
+                                                  ekg-org-linear-state-map))))
+                     (alist-get 'nodes (alist-get 'states team)))))
+        (or (alist-get 'id state)
+            (error "No Linear workflow state maps to %s" keyword))))))
 
 (defun ekg-org-linear--update (issue values)
-  "Update ISSUE with synchronized VALUES, checking mutation success."
-  (let ((result
-         (alist-get 'issueUpdate
-                    (ekg-org-linear--request
-                     (concat "mutation($id: String!, $input: IssueUpdateInput!) {"
-                             " issueUpdate(id: $id, input: $input) { success } }")
-                     `((id . ,(alist-get 'id issue))
-                       (input . ((title . ,(nth 0 values))
-                                 (description . ,(nth 1 values))
-                                 (stateId . ,(ekg-org-linear--state-id
-                                              issue (nth 2 values))))))))))
+  "Update ISSUE with synchronized VALUES, checking mutation success.
+Org-only states such as DELEGATED keep the Linear state unchanged."
+  (let* ((state-id (ekg-org-linear--state-id issue (nth 2 values)))
+         (input `((title . ,(nth 0 values)) (description . ,(nth 1 values))))
+         (input (if state-id (cons `(stateId . ,state-id) input) input))
+         (result (alist-get 'issueUpdate
+                            (ekg-org-linear--request
+                             (concat "mutation($id: String!, $input: IssueUpdateInput!) {"
+                                     " issueUpdate(id: $id, input: $input) { success } }")
+                             `((id . ,(alist-get 'id issue)) (input . ,input))))))
     (unless (eq t (alist-get 'success result))
       (error "Linear issue update failed"))))
 
@@ -487,6 +658,10 @@ perform network requests.  Existing links continue syncing if unmarked."
   (let* ((values (ekg-org-linear--local-values note))
          (state-id (ekg-org-linear--state-id
                     `((team . ((id . ,ekg-org-linear-creation-team-id)))) (nth 2 values)))
+         (input `((id . ,id) (teamId . ,ekg-org-linear-creation-team-id)
+                  (title . ,(car values)) (description . ,(nth 1 values))
+                  (parentId . ,parent-id)))
+         (input (if state-id (cons `(stateId . ,state-id) input) input))
          (result
           (alist-get
            'issueCreate
@@ -494,9 +669,7 @@ perform network requests.  Existing links continue syncing if unmarked."
             (format (concat "mutation($input: IssueCreateInput!) {"
                             " issueCreate(input: $input) { success issue { %s } } }")
                     ekg-org-linear--fields)
-            `((input . ((id . ,id) (teamId . ,ekg-org-linear-creation-team-id)
-                        (title . ,(car values)) (description . ,(nth 1 values))
-                        (stateId . ,state-id) (parentId . ,parent-id))))))))
+            `((input . ,input))))))
     (unless (and (eq t (alist-get 'success result))
                  (equal id (alist-get 'id (alist-get 'issue result))))
       (error "Linear issue creation failed for task %s" (ekg-note-id note)))
@@ -574,21 +747,48 @@ Persist a client UUID before creation so retries cannot create duplicates."
 Merge title, description and state independently against the last sync.
 Conflicting edits signal an error without overwriting that issue.  Earlier
 issues may already have synced; rerunning is safe.  Linear owns hierarchy.
-Marked local tasks are created in Linear, with their appropriate parent."
+Marked local tasks are created in Linear, with their appropriate parent.
+Issues not assigned to `ekg-org-linear-assignee' are ignored or imported
+with `ekg-org-linear-unassigned-state' when unassigned, or with
+`ekg-org-linear-other-assignee-state' when assigned to someone else and
+beneath an imported issue.  Tasks in an Org-only state such as DELEGATED
+keep their Linear state, and sync warns when they have no other owner in
+Linear.  Imported tasks whose issue leaves the scope are trashed unless
+kept with an Org-only or TRIAGE state; explicitly linked tasks are never
+trashed.  Trees start at the top in-scope task, and re-parent when an
+ancestor comes into scope."
   (interactive)
   (ekg-connect)
   (ekg-org-add-schema)
   (ekg-org-linear--check-editors)
+  (ekg-org-linear--check-state-keyword ekg-org-linear-unassigned-state
+                                       "ekg-org-linear-unassigned-state")
+  (ekg-org-linear--check-state-keyword ekg-org-linear-other-assignee-state
+                                       "ekg-org-linear-other-assignee-state")
   (let ((notes (ekg-org-linear--linked-notes))
         (issues (make-hash-table :test 'equal))
         (visiting (make-hash-table :test 'equal))
-        (ekg-org--inhibit-view-refresh t))
+        (ekg-org--inhibit-view-refresh t)
+        (ekg-org-linear--viewer-id-cache nil)
+        (delegated nil))
     (dolist (issue (ekg-org-linear--issues))
       (puthash (alist-get 'id issue) issue issues))
-    ;; Keep explicitly linked issues in scope even outside the import team.
+    ;; Reconcile already-linked notes: unlink trashed ones, keep explicit
+    ;; links in scope, and leave auto-imported ones to the filter so they
+    ;; are pruned when they fall out of scope.
     (maphash (lambda (id _note)
-               (unless (gethash id issues)
-                 (puthash id (ekg-org-linear--issue id) issues))) notes)
+               (let ((note (gethash id notes)))
+                 (cond ((member ekg-trash-tag (ekg-note-tags note))
+                        (ekg-org-linear--unlink note))
+                       ((or (ekg-org-linear--imported-p note)
+                            (gethash id issues))
+                        nil)
+                       (t (if-let* ((issue (ekg-org-linear--find-issue id)))
+                              (puthash id issue issues)
+                            (ekg-org-linear--unlink note))))))
+             notes)
+    (when ekg-org-linear-other-assignee-state
+      (ekg-org-linear--fetch-other-children issues))
     (unwind-protect
         (progn
           (ekg-org-linear--export-marked notes issues)
@@ -602,7 +802,11 @@ Marked local tasks are created in Linear, with their appropriate parent."
                    (let* ((issue (or (gethash id issues)
                                      (ekg-org-linear--issue id)))
                           (parent-id (alist-get 'id (alist-get 'parent issue)))
-                          (parent (when parent-id (sync-one parent-id)))
+                          (parent (when parent-id
+                                    ;; Imported trees start at the top
+                                    ;; in-scope task.
+                                    (and (gethash parent-id issues)
+                                         (sync-one parent-id))))
                           (note (gethash id notes))
                           (remote (ekg-org-linear--remote-values issue))
                           (snapshot (and note (ekg-org-get-property note "LINEAR_SYNC")))
@@ -619,6 +823,11 @@ Marked local tasks are created in Linear, with their appropriate parent."
                                (not (equal snapshot (json-encode values)))
                                (not (equal (ekg-note-parent-id note)
                                            (when parent (ekg-note-id parent)))))))
+                     (when (ekg-org-linear--needs-owner-p issue (nth 2 values))
+                       (push (cons (or (alist-get 'identifier issue)
+                                       (alist-get 'id issue))
+                                   (nth 2 values))
+                             delegated))
                      (unless (equal values remote)
                        (ekg-org-linear--update issue values))
                      (unless note
@@ -636,7 +845,8 @@ Marked local tasks are created in Linear, with their appropriate parent."
                                     url linked)))
                          (unless (member ekg-org-task-tag (ekg-note-tags note))
                            (push ekg-org-task-tag (ekg-note-tags note)))
-                         (ekg-org-set-dependency-type note 'parallel)))
+                         (ekg-org-set-dependency-type note 'parallel)
+                         (ekg-org-set-property note "LINEAR_IMPORTED" "t")))
                      (setf (ekg-note-text note) (nth 1 values)
                            (ekg-note-tags note)
                            (cons (concat ekg-org-state-tag-prefix
@@ -662,7 +872,13 @@ Marked local tasks are created in Linear, with their appropriate parent."
                      (puthash id note notes)
                      (puthash id 'done visiting)))
                  (gethash id notes)))
-            (maphash (lambda (id _issue) (sync-one id)) issues)))
+            (maphash (lambda (id _issue) (sync-one id)) issues)
+            (when delegated
+              (warn "EKG Linear sync: %d task(s) marked %s have no other owner in Linear; reassign them there for the state to take effect: %s"
+                    (length delegated)
+                    (mapconcat #'identity (seq-uniq (mapcar #'cdr delegated)) ", ")
+                    (mapconcat #'identity (mapcar #'car delegated) ", ")))
+            (ekg-org-linear--prune-out-of-scope notes issues)))
       (ekg-org-view--refresh-all))))
 
 (provide 'ekg-org-linear)
