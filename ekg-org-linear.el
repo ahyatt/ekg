@@ -394,11 +394,15 @@ own sub-issues are then fetched in turn."
   "Trash NOTE, moving any children onto NOTE's own parent first.
 Trashing hides a whole sub-tree, so children that stay behind must
 survive on their own before the note disappears."
+  ;; Earlier pruning may already have moved this note.  Do not restore
+  ;; its old parent when saving it or moving its children.
+  (setq note (ekg-get-note-with-id (ekg-note-id note)))
   (let ((parent (ekg-note-parent-id note)))
     (dolist (child (ekg-note-child-notes (ekg-note-id note)))
       (unless (member ekg-trash-tag (ekg-note-tags child))
         (ekg-note-set-parent child parent)
         (ekg-save-note child)))
+    (ekg-org-set-property note "LINEAR_PRUNED" "t")
     (ekg-note-trash note)))
 
 (defun ekg-org-linear--prune-out-of-scope (notes issues)
@@ -614,6 +618,7 @@ The first sync imports Linear's text and state.  No issue is created."
     (when (and other (not (equal note-id (ekg-note-id other))))
       (user-error "Linear issue is already linked to task %s" (ekg-note-id other)))
     (ekg-org-set-property note "LINEAR_ID" id)
+    (ekg-org-remove-property note "LINEAR_IMPORTED")
     (ekg-org-remove-property note "LINEAR_SYNC")
     (let ((previous-id (ekg-note-id note)))
       (ekg-org-linear--assign-url-id note issue)
@@ -847,6 +852,11 @@ ancestor comes into scope."
                            (push ekg-org-task-tag (ekg-note-tags note)))
                          (ekg-org-set-dependency-type note 'parallel)
                          (ekg-org-set-property note "LINEAR_IMPORTED" "t")))
+                     (when (ekg-org-get-property note "LINEAR_PRUNED")
+                       (setf (ekg-note-tags note)
+                             (remove ekg-trash-tag (ekg-note-tags note)))
+                       (ekg-org-remove-property note "LINEAR_PRUNED")
+                       (setq save-needed t))
                      (setf (ekg-note-text note) (nth 1 values)
                            (ekg-note-tags note)
                            (cons (concat ekg-org-state-tag-prefix

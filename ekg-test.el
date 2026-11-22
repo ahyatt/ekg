@@ -998,6 +998,22 @@
                         'hierarchy/parent nil))
                1))))
 
+(ekg-deftest-with-db ekg-test-set-parent-after-repeated-saves ()
+  (let ((parent (ekg-note-create :text "Parent"))
+        (child (ekg-note-create :text "Child")))
+    (ekg-save-note parent)
+    (ekg-note-set-parent child parent)
+    (ekg-save-note child)
+    ;; Repeated saves of fetched notes can contain duplicate properties.
+    (dotimes (_ 2)
+      (setq child (ekg-get-note-with-id (ekg-note-id child)))
+      (ekg-save-note child))
+    (ekg-note-set-parent child nil)
+    (ekg-save-note child)
+    (should-not (ekg-note-parent-id
+                 (ekg-get-note-with-id (ekg-note-id child))))
+    (should-not (ekg-note-child-notes parent))))
+
 (ekg-deftest-with-db ekg-test-trash-and-delete-hierarchy-subtree ()
   (let ((parent (ekg-note-create :text "Parent"))
         (child (ekg-note-create :text "Child")))

@@ -2387,9 +2387,11 @@ imported.  Tasks deliberately kept with an Org-only state such as DELEGATED@comm
 or unassigned ones marked TRIAGE@comma{} are left alone@comma{} as are tasks linked
 explicitly with @samp{ekg-org-linear-link}.  Trashing re-parents any in-scope
 children onto the task's own parent first@comma{} and the trashed task is unlinked
-on the following sync.  EKG deletions and archiving are not pushed to
-Linear@comma{} and remote changes made during a sync can race with updates; avoid
-editing the same issue during a sync.
+on the following sync.  Tasks trashed this way are restored if their issue
+returns to the import scope; manually trashed tasks stay trashed.  Existing
+siblings keep their order as tasks enter or leave the scope.  EKG deletions
+and archiving are not pushed to Linear@comma{} and remote changes made during a
+sync can race with updates; avoid editing the same issue during a sync.
 
 @node Agent integration
 @subsection Agent integration
