@@ -87,7 +87,7 @@ when `ekg-org-linear-assignee' is nil, since every issue then matches."
   :group 'ekg-org-linear)
 
 (defcustom ekg-org-linear-other-assignee-state nil
-  "Org TODO keyword for sub-issues of imported issues that are assigned to someone else.
+  "Org TODO keyword for imported sub-issues assigned to someone else.
 When nil, such issues are ignored even when their parent is imported.  A
 keyword such as \"DELEGATED\" imports them beneath their parent, marked
 with this keyword, so an imported parent's whole sub-tree appears.  The
@@ -355,7 +355,7 @@ to limit sync"))
     issues))
 
 (defun ekg-org-linear--issues ()
-  "Fetch all pages of issues matching the configured team, assignee and state options."
+  "Fetch all pages of issues matching the configured import options."
   (when ekg-org-linear-import-team-id
     (ekg-org-linear--check-team ekg-org-linear-import-team-id))
   (ekg-org-linear--paged-issues (ekg-org-linear--issue-filter)))
