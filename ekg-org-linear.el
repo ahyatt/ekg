@@ -108,8 +108,8 @@ the assignee rather than the workflow state."
   :group 'ekg-org-linear)
 
 (defcustom ekg-org-linear-state-map
-  '(("triage" . "TRIAGE") ("backlog" . "TODO") ("unstarted" . "TODO")
-    ("started" . "STARTED") ("completed" . "DONE") ("canceled" . "DONE")
+  '(("triage" . "TODO") ("backlog" . "TODO") ("unstarted" . "TODO")
+    ("started" . "TODO") ("completed" . "DONE") ("canceled" . "DONE")
     ("duplicate" . "DONE"))
   "Map Linear workflow state types to Org TODO keywords.
 When several Linear states map to the same keyword, retain the issue's
@@ -321,8 +321,8 @@ included as well, so they can be imported with that state."
                         `((email . ((eq . ,ekg-org-linear-assignee)))))))
         (setq filter
               (cons (if ekg-org-linear-unassigned-state
-                        `(or . ((assignee . ,assignee)
-                                (assignee . ((null . t)))))
+                        `(or . [((assignee . ,assignee))
+                                ((assignee . ((null . t))))])
                       `(assignee . ,assignee))
                     filter))))
     (unless filter
@@ -360,24 +360,37 @@ to limit sync"))
     (ekg-org-linear--check-team ekg-org-linear-import-team-id))
   (ekg-org-linear--paged-issues (ekg-org-linear--issue-filter)))
 
-(defun ekg-org-linear--fetch-other-children (issues)
+(defun ekg-org-linear--ignored-issue-p (issue notes)
+  "Return non-nil if ISSUE belongs to a manually trashed task.
+NOTES contains linked notes.  Also check the issue URL so that a task
+stays excluded after its Linear association has been removed."
+  (when-let* ((note (or (gethash (alist-get 'id issue) notes)
+                       (when-let* ((url (alist-get 'url issue)))
+                         (ekg-get-note-with-id url)))))
+    (and (member ekg-trash-tag (ekg-note-tags note))
+         (not (ekg-org-get-property note "LINEAR_PRUNED")))))
+
+(defun ekg-org-linear--fetch-other-children (issues &optional notes)
   "Add sub-issues of ISSUES assigned to someone else.
 When `ekg-org-linear-other-assignee-state' is set, sync imports the
 sub-tree beneath imported issues even where other people own the work,
 so each imported parent's whole hierarchy appears.  Only unknown issues
 assigned to someone other than the configured assignee are added; their
-own sub-issues are then fetched in turn."
-  (let (queue)
-    (maphash (lambda (_id issue) (push issue queue)) issues)
+own sub-issues are then fetched in turn, batching up to 100 parents
+per query.  NOTES contains already-linked notes, including manual trash."
+  (let ((notes (or notes (make-hash-table :test 'equal))) queue)
+    (maphash (lambda (id _issue) (push id queue)) issues)
     (while queue
-      (let* ((issue (pop queue))
+      (let* ((parents (seq-take queue 100))
              (children (ekg-org-linear--paged-issues
-                        `((parent . ((id . ((eq . ,(alist-get 'id issue))))))))))
+                        `((parent . ((id . ((in . ,(vconcat parents))))))))))
+        (setq queue (seq-drop queue (length parents)))
         (dolist (child children)
-          (unless (gethash (alist-get 'id child) issues)
+          (unless (or (gethash (alist-get 'id child) issues)
+                      (ekg-org-linear--ignored-issue-p child notes))
             (when (ekg-org-linear--issue-has-other-owner-p child)
               (puthash (alist-get 'id child) child issues)
-              (push child queue))))))))
+              (push (alist-get 'id child) queue))))))))
 
 (defun ekg-org-linear--imported-p (note)
   "Return non-nil when NOTE was auto-imported by sync rather than linked."
@@ -386,8 +399,9 @@ own sub-issues are then fetched in turn."
 (defun ekg-org-linear--unlink (note)
   "Remove NOTE's Linear association so sync no longer manages it."
   (when (ekg-org-get-property note "LINEAR_ID")
-    (ekg-org-remove-property note "LINEAR_ID")
-    (ekg-org-remove-property note "LINEAR_SYNC")
+    (dolist (key '("LINEAR_ID" "LINEAR_SYNC" "LINEAR_SYNC_ENABLED"
+                   "LINEAR_CREATE_ID"))
+      (ekg-org-remove-property note key))
     (ekg-org-linear--save-note note)))
 
 (defun ekg-org-linear--trash-note (note)
@@ -401,9 +415,10 @@ survive on their own before the note disappears."
     (dolist (child (ekg-note-child-notes (ekg-note-id note)))
       (unless (member ekg-trash-tag (ekg-note-tags child))
         (ekg-note-set-parent child parent)
-        (ekg-save-note child)))
+        (ekg-org-linear--save-note child)))
     (ekg-org-set-property note "LINEAR_PRUNED" "t")
-    (ekg-note-trash note)))
+    (with-temp-buffer (ekg-note-trash note))
+    (ekg-org-linear--save-note note)))
 
 (defun ekg-org-linear--prune-out-of-scope (notes issues)
   "Trash auto-imported NOTES whose issue is no longer in ISSUES.
@@ -777,7 +792,8 @@ ancestor comes into scope."
         (ekg-org-linear--viewer-id-cache nil)
         (delegated nil))
     (dolist (issue (ekg-org-linear--issues))
-      (puthash (alist-get 'id issue) issue issues))
+      (unless (ekg-org-linear--ignored-issue-p issue notes)
+        (puthash (alist-get 'id issue) issue issues)))
     ;; Reconcile already-linked notes: unlink trashed ones, keep explicit
     ;; links in scope, and leave auto-imported ones to the filter so they
     ;; are pruned when they fall out of scope.
@@ -793,7 +809,7 @@ ancestor comes into scope."
                             (ekg-org-linear--unlink note))))))
              notes)
     (when ekg-org-linear-other-assignee-state
-      (ekg-org-linear--fetch-other-children issues))
+      (ekg-org-linear--fetch-other-children issues notes))
     (unwind-protect
         (progn
           (ekg-org-linear--export-marked notes issues)
