@@ -2995,5 +2995,115 @@ result when the agent finishes."
         (should-not (string-match-p "hierarchy/children"
                                     (ekg-llm-note-to-text empty-parent)))))))
 
+(ekg-deftest-with-db ekg-agent-test-get-notes-include-org ()
+  "Include-org should expose org/task notes in tag and latest queries."
+  (let* ((org-note (ekg-note-create :id "org-note"
+                                    :text "Org task content"
+                                    :mode 'org-mode
+                                    :tags '("org/task" "org/state/todo" "project/test")))
+         (regular-note (ekg-note-create :id "regular-note"
+                                        :text "Regular note"
+                                        :mode 'markdown-mode
+                                        :tags '("project/test"))))
+    (ekg-save-note org-note)
+    (ekg-save-note regular-note)
+    ;; Without include-org, org/task notes are hidden.
+    (let ((default-ids (mapcar #'ekg-note-id
+                                (ekg-agent--get-notes :tags '("project/test")))))
+      (should-not (member "org-note" default-ids))
+      (should (member "regular-note" default-ids)))
+    ;; With include-org, both are returned.
+    (let ((all-ids (mapcar #'ekg-note-id
+                            (ekg-agent--get-notes :tags '("project/test")
+                                                  :include-org t))))
+      (should (member "org-note" all-ids))
+      (should (member "regular-note" all-ids)))
+    ;; Include-org works for latest as well.
+    (let ((latest-ids (mapcar #'ekg-note-id
+                               (ekg-agent--get-notes :latest t :num 10
+                                                     :include-org t))))
+      (should (member "org-note" latest-ids))
+      (should (member "regular-note" latest-ids)))
+    ;; Include-org works for any-tags.
+    (let ((any-ids (mapcar #'ekg-note-id
+                            (ekg-agent--get-notes :any-tags '("project/test")
+                                                  :include-org t))))
+      (should (member "org-note" any-ids))
+      (should (member "regular-note" any-ids)))))
+
+(ekg-deftest-with-db ekg-agent-test-org-list-filtering ()
+  "ekg-agent-org-list filters org tasks by status, tags, and deadlines."
+  (ekg-org-add-schema)
+  (let* ((today-midnight (time-convert (date-to-time (format "%s 00:00:00"
+                                                             (format-time-string "%Y-%m-%d")))
+                                        'integer))
+         (tomorrow-midnight (+ today-midnight 86400))
+         (task1 (ekg-note-create :id "task1"
+                                :text "Task one"
+                                :mode 'org-mode
+                                :tags '("org/task" "org/state/todo" "project/a")
+                                :properties (list :titled/title '("Task 1")
+                                                  :org/deadline today-midnight)))
+         (task2 (ekg-note-create :id "task2"
+                                :text "Task two"
+                                :mode 'org-mode
+                                :tags '("org/task" "org/state/done" "project/a")
+                                :properties (list :titled/title '("Task 2")
+                                                  :org/deadline tomorrow-midnight)))
+         (task3 (ekg-note-create :id "task3"
+                                :text "Task three"
+                                :mode 'org-mode
+                                :tags '("org/task" "org/state/todo" "project/b")
+                                :properties (list :titled/title '("Task 3")))))
+    (ekg-save-note task1)
+    (ekg-save-note task2)
+    (ekg-save-note task3)
+    ;; Status filter
+    (let ((todo-ids (mapcar (lambda (item) (cdr (assoc 'id item)))
+                             (json-read-from-string
+                              (ekg-agent-org-list :status "TODO")))))
+      (should (member "task1" todo-ids))
+      (should (member "task3" todo-ids))
+      (should-not (member "task2" todo-ids)))
+    ;; Tag filter
+    (let ((a-ids (mapcar (lambda (item) (cdr (assoc 'id item)))
+                          (json-read-from-string
+                           (ekg-agent-org-list :tags '("project/a"))))))
+      (should (member "task1" a-ids))
+      (should (member "task2" a-ids))
+      (should-not (member "task3" a-ids)))
+    ;; Deadline range filter
+    (let ((today-ids (mapcar (lambda (item) (cdr (assoc 'id item)))
+                              (json-read-from-string
+                               (ekg-agent-org-list
+                                :deadline-after today-midnight
+                                :deadline-before tomorrow-midnight)))))
+      (should (member "task1" today-ids))
+      (should-not (member "task2" today-ids))
+      (should-not (member "task3" today-ids)))
+    ;; Combined filter
+    (let ((combo-ids (mapcar (lambda (item) (cdr (assoc 'id item)))
+                              (json-read-from-string
+                               (ekg-agent-org-list
+                                :status "TODO"
+                                :tags '("project/a")
+                                :deadline-after today-midnight
+                                :deadline-before tomorrow-midnight)))))
+      (should (equal combo-ids '("task1"))))
+    ;; JSON output includes Org fields
+    (let ((json (json-read-from-string (ekg-agent-org-list :status "TODO" :num 1))))
+      (let ((first (aref json 0)))
+        (should (equal (cdr (assoc 'id first)) "task1"))
+        (should (equal (cdr (assoc 'title first)) "Task 1"))
+        (should (equal (cdr (assoc 'state first)) "TODO"))
+        (should (equal (cdr (assoc 'deadline first)) today-midnight))))
+    ;; Hierarchical: parent filter
+    (ekg-note-set-parent task2 "task1")
+    (ekg-save-note task2)
+    (let ((child-ids (mapcar (lambda (item) (cdr (assoc 'id item)))
+                              (json-read-from-string
+                               (ekg-agent-org-list :parent-id "task1")))))
+      (should (equal child-ids '("task2"))))))
+
 (provide 'ekg-agent-test)
 ;;; ekg-agent-test.el ends here

@@ -39,6 +39,7 @@ NUM=10
 MAX_WORDS=100
 DAEMON_NAME=""
 MODE=""
+INCLUDE_ORG=""
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -69,6 +70,10 @@ while [[ $# -gt 0 ]]; do
             MODE="latest"
             shift
             ;;
+        --include-org)
+            INCLUDE_ORG=t
+            shift
+            ;;
         --daemon)
             DAEMON_NAME="$2"
             shift 2
@@ -85,6 +90,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --semantic-search Q Semantic search using embeddings"
             echo "  --search QUERY      Full-text search"
             echo "  --latest            Return the latest modified notes"
+            echo "  --include-org       Include org/task notes in results"
             echo "  --daemon NAME       Name of the Emacs daemon to use (optional)"
             echo "  --help              Show this help message"
             echo ""
@@ -152,13 +158,13 @@ case $MODE in
         done
         TAGS_ELISP="${TAGS_ELISP% })"
 
-        READ_EXPR="(ekg-agent-read-notes :tags '$TAGS_ELISP :num $NUM :max-words $MAX_WORDS)"
+        READ_EXPR="(ekg-agent-read-notes :tags '$TAGS_ELISP :num $NUM :max-words $MAX_WORDS${INCLUDE_ORG:+ :include-org t})"
         ;;
 
     id)
         NOTE_ID_ELISP="${NOTE_ID//\\/\\\\}"
         NOTE_ID_ELISP="${NOTE_ID_ELISP//\"/\\\"}"
-        READ_EXPR="(ekg-agent-read-notes :note-id \"$NOTE_ID_ELISP\" :max-words $MAX_WORDS)"
+        READ_EXPR="(ekg-agent-read-notes :note-id \"$NOTE_ID_ELISP\" :max-words $MAX_WORDS${INCLUDE_ORG:+ :include-org t})"
         ;;
 
     semantic)
@@ -166,7 +172,7 @@ case $MODE in
         SEARCH_ELISP="${SEMANTIC_SEARCH//\\/\\\\}"
         SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
 
-        READ_EXPR="(ekg-agent-read-notes :semantic-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)"
+        READ_EXPR="(ekg-agent-read-notes :semantic-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS${INCLUDE_ORG:+ :include-org t})"
         ;;
 
     text)
@@ -174,11 +180,11 @@ case $MODE in
         SEARCH_ELISP="${TEXT_SEARCH//\\/\\\\}"
         SEARCH_ELISP="${SEARCH_ELISP//\"/\\\"}"
 
-        READ_EXPR="(ekg-agent-read-notes :text-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS)"
+        READ_EXPR="(ekg-agent-read-notes :text-search \"$SEARCH_ELISP\" :num $NUM :max-words $MAX_WORDS${INCLUDE_ORG:+ :include-org t})"
         ;;
 
     latest)
-        READ_EXPR="(ekg-agent-read-notes :latest t :num $NUM :max-words $MAX_WORDS)"
+        READ_EXPR="(ekg-agent-read-notes :latest t :num $NUM :max-words $MAX_WORDS${INCLUDE_ORG:+ :include-org t})"
         ;;
 esac
 

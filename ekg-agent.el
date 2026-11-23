@@ -4011,7 +4011,7 @@ If MAX-WORDS is specified, truncate each note's text to that many words."
                          (ekg-agent--note-to-alist note max-words))
                        notes)))
 
-(cl-defun ekg-agent--get-notes (&key tags any-tags note-id semantic-search text-search latest (num 10))
+(cl-defun ekg-agent--get-notes (&key tags any-tags note-id semantic-search text-search latest (num 10) include-org)
   "Get notes from ekg based on search criteria.
 
 This is a helper function that returns a list of note objects.
@@ -4027,6 +4027,7 @@ This function supports multiple modes of operation:
 6. Latest modified: Provide LATEST as non-nil.
 
 NUM is the maximum number of notes to return (default 10).
+INCLUDE-ORG, when non-nil, includes notes tagged `org/task'.
 
 Returns a list of note objects."
   (ekg-connect)
@@ -4034,7 +4035,11 @@ Returns a list of note objects."
   ;; searching by other tags.  ekg-hidden-tags causes notes with
   ;; agent/self-info to be filtered out of normal tag queries, so we
   ;; remove that tag from the hidden list within agent tool context.
-  (let ((ekg-hidden-tags (remove ekg-agent-self-info-tag ekg-hidden-tags)))
+  ;; When INCLUDE-ORG is non-nil, also allow org/task notes.
+  (let ((ekg-hidden-tags (seq-difference ekg-hidden-tags
+                                          (cons ekg-agent-self-info-tag
+                                                (when include-org
+                                                  (list ekg-org-task-tag))))))
     (cond
      ;; Latest modified notes
      (latest
@@ -4081,7 +4086,7 @@ Returns a list of note objects."
       (error "Must provide tags, any-tags, note-id, semantic-search, text-search, or latest")))))
 
 ;;;###autoload
-(cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search latest (num 10) (max-words 100))
+(cl-defun ekg-agent-read-notes (&key tags note-id semantic-search text-search latest (num 10) (max-words 100) include-org)
   "Read notes from ekg and return as JSON.
 
 This function supports multiple modes of operation:
@@ -4094,6 +4099,7 @@ This function supports multiple modes of operation:
 
 NUM is the maximum number of notes to return (default 10).
 MAX-WORDS is the maximum number of words per note text (default 100).
+INCLUDE-ORG, when non-nil, includes notes tagged `org/task'.
 
 Returns a JSON string containing an array of note objects.
 Each note object contains: id, text, mode, tags, creation_time, modified_time.
@@ -4105,8 +4111,145 @@ notes from ekg."
                                      :semantic-search semantic-search
                                      :text-search text-search
                                      :latest latest
-                                     :num num)))
+                                     :num num
+                                     :include-org include-org)))
     (ekg-agent--notes-to-json notes max-words)))
+
+(defun ekg-agent--date-to-timestamp (date-string)
+  "Convert DATE-STRING (YYYY-MM-DD) to a Unix timestamp integer.
+The time is midnight local time on that date."
+  (time-convert (date-to-time (format "%s 00:00:00" date-string)) 'integer))
+
+(defun ekg-agent--org-note-to-alist (note &optional max-words)
+  "Convert NOTE to an alist suitable for JSON encoding, with Org task fields.
+If MAX-WORDS is specified, truncate the text to that many words.
+The alist includes `title', `state', `deadline', `scheduled' and
+`parent_id' when present."
+  (let* ((base (ekg-agent--note-to-alist note max-words))
+         (props (ekg-note-properties note))
+         (title (ekg-org--note-title note))
+         (state (ekg-org-task-state note))
+         (deadline (plist-get props :org/deadline))
+         (scheduled (plist-get props :org/scheduled))
+         (parent-id (ekg-note-parent-id note)))
+    (append
+     base
+     (when title `((title . ,title)))
+     (when state `((state . ,state)))
+     (when deadline `((deadline . ,deadline)))
+     (when scheduled `((scheduled . ,scheduled)))
+     (when parent-id `((parent_id . ,parent-id))))))
+
+(defun ekg-agent--org-notes-to-json (notes &optional max-words)
+  "Convert a list of Org NOTES to a JSON array string.
+If MAX-WORDS is specified, truncate each note's text."
+  (json-encode (mapcar (lambda (note)
+                         (ekg-agent--org-note-to-alist note max-words))
+                       notes)))
+
+;;;###autoload
+(cl-defun ekg-agent-org-list (&key status tags properties
+                                    deadline-after deadline-before
+                                    scheduled-after scheduled-before
+                                    parent-id archived (num 50) (max-words 100))
+  "List Org tasks from ekg and return as JSON.
+
+Only notes tagged `org/task' are considered.  Results are sorted
+by deadline, then scheduled, then sort-order.
+
+STATUS filters by TODO keyword (e.g. \"TODO\", \"DONE\").
+TAGS is a list of additional tags (all must match, AND logic).
+PROPERTIES is an alist of (KEY . VALUE) pairs for generic Org
+property filtering.
+
+DEADLINE-AFTER and DEADLINE-BEFORE are Unix timestamps bounding
+`:org/deadline'.  SCHEDULED-AFTER and SCHEDULED-BEFORE bound
+`:org/scheduled'.
+
+PARENT-ID, when non-nil, restricts to children of that note.
+ARCHIVED, when non-nil, includes archived tasks.
+
+NUM limits the number of results (default 50).
+MAX-WORDS truncates note text (default 100).
+
+Returns a JSON array of task objects with Org-specific fields."
+  (ekg-connect)
+  (require 'ekg-org)
+  (let ((ekg-hidden-tags (seq-difference ekg-hidden-tags
+                                          (list ekg-org-task-tag
+                                                ekg-agent-self-info-tag)))
+        candidates)
+    ;; Gather candidate IDs.
+    (if parent-id
+        (dolist (note (ekg-org-get-child-notes-of-id parent-id))
+          (push (ekg-note-id note) candidates))
+      (setq candidates (plist-get (triples-get-type ekg-db ekg-org-task-tag 'tag)
+                                    :tagged)))
+    ;; Load and filter notes.
+    (let* ((notes
+            (seq-take
+             (seq-sort
+              (lambda (a b)
+                (let ((da (plist-get (ekg-note-properties a) :org/deadline))
+                      (db (plist-get (ekg-note-properties b) :org/deadline))
+                      (sa (plist-get (ekg-note-properties a) :org/scheduled))
+                      (sb (plist-get (ekg-note-properties b) :org/scheduled))
+                      (oa (or (plist-get (ekg-note-properties a) :org/sort-order)
+                              (ekg-note-creation-time a)
+                              0))
+                      (ob (or (plist-get (ekg-note-properties b) :org/sort-order)
+                              (ekg-note-creation-time b)
+                              0)))
+                  (or (and da db (< da db))
+                      (and da (not db))
+                      (and (not da) (not db) sa sb (< sa sb))
+                      (and (not da) (not db) sa (not sb))
+                      (and (not da) (not db) (not sa) (not sb) (< oa ob)))))
+              (delq nil
+                    (mapcar
+                     (lambda (id)
+                       (when-let* ((note (ekg-get-note-with-id id)))
+                         (when (and (ekg-note-active-p note)
+                                    (ekg-org--org-note-p note))
+                           note)))
+                     candidates)))
+             num))
+           ;; Apply filters.
+           (filtered
+            (seq-filter
+             (lambda (note)
+               (let ((note-tags (ekg-note-tags note))
+                     (props (ekg-note-properties note)))
+                 (and
+                  ;; Status filter
+                  (or (null status)
+                      (string-equal (downcase status)
+                                    (downcase (or (ekg-org-task-state note) ""))))
+                  ;; Additional tag filters
+                  (or (null tags)
+                      (seq-every-p (lambda (tag) (member tag note-tags)) tags))
+                  ;; Archive filter
+                  (if archived
+                      (member ekg-org-archive-tag note-tags)
+                    (not (member ekg-org-archive-tag note-tags)))
+                  ;; Deadline range
+                  (let ((d (plist-get props :org/deadline)))
+                    (and (or (null deadline-after) (and d (>= d deadline-after)))
+                         (or (null deadline-before) (and d (< d deadline-before)))))
+                  ;; Scheduled range
+                  (let ((s (plist-get props :org/scheduled)))
+                    (and (or (null scheduled-after) (and s (>= s scheduled-after)))
+                         (or (null scheduled-before) (and s (< s scheduled-before)))))
+                  ;; Generic property filters
+                  (or (null properties)
+                      (let ((prop-alist (ekg-org-properties-alist note)))
+                        (seq-every-p
+                         (lambda (kv)
+                           (string-equal (cdr (assoc (upcase (car kv)) prop-alist))
+                                         (cdr kv)))
+                         properties))))))
+             notes)))
+      (ekg-agent--org-notes-to-json filtered max-words))))
 
 ;; ekg-org integration
 

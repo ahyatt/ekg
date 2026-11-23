@@ -82,6 +82,7 @@ ekg-read --latest -n 5
 
 - `-n NUM` — Max notes to return (default: 10).
 - `-w NUM` — Max words per note (default: 100).
+- `--include-org` — Include notes tagged `org/task` (normally filtered out).
 - Output is JSON: array of objects with `id`, `text`, `mode`, `tags`,
   `creation_time`, `modified_time`.
 
@@ -190,6 +191,43 @@ ekg-org-edit <note-id> [--title "new title"] [--note "new content"] \
 - `--set-property KEY=VALUE` — Set an org property (repeatable). Keys are
   case-insensitive and stored uppercase.
 - `--remove-property KEY` — Remove an org property (repeatable).
+
+## ekg-org-list
+
+List org tasks with filtering by status, tag, deadline, scheduled date, or
+properties.
+
+```sh
+# Tasks due today
+ekg-org-list --deadline-after $(date +%Y-%m-%d) --deadline-before $(date -v+1d +%Y-%m-%d)
+
+# TODO items tagged project/ekg
+ekg-org-list --status TODO --tag project/ekg
+
+# Tasks with a specific property
+ekg-org-list --property CATEGORY=work
+
+# Children of a specific task
+ekg-org-list --parent <note-id>
+
+# Archived tasks
+ekg-org-list --archived
+```
+
+- `--status STATUS` — Filter by TODO state (TODO, DONE, etc.).
+- `--tag TAG` — Additional tag filter (repeatable, AND logic).
+- `--property KEY=VALUE` — Filter by Org property (repeatable).
+- `--deadline-after DATE` — Deadline on or after YYYY-MM-DD.
+- `--deadline-before DATE` — Deadline before YYYY-MM-DD.
+- `--scheduled-after DATE` — Scheduled on or after YYYY-MM-DD.
+- `--scheduled-before DATE` — Scheduled before YYYY-MM-DD.
+- `--parent ID` — Restrict to children of a parent task.
+- `--archived` — Include archived tasks.
+- `-n, --num NUM` — Maximum results (default: 50).
+- `-w, --words NUM` — Max words per note text (default: 100).
+
+Output is JSON with Org-specific fields: `title`, `state`, `deadline`,
+`scheduled`, `parent_id`.
 
 ## Tag Conventions
 
