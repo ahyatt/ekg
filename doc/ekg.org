@@ -1630,15 +1630,30 @@ Run =M-x ekg-org-linear-sync= to import all matching issues, including
 all pages of results.  By default only issues assigned to the API key's
 user are imported.  Set =ekg-org-linear-assignee= to an assignee email
 address, or to =nil= to import everyone.  Set
-=ekg-org-linear-import-team-id= to restrict import to a single team; when
-it is =nil=, issues are imported across all teams, so keep an assignee
-filter configured.  Each issue becomes one EKG task, with sub-issues nested
-beneath their Linear parent.  The task's EKG ID is the issue's Linear URL, so
-=ekg-notes-browse= (=b=) opens the issue in a browser.  Missing ancestors are
-fetched too.  Linear owns the hierarchy: subsequent syncs import moves,
-including moves to the root.
-Imported tasks use Markdown bodies (Linear's description format) and parallel
-children.  Without =markdown-mode= installed, bodies use =text-mode=.  Sibling ordering, projects and initiatives are not imported.
+=ekg-org-linear-import-team-id= to restrict import to a single team;
+when it is =nil=, issues are imported across all teams, so keep an
+assignee filter configured.  Set =ekg-org-linear-unassigned-state= to an
+Org keyword such as =TRIAGE= or =DELEGATED= to also import unassigned
+issues, marking them with that keyword instead of their Linear workflow
+state.  With =nil= (the default), unassigned issues are ignored.  Set
+=ekg-org-linear-other-assignee-state= (for example =DELEGATED=) to also
+import sub-issues of imported issues that are assigned to someone else,
+keeping each imported parent's whole sub-tree complete; with =nil= (the
+default), they are ignored.  The two keywords must each be an Org-only
+state from =ekg-org-linear-org-only-states= or map to a Linear state in
+=ekg-org-linear-state-map=; sync signals an error otherwise.  Add any
+custom keywords to =org-todo-keywords= so task state commands can use
+them.  Each issue becomes one EKG task, with sub-issues nested beneath
+their Linear parent.  The task's EKG ID is the issue's Linear URL, so
+=ekg-notes-browse= (=b=) opens the issue in a browser.  An ancestor is
+only imported when it is itself in scope: a tree whose parent is
+delegated or unassigned starts at the top in-scope task, and re-parents
+beneath its ancestor once that comes into scope.  Linear owns the
+hierarchy: subsequent syncs import moves, including moves to the root.
+Imported tasks use Markdown bodies (Linear's description format) and
+parallel children.  Without =markdown-mode= installed, bodies use
+=text-mode=.  Sibling ordering, projects and initiatives are not
+imported.
 
 Use =M-x ekg-org-linear-link= to associate an existing EKG task ID with a
 Linear issue UUID or identifier such as =ENG-123=.  The first sync uses
@@ -1679,13 +1694,25 @@ subsequent edits instead of creating a duplicate.  A failed UUID lookup stops
 sync without attempting another creation.  Keep these properties intact when
 retrying a failed creation.
 
-Customize =ekg-org-linear-state-map= to map Linear workflow state types to
-Org TODO keywords.  By default triage, backlog, unstarted and started map to =TODO=;
-completed, canceled and duplicate map to =DONE=.  For finer distinctions, configure
-matching Org keywords and, for example, map started to =DOING= and canceled
-to =CANCELED=.  Export preserves an issue's current workflow state when it
-already maps to the desired Org keyword; otherwise it chooses the first
-matching state in that issue's team.
+Customize =ekg-org-linear-state-map= to map Linear workflow state types
+to Org TODO keywords.  By default triage, backlog, unstarted and started
+map to =TODO=; completed, canceled and duplicate map to =DONE=.  For
+finer distinctions, add matching keywords to =org-todo-keywords= and
+map, for example, triage to =TRIAGE=, started to =STARTED=, or canceled
+to =CANCELED=.  Export preserves an issue's current workflow state when
+it already maps to the desired Org keyword; otherwise it chooses the
+first matching state in that issue's team.
+
+Some Org states have no Linear workflow state equivalent.  States listed
+in =ekg-org-linear-org-only-states= (by default =DELEGATED=) never change
+the Linear state: sync leaves the issue's workflow state alone and keeps
+the keyword on the task even when the remote state would otherwise
+overwrite it.  Use =DELEGATED= for work you have handed to someone else,
+since Linear expresses that with the assignee rather than the workflow
+state.  When a sync finds a task in an Org-only state whose issue is
+still assigned to the configured assignee or unassigned, it warns so you
+can reassign the issue in Linear; the delegation only takes effect once
+someone else owns it.
 
 Save or close modified editors for linked or marked tasks before syncing.
 Sync checks for unsaved text, title, state and Org property changes before
@@ -1694,20 +1721,33 @@ Clean editors are refreshed with synchronized text and link metadata, so
 saving them afterward preserves the Linear issue association.  Unrelated
 buffers keep their existing modified state.
 
-Sync compares each field with a stored =LINEAR_SYNC= snapshot.  Independent
-edits (for example a local description change and a remote title change)
-merge.  Markdown link formatting that represents the same URL, Linear issue
-or GitHub pull request is treated as equivalent.  If the same field changes
-differently on both sides, sync opens the =*EKG Linear Sync Conflict*= buffer
-with the issue, field, and local and remote values.  The error message points
-to that buffer rather than printing the values.  Resolve a conflict by making
-that field equal on both sides, then rerun sync.  Earlier issues may already
-have synced; rerunning does not create duplicates.  Failed updates never
-advance the issue's snapshot.  Sync runs synchronously and is invoked
-explicitly; it does not install background timers or perform network requests
-on note save.
-Deletion and archival are not propagated, and remote changes made during a
-sync can race with updates; avoid editing the same issue during a sync.
+Sync compares each field with a stored =LINEAR_SYNC= snapshot.
+Independent edits (for example a local description change and a remote
+title change) merge.  Markdown link formatting that represents the same
+URL, Linear issue or GitHub pull request is treated as equivalent.  If
+the same field changes differently on both sides, sync opens the =*EKG
+Linear Sync Conflict*= buffer with the issue, field, and local and
+remote values.  The error message points to that buffer rather than
+printing the values.  Resolve a conflict by making that field equal on
+both sides, then rerun sync.  Earlier issues may already have synced;
+rerunning does not create duplicates.  Failed updates never advance the
+issue's snapshot.  Sync runs synchronously and is invoked explicitly; it
+does not install background timers or perform network requests on note
+save.  Auto-imported tasks whose issue leaves the import scope are
+trashed on the next sync, so removing an assignee filter option also
+removes the tasks it imported.  Tasks deliberately kept with an Org-only
+state such as DELEGATED, or unassigned ones marked TRIAGE, are left
+alone, as are tasks linked explicitly with =ekg-org-linear-link=.
+Trashing re-parents any in-scope children onto the task's own parent
+first, and the trashed task is unlinked on the following sync.  Tasks
+trashed this way are restored if their issue returns to the import
+scope.  Manually trashed tasks are unlinked and excluded from future
+syncs until restored locally.  If an issue created from EKG disappears
+from Linear, its task is unlinked and left local; mark it again to
+recreate the issue.  Existing siblings keep their order as tasks enter
+or leave the scope.  EKG deletions and archiving are not pushed to
+Linear, and remote changes made during a sync can race with updates;
+avoid editing the same issue during a sync.
 
 *** Agent integration
 

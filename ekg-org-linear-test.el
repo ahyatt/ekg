@@ -26,8 +26,172 @@
   "Make a Linear issue with ID, TITLE and PARENT."
   (copy-tree `((id . ,id) (identifier . ,id) (title . ,title) (description . "Body")
                (url . ,(format "https://linear.app/issue/%s" id))
+               (assignee . nil)
                (team . ((id . "team"))) (state . ((id . "todo") (type . "unstarted")))
                (parent . ,(when parent `((id . ,parent)))))))
+
+(ekg-deftest ekg-org-linear-test-unassigned-filter-json ()
+  (let* ((ekg-org-linear-assignee "me")
+         (ekg-org-linear-unassigned-state "TRIAGE")
+         (json-object-type 'alist)
+         (json-array-type 'vector)
+         (filter (json-read-from-string
+                  (json-encode (ekg-org-linear--issue-filter))))
+         (alternatives (alist-get 'or filter)))
+    (should (vectorp alternatives))
+    (should (= 2 (length alternatives)))
+    (should (equal '((assignee (isMe (eq . t)))) (aref alternatives 0)))
+    (should (equal '((assignee (null . t))) (aref alternatives 1))))
+  (let* ((ekg-org-linear-assignee "me@example.com")
+         (ekg-org-linear-unassigned-state "TRIAGE")
+         (json-object-type 'alist)
+         (json-array-type 'vector)
+         (alternatives
+          (alist-get 'or (json-read-from-string
+                          (json-encode (ekg-org-linear--issue-filter))))))
+    (should (equal "me@example.com"
+                   (alist-get 'eq (alist-get 'email
+                                             (alist-get 'assignee
+                                                        (aref alternatives 0))))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-prune-refreshes-editors ()
+  (let* ((issue (ekg-org-linear-test--issue "p" "Parent"))
+         (remote (list issue)))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote)))
+      (ekg-org-linear-sync)
+      (let* ((parent (gethash "p" (ekg-org-linear--linked-notes)))
+             (child (ekg-org-linear-test--task "Local child" parent)))
+        (with-temp-buffer
+          (text-mode)
+          (ekg-edit-mode 1)
+          (setq-local ekg-note (ekg-get-note-with-id (ekg-note-id parent)))
+          (insert (ekg-note-text ekg-note))
+          (set-buffer-modified-p nil)
+          (let ((parent-editor (current-buffer)))
+            (with-temp-buffer
+              (text-mode)
+              (ekg-edit-mode 1)
+              (setq-local ekg-note (ekg-get-note-with-id (ekg-note-id child)))
+              (insert (ekg-note-text ekg-note))
+              (set-buffer-modified-p nil)
+              (let ((child-editor (current-buffer)))
+                (with-temp-buffer
+                  (insert "Unrelated unsaved text")
+                  (setq remote nil)
+                  (ekg-org-linear-sync)
+                  (should (buffer-modified-p)))
+                (with-current-buffer parent-editor
+                  (should (member ekg-trash-tag (ekg-note-tags ekg-note)))
+                  (should (ekg-org-get-property ekg-note "LINEAR_PRUNED"))
+                  (should-not (buffer-modified-p))
+                  (ekg--save-note-in-buffer))
+                (with-current-buffer child-editor
+                  (should-not (ekg-note-parent-id ekg-note))
+                  (should-not (buffer-modified-p))
+                  (ekg--save-note-in-buffer))
+                (should-not (ekg-note-parent-id
+                             (ekg-get-note-with-id (ekg-note-id child))))
+                (should (member ekg-trash-tag
+                                (ekg-note-tags
+                                 (ekg-get-note-with-id
+                                  (ekg-note-id parent)))))))))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-manual-trash-excludes-discovery ()
+  (let* ((issue (ekg-org-linear-test--issue "i" "Original"))
+         (parent (ekg-org-linear-test--issue "p" "Parent"))
+         (remote (list issue))
+         (ekg-org-linear-assignee "me@example.com"))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote)))
+      (ekg-org-linear-sync)
+      (ekg-note-trash (gethash "i" (ekg-org-linear--linked-notes)))
+      (setf (alist-get 'title issue) "Remote edit"
+            (alist-get 'description issue) "Changed remotely"
+            (alist-get 'parent issue) '((id . "p"))
+            (alist-get 'assignee issue) '((email . "other@example.com")))
+      (let ((ekg-org-linear-other-assignee-state "DELEGATED"))
+        (cl-letf (((symbol-function 'ekg-org-linear--paged-issues)
+                   (lambda (_filter) (list issue))))
+          ;; Test the initial import set, discovery, and URL reuse after unlink.
+          (dolist (issues (list (list parent issue) (list parent) (list issue)))
+            (setq remote issues)
+            (ekg-org-linear-sync)
+            (let ((note (ekg-get-note-with-id "https://linear.app/issue/i")))
+              (should-not (ekg-org-get-property note "LINEAR_ID"))
+              (should (equal "Original" (ekg-org--note-title note)))
+              (should (equal "Body" (ekg-note-text note)))
+              (should (member ekg-trash-tag (ekg-note-tags note))))))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-default-states-toggle-done ()
+  (let* ((org-todo-keywords '((sequence "TODO" "|" "DONE")))
+         (triage (ekg-org-linear-test--issue "t" "Triage"))
+         (started (ekg-org-linear-test--issue "s" "Started")))
+    (setf (alist-get 'state triage) '((id . "triage") (type . "triage"))
+          (alist-get 'state started) '((id . "started") (type . "started")))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues)
+               (lambda () (list triage started))))
+      (ekg-org-linear-sync))
+    (ekg-org-view)
+    (dolist (id '("https://linear.app/issue/t" "https://linear.app/issue/s"))
+      (should (ekg-notes--goto-id
+               (seq-find (lambda (visible) (equal visible id))
+                         (ekg-notes-visible-ids))))
+      (should (equal id (ekg-note-id (ekg-current-note-or-error))))
+      (ekg-org-view-toggle-done)
+      (should (equal "DONE" (ekg-org-task-state (ekg-get-note-with-id id)))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-child-fetch-batches-and-paginates ()
+  (let ((issues (make-hash-table :test 'equal))
+        (ekg-org-linear-assignee "me@example.com")
+        (first (ekg-org-linear-test--issue "c1" "First child" "p0"))
+        (second (ekg-org-linear-test--issue "c2" "Second child" "p0"))
+        batches)
+    (dotimes (index 250)
+      (let ((id (format "p%d" index)))
+        (puthash id (ekg-org-linear-test--issue id id) issues)))
+    (setf (alist-get 'assignee first) '((email . "other@example.com"))
+          (alist-get 'assignee second) '((email . "other@example.com")))
+    (cl-letf (((symbol-function 'ekg-org-linear--request)
+               (lambda (_query variables)
+                 (let* ((filter (alist-get 'filter variables))
+                        (ids (alist-get 'in (alist-get 'id
+                                                      (alist-get 'parent filter))))
+                        (after (alist-get 'after variables)))
+                   (should (vectorp ids))
+                   (should (<= (length ids) 100))
+                   (push ids batches)
+                   (if (member "p0" (append ids nil))
+                       (if after
+                           `((issues (nodes . (,second)) (pageInfo)))
+                         `((issues (nodes . (,first))
+                                   (pageInfo (hasNextPage . t)
+                                             (endCursor . "next")))))
+                     '((issues (nodes) (pageInfo))))))))
+      (ekg-org-linear--fetch-other-children issues))
+    ;; Three root batches, one extra page, and one descendant batch.
+    (should (= 5 (length batches)))
+    (should (gethash "c1" issues))
+    (should (gethash "c2" issues))))
+
+(ekg-deftest-with-db ekg-org-linear-test-unlink-cancels-creation ()
+  (ekg-org-add-schema)
+  (let ((task (ekg-org-linear-test--task "Local task")))
+    (dolist (property '(("LINEAR_ID" . "gone")
+                        ("LINEAR_CREATE_ID" . "gone")
+                        ("LINEAR_SYNC_ENABLED" . "t")
+                        ("LINEAR_SYNC" . "[\"Local task\",\"Local body\",\"TODO\"]")))
+      (ekg-org-set-property task (car property) (cdr property)))
+    (ekg-save-note task)
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () nil))
+              ((symbol-function 'ekg-org-linear--find-issue) (lambda (_) nil))
+              ((symbol-function 'ekg-org-linear--create)
+               (lambda (&rest _) (ert-fail "Unlink must not recreate issue"))))
+      (ekg-org-linear-sync)
+      (ekg-org-linear-sync))
+    (setq task (ekg-get-note-with-id (ekg-note-id task)))
+    (dolist (key '("LINEAR_ID" "LINEAR_CREATE_ID" "LINEAR_SYNC_ENABLED"
+                   "LINEAR_SYNC"))
+      (should-not (ekg-org-get-property task key)))
+    (should (equal "Local body" (ekg-note-text task)))))
 
 (ekg-deftest ekg-org-linear-test-merge ()
              (should (equal (ekg-org-linear--merge '("Local" "Body" "TODO")
@@ -88,6 +252,61 @@
                                     (team . ((id . "team")))
                                     (state . ((id . "d") (type . "duplicate")))))))))
 
+(ekg-deftest ekg-org-linear-test-remote-state-with-assignee ()
+             (let ((ekg-org-linear-state-map
+                    (cons '("started" . "STARTED") ekg-org-linear-state-map))
+                   (ekg-org-linear-assignee "me")
+                   (ekg-org-linear-unassigned-state "TRIAGE")
+                   (ekg-org-linear-other-assignee-state "DELEGATED")
+                   (issue (lambda (assignee)
+                            `((id . "i") (identifier . "I-1")
+                              (title . "Title") (description . "")
+                              (team . ((id . "team")))
+                              (state . ((id . "s") (type . "started")))
+                              (assignee . ,assignee)))))
+               (cl-letf (((symbol-function 'ekg-org-linear--viewer-id)
+                          (lambda () "me")))
+                 ;; Assigned to the configured assignee uses the workflow state.
+                 (should (equal "STARTED"
+                                (nth 2 (ekg-org-linear--remote-values
+                                        (funcall issue '((id . "me")
+                                                         (email . "me@x.com")))))))
+                 ;; Unassigned issues use `ekg-org-linear-unassigned-state'.
+                 (should (equal "TRIAGE"
+                                (nth 2 (ekg-org-linear--remote-values
+                                        (funcall issue nil)))))
+                 ;; Issues assigned to someone else use the other-assignee state.
+                 (should (equal "DELEGATED"
+                                (nth 2 (ekg-org-linear--remote-values
+                                        (funcall issue '((id . "other")
+                                                         (email . "o@x.com")))))))
+                 ;; Without an option, the workflow state is used regardless.
+                 (let ((ekg-org-linear-unassigned-state nil)
+                       (ekg-org-linear-other-assignee-state nil))
+                   (should (equal "STARTED"
+                                  (nth 2 (ekg-org-linear--remote-values
+                                          (funcall issue nil)))))
+                   (should (equal "STARTED"
+                                  (nth 2 (ekg-org-linear--remote-values
+                                          (funcall issue '((id . "other")
+                                                           (email . "o@x.com")))))))))))
+
+(ekg-deftest ekg-org-linear-test-assignee-matches ()
+             (let ((ekg-org-linear-assignee "a@b.com"))
+               (should (ekg-org-linear--issue-assignee-matches-p
+                        '((assignee . ((id . "x") (email . "a@b.com"))))))
+               (should-not (ekg-org-linear--issue-assignee-matches-p
+                            '((assignee . ((id . "x") (email . "c@d.com"))))))
+               (should-not (ekg-org-linear--issue-assignee-matches-p
+                            '((assignee . nil))))
+               (should (ekg-org-linear--issue-has-other-owner-p
+                        '((assignee . ((id . "x") (email . "c@d.com"))))))
+               (should-not (ekg-org-linear--issue-has-other-owner-p
+                            '((assignee . nil))))
+               (let ((ekg-org-linear-assignee nil))
+                 (should (ekg-org-linear--issue-assignee-matches-p
+                          '((assignee . ((id . "x") (email . "c@d.com")))))))))
+
 (ekg-deftest ekg-org-linear-test-issue-filter ()
              (let ((ekg-org-linear-import-team-id "team")
                    (ekg-org-linear-assignee "me"))
@@ -100,7 +319,39 @@
                               '((assignee . ((email . ((eq . "a@b.com")))))))))
              (let ((ekg-org-linear-import-team-id nil)
                    (ekg-org-linear-assignee nil))
-               (should-error (ekg-org-linear--issue-filter))))
+               (should-error (ekg-org-linear--issue-filter)))
+             (let ((ekg-org-linear-import-team-id "team")
+                   (ekg-org-linear-assignee "me")
+                   (ekg-org-linear-unassigned-state "TRIAGE"))
+               (should (equal (ekg-org-linear--issue-filter)
+                              '((or . [((assignee . ((isMe . ((eq . t))))))
+                                       ((assignee . ((null . t))))])
+                                (team . ((id . ((eq . "team"))))))))))
+
+(ekg-deftest ekg-org-linear-test-org-only-state ()
+             (let ((issue (ekg-org-linear-test--issue "i" "Title")))
+               (should-not (ekg-org-linear--state-id issue "DELEGATED"))
+               ;; Org-only states survive a merge when the remote cannot express them.
+               (should (equal (ekg-org-linear--merge '("T" "D" "DELEGATED")
+                                                     '("T" "D" "TODO")
+                                                     '("T" "D" "DELEGATED"))
+                              '("T" "D" "DELEGATED")))
+               (should (equal (ekg-org-linear--merge '("T" "D" "DELEGATED")
+                                                     '("T" "D" "TODO")
+                                                     '("T" "D" "TODO"))
+                              '("T" "D" "DELEGATED")))))
+
+(ekg-deftest ekg-org-linear-test-update-omits-org-only-state ()
+             (let ((issue (ekg-org-linear-test--issue "i" "Title")) sent)
+               (cl-letf (((symbol-function 'ekg-org-linear--request)
+                          (lambda (_query variables)
+                            (setq sent (alist-get 'input variables))
+                            '((issueUpdate . ((success . t)))))))
+                 (ekg-org-linear--update issue '("Title" "Body" "DELEGATED"))
+                 (should-not (assq 'stateId sent))
+                 (should (equal "Title" (alist-get 'title sent)))
+                 (ekg-org-linear--update issue '("Title" "Body" "TODO"))
+                 (should (equal "todo" (alist-get 'stateId sent))))))
 
 (ekg-deftest-with-db ekg-org-linear-test-sync-tree-and-edits ()
                      (let* ((parent (ekg-org-linear-test--issue "p" "Parent"))
@@ -141,6 +392,320 @@
                            (ekg-org-linear-sync)
                            (should-not (ekg-note-parent-id
                                         (gethash "c" (ekg-org-linear--linked-notes))))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-delegated-sync ()
+  (let* ((issue (ekg-org-linear-test--issue "i" "Title"))
+         (remote (list issue)) updates warnings)
+    (setf (alist-get 'assignee issue) '((id . "me") (email . "me@x.com")))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote))
+              ((symbol-function 'ekg-org-linear--viewer-id) (lambda () "me"))
+              ((symbol-function 'ekg-org-linear--update)
+               (lambda (_issue values) (push values updates)))
+              ((symbol-function 'warn)
+               (lambda (&rest args) (push args warnings))))
+      (ekg-org-linear-sync)
+      (let ((note (gethash "i" (ekg-org-linear--linked-notes))))
+        (should (equal "TODO" (ekg-org-task-state note)))
+        (setf (ekg-note-tags note)
+              (cons "org/state/delegated"
+                    (seq-remove (lambda (tag) (string-prefix-p "org/state/" tag))
+                                (ekg-note-tags note))))
+        (ekg-save-note note))
+      (ekg-org-linear-sync)
+      (let ((note (gethash "i" (ekg-org-linear--linked-notes))))
+        (should (equal "DELEGATED" (ekg-org-task-state note))))
+      (should (equal '("Title" "Body" "DELEGATED") (car updates)))
+      (should warnings)
+      ;; A later sync keeps the Org-only state instead of reverting to TODO.
+      (setq updates nil warnings nil)
+      (ekg-org-linear-sync)
+      (should (equal "DELEGATED"
+                     (ekg-org-task-state
+                      (gethash "i" (ekg-org-linear--linked-notes)))))
+      (should (equal '("Title" "Body" "DELEGATED") (car updates)))
+      (should warnings))))
+
+(ekg-deftest-with-db ekg-org-linear-test-triage-import ()
+  (let* ((ekg-org-linear-state-map
+          (cons '("triage" . "TRIAGE") ekg-org-linear-state-map))
+         (issue (ekg-org-linear-test--issue "i" "Title"))
+         (remote (list issue)))
+    (setf (alist-get 'assignee issue) nil)
+    (let ((ekg-org-linear-assignee "me")
+          (ekg-org-linear-unassigned-state "TRIAGE"))
+      (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote))
+                ((symbol-function 'ekg-org-linear--viewer-id) (lambda () "me")))
+        (ekg-org-linear-sync)
+        (let ((note (gethash "i" (ekg-org-linear--linked-notes))))
+          (should (equal "TRIAGE" (ekg-org-task-state note)))
+          (should (member "org/state/triage" (ekg-note-tags note))))
+        ;; Nothing to push for an unassigned issue imported as TRIAGE.
+        (cl-letf (((symbol-function 'ekg-org-linear--update)
+                   (lambda (&rest _) (ert-fail "No update for unassigned import"))))
+          (ekg-org-linear-sync))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-other-children-sync ()
+  (let* ((parent (ekg-org-linear-test--issue "p" "Parent"))
+         (child (ekg-org-linear-test--issue "c" "Child" "p"))
+         (grand (ekg-org-linear-test--issue "g" "Grand" "c"))
+         (remote (list parent)) updates warnings)
+    (setf (alist-get 'assignee parent) '((id . "me") (email . "me@x.com"))
+          (alist-get 'assignee child) '((id . "bob") (email . "bob@x.com"))
+          (alist-get 'assignee grand) '((id . "carol") (email . "carol@x.com")))
+    (let ((ekg-org-linear-assignee "me")
+          (ekg-org-linear-other-assignee-state "DELEGATED"))
+      (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote))
+                ((symbol-function 'ekg-org-linear--viewer-id) (lambda () "me"))
+                ((symbol-function 'ekg-org-linear--paged-issues)
+                 (lambda (filter)
+                   (let ((parents (append
+                                   (alist-get 'in
+                                              (alist-get 'id
+                                                         (alist-get 'parent filter)))
+                                   nil)))
+                     (cond ((member "p" parents) (list child))
+                           ((member "c" parents) (list grand))
+                           (t nil)))))
+                ((symbol-function 'ekg-org-linear--update)
+                 (lambda (_issue values) (push values updates)))
+                ((symbol-function 'warn)
+                 (lambda (&rest args) (push args warnings))))
+        (ekg-org-linear-sync)
+        (let* ((notes (ekg-org-linear--linked-notes))
+               (n-parent (gethash "p" notes))
+               (n-child (gethash "c" notes))
+               (n-grand (gethash "g" notes)))
+          (should (= 3 (hash-table-count notes)))
+          (should n-child)
+          (should n-grand)
+          (should (equal "DELEGATED" (ekg-org-task-state n-child)))
+          (should (equal "DELEGATED" (ekg-org-task-state n-grand)))
+          (should (equal (ekg-note-id n-parent) (ekg-note-parent-id n-child)))
+          (should (equal (ekg-note-id n-child) (ekg-note-parent-id n-grand))))
+        ;; No state is pushed for the imported DELEGATED issues, and since
+        ;; they are owned by someone else, there is no delegation warning.
+        (should-not updates)
+        (should-not warnings)))))
+
+(ekg-deftest-with-db ekg-org-linear-test-child-fetch-ignores-unassigned ()
+  (let* ((parent (ekg-org-linear-test--issue "p" "Parent"))
+         (child (ekg-org-linear-test--issue "c" "Child" "p"))
+         (remote (list parent)))
+    (setf (alist-get 'assignee parent) '((id . "me") (email . "me@x.com"))
+          (alist-get 'assignee child) nil)
+    (let ((ekg-org-linear-assignee "me")
+          (ekg-org-linear-other-assignee-state "DELEGATED"))
+      (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote))
+                ((symbol-function 'ekg-org-linear--viewer-id) (lambda () "me"))
+                ((symbol-function 'ekg-org-linear--paged-issues)
+                 (lambda (filter) (if (assq 'parent filter) (list child) nil))))
+        (ekg-org-linear-sync)
+        ;; The child has no assignee, so only `ekg-org-linear-unassigned-state'
+        ;; could import it; this option does not.
+        (should-not (gethash "c" (ekg-org-linear--linked-notes)))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-unassigned-state-validation ()
+  (let ((ekg-org-linear-assignee "me")
+        (ekg-org-linear-unassigned-state "BOGUS"))
+    (should-error (ekg-org-linear-sync) :type 'user-error)))
+
+(ekg-deftest-with-db ekg-org-linear-test-other-assignee-validation ()
+  (let ((ekg-org-linear-assignee "me")
+        (ekg-org-linear-other-assignee-state "BOGUS"))
+    (should-error (ekg-org-linear-sync) :type 'user-error)))
+
+(ekg-deftest-with-db ekg-org-linear-test-import-marker-and-prune ()
+  (let* ((issue (ekg-org-linear-test--issue "i" "Title"))
+         (remote (list issue)) updates)
+    (setf (alist-get 'assignee issue) '((id . "me") (email . "me@x.com")))
+    (let ((ekg-org-linear-assignee "me"))
+      (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote))
+                ((symbol-function 'ekg-org-linear--update)
+                 (lambda (_issue values) (push values updates))))
+        (ekg-org-linear-sync)
+        (let ((note (gethash "i" (ekg-org-linear--linked-notes))))
+          (should (equal "t" (ekg-org-get-property note "LINEAR_IMPORTED")))
+          (should (equal "TODO" (ekg-org-task-state note))))
+        ;; Reassigned away from me: the issue falls out of the filter and the
+        ;; imported task is trashed on the next sync.
+        (setf (alist-get 'assignee issue) '((id . "bob") (email . "b@x.com")))
+        (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () nil)))
+          (ekg-org-linear-sync))
+        (let ((n (ekg-get-note-with-id "https://linear.app/issue/i")))
+          (should n)
+          (should (member ekg-trash-tag (ekg-note-tags n))))
+        ;; The next sync drops the association entirely.
+        (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () nil)))
+          (ekg-org-linear-sync))
+        (should-not (ekg-org-get-property
+                     (ekg-get-note-with-id "https://linear.app/issue/i")
+                     "LINEAR_ID"))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-prune-keeps-triage-and-delegated ()
+  (let* ((ekg-org-linear-state-map
+          (cons '("triage" . "TRIAGE") ekg-org-linear-state-map))
+         (triage (ekg-org-linear-test--issue "t" "Triage"))
+         (deleg (ekg-org-linear-test--issue "d" "Delegated")))
+    (setf (alist-get 'assignee triage) nil
+          (alist-get 'assignee deleg) '((id . "bob") (email . "b@x.com")))
+    (let ((ekg-org-linear-assignee "me")
+          (ekg-org-linear-unassigned-state "TRIAGE")
+          (ekg-org-linear-other-assignee-state "DELEGATED"))
+      (cl-letf (((symbol-function 'ekg-org-linear--issues)
+                 (lambda () (list triage deleg)))
+                ((symbol-function 'ekg-org-linear--viewer-id) (lambda () "me"))
+                ((symbol-function 'ekg-org-linear--paged-issues) (lambda (&rest _) nil)))
+        (ekg-org-linear-sync)
+        (should (equal "TRIAGE" (ekg-org-task-state (gethash "t" (ekg-org-linear--linked-notes)))))
+        (should (equal "DELEGATED" (ekg-org-task-state (gethash "d" (ekg-org-linear--linked-notes)))))
+        ;; Both options off: the issues leave the scope, but the deliberately
+        ;; kept TRIAGE and DELEGATED tasks are not pruned.
+        (let ((ekg-org-linear-unassigned-state nil)
+              (ekg-org-linear-other-assignee-state nil))
+          (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () nil)))
+            (ekg-org-linear-sync))
+          (let ((notes (ekg-org-linear--linked-notes)))
+            (should-not (member ekg-trash-tag
+                                (ekg-note-tags (gethash "t" notes))))
+            (should-not (member ekg-trash-tag
+                                (ekg-note-tags (gethash "d" notes))))))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-prune-reparents-children ()
+  (let* ((parent (ekg-org-linear-test--issue "p" "Parent"))
+         (child (ekg-org-linear-test--issue "c" "Child" "p"))
+         (remote (list parent child)))
+    (setf (alist-get 'assignee parent) '((id . "me") (email . "me@x.com"))
+          (alist-get 'assignee child) '((id . "me") (email . "me@x.com")))
+    (let ((ekg-org-linear-assignee "me"))
+      (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote)))
+        (ekg-org-linear-sync)
+        ;; The parent falls out of scope; its child is still mine.  The child
+        ;; must survive on its own, not be dragged into the trash.
+        (setf (alist-get 'assignee parent) '((id . "bob") (email . "b@x.com")))
+        (cl-letf (((symbol-function 'ekg-org-linear--issues)
+                   (lambda () (list child))))
+          (ekg-org-linear-sync))
+        (let ((n-parent (ekg-get-note-with-id "https://linear.app/issue/p"))
+              (n-child (ekg-get-note-with-id "https://linear.app/issue/c")))
+          (should (member ekg-trash-tag (ekg-note-tags n-parent)))
+          (should-not (member ekg-trash-tag (ekg-note-tags n-child)))
+          (should-not (ekg-note-parent-id n-child)))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-pruned-parent-returns ()
+  (let* ((parent (ekg-org-linear-test--issue "p" "Parent"))
+         (child (ekg-org-linear-test--issue "c" "Child" "p"))
+         (remote (list parent child)))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote)))
+      ;; Exercise returning both before and after the unlinking sync.
+      (dolist (extra-syncs '(0 1))
+        (ekg-org-linear-sync)
+        (setq remote (list child))
+        (ekg-org-linear-sync)
+        (should-not (ekg-note-parent-id
+                     (ekg-get-note-with-id "https://linear.app/issue/c")))
+        (dotimes (_ extra-syncs) (ekg-org-linear-sync))
+        (setq remote (list parent child))
+        (ekg-org-linear-sync)
+        (let ((p (ekg-get-note-with-id "https://linear.app/issue/p"))
+              (c (ekg-get-note-with-id "https://linear.app/issue/c")))
+          (should (ekg-org--note-active-p p))
+          (should (ekg-org--note-active-p c))
+          (should (equal (ekg-note-id p) (ekg-note-parent-id c)))
+          (should-not (ekg-org-get-property p "LINEAR_PRUNED")))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-manually-trashed-stays-trashed ()
+  (let* ((issue (ekg-org-linear-test--issue "i" "Issue"))
+         (remote (list issue)))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote)))
+      (ekg-org-linear-sync)
+      (ekg-note-trash (gethash "i" (ekg-org-linear--linked-notes)))
+      (ekg-org-linear-sync)
+      (let ((note (ekg-get-note-with-id "https://linear.app/issue/i")))
+        (should (member ekg-trash-tag (ekg-note-tags note)))
+        (should-not (ekg-org-get-property note "LINEAR_PRUNED"))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-prune-nested-ancestors ()
+  (let* ((a (ekg-org-linear-test--issue "a" "A"))
+         (b (ekg-org-linear-test--issue "b" "B" "a"))
+         (c (ekg-org-linear-test--issue "c" "C" "b"))
+         (remote (list a b c)))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote)))
+      (ekg-org-linear-sync)
+      (let ((child (ekg-get-note-with-id "https://linear.app/issue/c")))
+        (setf (ekg-note-tags child) '("org/task" "org/state/delegated"))
+        (ekg-save-note child))
+      (setq remote nil)
+      (ekg-org-linear-sync)
+      (let ((child (ekg-get-note-with-id "https://linear.app/issue/c")))
+        (should (ekg-org--note-active-p child))
+        (should-not (ekg-note-parent-id child)))
+      (dolist (id '("a" "b"))
+        (should (member ekg-trash-tag
+                        (ekg-note-tags
+                         (ekg-get-note-with-id
+                          (concat "https://linear.app/issue/" id)))))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-explicit-link-clears-import-marker ()
+  (let* ((issue (ekg-org-linear-test--issue "i" "Issue"))
+         (remote (list issue)))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote))
+              ((symbol-function 'ekg-org-linear--issue) (lambda (_) issue))
+              ((symbol-function 'ekg-org-linear--find-issue) (lambda (_) issue)))
+      (ekg-org-linear-sync)
+      (ekg-org-linear-link "https://linear.app/issue/i" "i")
+      (should-not (ekg-org-get-property
+                   (ekg-get-note-with-id "https://linear.app/issue/i")
+                   "LINEAR_IMPORTED"))
+      (setq remote nil)
+      (ekg-org-linear-sync)
+      (should (ekg-org--note-active-p
+               (gethash "i" (ekg-org-linear--linked-notes)))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-scope-preserves-sibling-order ()
+  (let* ((ekg-note-pre-save-hook '(ekg-org--save-task-defaults))
+         (parent (ekg-org-linear-test--issue "p" "Parent"))
+         (a (ekg-org-linear-test--issue "a" "A" "p"))
+         (b (ekg-org-linear-test--issue "b" "B" "p"))
+         (c (ekg-org-linear-test--issue "c" "C" "p"))
+         (remote (list parent a c))
+         (a-id "https://linear.app/issue/a")
+         (b-id "https://linear.app/issue/b")
+         (c-id "https://linear.app/issue/c")
+         (parent-id "https://linear.app/issue/p"))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () remote)))
+      (ekg-org-linear-sync)
+      (ekg-org-view--set-sort-order a-id 20)
+      (ekg-org-view--set-sort-order c-id 10)
+      (setq remote (list c b a parent))
+      (ekg-org-linear-sync)
+      (should (equal (list c-id a-id b-id)
+                     (mapcar #'ekg-note-id
+                             (ekg-org-view--sorted-children parent-id))))
+      (setq remote (list parent a c))
+      (ekg-org-linear-sync)
+      (should (equal (list c-id a-id)
+                     (mapcar #'ekg-note-id
+                             (ekg-org-view--sorted-children parent-id))))
+      (dolist (pair `((,a-id . 20) (,c-id . 10)))
+        (should (= (cdr pair)
+                   (plist-get (ekg-note-properties
+                               (ekg-get-note-with-id (car pair)))
+                              :org/sort-order)))))))
+
+(ekg-deftest-with-db ekg-org-linear-test-gone-issue-unlinked ()
+  (let* ((issue (ekg-org-linear-test--issue "i" "Title"))
+         (note (ekg-note-create :text "Local body" :tags '("org/task" "org/state/todo"))))
+    (ekg-save-note note)
+    (cl-letf (((symbol-function 'ekg-org-linear--issue) (lambda (_) issue)))
+      (ekg-org-linear-link (ekg-note-id note) "ENG-123"))
+    ;; The issue disappears from Linear entirely; the explicitly linked task
+    ;; survives but is unlinked instead of aborting the sync.
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () nil))
+              ((symbol-function 'ekg-org-linear--find-issue) (lambda (_) nil)))
+      (ekg-org-linear-sync))
+    (should-not (ekg-org-get-property
+                 (ekg-get-note-with-id "https://linear.app/issue/i")
+                 "LINEAR_ID"))))
 
 (ekg-deftest ekg-org-linear-test-pagination ()
              (let ((ekg-org-linear-import-team-id "team") cursors)
@@ -244,15 +809,32 @@
                  (should (equal "done" (ekg-org-linear--state-id issue "DONE")))
                  (should-error (ekg-org-linear--state-id issue "UNMAPPED")))))
 
-(ekg-deftest-with-db ekg-org-linear-test-missing-ancestor-and-cycle ()
-                     (let ((child (ekg-org-linear-test--issue "c" "Child" "p"))
-                           (parent (ekg-org-linear-test--issue "p" "Parent")))
-                       (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () (list child)))
-                                 ((symbol-function 'ekg-org-linear--issue) (lambda (_) parent)))
-                         (ekg-org-linear-sync)
-                         (should (= 2 (hash-table-count (ekg-org-linear--linked-notes))))
-                         (setf (alist-get 'parent parent) '((id . "c")))
-                         (should-error (ekg-org-linear-sync)))))
+(ekg-deftest-with-db ekg-org-linear-test-parent-scope-and-cycle ()
+  (let ((child (ekg-org-linear-test--issue "c" "Child" "p"))
+        (parent (ekg-org-linear-test--issue "p" "Parent")))
+    ;; A parent that never came into scope is not fetched: the tree starts
+    ;; at the top in-scope task.
+    (cl-letf (((symbol-function 'ekg-org-linear--issues) (lambda () (list child)))
+              ((symbol-function 'ekg-org-linear--issue)
+               (lambda (_id) (ert-fail "Out-of-scope parent must not be fetched"))))
+      (ekg-org-linear-sync)
+      (should (= 1 (hash-table-count (ekg-org-linear--linked-notes))))
+      (should-not (ekg-note-parent-id
+                   (gethash "c" (ekg-org-linear--linked-notes)))))
+    ;; Once the parent comes into scope, the child re-parents beneath it.
+    (cl-letf (((symbol-function 'ekg-org-linear--issues)
+               (lambda () (list child parent))))
+      (ekg-org-linear-sync)
+      (let* ((notes (ekg-org-linear--linked-notes))
+             (p (gethash "p" notes))
+             (c (gethash "c" notes)))
+        (should (= 2 (hash-table-count notes)))
+        (should (equal (ekg-note-id p) (ekg-note-parent-id c)))))
+    ;; Cycles are still detected when both are in scope.
+    (setf (alist-get 'parent parent) '((id . "c")))
+    (cl-letf (((symbol-function 'ekg-org-linear--issues)
+               (lambda () (list child parent))))
+      (should-error (ekg-org-linear-sync)))))
 
 (defun ekg-org-linear-test--note-by-title (title)
   "Return the sole note with TITLE."

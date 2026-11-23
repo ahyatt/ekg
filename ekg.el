@@ -949,7 +949,9 @@ hierarchy cycles are validated."
           (error "Setting parent to %s would create a cycle" parent-id))))
     (setf (ekg-note-properties note)
           (plist-put (ekg--plist-without-key
-                      (ekg-note-properties note) :org/parent)
+                      (ekg--plist-without-key
+                       (ekg-note-properties note) :org/parent)
+                      :hierarchy/parent)
                      :hierarchy/parent parent-id))
     note))
 
